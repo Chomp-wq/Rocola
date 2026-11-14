@@ -3,7 +3,7 @@
 # INVENTADOS (mundo.sh: canciones que son tonos, un video de barras, la carpeta de una rocola de XP falsa; discoxp.sh: el disco de XP
 # falso; arma.sh: la memoria USB). QEMU sin KVM (TCG): todo va muy lento (la pantalla de la rocola con Mesa softpipe tarda decenas de
 # segundos por cuadro), asi que los tiempos son generosos y lo que depende de lo rapido que pinta se dice aparte (INFO).
-#   python3 prueba.py [FASE...]   sin nada, todas en orden: instala arranque teclas video consola caida apagon ia boton (y aparte, a4)
+#   python3 prueba.py [FASE...]   sin nada, todas en orden: instala arranque teclas pared video consola caida apagon ia boton (y aparte, a4)
 #   Q: la carpeta de trabajo (por omision /root/rocola-trabajo/act/qemu): ahi estan usb.img y discoxp.img, y quedan xp.qcow2 (el disco de
 #      XP con lo que escribio Rocola OS), capturas/ (las pantallas), sonido/ (lo que sono, en WAV) y prueba.txt (el resumen).
 # Cada comprobacion dice BIEN o MAL en una linea (INFO: lo que se apunta sin juzgar); al final, cuantas.
@@ -157,6 +157,14 @@ def arranque():
     env = orden("tr '\\0' '\\n' < /proc/%s/environ | grep ^ROCOLA_ | sort" % p)
     si("con sus datos, el material de la IA en el disco y la tarjeta", "ROCOLA_DATOS=/rocola/datos/xp" in env and "ROCOLA_IA_DATOS=/rocola/disco/rocola-os/ia-xp" in env
        and "ROCOLA_ALSA=plughw:0,0" in env, env.replace("\n", " "))
+    # (revision) LAS LETRAS DE XP, del disco de Windows: el lanzador da su carpeta \WINDOWS\Fonts (ROCOLA_LETRAS_XP) y rocola-discos las
+    # copia a /rocola/datos/letras. En el disco de XP falso son letras LIBRES (DejaVu de esta maquina) con los nombres de las de XP (mundo.sh):
+    # nada de Microsoft; solo se mira que Rocola OS las toma de alli (y en las capturas salen con remates).
+    if os.path.isdir(os.path.join(MUNDO, "c", "WINDOWS", "Fonts")):
+        si("las letras de XP del disco de Windows: ROCOLA_LETRAS_XP y copiadas a /rocola/datos/letras",
+           "ROCOLA_LETRAS_XP=/rocola/discos/sda1/WINDOWS/Fonts" in env and ok("[ -s /rocola/datos/letras/tahoma.ttf ] && [ -s /rocola/datos/letras/micross.ttf ]")
+           and "letras de Windows copiadas" in orden("cat /run/rocola-discos.txt"), orden("ls /rocola/datos/letras | tr '\\n' ' '").strip())
+    else: info("el disco de XP falso no trae letras (mundo.sh sin DejaVu): no se mira ROCOLA_LETRAS_XP")
     marca = orden("cat /rocola/datos/xp/rocola_importado_xp.txt")
     si("la marca: de que carpeta y la unidad D: al disco de la rocola", "carpeta=/rocola/disco/Rocola/Release" in marca and "unidad D: -> /rocola/disco" in marca)
     si("las tablas traducidas, sin rutas de Windows", ok("! grep -l 'D:\\\\' /rocola/datos/xp/rocola_sonoridad.txt /rocola/datos/xp/rocola_volumen.txt /rocola/datos/xp/rocola_eq.txt /rocola/datos/xp/rocola_fuentes.txt /rocola/datos/xp/rocola_duracion.txt /rocola/datos/xp/rocola_stats.txt /rocola/datos/xp/rocola_config.txt")
@@ -170,6 +178,11 @@ def arranque():
     host = set(subprocess.run("cd '%s/d/Rocola/Release' && find . -type f -print0 | xargs -0 md5sum" % MUNDO, shell=True, capture_output=True, text=True).stdout.splitlines())
     dentro = set(l for l in orden("cd /rocola/disco/Rocola/Release && find . -type f | while read -r f; do md5sum \"$f\"; done").splitlines() if l.strip())
     si("la carpeta de XP sin tocar (los mismos archivos y contenido)", host == dentro and len(host) > 10, "%d y %d archivos" % (len(host), len(dentro)))
+    # (revision) y la fecha de escritura de cada uno (en s; dentro con «date -r»: el BusyBox del sistema no trae stat)
+    base = os.path.join(MUNDO, "d", "Rocola", "Release")
+    host = set("%d ./%s" % (int(os.stat(os.path.join(r, n)).st_mtime), os.path.relpath(os.path.join(r, n), base)) for r, _, ns in os.walk(base) for n in ns)
+    dentro = set(l for l in orden("cd /rocola/disco/Rocola/Release && find . -type f | while read -r f; do echo \"$(date -r \"$f\" +%s) $f\"; done").splitlines() if l.strip())
+    si("la carpeta de XP sin tocar (las mismas fechas)", host == dentro and len(host) > 10, "%d y %d archivos" % (len(host), len(dentro)))
     c.espera_cuadros(2, 300)
     f = captura("03-rocola.png")
     si("la rocola en la pantalla por KMS (no la consola de texto)", colores(f) > 500, "%d colores" % colores(f))
@@ -213,7 +226,10 @@ def consola():
     si("el estado se conserva (creditos)", creditos() == antes, "creditos=%s" % creditos())
     time.sleep(6)
     f = captura("08-consola.png")
-    si("la consola de mantenimiento se ve sin tocar nada («rocola login:»)", claros(f) > 400, "%d puntos claros" % claros(f))
+    # (revision) texto claro sobre negro y con pocos colores: ni la pantalla negra (sin el arreglo del lanzador) ni el ultimo cuadro de la
+    # rocola que se quedara puesto (con miles de colores y tambien muchos puntos claros)
+    si("la consola de mantenimiento se ve sin tocar nada («rocola login:»)", 400 < claros(f) < 20000 and colores(f) <= 8,
+       "%d puntos claros, %d colores" % (claros(f), colores(f)))
     si("no se abre en la consola", not xp_pid() and ok("[ -f /run/rocola-en-consola ]"))
     c.tecla("ctrl-alt-f1")
     p2 = espera_xp(300)
@@ -305,6 +321,33 @@ def boton():
     info("bitacora: " + orden("cat /rocola/datos/rocola_actualizaciones.txt").replace("\n", " | "))
     orden("sync", 30); apaga()
 
+def es_pared(f):
+    """(revision) Si una captura es la pared de la rocola (la navegacion) y no la atraccion, la consola o un video: arriba BUSCAR y sus
+    botones, abajo lo que suena, la cola y los creditos (puntos claros en esas dos franjas; la atraccion no tiene ninguna de las dos), y sin
+    los colores vivos de las barras del video. Devuelve (si, claros arriba, claros abajo)."""
+    a = np.asarray(Image.open(f).convert("L")).astype(int)
+    arriba, abajo = int((a[5:55, 340:640] > 120).sum()), int((a[670:715, 580:1010] > 120).sum())
+    return arriba > 1000 and abajo > 500 and vivos(f) < 50000, arriba, abajo
+
+def pared():
+    di("=== pared: la pared (la navegacion) dibujada por la tarjeta (gpu=1, lo de fabrica), no solo la atraccion")
+    # (revision, 14-11-2026) Las capturas de las fases de antes son casi todas de la atraccion (a los 40 s sin teclas, y en QEMU cada cuadro
+    # con la tarjeta tarda 20 a 30 s); la pared con la tarjeta no salia en ninguna. Una tecla que no pide nada (DERECHA: el toque que
+    # despierta la atraccion no hace nada mas, Form1.cs) y capturas seguidas hasta ver la pared, antes de que vuelva la atraccion.
+    tarjeta(True)
+    xp_pid() or espera_xp(300)
+    vista = None; n = 0
+    for _ in range(3):
+        c.tecla("right", 0.5)
+        fin = time.time() + 70
+        while time.time() < fin and not vista:
+            n += 1; f = captura("05-pared-%d.png" % n)
+            if es_pared(f)[0]: vista = f
+            else: os.remove(f); time.sleep(2)
+        if vista: break
+    si("la pared con la tarjeta: arriba BUSCAR, abajo lo que suena y los creditos (no la atraccion ni la consola)", bool(vista),
+       ("%s: %d y %d puntos claros" % ((os.path.basename(vista),) + es_pared(vista)[1:])) if vista else "no salio en %d capturas" % n)
+
 def tarjeta(con):
     """Con la tarjeta (gpu=1, lo de fabrica) o con el dibujo por procesador (gpu=0): se cambia rocola_config.txt con la rocola cerrada
     (la consola de mantenimiento: la cierra con SIGUSR1, conservando el estado) y se vuelve a la 1."""
@@ -374,7 +417,7 @@ def a4():
     p2 = xp_pid()
     si("la rocola se abre con el rocola-xp del A4", bool(p2) and p2 != p and v in orden("tail -20 /rocola/datos/rocola.txt"))
     c.espera_cuadros(3, 400); f = captura("13-a4.png")
-    si("y pinta la pared por KMS", colores(f) > 500, "%d colores" % colores(f))
+    si("y pinta la rocola por KMS (no la consola de texto)", colores(f) > 500, "%d colores" % colores(f))
     teclas("m", "ret", "ret")
     si("pedida con el del A4: suena", espera("grep -q sonando= /rocola/datos/xp/rocola_estado.txt", 400, 5))
     time.sleep(60)
@@ -386,9 +429,9 @@ def a4():
     si("el WAV tiene la cancion", ok_, det)
     orden("sync", 30); apaga()
 
-FASES = {"instala": instala, "arranque": arranque, "teclas": teclas_y_sonido, "consola": consola, "caida": caida, "apagon": apagon, "ia": ia, "boton": boton, "video": video, "a4": a4}
+FASES = {"instala": instala, "arranque": arranque, "teclas": teclas_y_sonido, "pared": pared, "consola": consola, "caida": caida, "apagon": apagon, "ia": ia, "boton": boton, "video": video, "a4": a4}
 if __name__ == "__main__":
-    pedidas = sys.argv[1:] or ["instala", "arranque", "teclas", "video", "consola", "caida", "apagon", "ia", "boton"]
+    pedidas = sys.argv[1:] or ["instala", "arranque", "teclas", "pared", "video", "consola", "caida", "apagon", "ia", "boton"]
     if pedidas[0] not in ("instala", "arranque", "a4") and pid(MAQ): c = Control(MAQ)
     elif pedidas[0] not in ("instala", "arranque", "a4"): arranca(os.path.join(SON, "sigue-%s.wav" % time.strftime("%H%M%S")))
     di("##### prueba.py " + " ".join(pedidas))

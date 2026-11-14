@@ -68,6 +68,17 @@ touch -m -d '2019-05-02 10:00:00.1234567' "$M/Grupo Prueba - Disco Dos/03 Ruido 
 echo "=== la carpeta de la rocola de XP falsa (D:\\Rocola\\Release) y la C: de Windows XP falsa"
 python3 -I "$G/mundo_xp.py" "$P" "$D/" "$XP" "$REPO"
 mkdir -p "$C/WINDOWS/system32" "$C/Documents and Settings"
+# (revision, 14-11-2026) LAS LETRAS DE XP DEL DISCO DE WINDOWS: Rocola OS las lee de \WINDOWS\Fonts (el lanzador da la carpeta en
+# ROCOLA_LETRAS_XP y rocola-discos las copia a /rocola/datos/letras). Aqui son letras LIBRES de esta maquina (DejaVu Serif, con remates: en
+# las capturas se ve que se usaron; DejaVu Sans Mono para Courier) con los nombres de los archivos de XP: nada de Microsoft. Sin DejaVu en
+# esta maquina, el disco de XP falso va sin letras (prueba.py lo dice y no lo mira).
+DV=/usr/share/fonts/truetype/dejavu
+if [ -f "$DV/DejaVuSerif.ttf" ] && [ -f "$DV/DejaVuSerif-Bold.ttf" ] && [ -f "$DV/DejaVuSansMono.ttf" ]; then
+	mkdir -p "$C/WINDOWS/Fonts"
+	for n in micross tahoma trebuc arial times; do cp "$DV/DejaVuSerif.ttf" "$C/WINDOWS/Fonts/$n.ttf"; done
+	for n in tahomabd trebucbd arialbd timesbd; do cp "$DV/DejaVuSerif-Bold.ttf" "$C/WINDOWS/Fonts/$n.ttf"; done
+	cp "$DV/DejaVuSansMono.ttf" "$C/WINDOWS/Fonts/cour.ttf"
+else echo "(sin DejaVu en esta maquina: el disco de XP falso va sin letras)"; fi
 printf 'NTLDR FALSO (prueba de Rocola OS en QEMU: no arranca nada)\r\n' > "$C/ntldr"
 printf '[boot loader]\r\ntimeout=30\r\ndefault=multi(0)disk(0)rdisk(0)partition(1)\\WINDOWS\r\n[operating systems]\r\nmulti(0)disk(0)rdisk(0)partition(1)\\WINDOWS="Windows XP falso (prueba)" /fastdetect\r\n' > "$C/boot.ini"
 echo "listo: $W (d = la particion de la musica, c = la de Windows XP)"

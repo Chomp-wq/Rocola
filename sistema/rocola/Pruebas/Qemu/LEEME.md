@@ -26,8 +26,9 @@ python3 prueba.py                        # todas las fases (una hora larga); o a
 
 - `mundo.sh`: `W/d` (la partición «D:»: `musica/Artista - Disco/`, el video y `Rocola/Release`, la carpeta de XP con las tablas medidas
   por `rocola-xp` y las rutas pasadas a `D:\musica\...` por `mundo_xp.py`, botones, configuración, lo más sonado, un estado del día con 5
-  créditos que **no** se debe traer y un `Rocola.exe` falso) y `W/c` (la «C:»: un `ntldr` y un `boot.ini` falsos). Una canción llega
-  después de lo medido (`03 Ruido Nuevo.wav`): la mide la rocola y saca de ella material para la IA.
+  créditos que **no** se debe traer y un `Rocola.exe` falso) y `W/c` (la «C:»: un `ntldr` y un `boot.ini` falsos, y `WINDOWS/Fonts` con
+  letras **libres** de esta máquina -DejaVu Serif- con los nombres de las de XP: para ver que Rocola OS toma las letras del disco de Windows;
+  nada de Microsoft). Una canción llega después de lo medido (`03 Ruido Nuevo.wav`): la mide la rocola y saca de ella material para la IA.
 - `discoxp.sh`: `discoxp.img` (4,5 GB con huecos, unos 40 MB): como el del A4, la primera partición en el sector 63 (el hueco de 62
   sectores para el arranque), dos NTFS con números de serie distintos y un código de arranque que no hace nada (no es el de Windows).
 - `arma.sh`: `usb.img`, la memoria USB: la imagen completa de `salida-qemu` (del 6-11-2026, b6e8f14) con lo que pone `rapida.sh`
@@ -41,8 +42,8 @@ python3 prueba.py                        # todas las fases (una hora larga); o a
   órdenes por el puerto serie. También a mano: `python3 maquina.py orden $Q/maq 'cat /rocola/datos/rocola.txt'`, `... tecla $Q/maq m`,
   `... captura $Q/maq foto.png`.
 - `sonido.py WAV`: qué sonó en lo grabado (por segundos: el nivel y la frecuencia que domina; cada canción de la prueba es un tono).
-- `prueba.py`: las fases `instala arranque teclas video consola caida apagon ia boton`, en ese orden (cada una usa lo que deja la
-  anterior), y `a4`, aparte: el `rocola-xp` del perfil del A4 (`dotnet publish ... -p:RocolaPerfil=a4`) en un disco más, `$Q/a4.img`: un MBR
+- `prueba.py`: las fases `instala arranque teclas pared video consola caida apagon ia boton`, en ese orden (cada una usa lo que deja la
+  anterior; `pared`, de la revisión: la pared -la navegación- dibujada por la tarjeta, no solo la atracción), y `a4`, aparte: el `rocola-xp` del perfil del A4 (`dotnet publish ... -p:RocolaPerfil=a4`) en un disco más, `$Q/a4.img`: un MBR
   con una partición ext2 con ese `rocola-xp` (`mke2fs -d`), que `rocola-discos` monta en solo lectura (`sistema/ACT_qemu.md`). Cada comprobación dice BIEN o MAL; INFO es lo que se apunta sin juzgar. Deja
   `$Q/prueba.txt`, `$Q/capturas/` y `$Q/sonido/`.
 
