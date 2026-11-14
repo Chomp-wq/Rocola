@@ -290,3 +290,24 @@ cierreq, buscador, f3vistas y f3teclas IGUALES; kill9 solo por la cuenta del rel
   texturas quietas 457 de 487 por el recorrido buscador (56 de 78), que repetido solo con la máquina libre da 73 y 76 de 78 (su
   ritmo de flechas tras las capturas: el riesgo que dejó apuntado PORT_arreglo-junta14.md). Las 24 escenas (RJ15/J15) IGUALES salvo
   sigterm y f3sigterm (lo aceptado); NativeAOT arranque, cierreq, kill9, buscador, f3vistas, f3teclas y f12 IGUALES.
+
+## 13/14-11-2026: oleada 8 (8a Form1 sin Form, 8b arneses sin la capa) y el adelanto de N7
+
+- `59bfc97`: port-n7-adelanto (lo de N7 que no depende de 8a: la traza y el volcado nombran la capa en una sola costura cada uno, el
+  banco sin el ejecutor «puente», y la lista del borrado final en PORT_n7-adelanto.md), revisión «arreglado».
+- `9ccfb99`: 8b, port-arneses-sin-capa-2: los 17 arneses ya no nombran Rocola.Dibujo2D ni Rocola.Ventanas en el lado del programa
+  nuevo (Pruebas/Comun: Pru, Lz, Fte, Fmt; PruCapa.cs solo para la referencia), revisión «bien». La rama de la primera parte
+  (port-arneses-sin-capa) NO se junta: su revisor convirtió por su cuenta cuatro arneses que la segunda parte también hizo; de ella
+  solo entra el arreglo de VistasAjustes (el campo tPuente).
+- `535be08`: 8a, port-form1-sin-form: Form1 no hereda de nada y la ventana de la rocola es la pantalla nativa
+  (Nativo/Form1.Ventana.cs y PantallaRocola.Ventana.cs), revisión «arreglado» (comentarios; la escena captura repetida IGUAL). Un
+  choque, el previsto, en VolcadoEstado.cs: resuelto como dice PORT_n7-adelanto.md («Al juntar con 8a»). Dos diferencias a propósito
+  frente a la capa de la referencia, que no cambian lo que llega al código de XP: con gpu=0, al cerrar el buscador el foco va a HelpBar
+  (WinForms de verdad: Form.IsContainerControl es false) y no a Form1; y el formato de la traza del ratón sobre las vistas.
+- Comprobado con todo junto (`scratchpad/merge/verifica-junta16.sh`, con el borrado final trabajando a la vez): compila desde cero (0
+  errores, los 15 avisos), NativeAOT sin avisos IL/AOT; TODOS los arneses IGUALES (acabado-estilo 0 de 6 603, vistas-b 0 de 3 108,
+  Ctrl+F3 0 de 545; el fondo solo su línea de marca); el banco igual (gdi y nativo, semillas 7, 11 y 5: 6 de 6); 41 de 41, 86 de 86,
+  32 de 32 y PantallaVistas 194 de 194; los 109 archivos de `Codigo/` con sus líneas y CRLF; recorridos 9 de 9 con 0, capas quietas
+  213 de 217 (las de siempre) y texturas quietas 469 de 487 (con carga: «botones» 42 de 50, que 8a sola dio entera; se repite con la
+  verificación final de N7). Las 24 escenas IGUALES salvo sigterm y f3sigterm (lo aceptado) y asistente, captura, salirq y f2sin solo
+  por la cuenta del encargo MedidasBitacora.cs:129 (carga). NativeAOT: las 7 IGUALES.
