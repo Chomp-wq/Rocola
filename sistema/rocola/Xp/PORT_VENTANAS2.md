@@ -952,7 +952,7 @@ Lo encontrado y lo hecho (nada del programa: todo del banco):
 4. Dos diferencias de la primera ronda que eran de la maquina, repetidas: `tab` (VC2, carga 5,8: el repaso de la biblioteca iba por 10
    de 12 en este programa y ya al dia en la referencia, «faltan 3 archivos») salio IGUAL en V3; `f3grises` (V3, carga 10: el estado «fin»
    se pidio antes de que llegara el Escape) salio IGUAL en V5 y en NativeAOT (V3A).
-5. Los commits 4897bca, 7cab6e6 y 343ce4b llevan «Co-Authored-By: Claude Fable 5.2» y no la linea que pedia la tarea; no se reescribe la
+5. Los commits 4897bca, 7cab6e6 y 343ce4b llevan la linea de atribucion de la sesion y no la linea que pedia la tarea; no se reescribe la
    historia de la rama (solo merges): queda dicho aqui.
 
 Las comprobaciones repetidas (11-11-2026, de 19:12 a 20:18, carga de 5 a 10, llvmpipe, despues de un reinicio de la maquina):

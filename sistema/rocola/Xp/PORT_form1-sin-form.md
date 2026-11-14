@@ -204,7 +204,7 @@ Lo encontrado:
    MouseClick, MouseUp; DoubleClick, MouseDoubleClick con 2, MouseUp). Lo demas de esa escena (entra, sale, mueve, baja, rueda a la
    vista del foco y despues a `Form1'Rocola'`, el clic en el fondo de la ventana) sale identico. Ninguna de las 23 escenas hace
    clic en la rocola (solo en las hojas), por eso no se vio.
-4. (no arreglado) Los commits 1aa762c y ec834bb acaban con «Co-Authored-By: Claude Fable 5.2» y la tarea pedia «Claude Opus 5.5»;
+4. (no arreglado) Los commits 1aa762c y ec834bb acaban con la linea de atribucion de la sesion y no la que pedia la tarea;
    no se reescribe la historia de la rama (lo decide quien junta). El de la revision lleva lo que manda la sesion.
 
 No repetido aqui (lo corre el coordinador al juntar): los nueve recorridos, las 23 escenas completas, el banco y las cintas. Las
