@@ -177,7 +177,12 @@ EN_CONSOLA=$RUN/rocola-en-consola
 	# (ya en la consola: si rocola-xp llego a abrirse justo al cambiar -el lanzador ya habia pasado su espera-, se cierra tambien; no mira
 	# ningun aviso y se quedaria pintando encima de la consola. Sin rocola-xp abierta no hace nada)
 	[ -f "$EN_CONSOLA" ] || touch "$EN_CONSOLA"
+	[ -n "$(xp_abierta)" ] || continue
 	cierra_xp   # (conservando el estado; nunca SIGTERM)
+	# LA CONSOLA SE VUELVE A PINTAR (14-11-2026, prueba del sistema entero en QEMU): rocola-xp era la duena de la pantalla (KMS) y la
+	# consola se cambio debajo de ella; al cerrarse, la pantalla quedaba en negro hasta tocar una tecla (el nucleo no la repintaba: se
+	# veia «rocola login:» solo despues). Pasar la consola de delante a video inverso y volver la obliga a repintarse entera.
+	{ printf '\033[?5h\033[?5l' > "/dev/$a"; } 2>/dev/null
   done ) &
 FONDO="$FONDO $!"
 # «REINICIAR EL PROGRAMA YA» (rocola-buzon): rocola-xp no mira /run/rocola-reinicia-programa-ya; lo atiende el lanzador, conservando el
