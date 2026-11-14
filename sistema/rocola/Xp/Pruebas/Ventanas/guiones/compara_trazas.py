@@ -13,10 +13,22 @@
 #    cuando su hilo acaba, no en un sitio fijo de la secuencia).
 # Las cuentas se comparan con la holgura del ruido medido (la referencia corrida varias veces: --mide-ruido) mas un margen, o con
 # --holgura H si no hay ruido medido.
+# LOS RELOJES QUE PINTAN UN CUADRO DE LA TARJETA EN CADA TICK (RELOJES_DE_CUADRO: el de la ventana de prueba F12, GpuTestWindow.timer, de
+# 15 ms). Fuera de pantalla (llvmpipe) su Tick cuesta 7 a 15 ms y entre dos suyos cabe un cuadro de la rocola (unos 20 ms): el reloj no
+# llega a su plazo (va «saturado») y cuantos Tick da ya no lo dice el plazo sino la maquina de ese momento, y NO de forma monotona: con la
+# regla de WM_TIMER (los vencimientos van en una rejilla fija y los que se juntan salen como uno) la cuenta sube y baja al cambiar un poco
+# lo que cuesta un cuadro (reloj_saturado.py: el modelo y la medida). La referencia contra si misma dio de 203 a 286 Tick en la escena
+# f12vigia segun la velocidad de la maquina (arreglo-f12vigia: PORT_arreglo-f12vigia.md), y la traduccion, que compone una capa
+# transparente menos por cuadro (la que la capa de la referencia arma encima de la tarjeta de la ventana), cae en otro punto de esa curva: a una velocidad da 30 mas que la referencia y a otra 30 menos. Por eso
+# el TOTAL de un reloj de cuadro que va saturado en las dos trazas (su intervalo medio pasa del 110 % del plazo) se compara con la
+# holgura del ruido o con el 30 % de la cuenta mayor, lo que sea mas (lo que la referencia se separa de si misma); por segundo, como los
+# demas. Si en alguna de las dos no va saturado, como cualquier reloj.
 import sys, re, json, math, difflib, collections, itertools
 
 PROPIOS = {"Shown", "Alt+F4", "Apagado"}   # encargos que pone el hilo de la pantalla (o el apagado): van en la secuencia
 CORTA = {"tecla", "keyup", "raton", "tick", "encargo", "encargo-perdido", "estado"}   # lo que empieza otro suceso
+RELOJES_DE_CUADRO = {"D3D9Star.cs:reloj-F12"}   # relojes cuyo Tick pinta y presenta un cuadro entero de la tarjeta (ver arriba)
+SATURADO, RELATIVA = 1.10, 0.30               # intervalo medio / plazo desde el que va saturado; la holgura relativa de su total
 
 
 # LA TABLA DE EQUIVALENCIAS DE LAS VENTANAS (port nativo, ventanas2 H; la misma del diseno y del diff): cada pieza nativa se apunta con su
@@ -66,6 +78,8 @@ class Partes:
         self.reps = collections.Counter()               # firma de la tecla repetida -> veces
         self.ticks = collections.Counter()              # (reloj, segundo) -> ticks
         self.ticks_total = collections.Counter()        # reloj -> ticks
+        self.ticks_ms = collections.defaultdict(list)   # reloj -> los milisegundos de cada tick
+        self.plazo = {}                                 # reloj -> su Interval
         self.enc = collections.Counter()                # (encargo, segundo) -> veces
         self.enc_total = collections.Counter()          # encargo -> veces
         i = 0
@@ -75,6 +89,9 @@ class Partes:
             if p[0] == "tick":
                 self.ticks[(p[1], ms // 1000)] += 1
                 self.ticks_total[p[1]] += 1
+                self.ticks_ms[p[1]].append(ms)
+                if len(p) > 2 and p[2].isdigit():
+                    self.plazo[p[1]] = int(p[2])
                 i += 1
                 continue
             if p[0] in ("encargo", "encargo-perdido") and (len(p) < 2 or p[1] not in PROPIOS):
@@ -93,6 +110,24 @@ class Partes:
                 continue
             self.sec.append(q)
             i += 1
+
+
+    # el intervalo medio de un reloj entre su plazo (1 = a su hora), sin los huecos de mas de 10 plazos (cerrado, o una captura); None
+    # si no hay bastantes Tick para decirlo
+    def ritmo(self, reloj):
+        plazo = max(10, self.plazo.get(reloj, 0))       # (menos de 10 ms es 10: USER_TIMER_MINIMUM, Nativo/Reloj.cs)
+        t = self.ticks_ms.get(reloj, [])
+        d = [y - x for x, y in zip(t, t[1:]) if y - x <= 10 * plazo]
+        if len(d) < 20:
+            return None
+        return sum(d) / float(len(d)) / plazo
+
+
+def saturado(reloj, A, B):
+    if reloj not in RELOJES_DE_CUADRO:
+        return False
+    ra, rb = A.ritmo(reloj), B.ritmo(reloj)
+    return ra is not None and rb is not None and ra > SATURADO and rb > SATURADO
 
 
 def dif_cuenta(a, b):
@@ -123,9 +158,13 @@ def holgura(ruido, clave, defecto):
     return n + max(2, int(math.ceil(n / 2.0)))
 
 
+notas = []   # lo que se dice aunque salga igual (los relojes de cuadro saturados y su holgura)
+
+
 def compara(ra, rb, ruido, hol):
     A, B = Partes(lee(ra)), Partes(lee(rb))
     dif = []
+    del notas[:]
     if A.sec != B.sec:
         for l in difflib.unified_diff(A.sec, B.sec, "A", "B", lineterm="", n=2):
             dif.append("secuencia: " + l)
@@ -139,8 +178,13 @@ def compara(ra, rb, ruido, hol):
             dif.append("reloj %s en el segundo %d: %d frente a %d (holgura %d)" % (k[0], k[1], A.ticks[k], B.ticks[k], h))
     h = holgura(ruido, "tick_total", hol)
     for k in sorted(set(A.ticks_total) | set(B.ticks_total)):
-        if abs(A.ticks_total[k] - B.ticks_total[k]) > h:
-            dif.append("reloj %s en total: %d frente a %d (holgura %d)" % (k, A.ticks_total[k], B.ticks_total[k], h))
+        hk = h
+        if saturado(k, A, B):   # un reloj de cuadro que no llega a su plazo en ninguna de las dos: la cuenta es de la maquina (ver arriba)
+            hk = max(h, int(RELATIVA * max(A.ticks_total[k], B.ticks_total[k])))
+            notas.append("reloj %s saturado en las dos (intervalo medio %.0f %% y %.0f %% del plazo): %d frente a %d en total, holgura %d"
+                         % (k, 100 * A.ritmo(k), 100 * B.ritmo(k), A.ticks_total[k], B.ticks_total[k], hk))
+        if abs(A.ticks_total[k] - B.ticks_total[k]) > hk:
+            dif.append("reloj %s en total: %d frente a %d (holgura %d)" % (k, A.ticks_total[k], B.ticks_total[k], hk))
     h = holgura(ruido, "encargo_total", hol)
     for k in sorted(set(A.enc_total) | set(B.enc_total)):
         if abs(A.enc_total[k] - B.enc_total[k]) > h:
@@ -169,6 +213,8 @@ if __name__ == "__main__":
     dif, A, B = compara(args[0], args[1], ruido, hol)
     print("secuencia: %d sucesos; teclas repetidas: %d; relojes: %d ticks; encargos de otros hilos: %d"
           % (len(A.sec), sum(A.reps.values()), sum(A.ticks_total.values()), sum(A.enc_total.values())))
+    for n in notas:
+        print("NOTA " + n)
     if dif:
         for d in dif[:80]:
             print("DIFERENTE " + d)
