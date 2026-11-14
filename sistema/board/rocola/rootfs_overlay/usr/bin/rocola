@@ -19,6 +19,10 @@ XPBIN=${ROCOLA_XP_BIN:-/usr/lib/rocola-xp/rocola-xp}
 XPDATOS=${ROCOLA_XP_DATOS:-/rocola/datos/xp}
 DISCO=${ROCOLA_DISCO:-/rocola/disco}
 apunta() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$*" >> "$BITACORA"; echo "--- $*" >> "$REGISTRO"; }
+# los segundos desde que prendio el equipo: con ellos se mide cuanto dura algo (lo que tarda en traer lo de XP, cuanto aguanto la rocola
+# abierta). No con la hora (date): rocola-actualiza la pone por NTP al minuto de prender, y salta (horas, si el reloj de la placa estaba
+# mal) justo mientras se trae lo de XP la primera vez o con la rocola abierta.
+segundos() { cut -d. -f1 /proc/uptime; }
 
 # SIN rocola-xp EN EL SISTEMA (no deberia pasar: es su unico programa): un aviso claro en la pantalla (tty1) y en la bitacora, y nada mas
 # (sin volver a intentarlo una y otra vez). Un sistema nuevo en prueba asi no se confirma: S99rocola y el initramfs vuelven solos al
@@ -96,12 +100,12 @@ importa_xp() {
 	( sleep 3; touch "$RUN/rocola-importa-xp-aviso"
 	  printf '\033[2J\033[HRocola OS: trayendo lo aprendido por la rocola de XP (solo la primera vez; puede tardar unos minutos)...\n' ) &
 	aviso=$!
-	ti=$(date +%s)
+	ti=$(segundos)
 	ROCOLA_DATOS=$XPDATOS timeout -k 10 "$IMPORTA_MAX" "$XPBIN" --importa-xp "$RUN/rocola-datos-xp" >> "$REGISTRO" 2>&1
 	ri=$?
 	kill "$aviso" 2>/dev/null; wait "$aviso" 2>/dev/null
 	[ -f "$RUN/rocola-importa-xp-aviso" ] && printf '\033[2J\033[H'
-	if [ $(( $(date +%s) - ti )) -ge "$IMPORTA_MAX" ]; then
+	if [ $(( $(segundos) - ti )) -ge "$IMPORTA_MAX" ]; then
 		touch "$RUN/rocola-importa-xp-tope"
 		apunta "Traer lo aprendido en XP no acabo en $IMPORTA_MAX s (codigo $ri): se corto y no se vuelve a intentar hasta el siguiente encendido; la rocola se abre igual"
 	elif [ "$ri" != 0 ]; then
@@ -146,7 +150,7 @@ volumen
 # con ver la rocola abierta en un instante a los 3 minutos; con rocola-xp sin respaldo, eso podia dar por bueno un sistema roto.)
 CONFIRMA=${ROCOLA_CONFIRMA:-120}
 ( while sleep 5; do
-	ahora=$(cut -d. -f1 /proc/uptime)
+	ahora=$(segundos)
 	for p in $(xp_abierta); do
 		desde=$(awk '{print int($22 / 100)}' "/proc/$p/stat" 2>/dev/null)   # (cuando arranco, en s desde que prendio: el campo 22 va en centesimas)
 		[ -n "$desde" ] && [ $((ahora - desde)) -ge "$CONFIRMA" ] && { touch "$RUN/rocola-confirmado"; exit 0; }
@@ -198,10 +202,10 @@ while :; do
 	rm -f "$RUN/rocola-xp-reinicio"   # (una marca solo vale para la rocola que se abre ahora)
 	# la pantalla por KMS (sin ROCOLA_PANTALLA), el sonido por ROCOLA_ALSA, sus datos y las letras de XP
 	echo "--- rocola-xp ($(cat "${XPBIN%/*}/version" 2>/dev/null)): datos en $XPDATOS, letras de XP en ${XPLETRAS:-(no hay: las del sistema)}" >> "$REGISTRO"
-	t0=$(date +%s)
+	t0=$(segundos)
 	ROCOLA_DATOS=$XPDATOS ROCOLA_LETRAS_XP=$XPLETRAS "$XPBIN" >> "$REGISTRO" 2>&1
 	r=$?
-	duro=$(( $(date +%s) - t0 ))
+	duro=$(( $(segundos) - t0 ))
 	if [ -f "$EN_CONSOLA" ]; then apunta "La rocola se cerro para la consola de mantenimiento"; seguidas=0; continue; fi   # (no es una caida)
 	# (cerrada a proposito para reiniciarla -«reiniciar el programa ya», la prueba de sonido-: sale con 0 o por la senal; no es una caida)
 	if [ -f "$RUN/rocola-xp-reinicio" ]; then

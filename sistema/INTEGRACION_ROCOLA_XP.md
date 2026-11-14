@@ -58,7 +58,7 @@ Las piezas, por grupo: el sistema y los guiones (`sistema/ACT_sistema-activa.md`
 | El programa, su biblioteca y su versión | `/usr/lib/rocola-xp/` (paquete `rocola-xp` o `rapida.sh`) |
 | La canción de prueba | `/usr/share/rocola/prueba.mp3`, `/rocola/musica/Rocola OS - Prueba/` (paquete `rocola-xp`) |
 | El lanzador | `/usr/bin/rocola` (abre siempre `rocola-xp`) |
-| Lo demás que nombra a la rocola | `rocola-actualiza`, `rocola-buzon`, `rocola-sonido`, `rocola-prueba`, `/etc/acpi/PWRF/00000080`, `/etc/init.d/S99rocola` |
+| Lo demás que nombra a la rocola | `rocola-actualiza`, `rocola-buzon`, `rocola-sonido`, `rocola-prueba`, `/etc/acpi/PWRF/00000080`, `/etc/init.d/S99rocola`; y `rocola-instalar` (las rutas de `/rocola/datos/xp` al instalar, apartado 3) |
 | Lo de antes, sin usar | `/usr/bin/rocola-consola` solo en una imagen hecha con la rápida sobre sistema-36 (hasta la siguiente completa) |
 
 ## 3. El lanzador (`/usr/bin/rocola`)
@@ -90,15 +90,23 @@ Cada vez que abre la rocola, en este orden:
 
 Además, una vez al prender: **`ROCOLA_IA_DATOS=/rocola/disco/rocola-os/ia-xp`** (se crea si falta) solo si Rocola OS va instalado en el
 disco y ese disco está montado con escritura; si no (la memoria USB, o el disco en solo lectura), sin la variable. Ahí `rocola-xp` deja
-lo grande que no cabe en lo aprendido (512 MB): el material para entrenar la IA y las miniaturas de las portadas
-(`Nativo/DatosGrandes.cs`). La carpeta de `rocola-consola` (`ia`) se queda como está.
+lo grande que no cabe en lo aprendido (512 MB): el material para entrenar la IA, las miniaturas de las portadas y el respaldo diario de
+lo aprendido (`respaldo/`; `Nativo/DatosGrandes.cs`). La carpeta de `rocola-consola` (`ia`) se queda como está.
+
+**Instalar después de probar desde la memoria USB** (revisión, 14-11-2026): `rocola-instalar` pasaba las rutas de la memoria
+(`/rocola/discos/<partición>/...`) a las del disco instalado (`/rocola/disco/...`) solo en los `rocola_*.txt` de `/rocola/datos`; ahora
+también en los de `/rocola/datos/xp` (las tablas que trajo el importador, su configuración y su marca `rocola_importado_xp.txt`). Sin eso,
+al prender ya instalada el importador daba la carpeta de XP por «la misma en otro disco» y `rocola-xp` se quedaba con rutas que ya no
+existen. Solo cuenta en una instalación nueva (con `datos.img` ya hecho, lo aprendido no se toca).
 
 **Si se cierra o se cae**, se vuelve a abrir. Una caída es salir con un código distinto de 0, o cerrarse sola (con 0) en menos de
 10 s; es «seguida» si llega antes de 2 minutos de abrirse. Antes de volver a abrirla espera 2 s, y si se cae seguido 10 s, 30 s y
 2 minutos (de la cuarta en adelante), para no quemar el procesador. Cada caída queda en la bitácora
 (`/rocola/datos/rocola_actualizaciones.txt`, que también sube el buzón): «rocola-xp se cayó (código 134) a los 0 s, 3 veces seguidas: se
 vuelve a abrir en 30 s». Cerrarla con Alt+F4 (en XP la cierra el dueño: borra el estado) no es una caída: 2 s y otra vez. Los cierres
-a propósito (consola, «reiniciar ya», la prueba de sonido) tampoco: dejan antes su marca y quedan apuntados.
+a propósito (consola, «reiniciar ya», la prueba de sonido) tampoco: dejan antes su marca y quedan apuntados. Lo que dura cada cosa (la
+rocola abierta, lo que tarda el importador) se mide con los segundos desde que prendió el equipo (`/proc/uptime`), no con la hora: la
+hora la pone NTP al minuto de prender y puede saltar justo mientras se trae lo de XP la primera vez (revisión, 14-11-2026).
 
 **Un sistema nuevo se da por bueno** (`/run/rocola-confirmado`, que mira `S99rocola`) solo cuando **`rocola-xp` lleva en pie al menos
 2 minutos seguidos**: el mismo proceso abierto todo ese tiempo (el importador, que también se llama `rocola-xp`, no cuenta). Antes

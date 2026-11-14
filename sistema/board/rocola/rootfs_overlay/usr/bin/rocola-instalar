@@ -247,7 +247,9 @@ di "Sistema copiado y comprobado."
 
 # 4. LO APRENDIDO (datos.img): se conserva si ya estaba. Nuevo: vacio, con lo que esta memoria ya tenga (si se probo antes en la
 # rocola: las rutas de su disco, /rocola/discos/<particion>/..., pasan a /rocola/disco/..., donde queda instalado) y la llave de GitHub
-# si estaba en la carpeta de la rocola de XP.
+# si estaba en la carpeta de la rocola de XP. Las rutas tambien en los de rocola-xp (xp/, 14-11-2026: el programa de Rocola OS; su
+# importador trajo lo de XP con las rutas de la memoria, y su marca, rocola_importado_xp.txt, dice esa carpeta: sin traducirla, despues
+# de instalar daria la carpeta por «la misma en otro disco» y se quedaria con las rutas de la memoria, que ya no existen).
 # la llave de GitHub de la carpeta de la rocola de XP, si lo aprendido (montado en /tmp/rocola-datos) no la tiene
 llave_xp() {
 	[ -n "$datos_xp" ] && [ ! -f /tmp/rocola-datos/rocola_github.txt ] && g=$(find "$M${datos_xp#$MIRA}" -maxdepth 1 -iname rocola_github.txt | head -1) \
@@ -261,7 +263,7 @@ if [ ! -f "$D/datos.img" ]; then
 	if mount -t ext4 -o loop "$D/datos.img.nuevo" /tmp/rocola-datos 2>>$LOG; then
 		if [ -d /rocola/datos ]; then
 			cp -a /rocola/datos/. /tmp/rocola-datos/ 2>>$LOG
-			for f in /tmp/rocola-datos/rocola_*.txt; do
+			for f in /tmp/rocola-datos/rocola_*.txt /tmp/rocola-datos/xp/rocola_*.txt; do
 				[ -f "$f" ] && grep -q "/rocola/discos/$PART/" "$f" && sed -i "s|/rocola/discos/$PART/|/rocola/disco/|g" "$f"
 			done
 			# la prueba de sonido y grafica se vuelve a hacer en la rocola (la de la memoria pudo ser en otro equipo)
