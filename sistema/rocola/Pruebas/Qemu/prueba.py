@@ -3,7 +3,7 @@
 # INVENTADOS (mundo.sh: canciones que son tonos, un video de barras, la carpeta de una rocola de XP falsa; discoxp.sh: el disco de XP
 # falso; arma.sh: la memoria USB). QEMU sin KVM (TCG): todo va muy lento (la pantalla de la rocola con Mesa softpipe tarda decenas de
 # segundos por cuadro), asi que los tiempos son generosos y lo que depende de lo rapido que pinta se dice aparte (INFO).
-#   python3 prueba.py [FASE...]   sin nada, todas en orden: instala arranque teclas consola caida apagon ia boton
+#   python3 prueba.py [FASE...]   sin nada, todas en orden: instala arranque teclas video consola caida apagon ia boton (y aparte, a4)
 #   Q: la carpeta de trabajo (por omision /root/rocola-trabajo/act/qemu): ahi estan usb.img y discoxp.img, y quedan xp.qcow2 (el disco de
 #      XP con lo que escribio Rocola OS), capturas/ (las pantallas), sonido/ (lo que sono, en WAV) y prueba.txt (el resumen).
 # Cada comprobacion dice BIEN o MAL en una linea (INFO: lo que se apunta sin juzgar); al final, cuantas.
@@ -54,6 +54,13 @@ def colores(f):
 
 def claros(f):
     a = np.asarray(Image.open(f).convert("L")); return int((a > 60).sum())
+
+def vivos(f):
+    """Cuantos puntos de colores vivos tiene una captura (las barras del video de prueba: rojo, verde, amarillo, azul, magenta, cian; el
+    cielo de la rocola es oscuro y apagado)."""
+    a = np.asarray(Image.open(f).convert("RGB")).astype(int)
+    puro = ((a < 40) | (a > 200)).all(axis=2) & (a.max(axis=2) > 200) & (a.min(axis=2) < 40)   # (cada canal o casi 0 o casi 255)
+    return int(puro.sum())
 
 def tonos(wav, desde=0.0):
     """Lo que sono (sonido.py): [(desde, hasta, frecuencia o 0/-1, dBFS)]"""
@@ -165,33 +172,20 @@ def arranque():
     si("la rocola en la pantalla por KMS (no la consola de texto)", colores(f) > 500, "%d colores" % colores(f))
 
 def teclas_y_sonido():
-    di("=== teclas: la moneda (la tecla de rocola_teclas.txt: M), pedir la primera del disco B y despues el video (a la cola)")
+    di("=== teclas: la moneda (la tecla de rocola_teclas.txt: M) y pedir la primera del disco de la letra B; suena")
     p = xp_pid() or espera_xp(300)
     c.espera_cuadros(1, 300)
-    # (la moneda despierta y acredita; ENTER abre el disco elegido, ENTER pide su primera cancion; REGRESAR vuelve a la pared; ARRIBA x4
-    # pasa de la letra B a la de los videos; ENTER abre el disco de videos y ENTER pide el video)
-    teclas("m", "ret", "ret", "esc", "up", "up", "up", "up", "ret", "ret", pausa=1.5)
-    si("pedida: «01 Pulso Grave» suena",
-       espera("grep -q 'sonando=S|/rocola/disco/musica/Banda Ficticia - Primer Disco/01 Pulso Grave.mp3' /rocola/datos/xp/rocola_estado.txt", 400, 5))
-    si("y el video a la cola: de los 4 creditos de la moneda quedan 2", "Barras de Prueba.mp4" in estado() and creditos() == 2, "creditos=%s" % creditos())
+    # (la moneda despierta y acredita; ENTER abre el disco elegido y ENTER pide su primera cancion: seguidas, porque con la tarjeta en QEMU
+    # cada cuadro tarda 20 a 30 s y a los 40 s sin teclas entra la atraccion)
+    teclas("m", "ret", "ret", pausa=1.5)
+    si("pedida: «01 Pulso Grave» suena y quedan 3 de los 4 creditos de la moneda",
+       espera("grep -q 'sonando=S|/rocola/disco/musica/Banda Ficticia - Primer Disco/01 Pulso Grave.mp3' /rocola/datos/xp/rocola_estado.txt", 400, 5)
+       and creditos() == 3, "creditos=%s" % creditos())
     c.espera_cuadros(1, 300); captura("04-sonando.png")
-    # la cancion (45 s) y despues el video (20 s): capturas mientras suena el video
-    vio = None; n = 0
-    fin = time.time() + 900
-    while time.time() < fin:
-        e = estado()
-        son = e.split("sonando=")[1].split("\n")[0] if "sonando=" in e else ""
-        if "Barras de Prueba" in son:
-            n += 1; f = captura("05-video-%d.png" % n)
-            a = np.asarray(Image.open(f).convert("RGB")).astype(int)
-            if vio is None or a.std() > vio[1]: vio = (f, a.std())
-        if "sonando=" not in e and "cola=" not in e: break
-        time.sleep(8)
-    ok_, det = sono(os.path.join(SON, "arranque.wav"), 196, 40)
+    fin = time.time() + 600
+    while time.time() < fin and "sonando=" in estado(): time.sleep(10)
+    ok_, det = sono(wav_actual(), 196, 40)
     si("SUENA: el WAV grabado de la tarjeta tiene la cancion (196 Hz)", ok_, det)
-    ok_, det = sono(os.path.join(SON, "arranque.wav"), 880, 15)
-    si("el video suena (880 Hz)", ok_, det)
-    if vio: info("la captura mas viva mientras sonaba el video: %s" % os.path.basename(vio[0]))
     stats = orden("grep 'Pulso Grave' /rocola/datos/xp/rocola_stats.txt")
     si("lo mas sonado cuenta la que sono (2 de XP + 1)", stats.startswith("3|"), stats.strip())
     fu = orden("grep 'Pulso Grave' /rocola/datos/xp/rocola_fuentes.txt").strip().split("|")
@@ -322,26 +316,38 @@ def tarjeta(con):
     espera_xp(300)
 
 def video():
-    di("=== video: con la tarjeta (gpu=1, lo de fabrica): la letra de los videos, pedir el video; se ve y suena")
+    di("=== video: pedir el video (la letra de los videos) y verlo con la tarjeta (gpu=1, lo de fabrica)")
+    # Para llegar a la letra de los videos hay que pasar de letra cuatro veces (ARRIBA), y la rocola solo cambia de letra una vez por
+    # cuadro (como en XP: las pulsaciones que llegan juntas, mientras pasa la pagina, se pierden). Con la tarjeta, en QEMU, cada cuadro
+    # tarda 20 a 30 s y a los 40 s sin teclas entra la atraccion: se navega con el dibujo por procesador (gpu=0, unos 5 s por cuadro), se
+    # pide el video y despues se vuelve a la tarjeta por la consola de mantenimiento (SIGUSR1: el estado, con el video, se conserva) y la
+    # rocola lo reanuda con la tarjeta.
     if not pid(MAQ): arranca(os.path.join(SON, "video.wav"))
     wav = wav_actual()
-    tarjeta(True)
-    espera_xp(300); c.espera_cuadros(2, 400)
+    tarjeta(False)
+    espera_xp(300); c.espera_cuadros(2, 300)
     antes = creditos() or 0
-    teclas("m", "up", "up", "up", "up", "ret", "ret", pausa=1.5)
-    si("el video pedido", espera("grep -q 'Barras de Prueba.mp4' /rocola/datos/xp/rocola_estado.txt", 400, 5), "creditos %s -> %s" % (antes, creditos()))
+    teclas("m"); c.espera_cuadros(1, 120)
+    for _ in range(4): teclas("up"); c.espera_cuadros(1, 120)
+    f = captura("11-letra-videos.png")
+    teclas("ret"); c.espera_cuadros(1, 120); teclas("ret")
+    si("el video pedido (la letra de los videos, un credito)", espera("grep -q 'Barras de Prueba.mp4' /rocola/datos/xp/rocola_estado.txt", 300, 3),
+       "creditos %s -> %s" % (antes, creditos()))
+    desde = max(0, os.path.getsize(wav) - 44) / 176400.0   # (lo grabado hasta aqui: lo de despues ya es con la tarjeta)
+    tarjeta(True)
     vio = None; n = 0
-    fin = time.time() + 600
+    fin = time.time() + 900
     while time.time() < fin:
-        e = estado()
-        if "Barras de Prueba" not in e: break
-        n += 1; f = captura("11-video-%d.png" % n)
-        a = np.asarray(Image.open(f).convert("RGB")).astype(int)
-        if vio is None or a.std() > vio[1]: vio = (f, a.std())
-        time.sleep(8)
-    ok_, det = sono(wav, 880, 15)
-    si("el video suena (880 Hz en el WAV)", ok_, det + " en " + os.path.basename(wav))
-    if vio: info("la captura mas viva mientras sonaba el video: %s (desviacion %.0f)" % (os.path.basename(vio[0]), vio[1]))
+        if "Barras de Prueba" not in estado(): break
+        n += 1; f = captura("12-video-tarjeta-%d.png" % n)
+        v = vivos(f)
+        if vio is None or v > vio[1]: vio = (f, v)
+        time.sleep(6)
+    ok_, det = sono(wav, 880, 15, desde)
+    si("con la tarjeta, el video suena (880 Hz en el WAV)", ok_, det + " en " + os.path.basename(wav))
+    if vio:
+        info("la captura con mas colores vivos mientras estaba el video: %s (%d puntos)" % (os.path.basename(vio[0]), vio[1]))
+        si("y se ve (las barras de colores del video en la pantalla)", vio[1] > 100000, "%d puntos de colores vivos" % vio[1])
 
 def a4():
     di("=== a4: el rocola-xp del perfil del A4 (x86-64-v2 y AVX: el que pone rapida.sh) en el procesador emulado SandyBridge (AVX sin AVX2)")
@@ -379,7 +385,7 @@ def a4():
 
 FASES = {"instala": instala, "arranque": arranque, "teclas": teclas_y_sonido, "consola": consola, "caida": caida, "apagon": apagon, "ia": ia, "boton": boton, "video": video, "a4": a4}
 if __name__ == "__main__":
-    pedidas = sys.argv[1:] or ["instala", "arranque", "teclas", "consola", "caida", "apagon", "ia", "boton"]
+    pedidas = sys.argv[1:] or ["instala", "arranque", "teclas", "video", "consola", "caida", "apagon", "ia", "boton"]
     if pedidas[0] not in ("instala", "arranque", "a4") and pid(MAQ): c = Control(MAQ)
     elif pedidas[0] not in ("instala", "arranque", "a4"): arranca(os.path.join(SON, "sigue-%s.wav" % time.strftime("%H%M%S")))
     di("##### prueba.py " + " ".join(pedidas))

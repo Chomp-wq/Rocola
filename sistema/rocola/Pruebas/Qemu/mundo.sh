@@ -33,9 +33,10 @@ gen "$M/Grupo Prueba - Disco Dos/02 Ruido Rosa.wav" "anoisesrc=color=pink:amplit
 portada "$M/Los Inventados - Disco Uno/folder.jpg" "color=c=0x2060c0:s=300x300"
 portada "$M/Banda Ficticia - Primer Disco/folder.jpg" "color=c=0xc04020:s=300x300"
 portada "$M/Grupo Prueba - Disco Dos/folder.jpg" "testsrc2=s=300x300"
-# el video: barras de prueba con un tono de 880 Hz (mpeg4 parte 2 y AAC: ligero de descomprimir en QEMU)
+# el video: barras de prueba con un tono de 880 Hz (mpeg4 parte 2 y AAC: ligero de descomprimir en QEMU); de 90 s, para que con la tarjeta
+# en QEMU (20 a 30 s por cuadro) la pantalla llegue a pintarlo mientras dura
 mkdir -p "$M/Videos Inventados"
-ffmpeg -hide_banner -loglevel error -y -f lavfi -i "testsrc2=s=320x240:r=25" -f lavfi -i "sine=frequency=880" -t 20 \
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i "testsrc2=s=320x240:r=25" -f lavfi -i "sine=frequency=880" -t 90 \
 	-c:v mpeg4 -q:v 5 -c:a aac -b:a 96k -ac 2 -ar 44100 -metadata title="Barras de Prueba" "$M/Videos Inventados/Barras de Prueba.mp4"
 # la fecha de los archivos: la de cuando se grabaron (en XP una copia conserva la de escritura); con decimales, como NTFS (100 ns)
 find "$M" -type f -exec touch -m -d '2019-05-01 10:00:00.1234567' {} +
