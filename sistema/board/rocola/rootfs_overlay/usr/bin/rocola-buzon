@@ -279,13 +279,13 @@ atiende_ordenes() {
 		printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M')" "$([ "$que" = apaga ] && echo Apagado || echo Reinicio) pedido desde casa (ya)" >> "$DATOS/rocola_actualizaciones.txt"
 		# rocola-xp: el apagado del sistema le llega como SIGTERM y solo le da 1 s. Primero el lanzador, para que no la vuelva a abrir (ni la
 		# abra mientras el sistema se apaga). Con rocola-xp abierta: apagar = el boton de encendido (SIGTERM: borra el estado del dia; se le
-		# espera 15 s); reiniciar = un reinicio propio de Rocola OS, que conserva los creditos y la cola (SIGUSR1, nunca SIGTERM; regla del
-		# 8-11-2026; si en 15 s no se cerro, se corta como un apagon). (Si se estaba trayendo lo aprendido de XP, tambien se corta: se vuelve
+		# espera 20 s, lo que Windows XP le da a cada programa al apagarse); reiniciar = un reinicio propio de Rocola OS, que conserva los
+		# creditos y la cola (SIGUSR1, nunca SIGTERM; regla del 8-11-2026; si en 20 s no se cerro, se corta como un apagon). (Si se estaba trayendo lo aprendido de XP, tambien se corta: se vuelve
 		# a traer al abrirla otra vez.)
 		killall rocola 2>/dev/null
 		if pidof rocola-xp >/dev/null; then
 			if [ "$que" = apaga ]; then killall -TERM rocola-xp 2>/dev/null; else killall -USR1 rocola-xp 2>/dev/null; fi
-			i=0; while pidof rocola-xp >/dev/null && [ $i -lt 15 ]; do sleep 1; i=$((i + 1)); done
+			i=0; while pidof rocola-xp >/dev/null && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
 			[ "$que" = apaga ] || killall -KILL rocola-xp 2>/dev/null
 		fi
 		sync; if [ "$que" = apaga ]; then poweroff; else reboot; fi

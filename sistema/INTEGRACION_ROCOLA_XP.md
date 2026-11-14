@@ -127,12 +127,12 @@ los códigos de salida 42 a 46 (`rocola-xp` hoy no sale con ninguno: son de la f
 
 | Qué pasa | Qué recibe rocola-xp | Estado (`rocola_estado.txt`) |
 |---|---|---|
-| Botón de encendido | primero el lanzador; SIGTERM = `WindowsShutDown` (se le esperan 15 s) | **se borra**, como XP |
+| Botón de encendido | primero el lanzador; SIGTERM = `WindowsShutDown` (se le esperan 20 s, como Windows XP a cada programa) | **se borra**, como XP |
 | Alt+F4 | `UserClosing` | se borra; el lanzador la abre otra vez |
 | Apagón | nada | sobrevive: al prender reanuda |
 | Consola de mantenimiento (Ctrl+Alt+F2), «reiniciar el programa ya» del buzón | **SIGUSR1** (cierre ordenado «por otra causa», `TaskManagerClosing`; 20 s y después SIGKILL) | **se conserva** |
-| «Reiniciar el equipo ya» del buzón | el buzón para antes el lanzador y manda **SIGUSR1** (15 s; después SIGKILL), y reinicia | se conserva |
-| «Apagar ya» del buzón | el buzón para antes el lanzador y manda SIGTERM (15 s, como el botón), y apaga | se borra |
+| «Reiniciar el equipo ya» del buzón | el buzón para antes el lanzador y manda **SIGUSR1** (20 s; después SIGKILL), y reinicia | se conserva |
+| «Apagar ya» del buzón | el buzón para antes el lanzador y manda SIGTERM (20 s, como el botón), y apaga | se borra |
 | Un sistema nuevo que no se confirma (S99rocola, a los 15 min) | **nuevo**: para el lanzador y manda **SIGUSR1** (20 s; después SIGKILL), y reinicia | se conserva (antes el reboot le mandaba SIGTERM y lo borraba) |
 | `rocola-sonido` (la prueba de las salidas, `usar`, `auto`) | si estaba abierta (desde la consola ya no lo está): SIGUSR1; el lanzador la vuelve a abrir | se conserva |
 | `rocola-prueba` (la pantalla 20 s, la primera vez) | SIGUSR1 a los 20 s, con una carpeta de datos de prueba que se borra | no toca el de verdad |
@@ -259,7 +259,7 @@ No probado:
   sitio en el disco de pruebas para la imagen entera, y la máquina estaba ocupada): la compilación la hace GitHub.
 - El importador con datos reales de XP y el tiempo que tarda la primera vez en el A4.
 - Cuánto tarda `rocola-xp` en cerrarse con SIGTERM o SIGUSR1 con música sonando por una tarjeta de verdad (aquí, sin tarjeta, 30 a 90 ms;
-  el lanzador corta a los 20 s y el buzón a los 15 s).
+  el lanzador, el botón de encendido y el buzón esperan 20 s).
 
 ## Decisiones del dueño que quedan
 
