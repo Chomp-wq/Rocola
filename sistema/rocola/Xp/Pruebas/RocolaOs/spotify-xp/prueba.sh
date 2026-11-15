@@ -7,8 +7,10 @@
 # Soloist de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): apagado dos mezcla celular fallos apagon pulso
-#   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para la escena «pulso» (sin el, esa escena no se corre)
+#   escenas (de fabrica todas): apagado dos mezcla celular fallos apagon portada pulso vigilante
+#   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
+#   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
+#   «vigilante» (sin el, no se corre): rocola-xp lo abre y el abre el Soloist falso por soloist-envoltorio.sh (SOLOIST_BIN)
 #   W: la carpeta de trabajo (/root/rocola-trabajo/fase11/spotify-xp/prueba; se rehace); FALSO: el Soloist falso compilado (se compila si
 #   falta, con el candado de lo pesado); DATOS0 (/root/rocola-trabajo/port/ventanas/datos0, se copian, nunca se tocan)
 # Las cuentas del sonido: frecuencias.py (tramos de 50 ms con la frecuencia dominante). Cada cancion de Spotify de prueba lleva su tono en su
@@ -17,8 +19,9 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado dos mezcla celular fallos apagon pulso}"
+partes="${*:-apagado dos mezcla celular fallos apagon portada pulso vigilante}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
+VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/spotify-xp/falso}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -61,7 +64,7 @@ EOC
   ( IFS=';'; for x in $pide; do [ -z "$x" ] && continue; s="${x%%:*}"; l="${x#*:}"
       while [ "$(echo "$(date +%s.%N) - $T0 < $s" | bc)" = 1 ]; do sleep 0.1; done
       mkdir -p "$o/run/rocola-xp/spotify"
-      if [ "$l" = copia ]; then cp "$o/run/rocola-xp/spotify/estado" "$o/estado.txt" 2>/dev/null; else echo "$l" >> "$o/run/rocola-xp/spotify/prueba-pide"; fi; done ) &
+      if [ "$l" = copia ]; then cp "$o/run/rocola-xp/spotify/estado" "$o/estado.txt" 2>/dev/null; cp "$o/run/rocola-soloist/estado" "$o/vigilante-estado.txt" 2>/dev/null; else echo "$l" >> "$o/run/rocola-xp/spotify/prueba-pide"; fi; done ) &
   local q=$!
   sleep "$seg"; kill $q 2>/dev/null
   [ "$sen" != NADA ] && kill -"$sen" $p 2>/dev/null; local t0; t0=$(date +%s.%N)
@@ -225,6 +228,31 @@ if [[ " $partes " == *" apagon "* ]]; then
   si "apagon: y no suena nada de Spotify" bash -c "python3 -c \"import sys; sys.exit(0 if $(oye "$W/apagon2/frec.txt" 440)+$(oye "$W/apagon2/frec.txt" 550) < 0.1 else 1)\""
 fi
 
+# ---------------------------------------------------------------- portada: I6 baja la portada a /run (nunca al disco) y lo que suena la lleva
+if [[ " $partes " == *" portada "* ]]; then
+  echo "== portada (I6: la portada a /run, una sola vez, solo JPEG y solo de Spotify; la pedida la lleva)"
+  d=$(datos portada); o="$W/portada"; srv="$W/servidor"; mkdir -p "$srv"
+  convert -size 64x64 xc:'#3060a0' "$srv/p.jpg" && convert -size 64x64 xc:'#a03060' "$srv/q.png" && cp "$srv/q.png" "$srv/q.jpg"
+  pto=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()")
+  python3 -I -m http.server --bind 127.0.0.1 --directory "$srv" "$pto" > "$W/servidor.txt" 2>&1 & sp=$!
+  U="http://127.0.0.1:$pto"; T0=$(date +%s.%N)
+  abre portada "$d" "7:67" "9:portada spotify:track:f440d008aa|$P|8000|$U/p.jpg|spotify:album:disco0001;9.1:portada spotify:track:f550d006bb|$P|6000|$U/q.jpg|spotify:album:disco0002;9.2:portada spotify:track:f660d006cc|$P|6000|https://example.invalid/x.jpg|spotify:album:disco0003;9.3:portada spotify:track:f880d006dd|$P|6000|$U/p.jpg|spotify:album:../../fuera;11:portada spotify:track:f440d008aa|$P|8000|$U/p.jpg|spotify:album:disco0001;11.5:pide spotify:track:f440d008aa|$P|8000|$U/p.jpg|spotify:album:disco0001;12:portada spotify:track:f4400000ee|$P|8000|$U/p.jpg|spotify:album:disco0001;21:copia" 22 TERM ROCOLA_OS=spotify,spotify-prueba
+  kill $sp 2>/dev/null; wait $sp 2>/dev/null
+  f="$o/frec.txt"; b="$d/rocola_spotify.txt"; pp="$o/run/rocola-xp/spotify/portadas"
+  sed 's/^/   /' "$(log $o)"; ls "$pp" 2>/dev/null | sed 's/^/   portadas: /'
+  si "portada: sale con 0" test "$(cat $o/salio)" = 0
+  si "portada: la primera vez se pide (null) y a los 2 s ya esta en /run con el nombre de su disco" bash -c "grep -qx 'portada spotify:track:f440d008aa (pedida)' '$(log $o)' && grep -qx 'portada spotify:track:f440d008aa $pp/disco0001.jpg' '$(log $o)'"
+  si "portada: es la misma que dio el servidor (JPEG)" cmp -s "$srv/p.jpg" "$pp/disco0001.jpg"
+  si "portada: otra cancion del mismo disco usa la misma, sin bajarla otra vez (2 peticiones de p.jpg: la de disco0001 y la del id raro)" bash -c "grep -qx 'portada spotify:track:f4400000ee $pp/disco0001.jpg' '$(log $o)' && [ \$(grep -c 'GET /p.jpg' '$W/servidor.txt') = 2 ]"
+  si "portada: la pedida la lleva (bitacora «con portada»)" bash -c "grep -q 'COBRADA spotify:track:f440d008aa.*con portada' '$b'"
+  si "portada: lo que no es JPEG no se guarda" bash -c "[ ! -e '$pp/disco0002.jpg' ] && grep -q 'no es un JPEG' '$b'"
+  si "portada: de otro sitio que no es Spotify ni se pide" bash -c "[ ! -e '$pp/disco0003.jpg' ] && ! grep -q 'f660d006cc' '$W/servidor.txt'"
+  si "portada: un disco con un id raro usa el de la cancion (nada fuera de la carpeta)" bash -c "[ ! -e '$o/run/rocola-xp/fuera.jpg' ] && [ ! -e '$pp/../../fuera.jpg' ] && ls '$pp' | grep -qx 'f880d006dd.jpg'"
+  si "portada: nada de las portadas en los datos (el disco)" bash -c "! find '$d' -name 'disco000*' | grep -q . && ! find '$d' -type f -size -2k -exec cmp -s '$srv/p.jpg' {} \\; -print | grep -q ."
+  si "portada: y la cancion suena entera (8 s: $(oye "$f" 440) s)" entre "$(oye "$f" 440)" 7.7 8.3
+  echo "   (informativo) miniaturas nuevas de XP en los datos: $(find "$d/rocola_miniaturas" -newer "$d/rocola_biblioteca.txt" -type f 2>/dev/null | wc -l) (con el catalogo juntado, su g43 las lleva a /run)"
+fi
+
 # ---------------------------------------------------------------- pulso: lo mismo que «dos», con el sonido por NUESTRO libpulse.so.0
 if [[ " $partes " == *" pulso "* ]]; then
   echo "== pulso (el Soloist falso escribe por el libpulse.so.0 de rocola-pulso, como lo haria Soloist)"
@@ -239,6 +267,31 @@ if [[ " $partes " == *" pulso "* ]]; then
   si "pulso: en su orden" entre "$(primero "$f" 550)" "$(ultimo "$f" 440)" 1000
   si "pulso: el autoplay no se oye ($(oye "$f" 990) s)" entre "$(oye "$f" 990)" 0 0.15
   si "pulso: 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
+  fi
+fi
+
+# ---------------------------------------------------------------- vigilante: el rocola-soloist DE VERDAD entre rocola-xp y el Soloist falso
+if [[ " $partes " == *" vigilante "* ]]; then
+  echo "== vigilante (I4 de punta a punta: rocola-xp abre el rocola-soloist de verdad, que abre el Soloist falso con rocola-pulso)"
+  if [ ! -f "$PULSO" ] || [ ! -f "$VIGILANTE" ]; then echo "(sin $PULSO o sin $VIGILANTE: no se corre)"; else
+  d=$(datos vigilante); o="$W/vigilante"; K=llave-inventada-0123456789abcdef-de-prueba
+  printf '%s\n' "$K" > "$d/rocola_spotify_llave.txt"; chmod 600 "$d/rocola_spotify_llave.txt"
+  T0=$(date +%s.%N)
+  abre vigilante "$d" "7:67" "12:pide spotify:track:f440d008aa|$P|8000;12.2:pide spotify:track:f550d006bb|$P|6000;33:copia" 34 TERM ROCOLA_OS=spotify,spotify-prueba \
+    ROCOLA_SOLOIST_BIN="$VIGILANTE" SOLOIST_BIN="$G/soloist-envoltorio.sh" SOLOIST_FALSO_PULSO=1 ROCOLA_XP_DATOS="$d" ROCOLA_DISCO="$W/sin-disco" \
+    ROCOLA_DISCOS="$W/sin-discos" ROCOLA_PULSO_DIR="$(dirname "$PULSO")" ROCOLA_SOLOIST_USB=3600
+  sleep 1
+  f="$o/frec.txt"; b="$d/rocola_spotify.txt"; v="$d/rocola_soloist.txt"
+  sed 's/^/   /' "$f" | head -20; sed 's/^/   vigilante: /' "$o/vigilante-estado.txt" 2>/dev/null
+  si "vigilante: sale con 0" test "$(cat $o/salio)" = 0
+  si "vigilante: el de verdad estaba corriendo (fase=corriendo) y el estado de rocola-xp lo dice" bash -c "grep -qx 'fase=corriendo' '$o/vigilante-estado.txt' && grep -qx 'vigilante=corriendo' '$o/estado.txt'"
+  si "vigilante: arranco el Soloist falso con la bocina Rocola y con rocola-pulso" bash -c "grep -q 'arranca: bocina «Rocola»' '$o/falso.txt' && grep -q 'conectado por $(dirname "$PULSO")/libpulse.so.0' '$o/falso.txt'"
+  si "vigilante: la primera entera (8 s: $(oye "$f" 440) s)" entre "$(oye "$f" 440)" 7.7 8.3
+  si "vigilante: la segunda entera (6 s: $(oye "$f" 550) s)" entre "$(oye "$f" 550)" 5.7 6.3
+  si "vigilante: el autoplay no se oye ($(oye "$f" 990) s)" entre "$(oye "$f" 990)" 0 0.15
+  si "vigilante: 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
+  si "vigilante: la llave no sale en ninguna bitacora ni estado" bash -c "! grep -rqsF -- '$K' '$b' '$v' '$o/run' '$o/estado.txt' '$o/vigilante-estado.txt' '$o/salida.txt'"
+  si "vigilante: al cerrar la rocola, el vigilante y el Soloist falso se van (en $(cat $o/tardo) s)" bash -c "! pgrep -f '[s]potify-xp.*rocola-soloist corre' >/dev/null && ! pgrep -f '[s]oloist-falso.dll.*vigilante/soloist' >/dev/null"
   fi
 fi
 

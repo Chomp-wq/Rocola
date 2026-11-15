@@ -70,7 +70,7 @@ namespace Rocola
             for (int i = 14; i < u.Length; i++) { char c = u[i]; if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return false; }
             return true;
         }
-        internal static string IdDe(string uri) { return uri != null && uri.StartsWith("spotify:track:", StringComparison.Ordinal) ? uri.Substring(14) : ""; }
+        internal static string IdDe(string uri) { return IdBase62(uri, "spotify:track:"); }
     }
 
     public partial class Form1
@@ -210,15 +210,32 @@ namespace Rocola
         private static readonly ConcurrentDictionary<string, byte> portadasPedidas = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
         private static Thread hiloPortadas;
         private static readonly AutoResetEvent hayPortadas = new AutoResetEvent(false);
-        internal static string RutaPortada(string uri) { string id = IdDe(uri); return id.Length == 0 ? null : Path.Combine(CarpetaPortadas, id + ".jpg"); }
+        // la portada se nombra por su DISCO (portadas/<id del disco>.jpg, el mismo nombre que le da el catalogo: asi no se baja dos veces) y, si
+        // la pista no trae disco, por la cancion (portadas/<id de la cancion>.jpg)
+        internal static string RutaPortada(RocolaOsSpotifyPista p)
+        {
+            if (p == null) return null;
+            string id = IdBase62(p.DiscoUri, "spotify:album:");
+            if (id.Length == 0) id = IdDe(p.Uri);
+            return id.Length == 0 ? null : Path.Combine(CarpetaPortadas, id + ".jpg");
+        }
+        // el id base62 de una uri «PREFIJO:ID» ("" si no lo es: nada de rutas raras)
+        internal static string IdBase62(string u, string prefijo)
+        {
+            if (u == null || !u.StartsWith(prefijo, StringComparison.Ordinal)) return "";
+            int n = u.Length - prefijo.Length;
+            if (n < 1 || n > 64) return "";
+            for (int i = prefijo.Length; i < u.Length; i++) { char c = u[i]; if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return ""; }
+            return u.Substring(prefijo.Length);
+        }
         // la ruta si ya esta; si no, la pide (una vez) y null
         internal static string PidePortada(RocolaOsSpotifyPista p)
         {
             if (p == null || !Encendido || !EsUriDeCancion(p.Uri)) return null;
-            string ruta = RutaPortada(p.Uri);
+            string ruta = RutaPortada(p);
             if (ruta != null && File.Exists(ruta)) return ruta;
             if (string.IsNullOrEmpty(p.PortadaUrl) || !UrlDePortadaVale(p.PortadaUrl)) return null;
-            if (!portadasPedidas.TryAdd(p.Uri, 0)) return null;
+            if (ruta == null || !portadasPedidas.TryAdd(ruta, 0)) return null;
             portadasPorBajar.Enqueue(p);
             if (hiloPortadas == null) { lock (portadasPedidas) { if (hiloPortadas == null) hiloPortadas = RocolaOs.Hilo("spotify-portadas", BajaPortadas); } }
             hayPortadas.Set();
@@ -239,7 +256,7 @@ namespace Rocola
                 {
                     RocolaOsSpotifyPista p;
                     if (!portadasPorBajar.TryDequeue(out p)) { hayPortadas.WaitOne(2000); continue; }
-                    string ruta = RutaPortada(p.Uri);
+                    string ruta = RutaPortada(p);
                     try
                     {
                         Directory.CreateDirectory(CarpetaPortadas);
@@ -248,7 +265,7 @@ namespace Rocola
                         File.WriteAllBytes(ruta + ".n", b);
                         File.Move(ruta + ".n", ruta, true);
                     }
-                    catch (Exception ex) { portadasPedidas.TryRemove(p.Uri, out _); Apunta("no se pudo bajar la portada de " + p.Uri + ": " + ex.GetType().Name); }
+                    catch (Exception ex) { portadasPedidas.TryRemove(ruta, out _); Apunta("no se pudo bajar la portada de " + p.Uri + ": " + ex.GetType().Name); }
                 }
         }
         // al arrancar: las portadas de mas de un dia se borran (estan en la memoria: que no se acumulen si la rocola pasa dias sin reiniciar)
