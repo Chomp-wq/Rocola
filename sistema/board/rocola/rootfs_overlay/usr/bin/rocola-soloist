@@ -80,7 +80,8 @@ corta() {
 	if [ -n "$PARAR" ]; then kill "$CP" 2>/dev/null; wait "$CP" 2>/dev/null; return 143; fi
 	wait "$CP"
 }
-segundos() { cut -d. -f1 /proc/uptime; }   # (para medir lo que dura algo: la hora puede saltar con NTP)
+# (para medir lo que dura algo: la hora puede saltar con NTP; sin abrir ningun programa: lo llama el vigilante cada 2 s mientras espera)
+segundos() { _us=; read -r _us _ 2>/dev/null < /proc/uptime; echo "${_us%.*}"; }
 apunta() {
 	[ -f "$BITACORA" ] && [ "$(wc -c < "$BITACORA")" -gt 1048576 ] && mv -f "$BITACORA" "$BITACORA.1"
 	printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$BITACORA" 2>/dev/null
@@ -501,8 +502,11 @@ corre() {
 				if [ -s "$LLAVE" ]; then ERROR="la llave de Soloist ($LLAVE) no parece una llave: vuelve a ponerla («spotify llave»)"
 				else ERROR="falta la llave de Soloist ($LLAVE; o rocola_spotify.txt en una memoria USB)"; fi
 				apunta "$ERROR"
+				estado sin_llave
 			fi
-			estado sin_llave
+			# (sin llave, el estado solo se escribe al cambiar de fase, o si alguien lo quito: esperando no se abre ningun programa mas que
+			# el sleep de duerme y, cada CADA_USB, la mirada a la USB; la junta de Spotify del 15-11-2026, con el modo encendido de fabrica)
+			[ -s "$ESTADO" ] || estado sin_llave
 			if [ $(( $(segundos) - ULTIMA_USB )) -ge "$CADA_USB" ] || [ "$ULTIMA_USB" = 0 ]; then ULTIMA_USB=$(segundos); importa_llaves >/dev/null; fi
 			lee_llave && continue
 			duerme 2 || break; continue

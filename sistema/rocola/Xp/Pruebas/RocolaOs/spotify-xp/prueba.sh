@@ -7,10 +7,14 @@
 # Soloist de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): apagado dos mezcla celular carrera fallos fuera frecuencia apagon portada pulso vigilante
+#   escenas (de fabrica todas): apagado fabrica dos mezcla celular carrera fallos fuera frecuencia apagon portada pulso vigilante noche
 #   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
 #   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
-#   «vigilante» (sin el, no se corre): rocola-xp lo abre y el abre el Soloist falso por soloist-envoltorio.sh (SOLOIST_BIN)
+#   «vigilante» (sin el, no se corre): rocola-xp lo abre y el abre el Soloist falso por soloist-envoltorio.sh (SOLOIST_BIN); y para «fabrica»
+#   (el de verdad, SIN llave: espera la llave y no abre nada)
+# De la junta de Spotify (15-11-2026): «fabrica» (el modo encendido de fabrica sin ninguna llave = XP tal cual, sin una peticion a la red y
+# con el vigilante esperando sin gastar; contra la misma escena sin ROCOLA_OS) y «noche» (el modo noche de XP baja una de Spotify al
+# noche_pct de noche y con «Probar», con su rampa, igual que una de XP; niveles.py)
 #   W: la carpeta de trabajo (/root/rocola-trabajo/fase11/spotify-xp/prueba; se rehace); FALSO: el Soloist falso compilado (se compila si
 #   falta, con el candado de lo pesado); DATOS0 (/root/rocola-trabajo/port/ventanas/datos0, se copian, nunca se tocan)
 # Las cuentas del sonido: frecuencias.py (tramos de 50 ms con la frecuencia dominante). Cada cancion de Spotify de prueba lleva su tono en su
@@ -19,7 +23,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado dos mezcla celular carrera fallos fuera frecuencia apagon portada pulso vigilante}"
+partes="${*:-apagado fabrica dos mezcla celular carrera fallos fuera frecuencia apagon portada pulso vigilante noche}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -89,11 +93,12 @@ estado() { sed -n "s/^$2=//p" "$1/estado.txt" 2>/dev/null; }   # (el estado de /
 T0=0
 P="Prueba|Artista inventado|Disco inventado"
 
-# ---------------------------------------------------------------- apagado: R1, sin el modo nada de Spotify
+# ---------------------------------------------------------------- apagado: sin el modo nada de Spotify (sin ROCOLA_OS, o con «1» y spotify=0)
+# (antes R1, «apagado de fabrica»; desde la decision del 15-11-2026 va encendido de fabrica: con «1» lo apaga spotify=0, lo de «spotify apagar»)
 if [[ " $partes " == *" apagado "* ]]; then
-  echo "== apagado (R1)"
+  echo "== apagado (sin ROCOLA_OS, y con ROCOLA_OS=1 y spotify=0)"
   for v in sin uno; do
-    d=$(datos apagado-$v); T0=$(date +%s.%N)
+    d=$(datos apagado-$v); T0=$(date +%s.%N); [ $v = uno ] && printf 'spotify=0\n' > "$d/rocola_os.txt"
     if [ $v = sin ]; then abre apagado-$v "$d" "7:67,9:13,10.5:13" "11:pide spotify:track:f440d008aa|$P|8000" 16 TERM env -u ROCOLA_OS
     else abre apagado-$v "$d" "7:67,9:13,10.5:13" "11:pide spotify:track:f440d008aa|$P|8000" 16 TERM ROCOLA_OS=1; fi
     o="$W/apagado-$v"
@@ -104,6 +109,99 @@ if [[ " $partes " == *" apagado "* ]]; then
     si "apagado-$v: en la traza nada de RocolaOs:spotify" nocontiene "$o/traza.txt" "RocolaOs:spotify"
     si "apagado-$v: la cancion de XP sono (lo de siempre)" bash -c "[ \$(awk '\$3>0 {s+=\$2-\$1} END {print int(s)}' '$o/frec.txt') -ge 2 ]"
   done
+fi
+
+# ---------------------------------------------------------------- fabrica: el modo ENCENDIDO de fabrica, sin ninguna llave = XP tal cual
+# (decision del 15-11-2026). ROCOLA_OS=1 (lo del lanzador) sin rocola_os.txt, sin la llave de Soloist ni la de la API, con el vigilante DE
+# VERDAD (rocola-soloist, que sin llave no baja ni abre nada); contra la misma escena sin ROCOLA_OS: moneda, una de XP, el buscador con
+# «inventad» y REGRESAR. Las dos bajo strace (solo connect y execve, con seccomp: lo demas no se detiene) para contar las peticiones a la
+# red (connect a una direccion de internet: AF_INET o AF_INET6) y los programas que se abren.
+escribe() { local s="$1" pal="$2" r="" i c; for ((i = 0; i < ${#pal}; i++)); do c=$(printf '%d' "'${pal:$i:1}"); c=$((c - 32)); r="$r,$(echo "$s + $i * 0.25" | bc):$c"; done; echo "${r#,}"; }
+if [[ " $partes " == *" fabrica "* ]]; then
+  echo "== fabrica (encendido de fabrica sin ninguna llave: se ve y suena como XP, sin red, el vigilante esperando)"
+  # (las capturas -el disco, la pared con la barra de letras y el buscador con «inventad»- se comparan a ojo: el cielo se mueve y dos
+  # corridas nunca dan los mismos pixeles; aqui solo se dice cuantos cambian)
+  if [ ! -f "$VIGILANTE" ]; then echo "(sin $VIGILANTE: no se corre)"; else
+  FT="7:67,9:13,10.5:13,13:27,20:27+38,$(escribe 21 inventad),27:27"
+  FC="12:$W/fabrica-CUAL-disco.png,18:$W/fabrica-CUAL-pared.png,26.5:$W/fabrica-CUAL-buscador.png"
+  mkdir -p "$W/sin-block" "$W/sin-disco" "$W/sin-discos"
+  for v in xp os; do
+    d=$(datos fabrica-$v); T0=$(date +%s.%N); o="$W/fabrica-$v"; mkdir -p "$o"
+    ST=(strace -D -f -ttt --seccomp-bpf -qq -e trace=connect,execve -o "$o/strace.txt")
+    # (lo que gasta el vigilante ya esperando, de los 18 a los 38 s: su /proc/PID/stat -con lo de sus hijos ya acabados- y la hora, las
+    # dos veces; y a los 38 s, los procesos que cuelgan de la rocola y del vigilante)
+    ( mira() { vp=$(cat "$o/run/rocola-soloist/vigilante.pid" 2>/dev/null); [ -n "$vp" ] || return
+        echo "$vp $(date +%s.%N) $(cut -d' ' -f1 /proc/uptime) $(sed 's/^.*) //' "/proc/$vp/stat" | awk '{print $12+$13+$14+$15}')" >> "$o/vigilante-cpu.txt"; }
+      sleep 18; mira; sleep 20; mira; vp=$(cat "$o/run/rocola-soloist/vigilante.pid" 2>/dev/null); rp=; [ -n "$vp" ] && rp=$(awk '{print $4}' "/proc/$vp/stat" 2>/dev/null)
+      [ -n "$rp" ] && ps -o pid=,ppid=,comm= --ppid "$rp" > "$o/hijos.txt" 2>/dev/null
+      [ -n "$vp" ] && ps -o pid=,ppid=,comm= --ppid "$vp" >> "$o/hijos.txt" 2>/dev/null ) & sp=$!
+    if [ $v = xp ]; then abre fabrica-$v "$d" "$FT" "38.5:copia" 40 TERM env -u ROCOLA_OS ROCOLA_CAPTURA="${FC//CUAL/$v}" "${ST[@]}"
+    else abre fabrica-$v "$d" "$FT" "38.5:copia" 40 TERM ROCOLA_OS=1 ROCOLA_CAPTURA="${FC//CUAL/$v}" ROCOLA_SOLOIST_BIN="$VIGILANTE" \
+      ROCOLA_XP_DATOS="$d" ROCOLA_DISCO="$W/sin-disco" ROCOLA_DISCOS="$W/sin-discos" ROCOLA_SYS_BLOCK="$W/sin-block" \
+      ROCOLA_SPOTIFY_API="http://127.0.0.1:9/v1" ROCOLA_SPOTIFY_CUENTAS="http://127.0.0.1:9" "${ST[@]}"; fi
+    wait $sp 2>/dev/null
+  done
+  a="$W/fabrica-xp"; o="$W/fabrica-os"; d="$W/datos-fabrica-os"; b="$d/rocola_spotify.txt"
+  red() { grep -cE 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null; }
+  progs() { grep -c ' execve(' "$1/strace.txt" 2>/dev/null; }
+  # los programas abiertos entre las dos miradas (de los 18 a los 38 s: el vigilante ya esperando)
+  progs2() { local t1 t2; t1=$(sed -n 1p "$1/vigilante-cpu.txt" 2>/dev/null | cut -d' ' -f2); t2=$(sed -n 2p "$1/vigilante-cpu.txt" 2>/dev/null | cut -d' ' -f2)
+    [ -n "$t1" ] && [ -n "$t2" ] && awk -v a="$t1" -v b="$t2" '$2+0 >= a && $2+0 <= b && / execve\(/' "$1/strace.txt" | grep -c . || echo -1; }
+  si "fabrica: las dos salen con 0" test "$(cat $a/salio)$(cat $o/salio)" = 00
+  si "fabrica: con ROCOLA_OS=1 y sin rocola_os.txt, el modo encendido (de fabrica)" bash -c "grep -F 'encendidas:' '$d/rocola_os_bitacora.txt' | grep -qw spotify"
+  si "fabrica: ...y sin llaves la bitacora del catalogo lo dice (SIN llave)" contiene "$d/rocola_os_bitacora.txt" "SIN llave"
+  si "fabrica: rocola_os.txt no se escribio (nada cambio)" test ! -e "$d/rocola_os.txt"
+  python3 "$XP/Pruebas/Ventanas/guiones/compara_trazas.py" "$a/traza.txt" "$o/traza.txt" --ignora RocolaOs: --holgura 80 > "$o/compara.txt" 2>&1; r=$?
+  sed 's/^/   /' "$o/compara.txt" | head -8
+  # (como nivel0.sh con REPITE=1: si solo difieren las CUENTAS de relojes o encargos -las de los hilos cambian solas de una corrida a otra
+  # con la carga de la maquina-, la de sin ROCOLA_OS se corre otra vez, en seguida, y vale si una de las dos sale igual)
+  if [ $r != 0 ] && ! grep '^DIFERENTE' "$o/compara.txt" | grep -qvE '^DIFERENTE (reloj|encargo) .*(en total|frente a)'; then
+    echo "   (solo cuentas: la de sin ROCOLA_OS otra vez)"
+    d2=$(datos fabrica-xp2); mkdir -p "$W/fabrica-xp2"; T0=$(date +%s.%N)
+    abre fabrica-xp2 "$d2" "$FT" "" 40 TERM env -u ROCOLA_OS strace -D -f -ttt --seccomp-bpf -qq -e trace=connect,execve -o "$W/fabrica-xp2/strace.txt"
+    python3 "$XP/Pruebas/Ventanas/guiones/compara_trazas.py" "$W/fabrica-xp2/traza.txt" "$o/traza.txt" --ignora RocolaOs: --holgura 80 > "$o/compara2.txt" 2>&1; r=$?
+    sed 's/^/   /' "$o/compara2.txt" | head -8
+  fi
+  si "fabrica: la traza IGUAL a la de sin ROCOLA_OS quitando lo de RocolaOs (los mismos avisos, teclas, relojes y cierre)" test $r = 0
+  sa=$(awk '$3>0 {s+=$2-$1} END {printf "%.2f", s}' "$a/frec.txt"); so=$(awk '$3>0 {s+=$2-$1} END {printf "%.2f", s}' "$o/frec.txt")
+  ta=$(awk '$3>0 && $2-$1>=0.3 {print $3}' "$a/frec.txt" | tr '\n' ' '); to=$(awk '$3>0 && $2-$1>=0.3 {print $3}' "$o/frec.txt" | tr '\n' ' ')
+  echo "   sonado: sin ROCOLA_OS $sa s ($ta); con ROCOLA_OS=1 $so s ($to)"
+  si "fabrica: suena lo mismo que XP (los mismos tonos, en el mismo orden, y lo mismo de tiempo a 0,3 s: $sa s y $so s)" bash -c "[ '$ta' = '$to' ] && [ -n '$ta' ] && echo '$sa - $so < 0.3 && $so - $sa < 0.3' | bc | grep -q 1"
+  si "fabrica: nada cobrado ni pedido de Spotify (cobradas=0, esperando_credito=0, ni un COBRADA)" bash -c "grep -qx 'cobradas=0' '$o/estado.txt' && grep -qx 'esperando_credito=0' '$o/estado.txt' && ! grep -q COBRADA '$b' 2>/dev/null"
+  si "fabrica: sin sesion (Listo falso: ni la letra de la cuenta ni nada que pedir)" bash -c "grep -qx 'sesion=0' '$o/estado.txt'"
+  ra=$(red "$a"); ro=$(red "$o")
+  si "fabrica: ni una peticion a la red (connect a internet: sin ROCOLA_OS $ra, con ROCOLA_OS=1 $ro)" test "$ra/$ro" = "0/0"
+  si "fabrica: ni una a la API (ni a la de prueba de 127.0.0.1:9)" bash -c "! grep -q 'htons(9)' '$o/strace.txt'"
+  pa=$(progs "$a"); po=$(progs "$o")
+  hz=$(getconf CLK_TCK); pe=$(progs2 "$o")
+  cpu=$(awk -v hz="$hz" 'NR == 1 {u=$3; c=$4} NR == 2 {if ($3 - u > 0) printf "%.2f %.1f", 100 * ($4 - c) / hz / ($3 - u), $3 - u} END {if (NR < 2) print "-1 0"}' "$o/vigilante-cpu.txt" 2>/dev/null)
+  [ -n "$cpu" ] || cpu="-1 0"
+  echo "   el vigilante esperando la llave: CPU ${cpu%% *} % de un nucleo (con sus hijos) en $(echo $cpu | cut -d' ' -f2) s, y $pe programas abiertos en ese rato;"
+  echo "   en toda la escena (40 s, con el arranque del vigilante: mira una vez todos los procesos por si quedo un Soloist): sin ROCOLA_OS $pa, con ROCOLA_OS=1 $po"
+  echo "   hijos a los 38 s:"; sed 's/^/     /' "$o/hijos.txt" 2>/dev/null
+  si "fabrica: el vigilante esperando la llave (fase=sin_llave) y rocola-xp lo sabe (vigilante=sin_llave)" bash -c "grep -qx 'fase=sin_llave' '$o/vigilante-estado.txt' && grep -qx 'vigilante=sin_llave' '$o/estado.txt'"
+  si "fabrica: sin llave no se abre ningun Soloist ni se baja nada (ni soloist ni curl en strace)" bash -c "! grep -E ' execve\(\"[^\"]*(soloist|curl|wget)' '$o/strace.txt' | grep -v 'rocola-soloist' | grep -q ."
+  si "fabrica: de la rocola cuelga un solo proceso (el vigilante) y del vigilante solo su sleep" bash -c "[ \$(awk '{print \$3}' '$o/hijos.txt' | grep -cx rocola-soloist) = 1 ] && ! awk '{print \$3}' '$o/hijos.txt' | grep -vxE 'rocola-soloist|sleep' | grep -q ."
+  si "fabrica: el vigilante, esperando, gasta menos del 0,5 % de un nucleo (${cpu%% *} %) y abre como mucho un programa por segundo ($pe en 20 s)" bash -c "echo '${cpu%% *} >= 0 && ${cpu%% *} < 0.5 && $pe >= 0 && $pe <= 20' | bc | grep -q 1"
+  vp=$(awk '$3 == "rocola-soloist" {print $1; exit}' "$o/hijos.txt" 2>/dev/null)
+  si "fabrica: y el vigilante se fue con la rocola (se cierra con la senal; pid ${vp:-?} ya no esta)" bash -c "[ -n '$vp' ] && ! kill -0 '$vp' 2>/dev/null && grep -q 'Vigilante: se cierra (senal' '$d/rocola_soloist.txt'"
+  ea=$(sed 's/^[0-9-]* [0-9:.]* *//' "$W/datos-fabrica-xp/rocola_error.txt" 2>/dev/null | grep -vc '^$'); eo=$(sed 's/^[0-9-]* [0-9:.]* *//' "$d/rocola_error.txt" 2>/dev/null | grep -vc '^$')
+  si "fabrica: rocola_error.txt igual de largo que sin ROCOLA_OS ($ea y $eo renglones: ningun aviso raro)" test "$ea" = "$eo"
+  if python3 -c "import PIL" 2>/dev/null; then
+    for c in disco pared buscador; do
+      dif=$(python3 - "$W/fabrica-xp-$c.png" "$W/fabrica-os-$c.png" <<'EOP'
+import sys
+from PIL import Image, ImageChops
+a, b = Image.open(sys.argv[1]).convert('RGB'), Image.open(sys.argv[2]).convert('RGB')
+d = ImageChops.difference(a, b).convert('L').point(lambda v: 255 if v > 24 else 0)
+bb = d.getbbox(); n = sum(1 for v in d.tobytes() if v)
+print(n, bb if bb else '-')
+EOP
+)
+      echo "   captura $c: $dif (pixeles que cambian mas de 24 de 255 frente a sin ROCOLA_OS, y donde)"
+    done
+  fi
+  fi
 fi
 
 # ---------------------------------------------------------------- dos: dos de Spotify seguidas, de principio a fin
@@ -373,6 +471,58 @@ if [[ " $partes " == *" vigilante "* ]]; then
   si "vigilante: la llave no sale en ninguna bitacora ni estado" bash -c "! grep -rqsF -- '$K' '$b' '$v' '$o/run' '$o/estado.txt' '$o/vigilante-estado.txt' '$o/salida.txt'"
   si "vigilante: al cerrar la rocola, el vigilante y el Soloist falso se van (en $(cat $o/tardo) s)" bash -c "! pgrep -f '[s]potify-xp.*rocola-soloist corre' >/dev/null && ! pgrep -f '[s]oloist-falso.dll.*vigilante/soloist' >/dev/null"
   fi
+fi
+
+# ---------------------------------------------------------------- noche: el modo noche de XP baja tambien lo de Spotify, igual que una de XP
+# (pregunta del dueno del 15-11-2026; pendiente 5 de SPOTIFY_JUNTA_PENDIENTES.md). Cuatro corridas, todas con el modo noche de fabrica (noche=1,
+# noche_pct=80: -3,22 dB, 10*log2(0,8)): una de Spotify (la fuente de RocolaOs.SpotifyFuente.cs por ArmaCadena, 440 Hz) y una de XP (un MP3
+# de 1000 Hz y 60 s en lugar de los de los datos de prueba), (1) cruzando las 11 de la noche a media cancion (una zona horaria de mentira
+# hecha con zic, en la que la rocola arranca a las 22:59:30) y (2) con «Probar» (el boton de Ctrl+F3 -> Sonido, por el doble del catalogo:
+# «noche-probar») de dia (la zona a las 12:00). Lo que sono, en la tarjeta de prueba con reloj; el nivel con niveles.py. La rampa de XP:
+# medio volumen en 20 s (de 1 a 0,69: 12,4 s) al entrar la noche, y en 1,5 s con «Probar» (0,93 s), que dura 15 s y vuelve sola.
+if [[ " $partes " == *" noche "* ]]; then
+  echo "== noche (el modo noche de XP con una de Spotify y una de XP: de noche y con «Probar», con su rampa)"
+  ZI="$W/zonas"; mkdir -p "$ZI"
+  # zona NOMBRE HH:MM: una zona horaria en la que AHORA son las HH:MM (los segundos, los de UTC). Se llama justo antes de abrir la rocola.
+  zona() {
+    local n="$1" h="${2%:*}" m="${2#*:}" u off sg=""
+    u=$(( 10#$(date -u +%H) * 60 + 10#$(date -u +%M) )); off=$(( (10#$h * 60 + 10#$m - u + 2880) % 1440 )); [ $off -gt 840 ] && off=$((off - 1440))
+    [ $off -lt 0 ] && { sg=-; off=$((-off)); }
+    echo "Zone $n $sg$((off / 60)):$(printf %02d $((off % 60))) - PRB" > "$ZI/$n.txt"; zic -d "$ZI" "$ZI/$n.txt" || return 1; echo "$ZI/$n"; }
+  enelsegundo() { while [ "$(date -u +%S)" != "$1" ]; do sleep 0.2; done; }   # (para que las 23:00 caigan a los 30 s de abrir)
+  [ -f "$W/tono1000.mp3" ] || ffmpeg -loglevel error -y -f lavfi -i "aevalsrc=0.25*sin(2*PI*1000*t)|0.25*sin(2*PI*1000*t):s=44100:d=60" -c:a libmp3lame -b:a 192k "$W/tono1000.mp3"
+  for c in sp xp; do
+    for m in noche probar; do
+      d=$(datos noche-$m-$c)
+      [ $c = xp ] && for f in "$d"/musica/*/*/*.mp3; do cp "$W/tono1000.mp3" "$f"; done
+      if [ $m = noche ]; then enelsegundo 30; z=$(zona noche-$c 22:59); pide=""; fin=48; else z=$(zona dia-$c 12:00); pide="20:noche-probar"; fin=45; fi
+      [ $c = sp ] && pide="9:pide spotify:track:f440d050aa|$P|50000${pide:+;$pide}"
+      T0=$(date +%s.%N)
+      if [ $c = sp ]; then abre noche-$m-$c "$d" "7:67" "$pide" $fin TERM ROCOLA_OS=spotify,spotify-prueba TZ="$z"
+      else abre noche-$m-$c "$d" "7:67,9:13,10.5:13" "$pide" $fin TERM ROCOLA_OS=spotify,spotify-prueba TZ="$z"; fi
+      hz=440; [ $c = xp ] && hz=1000
+      python3 "$G/niveles.py" "$W/noche-$m-$c/sonado.raw" "$W/noche-$m-$c/registro.txt" $hz --serie > "$W/noche-$m-$c/niveles.txt"
+      echo "   $m $c: $(head -1 "$W/noche-$m-$c/niveles.txt")"
+    done
+  done
+  nv() { head -1 "$W/noche-$1/niveles.txt" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
+  for c in sp xp; do
+    o="$W/noche-noche-$c"
+    si "noche $c: sale con 0" test "$(cat $o/salio)" = 0
+    si "noche $c: baja al 80 % de lo que se oye (-3,22 dB: $(nv noche-$c baja) dB)" entre "$(nv noche-$c baja)" -3.40 -3.05
+    si "noche $c: con su rampa (12,4 s: $(nv noche-$c rampa) s), sin escalon" entre "$(nv noche-$c rampa)" 11.4 13.4
+    o="$W/noche-probar-$c"
+    si "probar $c: sale con 0" test "$(cat $o/salio)" = 0
+    si "probar $c: «Probar» la baja al 80 % (-3,22 dB: $(nv probar-$c baja) dB)" entre "$(nv probar-$c baja)" -3.40 -3.05
+    si "probar $c: con la rampa rapida (0,93 s: $(nv probar-$c rampa) s)" entre "$(nv probar-$c rampa)" 0.6 1.4
+    si "probar $c: 15 s abajo ($(nv probar-$c abajo) s) y vuelve sola a lo de antes ($(nv probar-$c antes) -> $(nv probar-$c vuelve) dB, en $(nv probar-$c subida) s)" \
+      bash -c "echo '$(nv probar-$c abajo) > 14.4 && $(nv probar-$c abajo) < 15.8 && $(nv probar-$c vuelve) - $(nv probar-$c antes) < 0.15 && $(nv probar-$c antes) - $(nv probar-$c vuelve) < 0.15 && $(nv probar-$c subida) > 0.5 && $(nv probar-$c subida) < 1.4' | bc | grep -q 1"
+  done
+  for m in noche probar; do
+    db=$(echo "$(nv $m-sp baja) - $(nv $m-xp baja)" | bc); dr=$(echo "$(nv $m-sp rampa) - $(nv $m-xp rampa)" | bc)
+    si "$m: la de Spotify baja igual que la de XP (lo que baja: $db dB de diferencia; la rampa: $dr s)" bash -c "echo '$db < 0.1 && $db > -0.1 && $dr < 0.6 && $dr > -0.6' | bc | grep -q 1"
+  done
+  si "noche sp: la de Spotify sono por Spotify (cobrada, por la fuente de RocolaOs.SpotifyFuente.cs)" bash -c "grep -q 'COBRADA spotify:track:f440d050aa' '$W/datos-noche-noche-sp/rocola_spotify.txt'"
 fi
 
 echo

@@ -1,10 +1,13 @@
 // SPOTIFY EN LA ROCOLA (fase 11, grupo spotify-xp): LA FUNCION «spotify» (el andamio de la fase 11), LO QUE SE PIDE (I6) Y LOS GANCHOS.
 // Documento: FASE11_spotify-xp.md.
 //
-// LA FUNCION. «spotify», APAGADA de fabrica (R1: spotify=0 en /rocola/datos/xp/rocola_os.txt, o sin la clave): sin ella no corre nada de
-// Spotify y rocola-xp sale igual que hoy en todo (los ganchos devuelven lo de XP). La enciende el dueno (la orden «spotify encender» de la
-// consola de mantenimiento, de otro grupo, que pone spotify=1: vale desde el siguiente arranque, como toda funcion del andamio). Su otra
-// clave: spotify_nombre= (el nombre de la bocina de Spotify Connect; de fabrica «Rocola»).
+// LA FUNCION. «spotify», ENCENDIDA de fabrica (decision del dueno del 15-11-2026, «Lo de Spotify encender dejalo encendido por defecto»;
+// sustituye a R1 «apagado de fabrica»): con ROCOLA_OS=1 va salvo spotify=0 en /rocola/datos/xp/rocola_os.txt (la orden «spotify apagar»
+// de la consola de mantenimiento; vale desde el siguiente arranque, como toda funcion del andamio; lo guardado manda). Apagada (o sin
+// ROCOLA_OS) no corre nada de Spotify y rocola-xp sale igual que hoy en todo (los ganchos devuelven lo de XP). Encendida SIN NINGUNA LLAVE
+// (ni la de Soloist ni la de la API) se ve y suena como XP: el vigilante espera la llave, no hay letra ni resultados de Spotify y nada
+// cobra (la escena «fabrica» de Pruebas/RocolaOs/spotify-xp/prueba.sh). Su otra clave: spotify_nombre= (el nombre de la bocina de Spotify
+// Connect; de fabrica «Rocola»).
 //
 // I6, EL PEDIR (lo usa el catalogo, otro grupo, desde el hilo de la pantalla):
 //   RocolaOsSpotifyPista              una cancion de Spotify: Uri («spotify:track:ID»), Titulo, Artista, Disco, DuracionMs, PortadaUrl, DiscoUri
@@ -85,7 +88,7 @@ namespace Rocola
             {
                 Nombre = RocolaOsSpotify.Nombre,
                 Que = "Spotify en la rocola con Spotify Soloist (pedir, pagar y oir en la rocola)",
-                DeFabrica = false,   // R1: apagado de fabrica
+                DeFabrica = true,    // encendido de fabrica (decision del 15-11-2026; antes R1: apagado)
                 Claves = new RocolaOsClave[]
                 {
                     RocolaOsClave.Texto(RocolaOsSpotify.ClaveNombre, "Rocola", RocolaOsNombreDeBocinaVale, false, "el nombre de la bocina de Spotify Connect"),

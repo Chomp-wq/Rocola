@@ -3,7 +3,8 @@
 # 14-11-2026: «Lo de Spotify sera todo en la rocola, nada en el celular»; el celular o la laptop solo se usan UNA vez, para emparejar).
 # Detalle para el dueno en sistema/SPOTIFY_SOLOIST.md. Escribir solo «spotify» dice lo que hay.
 #
-# Encender y apagar es la clave spotify= de /rocola/datos/xp/rocola_os.txt (el formato de RocolaOs.Ajustes.cs: «clave=valor», LF; la
+# Encender y apagar es la clave spotify= de /rocola/datos/xp/rocola_os.txt (de fabrica ENCENDIDO: sin la clave, o con un valor que no sea
+# 0 ni 1, la rocola lo enciende, decision del dueno del 15-11-2026; solo spotify=0 lo apaga) (el formato de RocolaOs.Ajustes.cs: «clave=valor», LF; la
 # primera que salga se cambia en su sitio, las repetidas se quitan; lo demas se queda como estaba). La rocola es la duena de ese archivo
 # mientras esta abierta; en la consola de mantenimiento esta cerrada, y lo que se cambie vale al volver a ella (Ctrl+Alt+F1).
 # Las llaves (la de Soloist y la de la API web) NUNCA se ensenan: solo se dice si estan.
@@ -24,7 +25,8 @@ URL=${SOLOIST_URL:-https://soloist-builds.spotifycdn.com/soloist_release_x86_64.
 APRESOLVE=${ROCOLA_SPOTIFY_APRESOLVE:-https://apresolve.spotify.com/?type=accesspoint}
 
 clave() { [ -f "$OSF" ] || return 0; tr -d '\r' < "$OSF" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' | sed -n "s/^[ \t]*$1[ \t]*=[ \t]*\(.*\)/\1/p" | sed 's/[ \t]*$//' | tail -1; }
-modo() { [ "$(clave spotify)" = 1 ] && echo encendido || echo apagado; }
+# (como RocolaOs.Ajustes.cs: solo «0» lo apaga; sin la clave o con otra cosa vale el de fabrica, encendido)
+modo() { [ "$(clave spotify)" = 0 ] && echo apagado || echo encendido; }
 si_no() { case "$1" in 1|si|true) echo si ;; 0|no|false) echo no ;; "") echo "?" ;; spotify:*) echo "si ($1)" ;; *) echo "$1" ;; esac; }
 # el rocola-xp abierto como rocola (no el importador)
 rocola_pid() {
@@ -126,8 +128,9 @@ ayuda() {
 	cat <<EOF
 spotify: el modo Spotify de la rocola (para reuniones, con creditos como siempre). Ahora: $(modo).
 
-  spotify encender      enciende el modo (vale al volver a la rocola con Ctrl+Alt+F1)
-  spotify apagar        lo apaga (lo pagado de Spotify que no sono vuelve como credito)
+  spotify apagar        apaga el modo (de fabrica va encendido; vale al volver a la rocola con Ctrl+Alt+F1;
+                        lo pagado de Spotify que no sono vuelve como credito)
+  spotify encender      lo vuelve a encender
   spotify estado        todo de un vistazo: el modo, las llaves, el programa y cuantos dias le quedan, la cuenta, internet...
   spotify llave         pone las llaves de la memoria USB (rocola_spotify.txt y rocola_spotify_api.txt en su raiz),
                         o pide la de Soloist escrita (no se ve al escribirla)
@@ -168,7 +171,7 @@ nombre)
 estado)
 	echo "=== Spotify en la rocola ($(date '+%Y-%m-%d %H:%M')) ==="
 	[ -f "$APAGADO" ] && echo "Rocola OS: APAGADO de emergencia ($APAGADO): no corre nada de Rocola OS, Spotify tampoco."
-	echo "Modo Spotify: $(modo) (spotify= en $OSF; de fabrica apagado). Bocina: «$(clave spotify_nombre | grep . || echo Rocola)»."
+	echo "Modo Spotify: $(modo) (spotify= en $OSF; de fabrica encendido). Bocina: «$(clave spotify_nombre | grep . || echo Rocola)»."
 	rocola-soloist estado
 	lo_de_la_rocola
 	echo "Internet hasta Spotify:"

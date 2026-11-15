@@ -206,10 +206,14 @@ secreto)   # la llave NUNCA aparece fuera de su archivo: ni en la bitacora, ni e
 	ok "${c:-en ninguno}" "en ninguno" "ni la llave de Soloist ni el secreto de la API en /run, la bitacora, el estado ni lo que dicen las ordenes"
 	ok "$(ls -l $XPD/rocola_spotify_llave.txt | cut -c1-10)/$(cat $XPD/rocola_spotify_llave.txt)" "-rw-------/$LL" "solo en su archivo, 0600" ;;
 encender)   # «spotify encender» y «apagar»: con y sin rocola_os.txt (el formato del andamio), con .bak, con la rocola abierta
+	ok "$(spotify | grep -c 'Ahora: encendido')/$(spotify | grep -c 'de fabrica va encendido')" "1/1" "sin rocola_os.txt: encendido (de fabrica, decision del 15-11-2026), y la ayuda lo dice"
+	printf 'spotify=x\n' > $XPD/rocola_os.txt; ok "$(spotify | grep -c 'Ahora: encendido')" 1 "con un valor que no vale (spotify=x): el de fabrica, encendido (como RocolaOs.Ajustes.cs)"
+	rm -f $XPD/rocola_os.txt
 	spotify encender > /tmp/o.1; r=$?; sed 's/^/    /' /tmp/o.1
 	ok "$r/$(cat $XPD/rocola_os.txt)/$(grep -c 'Ctrl+Alt+F1' /tmp/o.1)" "0/spotify=1/1" "sin el archivo: se crea solo con esa linea, y dice cuando vale"
 	ok "$(grep -c 'Falta la llave de Soloist' /tmp/o.1)/$(grep -c 'Falta la llave de la API web' /tmp/o.1)/$(grep -c 'Falta emparejar' /tmp/o.1)" "1/1/1" "y avisa de lo que falta (las llaves, emparejar)"
 	spotify apagar >/dev/null; ok "$(cat $XPD/rocola_os.txt)/$(cat $XPD/rocola_os.txt.bak)" "spotify=0/spotify=1" "apagar: spotify=0 (el de antes, .bak)"
+	ok "$(spotify | grep -c 'Ahora: apagado')" 1 "y despues de apagar, la ayuda dice apagado"
 	printf '\357\273\277# comentario\r\nred=1\r\n spotify = 0\r\nfuturo=x y z\r\nspotify=0\r\n' > $XPD/rocola_os.txt
 	spotify encender >/dev/null
 	ok "$(tr '\n' '|' < $XPD/rocola_os.txt)" "# comentario|red=1|spotify=1|futuro=x y z|" "con otras claves, CRLF, marca y repetidas: en su sitio, las demas igual, sin repetir"
@@ -224,7 +228,7 @@ encender)   # «spotify encender» y «apagar»: con y sin rocola_os.txt (el for
 estado)   # «spotify estado» sin nada y con todo
 	echo caido > /srv/.modo
 	spotify estado > /tmp/o.1; r=$?; sed 's/^/    /' /tmp/o.1
-	ok "$r/$(grep -c 'Modo Spotify: apagado' /tmp/o.1)/$(grep -c 'Llave de Soloist: FALTA' /tmp/o.1)/$(grep -c 'no esta bajado' /tmp/o.1)/$(grep -c 'HTTP 503' /tmp/o.1)" "0/1/1/1/2" "sin nada: lo dice todo (modo, llave, programa, internet)"
+	ok "$r/$(grep -c 'Modo Spotify: encendido (spotify= en /rocola/datos/xp/rocola_os.txt; de fabrica encendido)' /tmp/o.1)/$(grep -c 'Llave de Soloist: FALTA' /tmp/o.1)/$(grep -c 'no esta bajado' /tmp/o.1)/$(grep -c 'HTTP 503' /tmp/o.1)" "0/1/1/1/2" "sin nada: lo dice todo (modo encendido de fabrica, llave, programa, internet)"
 	limpia; disco; llave; api; srv v2 0; rocola-soloist baja >/dev/null; spotify encender >/dev/null
 	mkdir -p /run/rocola-xp/spotify; cp /tars/anillo /run/rocola-xp/spotify/sonido.anillo
 	printf 'ws=1\nsesion=1\nactiva=1\nsonando=1\nen_cola=2\nesperando_credito=0\ncobradas=3\ndevueltas=1\nerror=\n' > /run/rocola-xp/spotify/estado

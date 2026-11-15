@@ -5,6 +5,8 @@
 //   pide URI|TITULO|ARTISTA|DISCO|MS[|PORTADA_URL[|DISCO_URI]]    RocolaOsSpotifyPide (como PONER en un disco)
 //   busca URI|TITULO|ARTISTA|DISCO|MS[|PORTADA_URL[|DISCO_URI]]   RocolaOsSpotifyPide(p, true) (como desde el buscador)
 //   portada URI|TITULO|ARTISTA|DISCO|MS|PORTADA_URL[|DISCO_URI]   RocolaOsSpotifyPortada (como el catalogo al ensenarla)
+//   noche-probar                                                   el boton «Probar» del modo noche de XP (Ctrl+F3 -> Sonido: PruebaNoche),
+//                                                                  para comparar con una de XP que una de Spotify baja igual (la junta)
 // y apunta lo que paso en prueba-pide.log (con RocolaOsSpotifyListo y los creditos de XP antes y despues).
 using System;
 using System.Globalization;
@@ -41,6 +43,12 @@ namespace Rocola
             {
                 string l = l0.Trim();
                 if (l.Length == 0) continue;
+                if (l == "noche-probar")
+                {
+                    PruebaNoche();
+                    log.Append("noche-probar ").Append(SegundosPruebaNoche.ToString(CultureInfo.InvariantCulture)).Append(" s\n");
+                    continue;
+                }
                 int sp = l.IndexOf(' ');
                 string que = sp > 0 ? l.Substring(0, sp) : l, resto = sp > 0 ? l.Substring(sp + 1) : "";
                 string[] c = resto.Split('|');

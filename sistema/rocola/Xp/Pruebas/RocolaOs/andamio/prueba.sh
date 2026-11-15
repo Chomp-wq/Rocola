@@ -161,17 +161,21 @@ if [[ " $partes " == *" escenas "* ]]; then
     si "$v: no escribe rocola_os.txt ni la bitacora de Rocola OS, ni respaldo suyo" bash -c "[ ! -e '$d/rocola_os.txt' ] && [ ! -e '$d/rocola_os_bitacora.txt' ] && [ ! -e '$d/respaldo/rocola-os' ]"
     si "$v: el apagado de siempre (WindowsShutDown y rocola_estado.txt borrado)" bash -c "grep -q '	closed Form1.Rocola. WindowsShutDown$' '$t' && [ ! -e '$d/rocola_estado.txt' ]"
   done
-  # CON «1» (nada que encender): el latido, solo
-  d=$(datos uno); abre uno "$d" "7:67" 10 TERM ROCOLA_OS=1; t="$W/uno/traza.txt"
+  # CON «1» (nada que encender): el latido, solo. Desde la junta de Spotify (15-11-2026) la funcion «spotify» va ENCENDIDA de fabrica:
+  # para que aqui no haya nada que encender, rocola_os.txt la apaga («spotify=0», lo que deja «spotify apagar»). Encendida de fabrica y
+  # sin llaves: la escena «fabrica» de Pruebas/RocolaOs/spotify-xp/prueba.sh.
+  d=$(datos uno); printf 'spotify=0\n' > "$d/rocola_os.txt"; cp "$d/rocola_os.txt" "$W/uno-original.txt"
+  abre uno "$d" "7:67" 10 TERM ROCOLA_OS=1; t="$W/uno/traza.txt"
   n=$(latidos "$t")
   si "uno: sale con 0" test "$(cat $W/uno/salio)" = 0
   si "uno: el latido, una vez por segundo ($n en 10 s)" entre "$n" 6 11
-  # (lo que sigue vale mientras ninguna funcion de los grupos que vienen este encendida de fabrica; con ellas, lo que valga es la
+  # (lo que sigue vale mientras ninguna otra funcion de los grupos que vienen este encendida de fabrica; con ellas, lo que valga es la
   # comparacion con --ignora de abajo)
   si "uno: en la traza, de Rocola OS solo el latido" test "$(grep -c "RocolaOs" "$t")" = "$n"
   si "uno: la bitacora dice que arranco, sin la de prueba (solo va con la lista)" bash -c "grep -qF 'arranca con ROCOLA_OS=«1»:' '$d/rocola_os_bitacora.txt' && ! grep -F 'arranca con ROCOLA_OS' '$d/rocola_os_bitacora.txt' | grep -qF 'prueba-andamio'"
   si "uno: y el cierre (WindowsShutDown)" contiene "$d/rocola_os_bitacora.txt" "cierre (WindowsShutDown): "
-  si "uno: no escribe rocola_os.txt (nada cambio)" nohay "$d/rocola_os.txt"
+  si "uno: no cambia rocola_os.txt (nada cambio)" igual "$d/rocola_os.txt" "$W/uno-original.txt"
+  si "uno: con spotify=0, nada de Spotify (ni su bitacora ni nada en /run)" bash -c "[ ! -e '$d/rocola_spotify.txt' ] && [ ! -e '$W/uno/run/rocola-xp' ]"
   si "uno: el apagado de siempre (rocola_estado.txt borrado)" nohay "$d/rocola_estado.txt"
   # (con el ruido medido de la escena «sigterm» de las ventanas, que es esta misma: moneda a los 7 s y SIGTERM a los 10; las cuentas por
   # segundo de los relojes y de los encargos de otros hilos cambian solas de una corrida a otra: arranques mas o menos rapidos)

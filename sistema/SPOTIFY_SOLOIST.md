@@ -22,11 +22,17 @@ Decisiones del dueño que manda esto (14-11-2026):
 rocola lo **baja sola** de Spotify (no se puede repartir: no va en el sistema ni en el repositorio), lo tiene corriendo como la bocina
 «Rocola» y le dice qué canción tocar. Su sonido pasa por la cadena de la rocola, como una canción más.
 
+El modo Spotify viene **encendido de fábrica** (tu decisión del 15-11-2026): no hay que encender nada. Mientras le falten las llaves, la
+rocola se ve y suena exactamente como la de XP (sin la letra ♫, sin resultados de Spotify y sin cobrar nada de Spotify) y solo espera la
+llave.
+
 Lo que necesitas, una sola vez:
 1. **La llave de Soloist** (archivo `rocola_spotify.txt`).
 2. **La llave de tu app de Spotify** (archivo `rocola_spotify_api.txt`): con ella la rocola busca en Spotify.
-3. **Encender el modo** en la rocola (`spotify encender`).
-4. **Emparejar** la bocina «Rocola» con tu cuenta, desde la app de Spotify, en la red del bar.
+3. **Emparejar** la bocina «Rocola» con tu cuenta, desde la app de Spotify, en la red del bar.
+
+Si algún día no lo quieres, **`spotify apagar`** en la consola de mantenimiento lo apaga (vale al volver a la rocola con Ctrl+Alt+F1; lo
+pagado de Spotify que no sonó vuelve como crédito) y se queda apagado aunque la rocola se actualice; `spotify encender` lo vuelve a encender.
 
 Las dos llaves necesitan tu cuenta **Premium** y son **secretas**: no las mandes por mensaje ni las subas a ningún lado. La rocola las
 guarda solo en `/rocola/datos/xp` (que solo lee el sistema) y nunca las escribe en sus bitácoras ni las sube al buzón.
@@ -61,19 +67,20 @@ La app queda en «modo desarrollo»: es solo para ti, y Spotify le pone un tope 
 busca o abre en ese momento), pero si alguien se pone a buscar sin parar Spotify puede frenarla un rato («Spotify frena» en
 `spotify estado`).
 
-### 3. La memoria USB y encender el modo
+### 3. La memoria USB con las llaves
 
 1. Con la rocola prendida, conecta la memoria USB con los dos archivos.
 2. **Ctrl+Alt+F2** (la consola de mantenimiento; usuario `root`). Al entrar, la rocola se cierra sola (la música se para un momento).
 3. Escribe `spotify llave`: toma las dos llaves de la memoria. Dirá «Llave de Soloist puesta» y «Llave de la API web puesta».
    (Si no la conectaste, te pide la llave de Soloist escrita; no se ve mientras la escribes.)
-4. Escribe `spotify encender`.
-5. Saca la memoria USB y vuelve a la rocola con **Ctrl+Alt+F1**.
+4. Saca la memoria USB y vuelve a la rocola con **Ctrl+Alt+F1**.
 
-Sin la consola: con el modo encendido, la rocola mira la memoria USB cada 30 s mientras le falte la llave; y el buzón la toma en su vuelta
+(Antes había que escribir también `spotify encender`: ya no, viene encendido.)
+
+Sin la consola: con el modo encendido (lo de fábrica), la rocola mira la memoria USB cada 30 s mientras le falte la llave; y el buzón la toma en su vuelta
 de cada 15 minutos (también si la de la USB es otra: así se cambia).
 
-La primera vez que se enciende, la rocola baja el programa de Spotify (unos 14 MB; necesita internet).
+En cuanto tiene la llave de Soloist, la rocola baja el programa de Spotify (unos 14 MB; necesita internet). Sin la llave no baja nada.
 
 ### 4. Emparejar, una vez, en el bar
 
@@ -99,7 +106,7 @@ pagado de Spotify que no sonó vuelve como crédito al apagar el modo o tras un 
 | Orden | Qué hace |
 |---|---|
 | `spotify` | La ayuda y si el modo está encendido |
-| `spotify encender` / `spotify apagar` | Enciende o apaga el modo (vale al volver a la rocola con Ctrl+Alt+F1) |
+| `spotify apagar` / `spotify encender` | Apaga el modo (de fábrica va encendido) o lo vuelve a encender (vale al volver a la rocola con Ctrl+Alt+F1; lo guardado manda) |
 | `spotify estado` | Todo de un vistazo: el modo, si las llaves están puestas (nunca las enseña), el programa y **cuántos días le quedan**, si corre, si la cuenta está emparejada y la bocina activa, internet hasta Spotify y los últimos problemas |
 | `spotify llave` | Pone las llaves de la memoria USB; si no hay memoria, pide escrita la de Soloist |
 | `spotify llave api` | Pide escritas las de tu app (client_id, client_secret y, si lo tienes, refresh_token) |
@@ -218,7 +225,7 @@ debe contestar con un `"access_token"`. Si contesta `invalid_client`, el Client 
 
 | Archivo | Quién | Qué |
 |---|---|---|
-| `/rocola/datos/xp/rocola_os.txt` | rocola-xp (dueño); `spotify encender/apagar/nombre` con la rocola cerrada | `spotify=1` o `0` (de fábrica apagado), `spotify_nombre=` |
+| `/rocola/datos/xp/rocola_os.txt` | rocola-xp (dueño); `spotify encender/apagar/nombre` con la rocola cerrada | `spotify=1` o `0` (de fábrica encendido: sin la clave vale 1), `spotify_nombre=` |
 | `/rocola/datos/xp/rocola_spotify_llave.txt` | `rocola-soloist`, `spotify llave`, el buzón | La llave de Soloist (0600, una línea) |
 | `/rocola/datos/xp/rocola_spotify_api.txt` | los mismos | `client_id=`, `client_secret=`, opcional `refresh_token=` (0600) |
 | `/rocola/datos/xp/soloist/` | Soloist | Su identidad y la sesión de la cuenta (0700) |
