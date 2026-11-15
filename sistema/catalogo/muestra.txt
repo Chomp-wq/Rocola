@@ -1,0 +1,44 @@
+# Artistas conocidos para revisar a ojo en el informe de la corrida real (rocola_catalogo_informe.txt, «MUESTRA»): en que letra y genero
+# quedaron, con que fama y con que discos. Uno por linea; se comparan sin mayusculas ni acentos.
+Los Tigres del Norte
+Banda MS
+Vicente Fernández
+Juan Gabriel
+Los Ángeles Azules
+Selena
+Maná
+Luis Miguel
+José José
+Bad Bunny
+Shakira
+Marc Anthony
+Caifanes
+Café Tacvba
+Queen
+Metallica
+Michael Jackson
+Ramón Ayala
+Pedro Infante
+Javier Solís
+Rocío Dúrcal
+Ana Gabriel
+Marco Antonio Solís
+Los Bukis
+Intocable
+Grupo Firme
+Peso Pluma
+Christian Nodal
+Celia Cruz
+Héctor Lavoe
+Juan Luis Guerra
+Daddy Yankee
+Karol G
+Soda Stereo
+El Tri
+Los Temerarios
+Chalino Sánchez
+Julión Álvarez
+The Beatles
+Madonna
+Gloria Trevi
+Thalía
