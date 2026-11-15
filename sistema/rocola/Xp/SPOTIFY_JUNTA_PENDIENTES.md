@@ -17,3 +17,17 @@
    - SP9, los atajos del buscador: «tus más escuchadas» (`/v1/me/top/tracks`) y «escuchado hace poco»
      (`/v1/me/player/recently-played`), una petición cada uno por sesión y en memoria; solo con `refresh_token` (si no, no salen).
    - El zoom desde la casilla es visual: a la presentación del final.
+4. **Las paredes del buscador** (decisión del dueño del 15-11-2026, AGENTS.md). Va en un grupo propio («paredes-buscador») encima de la
+   rama `fase11-catalogo` en cuanto ese grupo termine (toca los mismos archivos), y se junta con la base si está a tiempo:
+   - Pared del artista que solo está en Spotify: la rejilla de XP (18 por página, IZQ/DER, ARRIBA/ABAJO de página, PONER abre), fuera de
+     la barra de letras; la cabecera dice su nombre. Casilla 1: «Canciones de ARTISTA» (`/v1/search?type=track&q=artist:"..."`, hasta
+     50 en 5 páginas de 10, como un disco de XP que se abre y se pide por I6). Luego `/v1/artists/{id}/albums?include_groups=album,single`
+     de 10 en 10, pidiendo solo lo que se mira (y la página de al lado).
+   - REGRESAR: disco -> su pared (misma página y casilla) -> buscador (lo escrito y la misma elección). Pila de como mucho 4.
+   - «Todos los discos de «lo escrito»»: la última tarjeta de los discos de Spotify en el buscador; abre una pared con
+     `/v1/search?type=album` de 10 en 10 (offset hasta 1000), solo lo que se mira.
+   - Tus artistas: tu tarjeta de siempre igual (lleva a tu pared, como XP) y, justo detrás, «ARTISTA · más en Spotify» (si Spotify lo
+     tiene y hay discos que no tienes: sin acentos ni mayúsculas, por nombre de disco) que abre su pared sin los tuyos.
+   - Sin el modo, sin la llave de la API o con 429: nada de esto sale (XP tal cual), el aviso de XP si algo no llega.
+   - Pruebas con la API falsa: abrir, hojear, regresar en todos los niveles, la cuota (peticiones contadas por escena), 429 a media
+     pared, apagado = XP tal cual.
