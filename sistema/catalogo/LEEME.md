@@ -111,7 +111,7 @@ están en MusicBrainz y Wikidata.
 | `PESO_ESCUCHAS`, `PESO_OYENTES`, `PESO_WIKIPEDIAS` | 0,45 / 0,30 / 0,25 | la mezcla de la fama |
 | `LOG_ESCUCHAS_TOPE`, `LOG_OYENTES_TOPE`, `LOG_WIKIPEDIAS_TOPE` | 8 / 6 / 2,5 | escala logarítmica: 100 millones de escuchas, 1 millón de oyentes o ~316 Wikipedias valen 1 |
 | `FACTOR_MEXICO` | 3 | artistas de México |
-| `FACTOR_HISPANO` | 1,3 | AR BO CL CO CR CU DO EC ES GQ GT HN NI PA PE PR PY SV UY VE |
+| `FACTOR_HISPANO` | 2 | AR BO CL CO CR CU DO EC ES GQ GT HN NI PA PE PR PY SV UY VE |
 | `FACTOR_GENERO` | Regional 3; Tropical 2,5; Bolero 2,5; Latino 2,2; Reggaeton 2; Flamenco 1,5; el resto 1 | familia de género |
 
 Fama = (0,45·min(1, log10(1+escuchas)/8) + 0,30·min(1, log10(1+oyentes)/6) + 0,25·min(1, log10(1+Wikipedias)/2,5)) · país · género
