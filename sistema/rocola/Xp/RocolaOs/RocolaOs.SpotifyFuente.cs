@@ -59,6 +59,12 @@ namespace Rocola
             private int tmpN;
             private double fase;                // la posicion fraccionaria dentro de tmp
             private int contado;                // (1 mientras cuenta en LectoresAbiertos; Interlocked: lo sueltan Acaba y Dispose)
+            // (calidad_spotify, la sustitucion invisible: RocolaOs.CalidadFuente.cs) una de tus canciones que suena desde Spotify NO se cobro
+            // como de Spotify: si falla, su credito no se devuelve (suena tu MP3 en su lugar). Se pone antes de la primera lectura.
+            internal bool SinDevolver;
+            internal long CuadrosSonido { get { return Interlocked.Read(ref cuadrosSonido); } }   // lo que de verdad llego de Soloist
+            internal bool Terminada { get { return acabada; } }                                    // (la lee el mismo hilo que lee)
+            internal int FinMotivo { get { RocolaOsSpotifyPeticion q = p; return q != null ? q.FinMotivo : 0; } }
 
             internal RocolaOsFuenteSpotify(string uri, string titulo, int duracionMs)
             {
@@ -204,7 +210,7 @@ namespace Rocola
                 bool natural = motivo == RocolaOsSpotifyPeticion.Termino
                     || ((motivo == RocolaOsSpotifyPeticion.OtraCancion || motivo == RocolaOsSpotifyPeticion.Parada) && durMs > 0 && seg * 1000 >= durMs - 5000);
                 if (motivo == RocolaOsSpotifyPeticion.SinMotivo) motivo = RocolaOsSpotifyPeticion.Termino;
-                bool devolver = motivo == RocolaOsSpotifyPeticion.NoEmpezo || (!natural && motivo != RocolaOsSpotifyPeticion.Cierre && seg < PocoSonidoSeg);
+                bool devolver = !SinDevolver && (motivo == RocolaOsSpotifyPeticion.NoEmpezo || (!natural && motivo != RocolaOsSpotifyPeticion.Cierre && seg < PocoSonidoSeg));
                 p.FinMotivo = natural ? RocolaOsSpotifyPeticion.Termino : motivo;
                 p.Devolver = devolver;
                 p.SegundosSonados = seg;

@@ -235,7 +235,7 @@ namespace Rocola
         // del original. Existe igual, y con el mismo nombre que alla, porque quien mira por delante tiene
         // que preguntarlo SIEMPRE: el dia que esta rocola tenga otra fuente, se cambia aqui y en un solo
         // sitio. Lo que no puede hacer nunca es tener efectos secundarios: esta cancion todavia no suena.
-        private string RutaQueSonaria(string path) { return path; }
+        private string RutaQueSonaria(string path) { return RocolaOsCalidadRuta(path); }   // ROCOLA OS g60: (XP) private string RutaQueSonaria(string path) { return path; } — con la sustitucion invisible (calidad_spotify), una cancion tuya que suena desde Spotify se ve por la ruta de Spotify: el calentador y el relevo sin pausa no la abren por delante como MP3 y entra por PlayNext (RocolaOs/RocolaOs.Calidad.cs; sin el modo, path)
         private string RutaOriginalDe(string ruta) { return ruta; }   // sin Apollo, el archivo que suena es la cancion
         private void PideLookahead(string songPath)
         {

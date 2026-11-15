@@ -9,6 +9,7 @@
 //     con la FIRMA de la cancion para saber cual se oye y si se corto. El id de la cancion dice su firma y su duracion:
 //       spotify:track:fFFFdSSS...   tono de FFF Hz, SSS segundos (p. ej. spotify:track:f440d012abc: 440 Hz, 12 s)
 //       spotify:track:nx...         una que nunca empieza (no disponible: para la devolucion a los 15 s)
+//       spotify:track:fFFFdSSSm1... el tono con el volumen de la envolvente 1 (o m2: la 2), para la forma de la sustitucion invisible
 //     El ritmo lo marca el lector (I1: writable = objetivo - pendientes; sin lector, nada).
 //   - al acabar una cancion pasa sola a otra (autoplay: spotify:track:f990d030autoplay, de 990 Hz), como haria Spotify: la rocola la tiene que
 //     pausar. Con SOLOIST_FALSO_FIN=parar, se para en vez de seguir.
@@ -58,6 +59,7 @@ static unsafe class SoloistFalso
     static long posCuadros;            // dentro de la cancion
     static long durCuadros;
     static double hz = 440;
+    static int envolvente;             // (sustitucion: ids «fFFFdSSSm1...»/«m2»: el volumen del tono sigue la envolvente 1 o 2, en dB; 0 = fijo)
     static bool cortado;               // («corta»: no manda sonido)
     static bool nunca;                 // (una «nx»: nunca empieza)
     static readonly List<string> colaSpotify = new List<string>();
@@ -143,7 +145,8 @@ static unsafe class SoloistFalso
                 for (int i = 0; i < n; i++)
                 {
                     double t = (posCuadros + i) / (double)Rate;
-                    float s = (float)(0.25 * Math.Sin(2 * Math.PI * hz * t));
+                    double amp = envolvente == 0 ? 0.25 : 0.125 * Math.Pow(10, (Envolvente(envolvente, t) + 12) / 20);
+                    float s = (float)(amp * Math.Sin(2 * Math.PI * hz * t));
                     buf[i * 2] = s; buf[i * 2 + 1] = s;
                 }
                 posCuadros += n;
@@ -175,6 +178,14 @@ static unsafe class SoloistFalso
         return 0;
     }
 
+    // LA ENVOLVENTE de las pruebas de la sustitucion (en dB): la misma cuenta que RocolaOs/RocolaOs.CalidadReglas.cs (Envolvente) y que los MP3
+    // inventados de Pruebas/RocolaOs/sustitucion (ffmpeg): la 1 y la 2, dos formas distintas
+    static double Envolvente(int cual, double t)
+    {
+        if (cual == 2) return -12 + 9 * Math.Sin(2 * Math.PI * t / 6.2 + 2) + 4 * Math.Cos(2 * Math.PI * t / 10.0);
+        return -12 + 9 * Math.Sin(2 * Math.PI * t / 14.0) + 4 * Math.Sin(2 * Math.PI * t / 4.6);
+    }
+
     // ---------- la cancion: su firma (Hz) y su duracion, de su id ----------
     static readonly object cerrojoEscritor = new object();   // (escribir y vaciar no se cruzan: lo de la cancion de antes nunca cae detras del vaciado)
     static void Pon(string uri, bool vaciar)
@@ -186,11 +197,12 @@ static unsafe class SoloistFalso
             item = uri; posCuadros = 0; status = "playing";
             string id = uri.StartsWith("spotify:track:") ? uri.Substring(14) : "";
             nunca = id.StartsWith("nx");
-            hz = 300; double seg = 30;
+            hz = 300; double seg = 30; envolvente = 0;
             if (id.Length > 0 && id[0] == 'f')
             {
                 int d = id.IndexOf('d');
-                if (d > 1) { double.TryParse(id.Substring(1, d - 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out hz); int e = d + 1; while (e < id.Length && char.IsDigit(id[e])) e++; double.TryParse(id.Substring(d + 1, e - d - 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out seg); }
+                if (d > 1) { double.TryParse(id.Substring(1, d - 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out hz); int e = d + 1; while (e < id.Length && char.IsDigit(id[e])) e++; double.TryParse(id.Substring(d + 1, e - d - 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out seg);
+                    envolvente = e + 1 < id.Length && id[e] == 'm' && (id[e + 1] == '1' || id[e + 1] == '2') ? id[e + 1] - '0' : 0; }
             }
             durCuadros = (long)(seg * Rate);
         }

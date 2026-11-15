@@ -186,7 +186,9 @@ namespace Rocola
         // el hilo que abre (AperturaEnFondo): solo crea el objeto, sin pedir nada a Soloist.
         private IAudioSource RocolaOsSpotifyAbre(string path)
         {
-            if (!RocolaOs.Activo || path == null || !path.StartsWith("spotify:", StringComparison.Ordinal) || !RocolaOsSpotify.Encendido) return null;
+            if (!RocolaOs.Activo || path == null) return null;
+            { IAudioSource calidad = RocolaOsCalidadAbre(path); if (calidad != null) return calidad; }   // (la sustitucion invisible: una tuya desde Spotify; RocolaOs.Calidad.cs)
+            if (!path.StartsWith("spotify:", StringComparison.Ordinal) || !RocolaOsSpotify.Encendido) return null;
             if (!RocolaOsSpotify.EsUriDeCancion(path)) return null;
             RocolaOsSpotifyPista p;
             RocolaOsSpotify.Pistas.TryGetValue(path, out p);
