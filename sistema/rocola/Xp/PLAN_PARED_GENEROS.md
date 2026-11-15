@@ -45,9 +45,8 @@ ni una petición de la API de Spotify**. Spotify se usa para lo suyo: tocar (Sol
    portada, la casilla de XP para los discos sin carátula. Al abrir el disco, la de Spotify.
 5. **Abrir un disco del catálogo**: con su id de Spotify, 1 petición (el disco con sus canciones); sin id, antes 1 búsqueda por nombre y
    artista. Si Spotify no lo tiene en México, el aviso de XP y ese disco ya no se enseña. Pedir, cobrar y sonar: lo de la base (I6).
-6. **Moverse**: ARRIBA/ABAJO siguen pasando de página. Con 500 páginas hace falta saltar: **mantener ARRIBA o ABAJO salta de género en
-   género**, y **ROJO + izquierda/derecha cambia de letra conservando el género**. Es lo mínimo para poder usarlo; la forma final de
-   moverse es de lo visual (presentación del final): el dueño elige.
+6. **Moverse**: como en XP (decisión del dueño del 15-11-2026: «se descarta lo de pasar de página por género»): ARRIBA/ABAJO de página
+   en página y REGRESAR+izquierda/derecha cambia de letra desde su principio. No hay salto de género ni cambia la guía de controles.
 7. **Cómo se ve el género** (decisión del dueño del 14-11-2026: «en vez de solo texto en la cabecera, que aparezca como una pastilla,
    como aparece en el resto del programa»): en la cabecera de la pared, junto a «LETRA A», va **la pastilla del género de XP**: la
    misma que XP ya dibuja en el buscador, en la lista del disco y en lo que suena (`HorneaGenero` en `Form1.Vistas.cs`, el color de

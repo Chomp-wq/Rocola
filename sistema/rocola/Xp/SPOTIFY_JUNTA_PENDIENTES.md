@@ -36,3 +36,5 @@
 6. **SP2 y SP4 en rocola-xp** (decisión del dueño del 15-11-2026, AGENTS.md): la canción de la rocola que suena peor y tiene pareja
    estricta en Spotify suena desde Spotify sin ningún cambio visible; la pareja se busca solo al entrar a la cola (cuota), se guarda en
    `rocola_spotify_pares.txt`; 6 s sin sonar = el MP3 sin aviso. Grupo «sustitucion» en su propia rama sobre junta-spotify.
+7. **El asistente con lo nuevo de Spotify** (petición del dueño del 15-11-2026, AGENTS.md): grupo «asistente-spotify» después de juntar
+   las paredes del buscador: guías nuevas del asistente con su mismo dibujo, solo con el modo Spotify; sin el modo, el de XP tal cual.
