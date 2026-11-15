@@ -21,6 +21,8 @@
 //      el cierre de XP: se MIDE, no se supone).
 // El plazo: 4 s. El cierre de XP tarda en esta maquina de 30 a 90 ms, pero con lo pendiente por escribir puede esperar hasta 15 s
 // (WaitDataWrites en OnFormClosing, «cierre por otra causa») mas 3 s de la bitacora: Rocola OS se queda con lo que sobra de los 20 s.
+// (XP nunca impide su cierre: OnFormClosing no toca Cancel y sus hojas tampoco lo impiden. Si algun dia lo impidiera, lo de Rocola OS
+// ya estaria parado y sin latido: habria que volver a arrancarlo aqui.)
 using System;
 using System.Collections.Generic;
 using System.Globalization;

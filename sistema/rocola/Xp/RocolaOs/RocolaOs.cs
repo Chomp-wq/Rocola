@@ -170,14 +170,15 @@ namespace Rocola
             return d.TryGetValue(nombre, out e) && e;
         }
         // LO QUE DICE LA VARIABLE, SIN LEER rocola_os.txt: para un gancho que corre antes de Arranca y no puede leer archivos (g11, un
-        // inicializador de campo de Form1). Con «1», cualquier funcion registrada que no sea solo de las pruebas.
+        // inicializador de campo de Form1). Con una lista, si esta en ella; con «1», su valor de fabrica (el archivo aun no se leyo: lo que
+        // se decida con Pedida se corrige en el Arranca de la funcion con Encendida, que ya mira rocola_os.txt).
         internal static bool Pedida(string nombre)
         {
             int m = Modo;
             if (m == Nada || nombre == null) return false;
             if (m == Lista) return lista.Contains(nombre) && Busca(nombre) != null;
             RocolaOsFuncion f = Busca(nombre);
-            return f != null && !f.SoloEnLaLista;
+            return f != null && !f.SoloEnLaLista && f.DeFabrica;
         }
         private static Dictionary<string, bool> Decide()
         {
