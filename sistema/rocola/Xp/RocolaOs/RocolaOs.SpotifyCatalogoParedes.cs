@@ -80,6 +80,8 @@ namespace Rocola
         private Dictionary<Album, RocolaOsSpotifyParedQue> rocolaOsSpParedDe;
         private HashSet<string> rocolaOsSpTuyos;                      // tus artistas, sin acentos ni mayusculas
         private int rocolaOsSpTuyosDe = -1;
+        private List<Album> rocolaOsSpTuyosLista;                     // (la lista de la que salieron: un re-escaneo hace otra)
+        private int rocolaOsSpTragaTick;                              // (revision) se volvio al buscador con REGRESAR: su repeticion no borra
         private bool rocolaOsSpAtajosPedidos;
         private int rocolaOsSpHuecos;
 
@@ -115,12 +117,12 @@ namespace Rocola
         // tus artistas (los de tus discos), sin acentos ni mayusculas; se rehace si cambia la biblioteca
         private HashSet<string> RocolaOsSpotifyTuyos()
         {
-            if (rocolaOsSpTuyos != null && (libBuilding || rocolaOsSpTuyosDe == albums.Count)) return rocolaOsSpTuyos;
+            if (rocolaOsSpTuyos != null && (libBuilding || (rocolaOsSpTuyosDe == albums.Count && ReferenceEquals(rocolaOsSpTuyosLista, albums)))) return rocolaOsSpTuyos;
             HashSet<string> h = new HashSet<string>(StringComparer.Ordinal);
             if (!libBuilding)
                 foreach (Album a in albums)
                     if (a != null && !a.IsTop && !string.IsNullOrEmpty(a.Artist) && !RocolaOsEsSpotify(a)) h.Add(MotorBusqueda.Normaliza(a.Artist));
-            rocolaOsSpTuyos = h; rocolaOsSpTuyosDe = libBuilding ? -1 : albums.Count;
+            rocolaOsSpTuyos = h; rocolaOsSpTuyosDe = libBuilding ? -1 : albums.Count; rocolaOsSpTuyosLista = albums;
             return h;
         }
         // los nombres de tus discos de ese artista, sin acentos ni mayusculas. XP saca artista y disco del nombre de la carpeta («Artista -
@@ -486,6 +488,24 @@ namespace Rocola
             OpenSearch();
             searchOverlay.RocolaOsRestaura(v.Escrito, v.EnResultados, v.Sel, v.Fila, v.Col);
             MarkSearchActivity();
+            // (revision, funcionamiento-y-reglas) se llego con una pulsacion de REGRESAR que puede seguir apretada: (1) su repeticion (a los
+            // 500 ms, unas 30 por segundo) ya no es «borrar letra» en el buscador (g57), y (2) con el rojo apretado, ROJO+ARRIBA no cierra el
+            // buscador que esta pulsacion acaba de abrir: el disparo del buscador de XP (UnDisparo) queda tomado hasta soltar, como si la
+            // combinacion ya hubiera hecho lo suyo. Asi, mantener el rojo en un disco de una pared lleva a la pared y ahi se queda, como XP
+            // en un disco; y ROJO+ARRIBA en una pared deja el buscador abierto (en XP, desde un disco, abre el buscador).
+            rocolaOsSpTragaTick = Environment.TickCount | 1;
+            if (BackHeld()) disparoBuscador.Pide();
+        }
+        // g57 (Form1.cs, ProcessCmdKey, en el buscador: «if (IsBack(kc)) { searchOverlay.Backspace(); return true; }»): true = es la
+        // repeticion de la pulsacion de REGRESAR que volvio al buscador, y no borra. Una pulsacion nueva (o una repeticion que llega mas de
+        // 1 s despues de la anterior: el soltar se perdio) lo olvida. Sin el modo, nunca se puso: siempre false (Backspace, como XP).
+        private bool RocolaOsSpotifyTragaRegresar(bool repetida)
+        {
+            if (rocolaOsSpTragaTick == 0) return false;
+            int ahora = Environment.TickCount;
+            if (!repetida || unchecked(ahora - rocolaOsSpTragaTick) > 1000) { rocolaOsSpTragaTick = 0; return false; }
+            rocolaOsSpTragaTick = ahora | 1;
+            return true;
         }
         private char RocolaOsSpotifyPrimeraLetra()
         {
@@ -495,9 +515,12 @@ namespace Rocola
         }
 
         // g53 (Form1.cs, ProcessCmdKey, en la pared: «if (IsBack(kc)) { return true; }»): REGRESAR en una pared del buscador vuelve al
-        // buscador. En las de XP (y sin el modo), nada: lo de XP.
-        private void RocolaOsSpotifyParedRegresa()
+        // buscador. En las de XP (y sin el modo), nada: lo de XP. Su REPETICION no (revision): manteniendo el rojo en un disco de la pared,
+        // la pulsacion lleva a la pared (BackToAlbums de XP) y sus repeticiones llegan aqui; no deben seguir hasta el buscador.
+        private void RocolaOsSpotifyParedRegresa(bool repetida)
         {
+            if (repetida) return;
+            rocolaOsSpTragaTick = 0;
             if (currentLetter != RocolaOsSpotifyParedMarca || rocolaOsSpPared == null || rocolaOsSpPared.Vuelta == null) return;
             RocolaOsSpotifyVuelveAlBuscador(rocolaOsSpPared.Vuelta);
         }

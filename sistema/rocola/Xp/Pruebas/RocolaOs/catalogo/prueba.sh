@@ -9,14 +9,15 @@
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/catalogo/prueba; se rehace)
 #   CAPTURAS: si se pone, las capturas para el dueno van ahi (PNG)
 # escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred (las del catalogo) y pared
-#   canciones todos mas atajos pared429 (las de las paredes del buscador, grupo paredes-buscador: FASE11_paredes-buscador.md); todas, de fabrica
+#   canciones todos mas atajos pared429 (las de las paredes del buscador, grupo paredes-buscador: FASE11_paredes-buscador.md) y mantenido tiempo
+#   (las de su revision: el rojo mantenido; la atraccion, la moneda y el buscador cerrado por tiempo); todas, de fabrica
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -364,6 +365,37 @@ for e in $escenas; do
     si "pared429: de Orquesta nada (frena)" bash -c "! grep -q '/v1/.*art99' '$a'"
     si "pared429: la bitacora dice que frena y que la pagina no llego" bash -c "grep -q 'Spotify frena (429)' '$d/rocola_os_bitacora.txt' && grep -q 'no llego una pagina de la pared: Spotify frena' '$d/rocola_os_bitacora.txt'"
     si "pared429: el estado dice api=frena" bash -c "grep -qx 'api=frena' '$o/run/rocola-xp/spotify/catalogo'" ;;
+  mantenido)
+    # (revision funcionamiento-y-reglas) EL ROJO MANTENIDO EN LA PILA: con la repeticion de XP (a los 500 ms, ~30 por segundo). En un disco de
+    # la pared, el rojo mantenido 1,5 s lleva a la pared y ahi se queda (sus repeticiones no siguen hasta el buscador): PONER entra al mismo
+    # disco y PONER pide su 1a (can5181); REGRESAR: la pared. En la pared, el rojo mantenido 1,5 s: el buscador, y sus repeticiones NO borran lo escrito (PONER abre
+    # otra vez la pared de Banda: 2a vez en la bitacora). ROJO+ARRIBA en la pared (el rojo primero, como se abre el buscador): el buscador se
+    # queda abierto con lo escrito (PONER la abre una 3a vez), no se cierra dejando la pared de XP
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,20:38,22.5:13,24.5:27~1500,27:13,28.5:13,30:27,31:27~1500,34:13,36:27~1200,36.4:38,38.5:13,40.5:27" 43 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 26.5 pared-tras-el-rojo-mantenido-en-un-disco),$(cap 33.5 buscador-tras-el-rojo-mantenido),$(cap 38 buscador-tras-rojo-y-arriba-en-la-pared)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    si "mantenido: sale con 0" test "$(cat $o/salio)" = 0
+    si "mantenido: el rojo mantenido en el disco se quedo en la pared: la 1a pedida es la 1a del mismo disco (can5181)" test "$(pedido $o 1)" = "$(printf 'pedida\tspotify:track:can5181')"
+    si "mantenido: solo esa pedida ($(pedidos $o))" test "$(pedidos $o)" = 1
+    si "mantenido: el rojo mantenido en la pared no borro lo escrito y ROJO+ARRIBA no cerro el buscador (la pared de Banda abierta 3 veces: $(grep -c 'pared del buscador: pared_artista (41 casillas)' $d/rocola_os_bitacora.txt))" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$d/rocola_os_bitacora.txt') = 3 ]"
+    si "mantenido: de Orquesta nada, y la pared de Banda de memoria (4 peticiones de artista: off=0..30)" bash -c "! grep -q '/v1/.*art99' '$a' && [ \$(grep -c '/v1/artists/' '$a') = 4 ]" ;;
+  tiempo)
+    # (revision funcionamiento-y-reglas) LA PILA CON LA ATRACCION, MONEDAS Y EL BUSCADOR CERRADO POR TIEMPO: la pared de Banda abierta y nada
+    # mas: a los 40 s entra la atraccion; la moneda la despierta (y acredita) y la pared sigue ahi; REGRESAR: el buscador con lo escrito
+    # (PONER la abre otra vez, de memoria); REGRESAR: el buscador; un minuto sin tocar el buscador (solo dos monedas, que no lo cuentan como
+    # uso pero alejan la atraccion): se cierra solo y queda la pared de XP de antes de abrirlo; ahi REGRESAR no hace nada (XP) y PONER entra
+    # al disco de XP elegido (si siguiera el buscador, abriria la pared de Banda; si quedara una pared de Spotify, pediria un disco a /v1);
+    # REGRESAR vuelve a su pared (XP, BackToAlbums)
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,62:67,63.5:27,65:13,66.5:27,90:67,120:67,128:27,129:13,131.5:27" 134 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 60 atraccion-sobre-la-pared),$(cap 63 pared-tras-la-moneda),$(cap 64.5 buscador-tras-la-moneda),$(cap 68 buscador-otra-vez),$(cap 127.5 pared-xp-tras-cerrarse-por-tiempo),$(cap 130.5 disco-xp-tras-el-tiempo),$(cap 133 pared-xp-al-final)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    si "tiempo: sale con 0" test "$(cat $o/salio)" = 0
+    si "tiempo: tras la atraccion y la moneda, REGRESAR volvio al buscador con lo escrito (la pared de Banda abierta 2 veces)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$d/rocola_os_bitacora.txt') = 2 ]"
+    si "tiempo: la pared de Banda de memoria la 2a vez (2 peticiones de artista) y nada de Orquesta" bash -c "[ \$(grep -c '/v1/artists/' '$a') = 2 ] && ! grep -q '/v1/.*art99' '$a'"
+    si "tiempo: nada de Spotify pedido ($(pedidos $o))" test "$(pedidos $o)" = 0
+    si "tiempo: el buscador se cerro solo y quedo la pared de XP: PONER entro a un disco de XP (ningun disco pedido a /v1 ni la pared de Banda otra vez)" bash -c "! grep -q '/v1/albums/' '$a' && [ \$(grep -c 'pared del buscador: pared_artista' '$d/rocola_os_bitacora.txt') = 2 ]" ;;
   esac
 done
 

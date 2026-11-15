@@ -2149,7 +2149,7 @@ namespace Rocola
                         searchOverlay.PressSelected();
                     return true;
                 }
-                if (IsBack(kc)) { searchOverlay.Backspace(); return true; }   // REGRESAR = borrar letra; cerrar = REGRESAR+ARRIBA
+                if (IsBack(kc)) { if (!RocolaOsSpotifyTragaRegresar(msg.Repetida)) searchOverlay.Backspace(); return true; }   // ROCOLA OS g57: (XP) if (IsBack(kc)) { searchOverlay.Backspace(); return true; }   // REGRESAR = borrar letra; cerrar = REGRESAR+ARRIBA — al volver al buscador desde una pared o un disco del buscador con REGRESAR, su repeticion (el rojo mantenido) no borra lo escrito (RocolaOs/RocolaOs.SpotifyCatalogoParedes.cs; sin el modo, siempre Backspace, como XP)
                 // letras, numeros, Ñ, acentos, comillas, espacio y BORRAR los entrega KeyPress (admite TODO caracter)
                 return false;   // EN LINUX: base.ProcessCmdKey(ref msg, keyData): la de un Form sin menus ni aceleradores da false (Control.cs:9440-9454, ContainerControl.cs:1190-1208, Form.cs:4862-4895) y la tecla sigue a KeyDown y KeyPress
             }
@@ -2182,7 +2182,7 @@ namespace Rocola
                 if (IsUp(kc)) { if (!BackHeld()) NextPage(); return true; }
                 if (IsDown(kc)) { if (!BackHeld()) PrevPage(); return true; }
                 if (IsOK(kc)) { List<Album> l = CurrentList(); if (selAlbumIndex >= 0 && selAlbumIndex < l.Count) EnterAlbum(l[selAlbumIndex]); return true; }
-                if (IsBack(kc)) { RocolaOsSpotifyParedRegresa(); return true; }   // ROCOLA OS g53: (XP) if (IsBack(kc)) { return true; } — en una pared del buscador (la de un artista de Spotify, «mas en Spotify» o «Todos los discos de...»), REGRESAR vuelve al buscador con lo escrito y la misma eleccion (RocolaOs/RocolaOs.SpotifyCatalogoParedes.cs; en las de XP y sin el modo, nada, como XP)
+                if (IsBack(kc)) { RocolaOsSpotifyParedRegresa(msg.Repetida); return true; }   // ROCOLA OS g53: (XP) if (IsBack(kc)) { return true; } — en una pared del buscador (la de un artista de Spotify, «mas en Spotify» o «Todos los discos de...»), REGRESAR (no su repeticion) vuelve al buscador con lo escrito y la misma eleccion (RocolaOs/RocolaOs.SpotifyCatalogoParedes.cs; en las de XP y sin el modo, nada, como XP)
             }
             return false;   // EN LINUX: base.ProcessCmdKey(ref msg, keyData): la de un Form sin menus ni aceleradores da false (Control.cs:9440-9454, ContainerControl.cs:1190-1208, Form.cs:4862-4895) y la tecla sigue a KeyDown y KeyPress
         }

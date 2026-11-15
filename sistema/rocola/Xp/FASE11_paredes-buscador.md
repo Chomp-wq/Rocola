@@ -40,10 +40,11 @@ el aviso de XP.
 
 | Id | Archivo:línea | Para qué |
 |---|---|---|
-| g53 | `Form1.cs` 2185 (ProcessCmdKey, en la pared: `if (IsBack(kc)) { return true; }`) | REGRESAR en una pared del buscador vuelve al buscador |
+| g53 | `Form1.cs` 2185 (ProcessCmdKey, en la pared: `if (IsBack(kc)) { return true; }`) | REGRESAR en una pared del buscador vuelve al buscador (su repetición no: revisión, abajo) |
 | g54 | `Form1.cs` 2174 (ProcessCmdKey, en un disco: `if (IsBack(kc)) { BackToAlbums(); return true; }`) | Un disco de Spotify abierto desde el buscador que no estaba en la letra vuelve al buscador |
 | g55 | `BuscadorPortadasGpu.cs` 146 (ArmaAtajos) | Los atajos de SP9 detrás de los de XP |
 | g56 | `BuscadorPortadasGpu.cs` 198 (UsaAtajo) | Pulsar uno de esos pone sus canciones como resultados |
+| g57 | `Form1.cs` 2152 (ProcessCmdKey, en el buscador: `if (IsBack(kc)) { searchOverlay.Backspace(); return true; }`) | (revisión) La repetición del rojo que volvió al buscador no borra lo escrito |
 
 Y, sin línea nueva, se reusan los del catálogo: g40 (la mezcla: artistas, «más en Spotify», «Todos los discos»), g41 (elegir: abre la
 pared), g44 (la lista de la pared), g46 (dentro de una pared, ni otras letras ni la vuelta), g47 (la cabecera; y pide lo que le falta a la
@@ -147,3 +148,95 @@ siempre:
 (La rama sale de `junta-spotify` en 4fb1656, antes de que la junta encendiera el modo Spotify de fábrica: en el nivel 1 el modo va
 apagado. Con el modo encendido de fábrica y sin llaves, los ganchos nuevos no hacen nada: sin la llave de la API no hay resultados de
 Spotify ni, por tanto, paredes; REGRESAR en una pared de XP y en un disco de XP va por lo de XP; los atajos de SP9 necesitan la cuenta.)
+
+## Revisión (funcionamiento-y-reglas)
+
+Revisor independiente, 15-11-2026. Enfoque: cada punto (a)-(g) contra la decisión del dueño del 15-11-2026 y el pedido del 7-11-2026; XP
+intacto sin el modo o sin llave; nada de dibujo nuevo; la pila de REGRESAR en todos los caminos (también con el buscador cerrado por
+tiempo, una moneda, la atracción o el asistente en medio). Se leyó el código (no el informe) y se corrieron sus pruebas y dos escenas nuevas.
+
+**Lo que se comprobó y está bien** (en el código y con la prueba):
+
+- (a) Disco o lista de Spotify abierto desde el buscador que no estaba en la letra ♫: `enPared` se mira **antes** de meterlo a los
+  recientes; g54 solo actúa si el disco de dentro es ese (`ReferenceEquals(currentAlbum, rocolaOsSpVueltaAlbum)`) y cualquier otra entrada a
+  un disco (g49, `EnterAlbum`) lo olvida. Ya en la letra: `BackToAlbums` de XP.
+- (b) Artistas: los tuyos se comparan con `MotorBusqueda.Normaliza` de XP contra el artista de tus discos; hasta 3; el primero que da
+  Spotify con la regla de «a dos letras», los demás si lo contienen (la regla escrita del 7-11-2026; el programa anterior además aceptaba
+  «está contenido» en todos: aquí solo en el primero, como dice la regla). Justo detrás de tus artistas que salen primero, o arriba.
+- (c)-(f) La pared es la rejilla de XP con una «letra» fuera de la barra (g46 da el orden vacío: `GotoLetter` con `n = 0` no indexa nada);
+  la cabecera por g47; las casillas que no llegan son discos de XP vacíos; «Canciones de», «Todos los discos» y «más en Spotify» son
+  tarjetas de XP (`SearchItem` con su `Display`). **Nada de dibujo nuevo** (vistas las capturas: cabecera, rejilla, ficha, buscador).
+- (g) Los atajos: `RocolaOs.Activo`, el modo y `HayCuenta` antes de pedir nada; una petición cada uno por sesión.
+- **Sin el modo** (y sin `ROCOLA_OS`): g53 no hace nada (la letra nunca es ♪), g54 da `false` (BackToAlbums), g55 sale al principio, g56
+  solo mira los tipos 100 y 101, g57 (nuevo, abajo) da `false`. Escenas `apagado` y `cero`: 0 peticiones, nada en /run. **Con el modo y
+  sin la llave de la API**: no hay resultados de Spotify, así que ninguna tarjeta abre una pared ni marca una vuelta; los atajos piden
+  `HayCuenta`.
+- La pila: disco → pared (misma página y casilla: XP) → buscador (lo escrito y la elección) → la pared de debajo. Con el buscador
+  cerrado por el minuto de XP queda la pared de debajo; con la atracción, XP cierra el disco (`BackToAlbums`) y la pared sigue ahí al
+  despertar; la moneda no toca la vista; el disco que se cierra solo a los 30 s vuelve a su pared (XP) y la vuelta vieja se olvida al
+  entrar a otro disco. Si la página no llega mientras el buscador sigue abierto, el aviso de XP y el buscador se queda (`!searchOpen` al
+  llegar: no se abre nada encima de otra cosa).
+
+**Lo que estaba mal y se arregló** (código y prueba):
+
+1. **El rojo mantenido se saltaba la pila y borraba lo escrito.** Los botones de la rocola repiten como un teclado de XP (a los 500 ms,
+   unas 30 por segundo: `TeclasLinux`). Dentro de un disco de una pared, mantener el rojo 1,5 s: la pulsación llevaba a la pared (XP),
+   la 1.ª repetición pasaba por g53 al buscador y las demás eran «borrar letra» (`searchOverlay.Backspace`, lo de XP en el buscador): el
+   cliente acababa en el buscador **vacío**. Comprobado con el programa de 80fb9b5 (NativeAOT, la escena nueva `mantenido`: 3 MAL de 5;
+   la captura muestra el buscador sin «interminable»). Arreglo: g53 no atiende las repeticiones (`RocolaOsSpotifyParedRegresa(msg.Repetida)`,
+   como XP en un disco, cuya pulsación ya sacó del disco y cuyas repeticiones no hacen nada en la pared); y un gancho nuevo, **g57**
+   (`Form1.cs` 2152, el REGRESAR del buscador: `if (!RocolaOsSpotifyTragaRegresar(msg.Repetida)) searchOverlay.Backspace();`), que no
+   borra con las repeticiones de la pulsación que volvió al buscador (una pulsación nueva, o una repetición más de 1 s después de la
+   anterior —el soltar se perdió—, lo olvida). Sin el modo nunca se marca: siempre `Backspace`, como XP.
+2. **ROJO+ARRIBA en una pared dejaba la pared de XP de antes.** En la pared el rojo es REGRESAR (vuelve al buscador al apretarlo), y
+   ARRIBA con el rojo apretado es la combinación de XP de abrir/cerrar el buscador: lo cerraba enseguida. Arreglo, sin gancho nuevo: al
+   volver al buscador con el rojo apretado (`BackHeld()`), el disparo del buscador de XP (`UnDisparo`, «una vez por pulsación») queda
+   tomado hasta soltar, como si la combinación ya hubiera hecho lo suyo: el buscador se queda abierto con lo escrito (en XP, ROJO+ARRIBA
+   desde un disco también acaba en el buscador). Para cerrarlo, soltar y volver a apretar (la regla de XP del 14-10-2026).
+3. (menor) Tus artistas se recordaban por el número de discos; un re-escaneo con el mismo número pero otra música los dejaba viejos.
+   Ahora también por la lista (`albums` es otra tras re-escanear).
+
+Ganchos: g53 cambia su línea (pasa `msg.Repetida`) y **g57** es nuevo (`Form1.cs` 2152), los dos en `GANCHOS.tsv`, CRLF conservado.
+`ganchos.py`: **TODO BIEN** (31 ganchos en 13 archivos; Codigo/ vuelve byte a byte a fc7b667). `diff-xp.py --sin-ganchos` (109
+archivos): 5 095 / 4 828 / 229, las de la base. Si la junta ya usó g57, se renumera.
+
+**Escenas nuevas** en `Pruebas/RocolaOs/catalogo/prueba.sh`:
+
+| Escena | Qué hace | Comprueba |
+|---|---|---|
+| `mantenido` | pared de Banda; 2.ª página; entra a un disco; **rojo mantenido 1,5 s**; PONER, PONER (pide); REGRESAR; **rojo mantenido 1,5 s** en la pared; PONER; **ROJO (1,2 s) + ARRIBA** en la pared; PONER | la 1.ª pedida es can5181 (el rojo mantenido se quedó en la pared) y es la única; la pared de Banda se abrió 3 veces (lo escrito no se borró y ROJO+ARRIBA no cerró el buscador); de memoria (4 peticiones de artista) y nada de Orquesta |
+| `tiempo` | pared de Banda y nada más: **atracción** a los 40 s; **moneda** (la despierta y acredita); REGRESAR (buscador) y PONER (la pared otra vez); REGRESAR; **un minuto** sin tocar el buscador (solo **dos monedas**, que no cuentan como uso del buscador y alejan la atracción): **se cierra solo**; REGRESAR (nada, XP); PONER; REGRESAR | la pared de Banda abierta 2 veces y la 2.ª de memoria (2 peticiones de artista); nada pedido de Spotify; tras cerrarse por tiempo quedó la pared de XP de antes (PONER entró a un disco de XP: ningún `/v1/albums/` ni la pared otra vez; capturas: «LETRA L», «Los Ejemplos», 16 créditos) |
+
+**Resultados** (el programa con estos cambios; JIT y NativeAOT compilados en `/root/rocola-trabajo/fase11/paredes-rev-fr`, fuera de
+la copia de trabajo):
+
+| Comprobación | Resultado |
+|---|---|
+| `dotnet build -c Release` (JIT) | 0 errores, 13 avisos (los de la base; ninguno en `RocolaOs/`) |
+| `dotnet publish` NativeAOT (linux-x64) | sale con 0, **0 avisos IL/AOT** |
+| `prueba.sh` en JIT (las 21 escenas: las 19 de antes, `mantenido` y `tiempo`) | **TODO BIEN, 126 de 126** |
+| `prueba.sh` en NativeAOT (las 21) | **TODO BIEN, 126 de 126** |
+| `mantenido` con el programa de 80fb9b5 (NativeAOT, antes del arreglo) | **3 MAL de 5**: ninguna pedida (el rojo mantenido acabó en el buscador vacío) y la pared abierta 1 vez en vez de 3 |
+| Cuota de las escenas nuevas (JIT / NativeAOT) | `mantenido` 7 / 7 a /v1 (1 búsqueda, 4 de artista, 1 de «Canciones de», 1 disco); `tiempo` 5 / 4 (1-2 búsquedas, 2 de artista, 1 de «Canciones de»); las 19 de antes, las del informe del grupo |
+| `ganchos.py` | **TODO BIEN**: 31 ganchos en 13 archivos; Codigo/ vuelve byte a byte a fc7b667 |
+| `diff-xp.py --sin-ganchos` (109 archivos) | 5 095 / 4 828 / 229, las de la base |
+| Nivel 0 (`nivel0.sh` de fase11-nivel0, sin `ROCOLA_OS`, alternando con la referencia) | sale con 0: previo, código, ganchos y diff-xp **BIEN**; arranque, moneda, tab, buscador, captura y asistente **IGUAL**; sigterm **ACEPTADO** (el estado se borra); NativeAOT arranque y buscador **IGUAL** (13 BIEN, 1 ACEPTADO, 0 MAL) |
+| Nivel 1 (`NIVEL=1`, `ROCOLA_OS=1`) | sale con 0: arranque, moneda, tab, buscador, captura (a la segunda: la primera, solo cuentas del reloj de 42 ms, 323 frente a 338) y asistente **IGUAL**; sigterm **ACEPTADO**; NativeAOT arranque y buscador **IGUAL** (10 BIEN, 1 ACEPTADO, 0 MAL). El modo Spotify va apagado, como en la base de la rama (antes del encendido de fábrica de la junta) |
+
+**Lo que queda abierto** (no se arregló; ninguno rompe la pila):
+
+- Volver al buscador desde una pared no pasa por el tope de aperturas de XP (`TopeBuscadorDeja`: no dos en 0,7 s ni más de seis en 30 s).
+  Cada vuelta cuesta un PONER y un REGRESAR (no una combinación que se pueda dejar apretada), así que no se abre «cientos de veces» por
+  accidente; si en el A4 se ve que alguien lo machaca, se le pone el tope.
+- Con 9 o más de tus artistas al principio, las de Spotify (canciones y discos, a la 8.ª de XP: regla del catálogo) quedan en medio de
+  tus artistas, y los artistas de Spotify detrás de todos los tuyos. Raro (una búsqueda de dos letras); no se tocó la regla del catálogo.
+- Si los atajos de SP9 fallan (403 sin los permisos, 429, sin red), no se vuelven a pedir en la sesión (por diseño: una por sesión).
+- «spotify apagar» con alguien dentro de una pared: se queda en una «letra ♪» vacía (cabecera «LETRA ♪») hasta REGRESAR (el buscador) o
+  REGRESAR+izq/der (las letras de XP). Lo mismo le pasa hoy a la letra ♫ del catálogo. Solo pasa si el dueño lo apaga a distancia en ese
+  momento.
+- Si la página de una pared llega cuando ya se cerró y se volvió a abrir el buscador (sin elegir otra cosa que abra), la pared se abre
+  igual: el mismo patrón que los discos del catálogo (`rocolaOsSpAbriendo` y `searchOpen`).
+- El asistente: con su menú a la vista se queda con los botones (lo de XP), así que no llega nada a g53/g54/g57; ROJO+ABAJO en una pared
+  hace lo mismo que en un disco de XP (primero la vuelta, luego la ayuda encima). No hay escena automática del asistente en la pared.
+- Nada de esto se probó con la API de verdad, la cuenta del dueño, Soloist de verdad ni en el A4; la repetición de los botones del A4
+  (la placa de botones USB) es la que hay que ver allí: mantener el rojo en un disco de una pared y en la pared.
