@@ -39,7 +39,7 @@ using SkiaSharp;
 internal static class ApiFalsa
 {
     sealed class Artista { public string Id, Nombre; }
-    sealed class Cancion { public string Id, Nombre; public Artista Art; public Disco Dis; public int Numero, Ms; }
+    sealed class Cancion { public string Id, Nombre, Isrc; public Artista Art; public Disco Dis; public int Numero, Ms; }
     sealed class Disco { public string Id, Nombre, Tipo = "album"; public Artista Art; public List<Cancion> Canciones = new List<Cancion>(); }
     sealed class Lista { public string Id, Nombre, Dueno; public List<Cancion> Canciones = new List<Cancion>(); }
 
@@ -47,6 +47,9 @@ internal static class ApiFalsa
     static readonly List<Disco> discos = new List<Disco>();
     static readonly List<Cancion> canciones = new List<Cancion>();
     static readonly List<Lista> listas = new List<Lista>();
+    // (la sustitucion invisible, Pruebas/RocolaOs/sustitucion: canciones aparte, que solo salen buscando «isrc:» o «track:"..." artist:"..."»;
+    // sus ids son los del Soloist falso: su tono, su duracion y su envolvente)
+    static readonly List<Cancion> sustitucion = new List<Cancion>();
     static string baseUrl, carpeta, clientId = "id-de-prueba", secreto = "secreto-de-prueba", refresco = "refresco-1";
     static readonly HashSet<string> llavesApp = new HashSet<string>(), llavesCuenta = new HashSet<string>();
     static int n429, seg429 = 30, n5xx, nLlave; static bool cuota429, fecha429;
@@ -130,6 +133,19 @@ internal static class ApiFalsa
             for (int k = 1; k <= 3; k++) { Cancion c = new Cancion { Id = "can6" + discos.Count.ToString("00", CultureInfo.InvariantCulture) + k.ToString(CultureInfo.InvariantCulture), Nombre = "Cancion Lejana " + k.ToString(CultureInfo.InvariantCulture), Art = otra, Dis = d, Numero = k, Ms = 150000 }; d.Canciones.Add(c); canciones.Add(c); }
             discos.Add(d);
         }
+        Artista tc = new Artista { Id = "art80", Nombre = "Trio Calidad" }, tca = new Artista { Id = "art81", Nombre = "Trio Calidad Azul" };
+        Disco joyas = new Disco { Id = "dis080", Nombre = "Joyas de Prueba", Art = tc }, exitos = new Disco { Id = "dis081", Nombre = "Exitos de Todos", Art = tc, Tipo = "compilation" },
+              vivo = new Disco { Id = "dis082", Nombre = "Joyas en Vivo", Art = tc };
+        Action<string, string, Artista, Disco, string> s = (id, nom, ar, di, isrc) => sustitucion.Add(new Cancion { Id = id, Nombre = nom, Art = ar, Dis = di, Numero = sustitucion.Count + 1, Ms = 32000, Isrc = isrc });
+        s("f440d032m1bo", "Bolero de Prueba", tc, joyas, "MXA112600001");
+        s("f560d032m1vr", "Vals Sin Codigo", tc, exitos, "MXA112699902");     // (el recopilatorio)
+        s("f570d032m1vv", "Vals Sin Codigo - En Vivo", tc, vivo, "MXA112699903");   // (otra version)
+        s("f580d032m1vz", "Vals Sin Codigo", tca, joyas, "MXA112699904");     // (otro artista)
+        s("f550d032m1va", "Vals Sin Código", tc, joyas, "MXA112600002");      // (la buena: su disco; con acento)
+        s("f660d032m2cu", "Cumbia Otra Forma", tc, joyas, "MXA112600003");    // (la forma de la envolvente 2: otra grabacion)
+        s("nxsonnollega", "Son Que No Llega", tc, joyas, "MXA112600005");     // (nunca empieza)
+        s("f770d032m1co", "Cumbia Cortada", tc, joyas, "MXA112600006");
+        foreach (Cancion c in sustitucion) c.Dis.Canciones.Add(c);
         Lista propia = new Lista { Id = "lis001", Nombre = "Mi Lista de Prueba", Dueno = "dueno-falso" };
         for (int k = 0; k < 6; k++) propia.Canciones.Add(canciones[k * 3]);
         listas.Add(propia);
@@ -222,6 +238,17 @@ internal static class ApiFalsa
             if (desde < 0 || desde > 1000) { cod = 400; return "{\"error\":{\"status\":400,\"message\":\"Invalid offset\"}}"; }
             string t = (q["q"] ?? "").ToLowerInvariant();
             string tipos = q["type"] ?? "";
+            if (t.StartsWith("isrc:", StringComparison.Ordinal) || t.StartsWith("track:", StringComparison.Ordinal))
+            {   // (las de la sustitucion: por su ISRC, o por titulo y artista -contiene, sin acentos-, como un filtro de campo de la de verdad)
+                List<Cancion> l;
+                if (t.StartsWith("isrc:", StringComparison.Ordinal)) { string i = t.Substring(5).Trim().ToUpperInvariant(); l = sustitucion.FindAll(x => x.Isrc == i); }
+                else
+                {
+                    string tr = Campo(t, "track:"), ar = Campo(t, "artist:");
+                    l = sustitucion.FindAll(x => SinAcentos(x.Nombre).Contains(tr) && (ar.Length == 0 || SinAcentos(x.Art.Nombre).Contains(ar)));
+                }
+                return Escribe(w => { w.WriteStartObject(); w.WritePropertyName("tracks"); Pagina(w, l, limite, desde, CancionEntera); w.WriteEndObject(); });
+            }
             // «artist:"NOMBRE"»: solo las de ese artista (como el filtro de campo de Spotify)
             string deArtista = null;
             if (t.StartsWith("artist:\"", StringComparison.Ordinal) && t.EndsWith("\"", StringComparison.Ordinal) && t.Length > 9) deArtista = t.Substring(8, t.Length - 9);
@@ -281,6 +308,22 @@ internal static class ApiFalsa
         return "{\"error\":{\"status\":404,\"message\":\"Service not found\"}}";
     }
 
+    static string Campo(string q, string nombre)
+    {
+        int i = q.IndexOf(nombre, StringComparison.Ordinal);
+        if (i < 0) return "";
+        i += nombre.Length;
+        if (i < q.Length && q[i] == '"') { int f = q.IndexOf('"', i + 1); return SinAcentos(f > i ? q.Substring(i + 1, f - i - 1) : q.Substring(i + 1)); }
+        int e = q.IndexOf(' ', i); return SinAcentos(e > i ? q.Substring(i, e - i) : q.Substring(i));
+    }
+    static string SinAcentos(string s)
+    {
+        StringBuilder b = new StringBuilder();
+        const string con = "áéíóúüñÁÉÍÓÚÜÑ", sin = "aeiouunAEIOUUN";   // (InvariantGlobalization: Normalize no separa los acentos)
+        foreach (char c in s) { int k = con.IndexOf(c); b.Append(char.ToLowerInvariant(k >= 0 ? sin[k] : c)); }
+        return b.ToString().Trim();
+    }
+
     // ---------- el JSON como el de verdad ----------
     static string Escribe(Action<Utf8JsonWriter> f)
     {
@@ -324,6 +367,7 @@ internal static class ApiFalsa
         w.WriteNumber("disc_number", 1); w.WriteNumber("duration_ms", c.Ms); w.WriteBoolean("explicit", false); w.WriteString("id", c.Id);
         w.WriteBoolean("is_playable", true); w.WriteString("name", c.Nombre); w.WriteNumber("track_number", c.Numero); w.WriteString("type", "track");
         w.WriteString("uri", "spotify:track:" + c.Id); w.WriteBoolean("is_local", false);
+        if (c.Isrc != null) { w.WritePropertyName("external_ids"); w.WriteStartObject(); w.WriteString("isrc", c.Isrc); w.WriteEndObject(); }
     }
     static void CancionEntera(Utf8JsonWriter w, Cancion c) { w.WriteStartObject(); w.WritePropertyName("album"); DiscoSimple(w, c.Dis); CancionCampos(w, c); w.WriteEndObject(); }
     static void CancionSimple(Utf8JsonWriter w, Cancion c) { w.WriteStartObject(); CancionCampos(w, c); w.WriteEndObject(); }

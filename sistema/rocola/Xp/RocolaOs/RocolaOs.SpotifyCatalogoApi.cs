@@ -76,7 +76,7 @@ namespace Rocola
         internal List<RocolaOsSpotifyCatalogoArtista> Artistas = new List<RocolaOsSpotifyCatalogoArtista>();
     }
 
-    internal static class RocolaOsSpotifyCatalogoApi
+    internal static partial class RocolaOsSpotifyCatalogoApi   // (partial: la busqueda de la pareja de la sustitucion invisible va en RocolaOs.CalidadApi.cs)
     {
         internal const string Archivo = "rocola_spotify_api.txt";
         internal const int EsperaBusquedaMs = 300;
@@ -396,6 +396,7 @@ namespace Rocola
                 error = null;
                 return l;
             }
+            if (p.Que == "pareja") return AtiendePareja(c, p.Clave, out error);   // (la sustitucion invisible: RocolaOs.CalidadApi.cs)
             error = "pedido desconocido";
             return null;
         }
