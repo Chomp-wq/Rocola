@@ -15,9 +15,14 @@
 #   python3 maquina.py apagon DIR | boton DIR                      se va la luz | el boton de encendido (espera a que se apague)
 import os, re, socket, subprocess, sys, time
 
-def lanza(d, xp_qcow2, wav, usb=None, cpu="SandyBridge", memoria=3072, extra=None):
+def lanza(d, xp_qcow2, wav, usb=None, cpu="SandyBridge", memoria=3072, extra=None, red=None):
     """Arranca QEMU (suelto: sigue aunque este programa acabe). Devuelve su pid. EXTRA: otro disco (en bruto, sin guardar lo que se
-    escriba), como el segundo de la controladora IDE: lo monta rocola-discos en solo lectura, como cualquier otro disco."""
+    escriba), como el segundo de la controladora IDE: lo monta rocola-discos en solo lectura, como cualquier otro disco.
+    RED (15-11-2026, la prueba de Spotify: sistema/ACT_qemu_spotify.md): una lista de puertos del anfitrion. Con ella la maquina lleva una
+    tarjeta de red (virtio) con la red de usuario de QEMU AISLADA (restrict=on: ni internet ni el anfitrion), salvo esos puertos: lo que
+    la maquina mande a 10.0.2.100:PUERTO llega a 127.0.0.1:PUERTO del anfitrion (guestfwd, un «nc» por conexion), donde estan los
+    servidores de mentira (la API web falsa, el CDN falso de Soloist). Y un xHCI vacio, para enchufar despues la memoria de las llaves
+    (enchufa)."""
     os.makedirs(d, exist_ok=True)
     for s in ("monitor.sock", "serie.sock"):
         p = os.path.join(d, s)
@@ -27,9 +32,15 @@ def lanza(d, xp_qcow2, wav, usb=None, cpu="SandyBridge", memoria=3072, extra=Non
            "-audiodev", "wav,id=snd,path=" + wav, "-device", "intel-hda", "-device", "hda-duplex,audiodev=snd",
            "-drive", "file=%s,format=qcow2,if=none,id=xp,discard=unmap,detect-zeroes=unmap" % xp_qcow2,
            "-device", "ide-hd,drive=xp,bus=ide.0,bootindex=1",
-           "-nic", "none", "-display", "none",
+           "-display", "none",
            "-monitor", "unix:%s,server=on,wait=off" % os.path.join(d, "monitor.sock"),
            "-chardev", "socket,id=ser,path=%s,server=on,wait=off" % os.path.join(d, "serie.sock"), "-serial", "chardev:ser"]
+    if red:
+        fw = ",".join("guestfwd=tcp:10.0.2.100:%d-cmd:nc -N 127.0.0.1 %d" % (int(p), int(p)) for p in red)
+        cmd += ["-netdev", "user,id=red,restrict=on," + fw, "-device", "virtio-net-pci,netdev=red"]
+        if not usb: cmd += ["-device", "qemu-xhci,id=xhci"]
+    else:
+        cmd += ["-nic", "none"]
     if extra:
         cmd += ["-drive", "file=%s,format=raw,if=none,id=extra,snapshot=on" % extra, "-device", "ide-hd,drive=extra,bus=ide.0,unit=1"]
     if usb:
@@ -181,6 +192,15 @@ class Control:
             if c == 0: return True
             time.sleep(cada)
         return False
+
+    def enchufa(self, imagen, nombre="llaves"):
+        """(prueba de Spotify) Enchufa una memoria USB (IMAGEN en bruto, sin guardar lo que se escriba) en el xHCI, con la maquina en marcha:
+        removible, como una de verdad."""
+        self.monitor("drive_add 0 if=none,id=%s,file=%s,format=raw,snapshot=on" % (nombre, imagen), 1.0)
+        return self.monitor("device_add usb-storage,bus=xhci.0,drive=%s,removable=on,id=%s-usb" % (nombre, nombre), 1.0)
+
+    def desenchufa(self, nombre="llaves"):
+        return self.monitor("device_del %s-usb" % nombre, 1.0)
 
     def apagon(self):
         """Se va la luz: QEMU se cierra en seco (nada corre al cerrar)."""

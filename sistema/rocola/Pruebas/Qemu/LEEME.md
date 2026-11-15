@@ -58,3 +58,22 @@ python3 prueba.py                        # todas las fases (una hora larga); o a
   la consola de mantenimiento la corta si no se cerró en 20 s; el botón de encendido apaga a los 15 s. Por eso la fase `boton` pone
   antes el dibujo por procesador (`gpu=0`, unos 5 s por cuadro en QEMU).
 - `rocola_error.txt` se llena de «Pantalla parada ...»: es lo lento de QEMU.
+
+## La junta de Spotify (15-11-2026): `spotify.py`
+
+Sigue a `prueba.py` sobre el sistema que dejó instalado (`Q=/root/rocola-trabajo/act/qemu-spotify`) y prueba Spotify de punta a punta con
+**todo inventado**: el Soloist **falso** (`Xp/Pruebas/RocolaOs/spotify-xp/SoloistFalso`, NativeAOT) servido como
+`soloist_release_x86_64.tar.gz` por el CDN de mentira de `Pruebas/Soloist/servidor.py`, la API web falsa del catálogo
+(`Xp/Pruebas/RocolaOs/catalogo/ApiFalsa`) y llaves inventadas en una memoria USB de mentira (FAT32) que se enchufa en caliente. **Nunca el
+Soloist de verdad.** Resultados: `sistema/ACT_qemu_spotify.md`.
+
+- La red: `maquina.py lanza(..., red=[puertos])` da una tarjeta virtio con la red de usuario de QEMU **aislada** (`restrict=on`), salvo
+  `10.0.2.100:PUERTO`, que va a `127.0.0.1:PUERTO` del anfitrión (`guestfwd` con `nc -N`), y un xHCI vacío para la memoria (`enchufa`).
+  Dentro, `reenvia` (`reenvia.c`, solo en la imagen de prueba: `arma.sh`) pone esos puertos en `127.0.0.1`, y `S99rocola` lee
+  `/etc/rocola-prueba-entorno` (solo en la imagen de prueba): las variables de prueba (`SOLOIST_URL`, `ROCOLA_SPOTIFY_API`, ...,
+  `SOLOIST_FALSO_PULSO=1`, `SOLOIST_FALSO_SEG`) y la línea que abre `reenvia` antes que la rocola.
+- `arma.sh` pone además `rocola-pulso` como el paso 5b de `rapida.sh` (compilado aquí, sus 48 funciones, sin pedir una glibc que el
+  sistema no tenga).
+- Fases (`python3 spotify.py [FASE...]`): `prepara` (el `.tar.gz`, la memoria y los dos servidores, que quedan corriendo), `limpia` (la
+  rocola instalada sin nada de Spotify y sin créditos), `sinllave`, `red`, `pide`, `noche`, `kill`, `sonido` y `fin`. Deja
+  `$Q/spotify.txt`, `$Q/spotify/` (lo que dijeron las órdenes, las bitácoras, los tramos) y las capturas (también en `$CAPTURAS` si se da).
