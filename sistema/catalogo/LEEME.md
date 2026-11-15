@@ -110,12 +110,12 @@ están en MusicBrainz y Wikidata.
 | `MAX_GENERO_LETRA` | 0,35 | parte del tope que puede llevarse un género en una letra |
 | `PESO_ESCUCHAS`, `PESO_OYENTES`, `PESO_WIKIPEDIAS` | 0,45 / 0,30 / 0,25 | la mezcla de la fama |
 | `LOG_ESCUCHAS_TOPE`, `LOG_OYENTES_TOPE`, `LOG_WIKIPEDIAS_TOPE` | 8 / 6 / 2,5 | escala logarítmica: 100 millones de escuchas, 1 millón de oyentes o ~316 Wikipedias valen 1 |
-| `FACTOR_MEXICO` | 1,6 | artistas de México |
+| `FACTOR_MEXICO` | 3 | artistas de México |
 | `FACTOR_HISPANO` | 1,3 | AR BO CL CO CR CU DO EC ES GQ GT HN NI PA PE PR PY SV UY VE |
-| `FACTOR_GENERO` | Regional 1,5; Tropical 1,35; Bolero 1,35; Latino 1,3; Reggaeton 1,25; el resto 1 | familia de género |
+| `FACTOR_GENERO` | Regional 3; Tropical 2,5; Bolero 2,5; Latino 2,2; Reggaeton 2; Flamenco 1,5; el resto 1 | familia de género |
 
 Fama = (0,45·min(1, log10(1+escuchas)/8) + 0,30·min(1, log10(1+oyentes)/6) + 0,25·min(1, log10(1+Wikipedias)/2,5)) · país · género
-/ (1,6 · 1,5) · 1 000 000, redondeada. Así, a iguales números, un artista regional de México vale 2,4 veces uno de rock de Inglaterra.
+/ (3 · 3) · 1 000 000, redondeada. Así, a iguales números, un artista regional de México vale 9 veces uno de rock de Inglaterra (subido el 15-11-2026: en la primera corrida real lo regional y lo latino quedaban fuera por el tope en las letras llenas).
 
 ## Cómo se corre
 

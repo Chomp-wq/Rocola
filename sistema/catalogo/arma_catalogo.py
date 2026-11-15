@@ -47,10 +47,10 @@ LOG_ESCUCHAS_TOPE = 8.0           # log10: 100 millones de escuchas = 1
 LOG_OYENTES_TOPE = 6.0            # log10: 1 millon de oyentes = 1
 LOG_WIKIPEDIAS_TOPE = 2.5         # log10: ~316 Wikipedias = 1
 
-FACTOR_MEXICO = 1.6
-FACTOR_HISPANO = 1.3              # paises de habla hispana y Puerto Rico
+FACTOR_MEXICO = 3.0
+FACTOR_HISPANO = 2.0              # paises de habla hispana y Puerto Rico
 PAISES_HISPANOS = frozenset('AR BO CL CO CR CU DO EC ES GQ GT HN NI PA PE PR PY SV UY VE'.split())
-FACTOR_GENERO = {'Regional': 1.5, 'Tropical': 1.35, 'Bolero': 1.35, 'Latino': 1.3, 'Reggaeton': 1.25}
+FACTOR_GENERO = {'Regional': 3.0, 'Tropical': 2.5, 'Bolero': 2.5, 'Latino': 2.2, 'Reggaeton': 2.0, 'Flamenco': 1.5}
 
 # Discos: tipo principal Album y sin estos tipos secundarios (los nombres de release_group_secondary_type)
 TIPOS_SECUNDARIOS_FUERA = frozenset(['Spokenword', 'Interview', 'Audiobook', 'Audio drama', 'Demo', 'DJ-mix', 'Mixtape/Street',
