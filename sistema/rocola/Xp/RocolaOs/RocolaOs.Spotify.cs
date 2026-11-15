@@ -670,8 +670,12 @@ namespace Rocola
                     if (!st.Ws && ahora - st.WsCambioMs > 10000) Termina(p, RocolaOsSpotifyPeticion.WsCaido);
                     else if (st.Status == "playing")
                     {
+                        // (la prueba del sistema entero en QEMU, sistema/ACT_qemu_spotify.md) solo cuenta mientras el anillo esta VACIO para la
+                        // rocola: si hay sonido esperando a que la rocola lo lea, Soloist no puede escribir mas (rocola-pulso solo le deja ~250 ms
+                        // por delante) y el que no lee es la rocola -su tarjeta aun arrancando, la pantalla parada-, no Soloist. Antes se
+                        // devolvia la primera de Spotify cada vez que la rocola tardaba mas de 5 s en arrancar la salida (en QEMU, 3 de 3).
                         long e = Anillo.Escrito;
-                        if (e != p.UltimoEscrito) { p.UltimoEscrito = e; p.UltimoEscritoMs = ahora; }
+                        if (e != p.UltimoEscrito || Anillo.Pendientes > 0) { p.UltimoEscrito = e; p.UltimoEscritoMs = ahora; }
                         else if (ahora - p.UltimoEscritoMs > 5000) Termina(p, RocolaOsSpotifyPeticion.SinSonido);
                     }
                     else p.UltimoEscritoMs = ahora;

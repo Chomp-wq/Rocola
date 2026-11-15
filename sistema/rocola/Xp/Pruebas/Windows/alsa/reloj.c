@@ -79,6 +79,10 @@ static snd_pcm_sframes_t r_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_
 static int r_start(snd_pcm_ioplug_t *io)
 {
 	reloj_t *r = io->private_data;
+	/* (RELOJ_ARRANQUE_LENTO_MS: la tarjeta tarda en arrancar -como la rocola en QEMU con la pantalla parada al arrancar una cancion-;
+	 * mientras, nadie lee lo que llega: la escena «lento» de spotify-xp, sistema/ACT_qemu_spotify.md) */
+	const char *lento = getenv("RELOJ_ARRANQUE_LENTO_MS");
+	if (lento && atoi(lento) > 0) { struct timespec z = { atoi(lento) / 1000, (atoi(lento) % 1000) * 1000000L }; apunta(r, "ARRANCA-LENTO"); nanosleep(&z, NULL); }
 	clock_gettime(CLOCK_MONOTONIC, &r->t0); r->sonados_t0 = r->sonados; r->corriendo = 1; r->pausa = 0;
 	apunta(r, "ARRANCA");
 	return 0;

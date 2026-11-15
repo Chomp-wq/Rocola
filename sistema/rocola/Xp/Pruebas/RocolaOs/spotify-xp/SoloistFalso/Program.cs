@@ -28,7 +28,7 @@
 //       cola:URI      alguien anade URI a la cola de Spotify (queue_changed)
 //   - lo que recibe y lo que pasa, en SOLOIST_FALSO_LOG (un renglon por cosa: «ms  quien  que»)
 // Variables: SOLOIST_FALSO_SESION (1 de fabrica: ya emparejado), SOLOIST_FALSO_ACTIVA (0 de fabrica: la rocola tiene que mandar activate),
-// SOLOIST_FALSO_LOG, SOLOIST_FALSO_GUION, SOLOIST_FALSO_FIN, SOLOIST_FALSO_CADUCADO, ROCOLA_SPOTIFY_ANILLO (o /run/rocola-xp/spotify/sonido.anillo).
+// SOLOIST_FALSO_LOG, SOLOIST_FALSO_GUION, SOLOIST_FALSO_FIN, SOLOIST_FALSO_CADUCADO, SOLOIST_FALSO_SEG (la duracion de las que no la dicen en su id; 30 s de fabrica), SOLOIST_FALSO_PULSO, ROCOLA_SPOTIFY_ANILLO (o /run/rocola-xp/spotify/sonido.anillo).
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -92,6 +92,16 @@ static unsafe class SoloistFalso
                 case "-v": case "--verbose": break;
                 default: Console.Error.WriteLine("soloist-falso: no conozco «" + a + "»"); return 1;
             }
+        }
+        // (la prueba del sistema entero en QEMU, sistema/ACT_qemu_spotify.md: ahi el vigilante de verdad saca SOLO el programa «soloist»
+        // del .tar.gz y lo arranca sin --por-pulso, como al de verdad; con SOLOIST_FALSO_PULSO=1 el sonido va por el libpulse.so.0 de la
+        // primera carpeta de LD_LIBRARY_PATH, la de rocola-pulso que le pone el vigilante: lo mismo que hace soloist-envoltorio.sh)
+        if (porPulso == null && Environment.GetEnvironmentVariable("SOLOIST_FALSO_PULSO") == "1")
+        {
+            string ld = Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? "";
+            int dp0 = ld.IndexOf(':');
+            if (dp0 >= 0) ld = ld.Substring(0, dp0);
+            if (ld.Length > 0) porPulso = Path.Combine(ld, "libpulse.so.0");
         }
         log = Environment.GetEnvironmentVariable("SOLOIST_FALSO_LOG");
         if (Environment.GetEnvironmentVariable("SOLOIST_FALSO_CADUCADO") == "1") { Apunta("soloist", "caducado: sale con 10"); return 10; }
@@ -187,6 +197,8 @@ static unsafe class SoloistFalso
             string id = uri.StartsWith("spotify:track:") ? uri.Substring(14) : "";
             nunca = id.StartsWith("nx");
             hz = 300; double seg = 30;
+            // (la prueba en QEMU: con SOLOIST_FALSO_SEG=SEG las que no dicen su duracion en el id duran SEG segundos)
+            if (double.TryParse(Environment.GetEnvironmentVariable("SOLOIST_FALSO_SEG") ?? "", NumberStyles.Float, CultureInfo.InvariantCulture, out double segv) && segv >= 1 && segv <= 3600) seg = segv;
             if (id.Length > 0 && id[0] == 'f')
             {
                 int d = id.IndexOf('d');
@@ -249,7 +261,14 @@ static unsafe class SoloistFalso
             while (fin < 4 && (b = s.ReadByte()) >= 0) { char ch = (char)b; cab.Append(ch); fin = (ch == '\r' || ch == '\n') ? fin + 1 : 0; }
             string key = null;
             foreach (string l in cab.ToString().Split("\r\n")) if (l.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase)) key = l.Substring(18).Trim();
-            if (key == null) { tc.Close(); return; }
+            if (key == null)
+            {
+                // (una peticion que no es de WebSocket -«spotify prueba» mira con curl si el puerto contesta-: como un servidor de WebSocket
+                // de verdad, 426 y se cierra; antes se cerraba sin contestar y curl lo daba por muerto)
+                byte[] no = Encoding.ASCII.GetBytes("HTTP/1.1 426 Upgrade Required\r\nUpgrade: websocket\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+                try { s.Write(no, 0, no.Length); } catch (IOException) { }
+                tc.Close(); return;
+            }
             string acc = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
             byte[] r = Encoding.ASCII.GetBytes("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + acc + "\r\n\r\n");
             s.Write(r, 0, r.Length);

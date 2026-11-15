@@ -7,7 +7,7 @@
 # Soloist de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): apagado fabrica dos mezcla celular carrera fallos fuera frecuencia apagon portada pulso vigilante noche
+#   escenas (de fabrica todas): apagado fabrica dos mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche
 #   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
 #   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
 #   «vigilante» (sin el, no se corre): rocola-xp lo abre y el abre el Soloist falso por soloist-envoltorio.sh (SOLOIST_BIN); y para «fabrica»
@@ -23,7 +23,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado fabrica dos mezcla celular carrera fallos fuera frecuencia apagon portada pulso vigilante noche}"
+partes="${*:-apagado fabrica dos mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -45,7 +45,7 @@ if [ ! -f "$FALSO/soloist-falso.dll" ] || [ "$G/SoloistFalso/Program.cs" -nt "$F
     -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$FALSO/obj/" > "$W/falso-build.txt" 2>&1 || { cat "$W/falso-build.txt"; exit 1; }
 fi
 A=$W/../alsa; mkdir -p "$A"
-if [ ! -f "$A/libasound_module_pcm_reloj.so" ]; then gcc -shared -fPIC -DPIC -O2 -o "$A/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound || exit 1; fi
+if [ ! -f "$A/libasound_module_pcm_reloj.so" ] || [ "$XP/Pruebas/Windows/alsa/reloj.c" -nt "$A/libasound_module_pcm_reloj.so" ]; then gcc -shared -fPIC -DPIC -O2 -o "$A/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound || exit 1; fi
 
 # ---------- una corrida ----------
 # abre NOMBRE DATOS "PULSA" "PIDE" SEGUNDOS SENAL [VAR=valor...]: la rocola con esos datos, las teclas PULSA (ROCOLA_PULSA), los pedidos de
@@ -335,6 +335,24 @@ if [[ " $partes " == *" fallos "* ]]; then
   si "fallos: el vigilante lo vuelve a abrir y la rocola se reconecta" bash -c "grep -q 'soloist salio con 1' '$o/vigilante.txt' && [ \$(grep -c 'conectado con Soloist' '$b') -ge 2 ]"
   si "fallos: despues, una nueva suena entera (660 Hz, 4 s: $(oye "$f" 660) s)" entre "$(oye "$f" 660)" 3.7 4.3
   si "fallos: 3 devueltas y la ultima cobrada: quedan 3 creditos (estado: devueltas=$(estado $o devueltas))" bash -c "[ '$(estado $o devueltas)' = 3 ] && grep -qF 'pide spotify:track:f660d004cc listo=1 entro=1 creditos 4->3' '$(log $o)'"
+fi
+
+# ---------------------------------------------------------------- lento: la tarjeta de la ROCOLA tarda en arrancar (R4 no culpa a Soloist)
+# (la prueba del sistema entero en QEMU, sistema/ACT_qemu_spotify.md: con la pantalla parada 6 s al arrancar la cancion, la rocola no leia
+# el anillo, Soloist no podia escribir -rocola-pulso solo le deja ~250 ms por delante- y a los 5 s «el anillo sin sonido» devolvia la
+# primera de Spotify, 3 de 3 veces). La tarjeta de prueba tarda 7 s en arrancar (RELOJ_ARRANQUE_LENTO_MS): la cancion no se devuelve y
+# suena entera; y «fallos» sigue viendo el corte de verdad (Soloist deja de escribir con la rocola leyendo).
+if [[ " $partes " == *" lento "* ]]; then
+  echo "== lento (R4: la rocola tarda en leer; no es Soloist: no se devuelve)"
+  d=$(datos lento); T0=$(date +%s.%N)
+  abre lento "$d" "7:67" "9:pide spotify:track:f440d020aa|$P|20000;37:copia" 38 TERM ROCOLA_OS=spotify,spotify-prueba RELOJ_ARRANQUE_LENTO_MS=7000
+  o="$W/lento"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$f" | head -10; grep -E 'suena|acaba|acabo|DEVUELTA' "$b" | sed 's/^/   /'; grep -c ARRANCA-LENTO "$o/registro.txt" | sed 's/^/   arranques lentos de la tarjeta: /'
+  si "lento: sale con 0" test "$(cat $o/salio)" = 0
+  si "lento: la tarjeta tardo en arrancar (7 s)" contiene "$o/registro.txt" "ARRANCA-LENTO"
+  si "lento: no se devuelve (la que no leia era la rocola, no Soloist)" nocontiene "$b" "DEVUELTA spotify:track:f440d020aa"
+  si "lento: acaba al terminar (no por «el anillo sin sonido»)" contiene "$b" "acabo spotify:track:f440d020aa (Prueba): termino"
+  si "lento: y suena entera (440 Hz, 20 s: $(oye "$f" 440) s)" entre "$(oye "$f" 440)" 19.4 20.6
 fi
 
 # ---------------------------------------------------------------- fuera: Soloist se cae y NO vuelve (sin llave, caducado) (revision)
