@@ -5,7 +5,7 @@
 # son arriba 38, abajo 40, izq 37, der 39, poner 13, regresar 27, moneda 67).
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   API: la carpeta con api-falsa.dll (por defecto /root/rocola-trabajo/fase11/catalogo/api-falsa)
+#   API: la carpeta con api-falsa.dll (por defecto /root/rocola-trabajo/fase11/catalogo/api-falsa; se compila si falta o si cambio)
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/catalogo/prueba; se rehace)
 #   CAPTURAS: si se pone, las capturas para el dueno van ahi (PNG)
 # escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion suena (todas, de fabrica)
@@ -21,7 +21,15 @@ W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 CAPTURAS=${CAPTURAS:-}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/catalogo/falso}
+if [ ! -f "$API/api-falsa.dll" ] || [ "$G/ApiFalsa/Program.cs" -nt "$API/api-falsa.dll" ]; then
+  echo "(compilando la API falsa en $API)"; mkdir -p "$API"
+  flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$G/ApiFalsa/ApiFalsa.csproj" -c Release -o "$API" --disable-build-servers \
+    -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$API/obj/" > "$API/build.txt" 2>&1 || { cat "$API/build.txt"; exit 1; }
+fi
 SX="$G/../spotify-xp"
+# la tarjeta de prueba con reloj (Pruebas/Windows/alsa/reloj.c, la del nucleo): suena a su ritmo (con «null» una cancion de 30 s se acaba en 2)
+AL=$(dirname "$FALSO")/alsa; mkdir -p "$AL"
+[ -f "$AL/libasound_module_pcm_reloj.so" ] || gcc -shared -fPIC -DPIC -O2 -o "$AL/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound || exit 1
 if [ ! -f "$FALSO/soloist-falso.dll" ] || [ "$SX/SoloistFalso/Program.cs" -nt "$FALSO/soloist-falso.dll" ]; then
   echo "(compilando el Soloist falso en $FALSO)"; mkdir -p "$FALSO"
   flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$SX/SoloistFalso/SoloistFalso.csproj" -c Release -o "$FALSO" --disable-build-servers \
@@ -50,7 +58,8 @@ control() { curl -s --noproxy '*' "http://127.0.0.1:$P/control/$1" > /dev/null; 
 abre() {
   local n="$1" d="$2" pulsa="$3" seg="$4"; shift 4
   local o="$W/$n"; mkdir -p "$o/run" "$o/soloist"
-  ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" \
+  printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj  file "%s"  registro "%s" }\n' "$AL/libasound_module_pcm_reloj.so" "$o/sonado.raw" "$o/registro.txt" > "$o/alsa.conf"
+  ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" \
       ROCOLA_CAPTURA_SALE=0 ROCOLA_TRAZA_VENTANAS="$o/traza.txt" ROCOLA_SPOTIFY_API="http://127.0.0.1:$P/v1" ROCOLA_SPOTIFY_CUENTAS="http://127.0.0.1:$P" \
       ROCOLA_SOLOIST_DATOS="$o/soloist" ROCOLA_SOLOIST_BIN="$SX/vigilante-falso.sh" SOLOIST_FALSO_BIN="$FALSO" \
       SOLOIST_FALSO_LOG="$o/falso.txt" VIGILANTE_FALSO_LOG="$o/vigilante.txt" \
@@ -58,7 +67,7 @@ abre() {
   ROCOLA=$!
   ( sleep "$seg"; kill -TERM $ROCOLA 2>/dev/null; sleep 30; kill -KILL $ROCOLA 2>/dev/null ) & VIG=$!
 }
-espera() { wait $ROCOLA; echo $? > "$W/$1/salio"; kill $VIG 2>/dev/null; wait $VIG 2>/dev/null; kill $APIPID 2>/dev/null; wait $APIPID 2>/dev/null; }
+espera() { wait $ROCOLA; echo $? > "$W/$1/salio"; [ "$1" = suena ] || rm -f "$W/$1/sonado.raw"; kill $VIG 2>/dev/null; wait $VIG 2>/dev/null; kill $APIPID 2>/dev/null; wait $APIPID 2>/dev/null; }
 datos() {   # NOMBRE MODO(apagado|encendido|cuenta): los datos de partida con lo de la escena
   local d="$W/datos-$1"; rm -rf "$d"; mkdir -p "$d"; cp -r "$DATOS0"/. "$d"/
   case "$2" in
@@ -185,19 +194,15 @@ for e in $escenas; do
     si "cuenta: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
   suena)
     # LO QUE SUENA CON UNA DE SPOTIFY: se pide la 1a de «inventad», se cierra el buscador y la barra de abajo de XP dice lo que suena. Con la
-    # tarjeta de prueba con reloj (Pruebas/Windows/alsa/reloj.c, la del nucleo): suena a su ritmo y no se acaba en un momento
-    apifalsa $e; d=$(datos $e encendido); o="$W/$e"; mkdir -p "$o"
-    AL=$(dirname "$FALSO")/alsa; mkdir -p "$AL"
-    [ -f "$AL/libasound_module_pcm_reloj.so" ] || gcc -shared -fPIC -DPIC -O2 -o "$AL/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound
-    printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj  file "%s"  registro "%s" }\n' "$AL/libasound_module_pcm_reloj.so" "$o/sonado.raw" "$o/registro.txt" > "$o/alsa.conf"
-    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13,19.5:27+38" 25 ROCOLA_OS=1 ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf \
+    # tarjeta de prueba con reloj: suena a su ritmo y no se acaba en un momento
+    apifalsa $e; d=$(datos $e encendido); o="$W/$e"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13,19.5:27+38" 25 ROCOLA_OS=1 \
       ROCOLA_CAPTURA="$(cap 19.2 buscador-sonando-spotify),$(cap 22.5 suena-spotify)"
     espera $e
     si "suena: sale con 0" test "$(cat $o/salio)" = 0
     si "suena: una pedida, y Soloist la toca ($(plays $o))" bash -c "[ $(pedidos $o) = 1 ] && [ \"\$(plays $o)\" = 'spotify:track:can0000 ' ]"
     si "suena: el nucleo dice que suena (y no que acabo)" bash -c "grep -qF 'suena spotify:track:can0000' '$d/rocola_spotify.txt' && ! grep -qF 'acabo spotify:track:can0000' '$d/rocola_spotify.txt'"
-    si "suena: por la tarjeta salio sonido (sonado.raw de mas de 1 s)" test "$(cat "$o/sonado.raw" 2>/dev/null | wc -c)" -gt 352800
-    rm -f "$o/sonado.raw" ;;
+    si "suena: por la tarjeta salio sonido (sonado.raw de mas de 1 s)" test "$(cat "$o/sonado.raw" 2>/dev/null | wc -c)" -gt 352800; rm -f "$o/sonado.raw" ;;
   sinsesion)
     # SOLOIST SIN SESION (I6 dice que no esta listo: el vigilante sale al momento y no hay Soloist): no se pide ni se cobra; el aviso de XP
     apifalsa $e; d=$(datos $e encendido)

@@ -103,24 +103,55 @@ hace el vigilante del grupo «soloist» (ver «Para los otros grupos»).
 | g49 | `Form1.Biblioteca.cs` 2926 (EnterAlbum) | Entrar a un disco sin sus canciones las pide |
 | g50 | `PreviewsIndexadosGpu.cs` 160 (IndexedSave) | La previa de 32 px de Spotify no va al disco |
 
-`ganchos.py`: TODO BIEN (21 ganchos en 9 archivos; los 109 archivos de `Codigo/` vuelven byte a byte a fc7b667 devolviendo los ganchos).
+Con el núcleo juntado (sus g13, g20, g23 y g24), `ganchos.py`: TODO BIEN (24 ganchos en 11 archivos; los 109 archivos de `Codigo/`
+vuelven byte a byte a fc7b667 devolviendo los ganchos). `diff-xp.py --sin-ganchos` en los 109 archivos: 5 095 líneas quitadas, 4 828
+puestas y 229 sin marca, las mismas cuentas que la base (22 ganchos devueltos en 9 archivos).
+
+**g40 es la línea de g12 del plan** (el buscador flexible y por letra de la oleada 4, que también va «debajo de lo de XP»). Cuando llegue
+g12, las dos cosas tienen que ir en la MISMA línea: `searchOverlay.Results = RocolaOsSpotifyCatalogoResultados(query, <lo de g12>(query, res));`
+(lo flexible debajo de lo exacto de XP, y lo de Spotify como hoy: después de las primeras 8). Lo junta el coordinador.
 
 ## 4. La junta con el núcleo (I6)
 
-Mientras el núcleo no esté juntado, I6 es un **doble**: `RocolaOs/RocolaOs.SpotifyCatalogoDobleI6.cs`. Registra la función «spotify»
-(I3: `spotify=1`, de fábrica apagada; `spotify_nombre`, de fábrica «Rocola»), y da `RocolaOsSpotifyPista`, `RocolaOsSpotifyListo` y
-`RocolaOsSpotifyPide` (cobra con lo de XP y avisa con lo de XP, **sin meter nada en la cola**, y apunta cada pedido en
-`ROCOLA_RUN/rocola-xp/spotify/doble-pedidos` para las pruebas). **Al juntar el núcleo: se borra ese archivo entero** (el núcleo da lo
-mismo de verdad) y se vuelve a correr `Pruebas/RocolaOs/catalogo/prueba.sh` (las comprobaciones de «pedidas» leen `doble-pedidos`:
-con el núcleo hay que cambiarlas para leer la cola o la bitácora del núcleo).
+**Juntado** (merge de `fase11-spotify-xp` en 3d5e532, el 15-11-2026): I6 es el de verdad (`RocolaOs/RocolaOs.SpotifyPide.cs`) y el doble
+del catálogo (`RocolaOs.SpotifyCatalogoDobleI6.cs`) **se borró**. Lo único que cambió en el catálogo: al pedir se llama
+`RocolaOsSpotifyPide(p, searchOpen)` (la sobrecarga del núcleo con los avisos del buscador, los de `ChooseSearchResult` de XP, cuando se
+pide desde el buscador; desde un disco, los de `AddSong`). Antes de pedir, el catálogo mira `RocolaOsSpotifyListo`: si Soloist no tiene
+sesión no pide nada y sale el aviso de XP «Espera un momento y vuelve a intentarlo».
+
+La prueba ahora corre con el núcleo de verdad y **el Soloist FALSO del núcleo** (`Pruebas/RocolaOs/spotify-xp/SoloistFalso`, abierto por su
+`vigilante-falso.sh`; nunca el de verdad): lo pedido se cuenta por las líneas «COBRADA» de la bitácora del núcleo (`rocola_spotify.txt`) y por
+los `play` que le llegan al Soloist falso, y suena por la tarjeta de prueba con reloj (`Pruebas/Windows/alsa/reloj.c`).
 
 Lo que el catálogo le pasa al núcleo en cada `RocolaOsSpotifyPista`: `Uri` (`spotify:track:ID`), `Titulo`, `Artista` (los artistas
-separados por «, »), `Disco`, `DuracionMs`, `PortadaUrl` (la imagen de ~300 px del disco) y `DiscoUri`. El catálogo ya baja la portada de
-cada disco a `/run/rocola-xp/spotify/portadas/<id del disco>.jpg`: si el núcleo la nombra igual, no se baja dos veces.
+separados por «, »), `Disco`, `DuracionMs`, `PortadaUrl` (la imagen de ~300 px del disco) y `DiscoUri`. El catálogo baja la portada de cada
+disco a `/run/rocola-xp/spotify/portadas/<id del disco>.jpg`. En 3d5e532 el núcleo nombra la suya por la canción (`<id de la canción>.jpg`),
+así que la primera vez que se pide una canción el núcleo la baja otra vez y esa vez la portada no va con la canción en la cola; en su copia
+de trabajo el núcleo ya la nombra por el disco (sin commit todavía): cuando lo suba, las dos son el mismo archivo y no se baja dos veces.
 
 ## 5. Las comprobaciones (con números)
 
-(se completan abajo, en «Resultados»)
+`Pruebas/RocolaOs/catalogo/prueba.sh` (rocola-xp de verdad, fuera de pantalla, teclas con `ROCOLA_PULSA`, datos inventados de `datos0`, la
+API web FALSA de `ApiFalsa/` y el núcleo con el Soloist falso). Diez escenas:
+
+| Escena | Qué hace | Comprueba |
+|---|---|---|
+| `apagado` | sin `ROCOLA_OS`, escribe en el buscador | 0 peticiones a la API (ni la llave), nada en /run, nada de `RocolaOs:spotify` en la traza |
+| `cero` | `ROCOLA_OS=1` y `spotify=0` | lo mismo, y la traza igual a la de `apagado` quitando lo de RocolaOs (`compara_trazas.py --ignora`, con la holgura del ruido) |
+| `busca` | «inventad» (XP no tiene nada), entra a las tarjetas y pide la 1.ª y la 2.ª | 1 búsqueda a la API, 1 llave de la app, ninguna otra petición; 2 COBRADAS en su orden con título y artista; el `play` de la 1.ª en el Soloist falso; portadas y miniaturas en /run y nada en los datos; el estado; ni secretos ni llaves en datos y /run; nada en `rocola_biblioteca.txt` |
+| `mezcla` | «tema»: lo de XP y lo de Spotify juntos | las de XP primero (captura), 1 o 2 búsquedas, la última «tema» |
+| `disco` | abre un disco desde el buscador y pide la 1.ª y la 2.ª con PONER; REGRESAR | las búsquedas y **1** petición del disco; las 2 COBRADAS son la 1.ª y la 2.ª del disco |
+| `artista` | elige un artista | las búsquedas y **1** de sus discos; nada pedido |
+| `fallos` | 401 de llave vencida, 503 y 429 (la API falsa cambia de humor por lo que ya contestó) | 401 → otra llave → la misma otra vez (200); 503 → otra vez al segundo (200); 429 una vez y **ninguna** petición más a /v1 (dos consultas más no preguntan); «Spotify frena (429)…» con la cuota en la bitácora; el estado dice `api=frena` y `frena_s=N cuota` |
+| `cuenta` | con `refresh_token`: la letra ♫ con lo de la cuenta, abre una lista propia y pide | 3 peticiones de la cuenta, 1 de la lista propia, la ajena nunca; la llave de refresco rotada se guarda encima (0600, sin la vieja); 1 COBRADA |
+| `sinsesion` | sin Soloist (el vigilante sale al momento) | nada pedido ni cobrado; la bitácora lo dice |
+| `suena` | pide una, cierra el buscador | 1 COBRADA y el Soloist la toca; el núcleo dice que suena; salió sonido por la tarjeta |
+
+**Peticiones por acción** (contadas por la API falsa): buscar = **1** (más la llave de la app una vez por hora); abrir un disco = **1**; los
+discos de un artista = **1**; lo de la cuenta = **3**, una vez por sesión; abrir una lista propia = **1**; buscar lo mismo otra vez = **0**;
+las portadas no son de la API.
+
+RESULTADOS: ver «Resultados» al final.
 
 ## 6. Para lo visual (para la presentación del final; no se hizo nada nuevo)
 
@@ -135,3 +166,36 @@ cada disco a `/run/rocola-xp/spotify/portadas/<id del disco>.jpg`: si el núcleo
   («Spotify no responde», «Spotify frena») sería nuevo.
 - «Tus favoritas» y las listas propias usan la portada de su primera canción o la de la lista.
 - Lo que suena con una de Spotify lo pinta el núcleo (con los datos de I6).
+
+## 7. Para los otros grupos
+
+- **soloist** (el vigilante): copia `rocola_spotify_api.txt` de la raíz de la memoria USB a `/rocola/datos/xp/rocola_spotify_api.txt`
+  (0600), igual que la llave de Soloist (en su rama ya está: `rocola-soloist`, `importa_llaves`). El catálogo vuelve a leer el archivo si
+  cambia (lo mira cada 5 s como mucho): no hace falta reiniciar la rocola.
+- **spotify-xp** (el núcleo): la portada nombrada por el disco (ya en su copia de trabajo, sin commit en 3d5e532: ver §4).
+- **coordinador**: g40 comparte la línea de g12 (§3). La API falsa y el Soloist falso solo existen en `Pruebas/` (fuera de
+  `RocolaXp.csproj`).
+
+## 8. Riesgos
+
+- **La cuota de Spotify** (modo desarrollo, por cuenta de desarrollador): una fiesta con muchas búsquedas. Se busca desde 3 letras, a los
+  300 ms de dejar de escribir y una sola vez por consulta (luego, de memoria). Con 429 la rocola no pregunta nada hasta su `Retry-After`; los
+  bloqueos reportados son de horas: entonces el buscador solo da lo de XP (y lo ya buscado, de memoria).
+- **La API web cambia seguido** (febrero, marzo, mayo y julio de 2026). Si una ruta deja de valer, lo de esa pantalla queda vacío y la
+  bitácora apunta el código; la música de XP sigue igual.
+- **Client Credentials con `market=MX`**: si Spotify no tiene una canción en México, no sale (es lo que se puede tocar en el bar).
+- **g40 y g12** en la misma línea (§3).
+- Lo de la cuenta (`refresh_token`) vence a los 6 meses de autorizarla: entonces la letra ♫ solo enseña lo buscado y lo abierto.
+
+## 9. Para el A4 (solo se puede comprobar allí, con la app del dueño y el Soloist de verdad)
+
+1. Con `rocola_spotify_api.txt` (client_id y client_secret de la app del dueño) en la USB: que el vigilante lo copie y que
+   `/run/rocola-xp/spotify/catalogo` diga `api=bien` tras la primera búsqueda.
+2. Buscar un artista conocido: que salgan sus canciones de Spotify debajo de las de XP, con portada, en menos de 1-2 s con la red del bar.
+3. Pedir una con PONER: que cobre 1 crédito, entre en su turno y suene por la rocola (esto ya es el núcleo con Soloist y rocola-pulso).
+4. Abrir un disco y un artista de Spotify desde el buscador; volver con REGRESAR y ver el disco en la letra ♫.
+5. Contar en `/run/rocola-xp/spotify/catalogo` las `peticiones` tras una hora de uso normal (para saber si la cuota alcanza en la fiesta).
+6. Si el dueño autoriza su cuenta (PKCE, `refresh_token`): que la letra ♫ tenga «Tus favoritas», sus discos y sus listas.
+7. Sin internet (desconectar el cable): el buscador solo con lo de XP, sin trabarse; la música de XP sigue.
+
+## 10. Resultados
