@@ -38,3 +38,7 @@
    `rocola_spotify_pares.txt`; 6 s sin sonar = el MP3 sin aviso. Grupo «sustitucion» en su propia rama sobre junta-spotify.
 7. **El asistente con lo nuevo de Spotify** (petición del dueño del 15-11-2026, AGENTS.md): grupo «asistente-spotify» después de juntar
    las paredes del buscador: guías nuevas del asistente con su mismo dibujo, solo con el modo Spotify; sin el modo, el de XP tal cual.
+8. **«AYUDA» siempre en la casilla de la ayuda** (petición del dueño del 15-11-2026): con Rocola OS activo, `AyudaCasillaGpu` no va
+   compacta en 1024x768 (la cabecera cede el sitio). Lo hace el grupo del asistente (es su casilla).
+9. **Después del cumpleaños**: la ventana de Ctrl+F4 con la hoja «Pantalla» (resolución, hercios, colores del monitor, guardado para
+   siempre, con prueba de 15 s y vuelta a lo automático). AGENTS.md, petición del 15-11-2026.
