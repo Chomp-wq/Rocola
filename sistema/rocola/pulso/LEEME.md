@@ -174,18 +174,26 @@ vaciado_hasta=escrito, gen_vaciado+1, gen_flujo+1, latido y el tapado real.
 
 1. Abrir (y crear si hace falta) como arriba; poner `latencia_lector_us`,
    `latido_lector_ns` y despues `lector_presente=1`; al cerrar,
-   `lector_presente=0`.
+   `lector_presente=0`. Al abrir (y al reabrir), `leido = max(leido,
+   vaciado_hasta)`: lo vaciado antes de llegar no se toca.
 2. Cada periodo de su tarjeta: latido; si cambio `gen_flujo`, releer
    `frecuencia` (0 = no hay flujo); si cambio `gen_vaciado`,
    `leido = max(leido, vaciado_hasta)`.
 3. No consumir con `tapado=1`, con `frecuencia=0`, ni si `latido_escritor_ns`
    tiene mas de 2 s (el escritor murio sin avisar: un Soloist matado deja
    `tapado=0` y la frecuencia puesta).
-4. Tomar como mucho `escrito − leido` cuadros (acotado a la capacidad), copiar
-   y publicar `leido` con release. Si quiso mas de lo que habia estando
-   destapado, sumar 1 a `subdesbordes` (con eso Soloist sabe que se acabo la
-   cancion o que se quedo corto).
-5. Mirar el inodo de la ruta cada segundo y reabrir si cambio.
+4. Tomar como mucho `escrito − max(leido, vaciado_hasta)` cuadros (acotado a
+   la capacidad) desde `max(leido, vaciado_hasta)`, copiar y publicar `leido`
+   con release. Si quiso mas de lo que habia estando destapado, sumar 1 a
+   `subdesbordes` (con eso Soloist sabe que se acabo la cancion o que se quedo
+   corto). Lo que se esta copiando NUNCA lo pisa el escritor, ni aunque a
+   media copia llegue un vaciado: el escritor mide su sitio con el `leido`
+   tal cual (ver «Revision (hilos-y-robustez)»). El salto del vaciado (paso
+   2) hay que darlo tambien con el flujo tapado y sin consumir: hasta que el
+   lector salta, lo nuevo espera en la cola local del escritor.
+5. Mirar el inodo de la ruta cada segundo y reabrir si cambio. El latido
+   (`latido_lector_ns`) es CLOCK_MONOTONIC en nanosegundos: uno de mas de 2 s
+   por delante no cuenta como lector vivo.
 6. El sonido llega a la frecuencia del flujo (`frecuencia`): convertir a la de
    la tarjeta es cosa del lector. El ritmo lo marca el lector: sin lector
    (`lector_presente=0` o latido de mas de 2 s), Soloist no puede escribir.
@@ -247,8 +255,22 @@ su bitacora). Nunca pasa por aqui la llave de Soloist ni nada de la cuenta.
   (FAILED, CONNECTIONREFUSED); 51 llamadas con NULL o fuera de orden; el
   bucle sin hilo (io, tiempos, defer, quit, destruye) y el cerrojo recursivo
   con wait, signal y accept.
+- `hilos.c` (2b, de la revision de hilos y robustez): todo en un proceso para
+  que ThreadSanitizer vea los hilos. Carrera: un hilo escribe como Soloist
+  (trozos de 4096 con solo mirar que writable no sea 0, tlength de 2 s: el
+  anillo va casi lleno), otro tapa, destapa, vacia, pide tiempos, volumen e
+  info esperando las operaciones, el principal recibe la suscripcion y un
+  lector en otro hilo (su propio mapa, como rocola-xp) lee al ritmo de una
+  tarjeta, a veces copiando en dos mitades con 2 ms en medio, a veces ausente
+  300 ms y, en la segunda vuelta, rehaciendo el anillo por renombre: el
+  contador de la senal NUNCA debe bajar. Ciclos: 200 vueltas de crear,
+  conectar, escribir, vaciar y cerrar (en el orden de Soloist y en el de
+  libpulse) sin descriptores ni hilos de mas. Cabecera: un latido del lector
+  10 s por delante no cuenta, y una magia pisada se rehace. Consumo: los
+  despertares por segundo y el procesador del hilo del bucle sin flujo,
+  tapado, sin lector y sonando.
 - (3) Lo mismo con ThreadSanitizer, con AddressSanitizer + UBSan y con
-  valgrind.
+  valgrind (hilos.c, con `HILOS_CORTO=1`, en los dos primeros).
 - (4) Clientes de verdad (pacat, paplay, mpv) con `LD_LIBRARY_PATH` a la
   nuestra, reproduciendo un WAV con la senal: lo que llega al anillo es
   identico cuadro a cuadro.
@@ -368,3 +390,99 @@ Lo que queda (no se puede arreglar aqui): ver «Limites». Ademas, para el grupo
 mismo usuario que lo crea (o con uno que pueda escribirlo); si lo crea
 rocola-xp como root y Soloist corre con otro usuario, el contexto falla
 (`PA_ERR_CONNECTIONREFUSED`) y Soloist usa su controlador mudo.
+
+## Revision (hilos-y-robustez)
+
+Revision independiente del 15-11-2026, con el enfoque en los hilos, el orden de
+memoria del anillo, el lector ausente y presente, el anillo rehecho, el
+cliente que muere, lo que podria tumbar a Soloist, los descriptores y el
+consumo. Soloist no se ejecuto; lo suyo sale del desensamblado
+(`analisis/driver-nombres.asm`): su hilo de sonido toma el cerrojo, mira el
+estado y `pa_stream_writable_size` y, si no es 0, escribe un trozo entero;
+espera `flush` y `update_timing_info` con `wait` hasta que la operacion deja
+de correr, y sus avisos solo hacen `signal`.
+
+Lo que se comprobo y estaba bien:
+
+- El cerrojo: recursivo con la cuenta propia; `wait` lo suelta del todo y lo
+  retoma con la misma cuenta; los avisos salen del hilo del bucle con el
+  cerrojo tomado; `g_mx` (el del anillo) nunca se tiene mientras se llama a un
+  aviso del cliente y siempre se toma despues del cerrojo del bucle (y la
+  traza despues de los dos): no hay ciclo posible. `en_poll` solo cambia con
+  el cerrojo tomado, asi que `despierta` no pierde despertares.
+- Las operaciones que espera Soloist acaban en el hilo del bucle, primero el
+  aviso (que hace `signal`) y luego DONE, sin soltar el cerrojo entre medias;
+  si el flujo cae (FAILED, KILLED, TERMINATED), las operaciones se cancelan
+  ANTES de avisar el estado, asi que el que espera se despierta y ve
+  CANCELLED.
+- Descriptores con `O_CLOEXEC`/`EFD_CLOEXEC` (anillo, eventfd, tuberia de las
+  senales, traza `"ae"`): no pasan a los hijos de Soloist.
+- El hilo del bucle bloquea todas las senales (el SIGTERM del vigilante le
+  llega a Soloist, no a nosotros).
+
+Lo que se arreglo (con la prueba nueva `prueba/hilos.c`):
+
+1. **Un vaciado con el anillo casi lleno pisaba lo que el lector copiaba.** El
+   sitio para escribir se media con `max(leido, vaciado_hasta)`: tras un
+   `pa_stream_flush`, el escritor podia copiar hasta 65 536 cuadros nuevos
+   encima de los que el lector estaba copiando en ese momento (el lector toma
+   `leido` y `escrito`, y a media copia llega el vaciado). Con un tlength grande
+   o la cola local llena (Soloist escribe trozos enteros) pasa en cada pausa o
+   cambio de cancion: unos milisegundos de sonido revuelto. Reproducido: con
+   tlength de 2 s y el lector copiando a veces en dos mitades, el contador de
+   la senal BAJO 5, 7 y 8 veces en tres corridas de 6 s; con el arreglo, 0 en
+   todas. Ahora `anillo_libre` mide el sitio con el `leido` tal cual: lo nuevo
+   no cae encima de nada que el lector aun pueda copiar, y espera en la cola
+   local hasta que el lector salta (`leido = vaciado_hasta`). I1 se sigue
+   cumpliendo (nunca mas de capacidad pendientes) y `writable_size` no cambia.
+2. **Un latido del lector «del futuro» contaba siempre como lector vivo.** Un
+   lector que apuntara mal su reloj (otras unidades) y muriera dejaria a
+   Soloist escribiendo para nadie. Ahora solo vale a 2 s o menos de ahora,
+   hacia atras o hacia adelante.
+3. **Una cabecera pisada en su sitio (sin cambiar el inodo) no se veia.** Ahora
+   se mira cada segundo tambien el tamano del archivo mapeado (`fstat`, antes de
+   leer nada) y la magia; si no estan, se reabre y se rehace por renombre
+   (0,89 s en la prueba). Truncarlo en su sitio sigue dando SIGBUS al tocar las
+   paginas que ya no existen (I1: nadie lo trunca); esto solo acorta el tiempo
+   en peligro.
+4. `anillo_abre` de uno en uno dentro del proceso: dos contextos rehaciendolo a
+   la vez usaban el mismo `<ruta>.t.<pid>`.
+5. `drena_cola` (el reloj del flujo) solo escribe si el flujo sigue siendo el
+   del anillo (antes miraba solo su marca local).
+6. `poll` con ENOMEM o EAGAIN ya no mata el hilo del bucle (Soloist se quedaria
+   esperando para siempre): 10 ms sin el cerrojo y sigue.
+7. `prueba/lector.c`, el modelo del lector de rocola-xp, hace ahora todo lo
+   que dice «Lo que el LECTOR tiene que hacer»: `leido = max(leido,
+   vaciado_hasta)` al abrir, al reabrir y al leer, y no consume con el latido
+   del escritor de mas de 2 s.
+
+Consumo del hilo del bucle (prueba `hilos consumo`, maquina de pruebas,
+cambios de contexto voluntarios y `schedstat`): sin flujo 0,0 despertares/s
+(0,00 % de un nucleo); tapado (Soloist en pausa) 4,0/s (0,01 %); destapado sin
+lector 10,0/s (0,03 %); sonando 98,3/s (0,18 %). Sin esperas activas.
+
+Comprobado de la revision (15-11-2026, `prueba/prueba.sh` completo con
+`PULSO_CABECERAS` a las de libpulse 17.0): **18 pasos bien, 0 mal**. Los 17
+de antes con los mismos numeros (cliente 757 bien, raro 113 bien, abi 289 y
+289, firmas 185 y 185, paplay, pacat y mpv identicos, consumo 480 000
+cuadros) y el nuevo `hilos`: 24 comprobaciones bien, 0 mal (carrera 6 s:
+3757 trozos, 471 vaciados, 207 tiempos, 244 volumenes, 237 infos, el lector
+179 280 cuadros con 0 bajadas; con el anillo rehecho 7 veces: 163 680 cuadros,
+0 bajadas, 6 reaperturas; 200 ciclos con descriptores 5 -> 5 e hilos 2 -> 2;
+cabecera; consumo). ThreadSanitizer (cliente, raro y hilos corto: 19 bien),
+AddressSanitizer + UBSan (cliente, raro y hilos corto, con 50 ciclos:
+descriptores 6 -> 6, hilos 2 -> 2) y valgrind: 0 avisos.
+
+Lo que queda:
+
+- Truncar el anillo en su sitio (`ftruncate` o abrirlo con `O_TRUNC`, por
+  ejemplo un `FileMode.Create` de C#) tumba a Soloist con SIGBUS. rocola-xp
+  NUNCA debe abrirlo asi: si lo encuentra invalido, lo rehace por renombre
+  (I1). No se pone un manejador de SIGBUS dentro de Soloist.
+- El lector de rocola-xp (grupo spotify-xp) tiene que dar el salto del vaciado
+  tambien con el flujo tapado (si no, tras una pausa con el anillo lleno lo
+  nuevo espera en la cola local hasta que lo de) y usar el latido en
+  nanosegundos de CLOCK_MONOTONIC.
+- Que Soloist aguante `writable_size` 0 mucho tiempo (sin lector) sin girar en
+  vacio depende de su hilo de sonido: solo se ve en el A4 (el procesador de
+  Soloist con la rocola sin el modo Spotify leyendo).
