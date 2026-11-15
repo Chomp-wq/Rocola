@@ -3,7 +3,7 @@
 // contenido de Spotify metido en los elementos de XP):
 //   - EL BUSCADOR: debajo de las primeras de XP, las canciones, discos y artistas de Spotify como resultados mas de la MISMA lista (un
 //     SearchItem de XP: su tarjeta, su portada, su cubo). Elegir una cancion la pide por I6 (RocolaOsSpotifyPide, del nucleo); un disco lo
-//     abre en la vista de disco de XP; un artista lleva a sus discos en la letra de Spotify, como XP lleva a los de un artista a su letra.
+//     abre en la vista de disco de XP; un artista abre SU PARED (RocolaOs.SpotifyCatalogoParedes.cs, grupo paredes-buscador).
 //   - LA PARED: una letra mas al final de la barra (U+266B, la nota doble del juego de simbolos de Windows XP, WGL4; la cabecera dice
 //     «SPOTIFY»), con portadas de discos de Spotify: lo de la cuenta (si hay refresh_token: «Tus favoritas», tus discos y tus listas) y
 //     los discos abiertos o pedidos en esta sesion. Abrir uno es la vista de disco de XP; PONER pide por I6.
@@ -140,6 +140,9 @@ namespace Rocola
         }
         private List<SearchItem> RocolaOsSpotifyCatalogoMezcla(List<SearchItem> xp, RocolaOsSpotifyCatalogoBusqueda b)
         {
+            List<SearchItem> artistas;
+            Dictionary<string, SearchItem> mas;
+            RocolaOsSpotifyParedesArtistas(b, out artistas, out mas);   // (RocolaOs.SpotifyCatalogoParedes.cs)
             List<SearchItem> sp = new List<SearchItem>();
             int n = 0;
             foreach (RocolaOsSpotifyCatalogoCancion c in b.Canciones)
@@ -158,19 +161,26 @@ namespace Rocola
                 sp.Add(new SearchItem { Kind = 1, Display = (d.Artista.Length > 0 ? d.Artista + " - " : "") + d.Nombre, Key = "", AlbumRef = a });
                 n++;
             }
-            n = 0;
-            foreach (RocolaOsSpotifyCatalogoArtista ar in b.Artistas)
-            {
-                if (n >= 2) break;
-                Album a = RocolaOsSpotifyCatalogoArtistaAlbum(ar);
-                sp.Add(new SearchItem { Kind = 0, Display = ar.Nombre, Key = "", AlbumRef = a, Albums = new List<Album> { a } });
-                n++;
-            }
-            List<SearchItem> m = new List<SearchItem>(xp.Count + sp.Count);
+            // (paredes) al final de los discos de Spotify, «Todos los discos de «lo escrito»»: la pared con todos los de la busqueda
+            SearchItem todos = RocolaOsSpotifyParedesTodosTarjeta(b);
+            if (todos != null) sp.Add(todos);
+            // LOS ARTISTAS (pedido del dueno del 7-11-2026): los de Spotify que NO estan en la rocola, justo despues de tus artistas que salgan
+            // primero (si no hay, arriba); y detras de cada artista tuyo que Spotify tambien tiene, «ARTISTA · mas en Spotify»
+            int lideres = 0;
+            while (lideres < xp.Count && xp[lideres] != null && xp[lideres].Kind == 0) lideres++;
+            List<SearchItem> m = new List<SearchItem>(xp.Count + sp.Count + artistas.Count + mas.Count);
             int arriba = Math.Min(RocolaOsSpotifyXpArriba, xp.Count);
-            for (int i = 0; i < arriba; i++) m.Add(xp[i]);
-            m.AddRange(sp);
-            for (int i = arriba; i < xp.Count; i++) m.Add(xp[i]);
+            if (lideres == 0) m.AddRange(artistas);
+            for (int i = 0; i < xp.Count; i++)
+            {
+                SearchItem it = xp[i];
+                m.Add(it);
+                SearchItem otro;
+                if (it != null && it.Kind == 0 && mas.Count > 0 && mas.TryGetValue(MotorBusqueda.Normaliza(it.Display ?? ""), out otro)) m.Add(otro);
+                if (i == lideres - 1) m.AddRange(artistas);
+                if (i == arriba - 1) m.AddRange(sp);
+            }
+            if (arriba == 0) m.AddRange(sp);
             return m;
         }
 
@@ -180,8 +190,8 @@ namespace Rocola
             if (it == null || !RocolaOsEsSpotify(it.AlbumRef) || !RocolaOsSpotifyCatalogoVa) return false;
             MarkSearchActivity();
             if (it.Kind == 2 && it.TrackRef != null) { RocolaOsSpotifyCatalogoPide(it.TrackRef, it.AlbumRef); return true; }   // (no cierra el buscador: como XP)
+            if (RocolaOsSpotifyParedesElige(it)) return true;   // un artista, «mas en Spotify» o «Todos los discos de...»: su pared
             if (it.Kind == 1) { RocolaOsSpotifyCatalogoAbre(it.AlbumRef, true); return true; }
-            if (it.Kind == 0) { RocolaOsSpotifyCatalogoAbreArtista(it.AlbumRef); return true; }
             return true;
         }
 
@@ -215,6 +225,7 @@ namespace Rocola
         private List<Album> RocolaOsSpotifyCatalogoLista(char letra)
         {
             if (letra == RocolaOsSpotifyMarca && RocolaOsSpotifyCatalogoVa) return rocolaOsSpLetra;
+            if (letra == RocolaOsSpotifyParedMarca && rocolaOsSpPared != null && RocolaOsSpotifyCatalogoVa) return rocolaOsSpPared.Lista;   // (una pared del buscador)
             return new List<Album>();
         }
 
@@ -245,13 +256,16 @@ namespace Rocola
         // g46 (Form1.Biblioteca.cs, GotoLetter): EL ORDEN DE LAS LETRAS para REGRESAR+izquierda/derecha, con la de Spotify al final
         private string RocolaOsSpotifyCatalogoOrden(string deXp)
         {
-            if (!RocolaOsSpotifyCatalogoVa || rocolaOsSpLetra.Count == 0) return deXp;
+            if (!RocolaOsSpotifyCatalogoVa) return deXp;
+            if (currentLetter == RocolaOsSpotifyParedMarca && rocolaOsSpPared != null) return "";   // una pared del buscador: ni otras letras ni la vuelta
+            if (rocolaOsSpLetra.Count == 0) return deXp;
             return deXp + RocolaOsSpotifyMarca;
         }
 
         // g47 (Form1.Biblioteca.cs, RefreshAlbums): LA CABECERA de la letra de Spotify dice «SPOTIFY» (como «VIDEOS» o «LO MAS SONADO»)
         private string RocolaOsSpotifyCatalogoSeccion(char letra, string deXp)
         {
+            if (letra == RocolaOsSpotifyParedMarca && rocolaOsSpPared != null && RocolaOsSpotifyCatalogoVa) return RocolaOsSpotifyParedMira();
             return letra == RocolaOsSpotifyMarca && RocolaOsSpotifyCatalogoVa ? "SPOTIFY" : deXp;
         }
 
@@ -271,7 +285,9 @@ namespace Rocola
         // (una peticion) y entran a la lista de XP al llegar. Devuelve el mismo disco.
         private Album RocolaOsSpotifyCatalogoEntra(Album a)
         {
+            rocolaOsSpVueltaDisco = null; rocolaOsSpVueltaAlbum = null;   // (otro disco: REGRESAR ya no vuelve al buscador; sin el modo, siempre null)
             if (!RocolaOsEsSpotify(a) || !RocolaOsSpotifyCatalogoVa) return a;
+            if (RocolaOsSpotifyParedesEntra(a)) return a;   // «Canciones de ARTISTA» o una casilla de una pared que aun no llega
             RocolaOsSpotifyCatalogoDisco d;
             if (a.Tracks.Count == 0 && rocolaOsSpDeDisco.TryGetValue(a, out d)) RocolaOsSpotifyCatalogoAbre(a, false);
             return a;
@@ -325,6 +341,7 @@ namespace Rocola
             };
             if (d.Tipo == "playlist") RocolaOsSpotifyCatalogoApi.AbreLista(d.Id, listo);
             else if (d.Tipo == "album") RocolaOsSpotifyCatalogoApi.AbreDisco(d.Id, listo);
+            else if (d.Tipo == "canciones") RocolaOsSpotifyCancionesPrevista(a);   // («Canciones de ARTISTA»: su 1a pagina de 10, y no «0 canciones»)
             return a;
         }
         // llegaron: solo se llenan (la letra no se reacomoda: quien mira no pierde su sitio); la ficha y el letrero se rehacen con lo que XP ya
@@ -378,20 +395,21 @@ namespace Rocola
         {
             RocolaOsSpotifyCatalogoDisco d;
             if (!rocolaOsSpDeDisco.TryGetValue(a, out d)) return;
+            bool enPared = rocolaOsSpLetra.Contains(a);   // (ya en la letra de Spotify: REGRESAR vuelve a ella, como XP; si no, al buscador)
             if (d.Canciones != null && a.Tracks.Count > 0)
             {
-                if (desdeBuscador) RocolaOsSpotifyCatalogoEntraDesdeBuscador(a);
+                if (desdeBuscador) RocolaOsSpotifyCatalogoEntraDesdeBuscador(a, enPared);
                 return;
             }
             int yo = ++rocolaOsSpAbriendo;
             Action<object, string> listo = delegate (object r, string error)
             {
-                RocolaOs.Encarga("spotify_catalogo:disco", delegate { RocolaOsSpotifyCatalogoLlegoDisco(a, r as RocolaOsSpotifyCatalogoDisco, error, desdeBuscador, yo); });
+                RocolaOs.Encarga("spotify_catalogo:disco", delegate { RocolaOsSpotifyCatalogoLlegoDisco(a, r as RocolaOsSpotifyCatalogoDisco, error, desdeBuscador, yo, enPared); });
             };
             if (d.Tipo == "playlist") RocolaOsSpotifyCatalogoApi.AbreLista(d.Id, listo);
             else if (d.Tipo == "album") RocolaOsSpotifyCatalogoApi.AbreDisco(d.Id, listo);
         }
-        private void RocolaOsSpotifyCatalogoLlegoDisco(Album a, RocolaOsSpotifyCatalogoDisco d, string error, bool desdeBuscador, int yo)
+        private void RocolaOsSpotifyCatalogoLlegoDisco(Album a, RocolaOsSpotifyCatalogoDisco d, string error, bool desdeBuscador, int yo, bool enPared)
         {
             if (d == null || d.Canciones == null)
             {
@@ -404,7 +422,7 @@ namespace Rocola
             RocolaOsSpotifyCatalogoPonCuenta();
             if (d.Tipo == "album") RocolaOsSpotifyCatalogoReciente(a);
             if (yo != rocolaOsSpAbriendo) return;
-            if (desdeBuscador) { if (searchOpen) RocolaOsSpotifyCatalogoEntraDesdeBuscador(a); return; }
+            if (desdeBuscador) { if (searchOpen) RocolaOsSpotifyCatalogoEntraDesdeBuscador(a, enPared); return; }
             // ya estaba dentro (desde la pared): sus canciones entran a la lista de XP como en EnterAlbum
             if (panelSongs.Visible && currentAlbum == a)
             {
@@ -417,40 +435,16 @@ namespace Rocola
                 songList.Invalidate();
             }
         }
-        // lo de XP al elegir un disco en el buscador (ChooseSearchResult, Kind 1), con el disco de Spotify en su letra
-        private void RocolaOsSpotifyCatalogoEntraDesdeBuscador(Album a)
+        // lo de XP al elegir un disco en el buscador (ChooseSearchResult, Kind 1), con el disco de Spotify en su letra. Si NO estaba ya en
+        // la pared (pedido del dueno del 7-11-2026), REGRESAR vuelve al buscador con lo escrito y la misma eleccion (g54)
+        private void RocolaOsSpotifyCatalogoEntraDesdeBuscador(Album a, bool enPared)
         {
+            RocolaOsSpotifyVuelta v = enPared ? null : RocolaOsSpotifyGuardaBuscador();
             RocolaOsSpotifyCatalogoReciente(a);
             transNextFrom = SearchCubeRect(out transNextAngle);   // la portada sale del CUBO GRANDE del buscador (luego ya no existe)
             CloseSearch(); NavigateToAlbum(a); EnterAlbum(a);
+            if (v != null) { rocolaOsSpVueltaDisco = v; rocolaOsSpVueltaAlbum = a; }
         }
-        // UN ARTISTA DE SPOTIFY: sus discos (una peticion) entran a la letra de Spotify y se va a ella, como XP lleva a los de un artista
-        private void RocolaOsSpotifyCatalogoAbreArtista(Album pseudo)
-        {
-            RocolaOsSpotifyCatalogoArtista ar;
-            if (!rocolaOsSpDeArtista.TryGetValue(pseudo, out ar)) return;
-            int yo = ++rocolaOsSpAbriendo;
-            List<RocolaOsSpotifyCatalogoDisco> ya = RocolaOsSpotifyCatalogoApi.DeArtistaYa(ar.Id);
-            if (ya != null) { RocolaOsSpotifyCatalogoLlegoArtista(ya, null, yo); return; }
-            RocolaOsSpotifyCatalogoApi.AbreArtista(ar.Id, delegate (object r, string error)
-            {
-                RocolaOs.Encarga("spotify_catalogo:artista", delegate { RocolaOsSpotifyCatalogoLlegoArtista(r as List<RocolaOsSpotifyCatalogoDisco>, error, yo); });
-            });
-        }
-        private void RocolaOsSpotifyCatalogoLlegoArtista(List<RocolaOsSpotifyCatalogoDisco> l, string error, int yo)
-        {
-            if (l == null || l.Count == 0)
-            {
-                RocolaOsSpotifyCatalogoApi.ApuntaCallado("no se pudieron traer los discos del artista: " + (error ?? "no tiene"));
-                if (yo == rocolaOsSpAbriendo && searchOpen) RocolaOsSpotifyCatalogoAviso("Espera un momento y vuelve a intentarlo");
-                return;
-            }
-            Album primero = null;
-            for (int i = l.Count - 1; i >= 0; i--) { Album a = RocolaOsSpotifyCatalogoAlbum(l[i]); RocolaOsSpotifyCatalogoReciente(a); primero = a; }
-            if (yo != rocolaOsSpAbriendo || !searchOpen || primero == null) return;
-            CloseSearch(); NavigateToAlbum(primero);   // (lo de XP con un artista: Kind 0)
-        }
-
         // ================================================================= la cuenta y la letra =======================================
 
         private void RocolaOsSpotifyCatalogoLlegoCuenta(List<RocolaOsSpotifyCatalogoDisco> l, string error)
@@ -589,6 +583,12 @@ namespace Rocola
         private static Thread hilo;
         private static string carpeta;
         internal static long Bajadas;
+        // (revision cuota-hilos-y-fallos de paredes-buscador, 2a pasada) LA QUE NO SE BAJO POR LA RED (sin red, el servidor caido: 5xx, 429):
+        // antes se quedaba sin portada toda la sesion (el disco ya no la vuelve a pedir: queda esperandola). Ahora, otra vez a los 15 s y, si
+        // tampoco, a los 60 s (al servidor de imagenes: no gasta la cuota de la API); despues, ya no. Un 404 o una de mas de 4 MB, no.
+        private static readonly int[] reintentosMs = { 15000, 60000 };
+        private static readonly List<KeyValuePair<long, KeyValuePair<string, string>>> luego = new List<KeyValuePair<long, KeyValuePair<string, string>>>();
+        private static readonly Dictionary<string, int> intentos = new Dictionary<string, int>(StringComparer.Ordinal);
         // /run/rocola-xp/spotify/portadas/ (con «/» al final), desde que se baja la primera (antes, null: g43 no cambia nada)
         internal static string Carpeta { get { return Volatile.Read(ref carpeta); } }
 
@@ -606,9 +606,17 @@ namespace Rocola
             while (true)
             {
                 KeyValuePair<string, string> p;
-                lock (cerrojo) { p = cola.Count == 0 ? default(KeyValuePair<string, string>) : cola.Dequeue(); }
-                if (p.Key == null) { hay.WaitOne(10000); continue; }
-                bool bien = false;
+                int espera = 10000;
+                lock (cerrojo)
+                {
+                    long ahora = Environment.TickCount64;
+                    for (int i = luego.Count - 1; i >= 0; i--)
+                        if (luego[i].Key <= ahora) { cola.Enqueue(luego[i].Value); luego.RemoveAt(i); }
+                        else espera = (int)Math.Max(1, Math.Min(espera, luego[i].Key - ahora));
+                    p = cola.Count == 0 ? default(KeyValuePair<string, string>) : cola.Dequeue();
+                }
+                if (p.Key == null) { hay.WaitOne(espera); continue; }
+                bool bien = false, otraVez = false;
                 try
                 {
                     string dir = Path.GetDirectoryName(p.Value);
@@ -625,7 +633,7 @@ namespace Rocola
                             using (MemoryStream m = new MemoryStream())
                             {
                                 byte[] buf = new byte[16384]; int n;
-                                while ((n = s.Read(buf, 0, buf.Length)) > 0) { m.Write(buf, 0, n); if (m.Length > 4 * 1024 * 1024) throw new IOException("portada de mas de 4 MB"); }
+                                while ((n = s.Read(buf, 0, buf.Length)) > 0) { m.Write(buf, 0, n); if (m.Length > 4 * 1024 * 1024) throw new InvalidDataException("portada de mas de 4 MB"); }
                                 b = m.ToArray();
                             }
                             string t = p.Value + ".t";
@@ -634,10 +642,26 @@ namespace Rocola
                             bien = true;
                             Interlocked.Increment(ref Bajadas);
                         }
-                        else RocolaOs.Apunta("spotify_catalogo", "una portada no se bajo (" + ((int)r.StatusCode).ToString(CultureInfo.InvariantCulture) + ")");
+                        else
+                        {
+                            int cod = (int)r.StatusCode;
+                            otraVez = cod >= 500 || cod == 429;
+                            // (revision: como mucho un renglon igual cada 10 min; sin red, cada disco que llega diria lo mismo)
+                            RocolaOsSpotifyCatalogoApi.ApuntaCallado("una portada no se bajo (" + cod.ToString(CultureInfo.InvariantCulture) + ")");
+                        }
                     }
                 }
-                catch (Exception ex) { RocolaOs.Apunta("spotify_catalogo", "una portada no se bajo (" + ex.GetType().Name + ")"); }
+                catch (Exception ex)
+                {
+                    otraVez = !(ex is InvalidDataException);   // (la de mas de 4 MB, no: es la misma la proxima vez)
+                    RocolaOsSpotifyCatalogoApi.ApuntaCallado("una portada no se bajo (" + ex.GetType().Name + ")");
+                }
+                if (otraVez)
+                    lock (cerrojo)
+                    {
+                        int n; intentos.TryGetValue(p.Value, out n);
+                        if (n < reintentosMs.Length) { intentos[p.Value] = n + 1; luego.Add(new KeyValuePair<long, KeyValuePair<string, string>>(Environment.TickCount64 + reintentosMs[n], p)); }
+                    }
                 if (bien)
                 {
                     string ruta = p.Value;
