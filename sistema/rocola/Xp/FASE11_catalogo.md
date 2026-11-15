@@ -113,7 +113,7 @@ g12, las dos cosas tienen que ir en la MISMA línea: `searchOverlay.Results = Ro
 
 ## 4. La junta con el núcleo (I6)
 
-**Juntado** (merge de `fase11-spotify-xp` en 3d5e532, el 15-11-2026): I6 es el de verdad (`RocolaOs/RocolaOs.SpotifyPide.cs`) y el doble
+**Juntado** (merge de `fase11-spotify-xp` en 3d5e532 y después hasta 09f96f0, el 15-11-2026): I6 es el de verdad (`RocolaOs/RocolaOs.SpotifyPide.cs`) y el doble
 del catálogo (`RocolaOs.SpotifyCatalogoDobleI6.cs`) **se borró**. Lo único que cambió en el catálogo: al pedir se llama
 `RocolaOsSpotifyPide(p, searchOpen)` (la sobrecarga del núcleo con los avisos del buscador, los de `ChooseSearchResult` de XP, cuando se
 pide desde el buscador; desde un disco, los de `AddSong`). Antes de pedir, el catálogo mira `RocolaOsSpotifyListo`: si Soloist no tiene
@@ -125,9 +125,8 @@ los `play` que le llegan al Soloist falso, y suena por la tarjeta de prueba con 
 
 Lo que el catálogo le pasa al núcleo en cada `RocolaOsSpotifyPista`: `Uri` (`spotify:track:ID`), `Titulo`, `Artista` (los artistas
 separados por «, »), `Disco`, `DuracionMs`, `PortadaUrl` (la imagen de ~300 px del disco) y `DiscoUri`. El catálogo baja la portada de cada
-disco a `/run/rocola-xp/spotify/portadas/<id del disco>.jpg`. En 3d5e532 el núcleo nombra la suya por la canción (`<id de la canción>.jpg`),
-así que la primera vez que se pide una canción el núcleo la baja otra vez y esa vez la portada no va con la canción en la cola; en su copia
-de trabajo el núcleo ya la nombra por el disco (sin commit todavía): cuando lo suba, las dos son el mismo archivo y no se baja dos veces.
+disco a `/run/rocola-xp/spotify/portadas/<id del disco>.jpg`, y desde 0aa2ee4 (juntado) el núcleo nombra la suya igual: es el mismo
+archivo, no se baja dos veces, y la canción entra en la cola con su portada (la escena `suena` lo comprueba).
 
 ## 5. Las comprobaciones (con números)
 
@@ -172,7 +171,6 @@ RESULTADOS: ver «Resultados» al final.
 - **soloist** (el vigilante): copia `rocola_spotify_api.txt` de la raíz de la memoria USB a `/rocola/datos/xp/rocola_spotify_api.txt`
   (0600), igual que la llave de Soloist (en su rama ya está: `rocola-soloist`, `importa_llaves`). El catálogo vuelve a leer el archivo si
   cambia (lo mira cada 5 s como mucho): no hace falta reiniciar la rocola.
-- **spotify-xp** (el núcleo): la portada nombrada por el disco (ya en su copia de trabajo, sin commit en 3d5e532: ver §4).
 - **coordinador**: g40 comparte la línea de g12 (§3). La API falsa y el Soloist falso solo existen en `Pruebas/` (fuera de
   `RocolaXp.csproj`).
 
@@ -199,3 +197,26 @@ RESULTADOS: ver «Resultados» al final.
 7. Sin internet (desconectar el cable): el buscador solo con lo de XP, sin trabarse; la música de XP sigue.
 
 ## 10. Resultados
+
+Del 15-11-2026, con el núcleo juntado hasta 09f96f0 (la rama en su último commit):
+
+| Comprobación | Resultado |
+|---|---|
+| `prueba.sh` en JIT (las 10 escenas) | **55 de 55** BIEN |
+| `prueba.sh` en NativeAOT (las 10 escenas) | **55 de 55** BIEN |
+| `dotnet build -c Release --no-incremental` | 0 errores, **13 avisos** (los de la base, todos en `Codigo/` y `Plataforma/`; ninguno nuevo) |
+| `dotnet publish` NativeAOT | sale con 0, **0 avisos IL/AOT** |
+| `ganchos.py` | TODO BIEN: 24 ganchos en 11 archivos; `Codigo/` vuelve byte a byte a fc7b667 |
+| `diff-xp.py --sin-ganchos` (109 archivos) | 5 095 / 4 828 / 229: las cuentas de la base |
+| Nivel 0 (`nivel0.sh` del grupo nivel0, sin `ROCOLA_OS`; pasos previo, código, ganchos, escenas, aot) | previo, código (109 de 109), ganchos.py y diff-xp.py BIEN; escenas alternadas con la referencia: arranque, moneda, tab, buscador, captura y asistente **IGUAL**, sigterm **ACEPTADO** (el estado se borra: lo aceptado de siempre); NativeAOT: arranque y buscador **IGUAL**. Sale con 0 |
+| Nivel 1 (`NIVEL=1`, `ROCOLA_OS=1`, `spotify` apagado de fábrica) | las mismas 7 escenas: 6 **IGUAL** y sigterm **ACEPTADO**; NativeAOT arranque y buscador **IGUAL**. Sale con 0 |
+
+Las escenas del nivel 0 y 1 se corrieron con el programa juntado hasta 3d5e532; lo que el núcleo añadió después (0aa2ee4, 09f96f0) solo
+toca `RocolaOs/` y `Pruebas/` y no hace nada sin el modo (no cambia ningún gancho de `Codigo/`). Se eligieron las escenas que pueden mover
+los ganchos del catálogo (la pared y sus letras, la moneda y PONER, el buscador, Ctrl+F3, el asistente, las capturas y el cierre); la
+batería entera del nivel 0 (arneses, banco, cintas, recorridos, ventanas, cierre, importa) es de la junta.
+
+Capturas para el dueño (fuera de pantalla, 1024×768, con la API falsa y datos inventados), en `/root/rocola-trabajo/fase11/catalogo/capturas`:
+`buscador-solo-spotify`, `buscador-pedidas`, `buscador-xp-y-spotify`, `buscador-disco`, `disco-de-spotify`, `pared-letra-spotify`,
+`buscador-artista`, `pared-discos-del-artista`, `pared-cuenta`, `disco-lista-propia`, `buscador-spotify-no-listo`,
+`buscador-sonando-spotify` y `suena-spotify` (lo que suena con una de Spotify).

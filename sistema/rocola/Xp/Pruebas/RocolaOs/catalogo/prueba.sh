@@ -201,6 +201,7 @@ for e in $escenas; do
     espera $e
     si "suena: sale con 0" test "$(cat $o/salio)" = 0
     si "suena: una pedida, y Soloist la toca ($(plays $o))" bash -c "[ $(pedidos $o) = 1 ] && [ \"\$(plays $o)\" = 'spotify:track:can0000 ' ]"
+    si "suena: la pedida va con la portada que bajo el catalogo (una sola por disco: dis000.jpg)" bash -c "cobradas $o | grep -q 'COBRADA spotify:track:can0000 .*; con portada' && [ -f '$o/run/rocola-xp/spotify/portadas/dis000.jpg' ] && [ ! -e '$o/run/rocola-xp/spotify/portadas/can0000.jpg' ]"
     si "suena: el nucleo dice que suena (y no que acabo)" bash -c "grep -qF 'suena spotify:track:can0000' '$d/rocola_spotify.txt' && ! grep -qF 'acabo spotify:track:can0000' '$d/rocola_spotify.txt'"
     si "suena: por la tarjeta salio sonido (sonado.raw de mas de 1 s)" test "$(cat "$o/sonado.raw" 2>/dev/null | wc -c)" -gt 352800; rm -f "$o/sonado.raw" ;;
   sinsesion)
