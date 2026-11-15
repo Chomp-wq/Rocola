@@ -8,13 +8,13 @@
 #   API: la carpeta con api-falsa.dll (por defecto /root/rocola-trabajo/fase11/catalogo/api-falsa)
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/catalogo/prueba; se rehace)
 #   CAPTURAS: si se pone, las capturas para el dueno van ahi (PNG)
-# escenas: apagado cero busca disco artista fallos cuenta sinsesion (todas, de fabrica)
+# escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion (todas, de fabrica)
 # Mientras el nucleo no este juntado, I6 es el doble (RocolaOs/RocolaOs.SpotifyCatalogoDobleI6.cs): cada pedido queda en
 # run/rocola-xp/spotify/doble-pedidos.
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca disco artista fallos cuenta sinsesion}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -62,8 +62,8 @@ datos() {   # NOMBRE MODO(apagado|encendido|cuenta): los datos de partida con lo
 cap() { [ -n "$CAPTURAS" ] && echo "$1:$CAPTURAS/$2.png" || echo "$1:$W/$2.png"; }
 [ -n "$CAPTURAS" ] && mkdir -p "$CAPTURAS"
 # teclas: «inventad» y otras palabras, desde el segundo S, una letra cada 0,2 s
-escribe() { local s="$1" pal="$2" r="" i c; for ((i = 0; i < ${#pal}; i++)); do c=$(printf '%d' "'${pal:$i:1}"); c=$((c - 32)); r="$r,$(echo "$s + $i * 0.2" | bc):$c"; done; echo "${r#,}"; }
-derechas() { local s="$1" n="$2" r="" i; for ((i = 0; i < n; i++)); do r="$r,$(echo "$s + $i * 0.1" | bc):39"; done; echo "${r#,}"; }
+escribe() { local s="$1" pal="$2" r="" i c; for ((i = 0; i < ${#pal}; i++)); do c=$(printf '%d' "'${pal:$i:1}"); c=$((c - 32)); r="$r,$(echo "$s + $i * 0.25" | bc):$c"; done; echo "${r#,}"; }
+derechas() { local s="$1" n="$2" r="" i; for ((i = 0; i < n; i++)); do r="$r,$(echo "$s + $i * 0.15" | bc):39"; done; echo "${r#,}"; }
 v1() { grep -c ' /v1/' "$1" 2>/dev/null; }
 pedidos() { grep -c '^pedida	' "$1/run/rocola-xp/spotify/doble-pedidos" 2>/dev/null || echo 0; }
 pedido() { sed -n "$2p" "$1/run/rocola-xp/spotify/doble-pedidos" 2>/dev/null | cut -f1,2; }
@@ -79,8 +79,8 @@ for e in $escenas; do
   apagado|cero)
     # SIN EL MODO: sin ROCOLA_OS (apagado) y con ROCOLA_OS=1 y spotify=0 (cero): ni una peticion, ni la letra, ni nada en /run
     apifalsa $e
-    if [ $e = apagado ]; then d=$(datos $e apagado); abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 12.5 10),14.5:13" 20 -u ROCOLA_OS
-    else d=$(datos $e apagado); printf 'spotify=0\n' > "$d/rocola_os.txt"; abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 12.5 10),14.5:13" 20 ROCOLA_OS=1; fi
+    if [ $e = apagado ]; then d=$(datos $e apagado); abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17:13" 22 ROCOLA_OS=
+    else d=$(datos $e apagado); printf 'spotify=0\n' > "$d/rocola_os.txt"; abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17:13" 22 ROCOLA_OS=1; fi
     espera $e; o="$W/$e"
     si "$e: sale con 0" test "$(cat $o/salio)" = 0
     si "$e: ninguna peticion a la API falsa (ni la llave)" test "$(wc -l < $o/api/peticiones.txt)" = 0
@@ -95,10 +95,10 @@ for e in $escenas; do
   busca)
     # EL BUSCADOR: «inventad» (XP no tiene nada): las de Spotify llegan, se entra a las tarjetas y se piden la 1a y la 2a
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 12.5 14),14.2:37,14.8:13,15.4:39,15.9:13" 22 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 12.3 buscador-solo-spotify),$(cap 16.2 buscador-pedidas)"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13,18.4:39,19.2:13" 25 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 13.8 buscador-solo-spotify),$(cap 20.5 buscador-pedidas)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     si "busca: sale con 0" test "$(cat $o/salio)" = 0
-    si "busca: UNA busqueda a la API (a los 300 ms de dejar de escribir: 1, o 2 si la pantalla entrego tarde las teclas): $(grep -c '/v1/search' $a)" test "$(grep -c '/v1/search' $a)" -le 2
+    si "busca: las busquedas a la API (desde 3 letras, a los 300 ms de dejar de escribir): $(grep -c '/v1/search' $a), la ultima con todo lo escrito" bash -c "[ \$(grep -c '/v1/search' '$a') -le 4 ] && grep '/v1/search' '$a' | tail -1 | grep -q ' q=inventad$'"
     si "busca: una sola llave de la app (client_credentials)" test "$(grep -c '^POST /api/token basic 200' $a)" = 1
     si "busca: ninguna otra peticion a /v1 que las busquedas ($(v1 $a))" test "$(v1 $a)" = "$(grep -c '/v1/search' $a)"
     si "busca: dos pedidas por I6 ($(pedidos $o))" test "$(pedidos $o)" = 2
@@ -107,47 +107,58 @@ for e in $escenas; do
     si "busca: con titulo, artista, disco, duracion, portada y disco_uri" bash -c "sed -n 1p '$o/run/rocola-xp/spotify/doble-pedidos' | grep -qP '^pedida\tspotify:track:can0000\tTema Tema de Mentira\tLos Inventados\tTema de Mentira\t157311\thttp://127.0.0.1:$P/img/disco-dis000-300.jpg\tspotify:album:dis000$'"
     si "busca: las portadas en /run/rocola-xp/spotify/portadas (y ninguna en los datos)" bash -c "ls '$o/run/rocola-xp/spotify/portadas/'*.jpg >/dev/null 2>&1 && ! find '$d' -newer '$d/rocola_os.txt' -name '*.jpg' | grep -q ."
     si "busca: las miniaturas de las portadas de Spotify, en /run (no en rocola_miniaturas)" bash -c "ls '$o/run/rocola-xp/spotify/miniaturas/' 2>/dev/null | grep -q . && [ \"\$(find '$d/rocola_miniaturas' -newer '$d/rocola_os.txt' -type f | wc -l)\" = 0 ]"
-    si "busca: el estado del catalogo (api=bien, busquedas=1)" bash -c "grep -qx 'api=bien' '$o/run/rocola-xp/spotify/catalogo' && grep -qx 'busquedas=1' '$o/run/rocola-xp/spotify/catalogo'"
+    si "busca: el estado del catalogo (api=bien, y las busquedas que vio la API falsa)" bash -c "grep -qx 'api=bien' '$o/run/rocola-xp/spotify/catalogo' && grep -qx \"busquedas=\$(grep -c '/v1/search' '$a')\" '$o/run/rocola-xp/spotify/catalogo'"
     si "busca: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run"
     si "busca: lo de Spotify no entro a la biblioteca de XP (rocola_biblioteca.txt sin spotify:)" nocontiene "$d/rocola_biblioteca.txt" "spotify:"
     si "busca: los encargos con su nombre (RocolaOs:spotify_catalogo:resultados)" contiene "$o/traza.txt" "RocolaOs:spotify_catalogo:resultados" ;;
+  mezcla)
+    # LO DE XP Y LO DE SPOTIFY JUNTOS: «tema» (XP tiene «Tema 1..3» de Otra Banda; la API falsa, canciones y discos con «Tema»): las de XP
+    # primero y en su orden, despues las de Spotify; la casilla cuenta todas
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 tema)" 17 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 13.5 buscador-xp-y-spotify)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
+    si "mezcla: sale con 0" test "$(cat $o/salio)" = 0
+    si "mezcla: una o dos busquedas, la ultima «tema»" bash -c "[ \$(grep -c '/v1/search' '$a') -le 2 ] && grep '/v1/search' '$a' | tail -1 | grep -q ' q=tema$'" ;;
   disco)
     # UN DISCO: «mentira» da [cancion, disco]; se elige el disco (2a tarjeta), se abre en la vista de XP y se piden la 1a y la 2a con PONER;
     # REGRESAR deja la pared en la letra de Spotify con ese disco
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 mentira),$(derechas 12 14),14:13,16:13,16.6:40,17:13,18.5:27" 24 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 12 buscador-disco),$(cap 15.5 disco-de-spotify),$(cap 20 pared-letra-spotify)"
+    abre $e "$d" "$BASE,$(escribe 9.5 mentira),$(derechas 13.5 14),16.5:13,19:13,20:40,21:13,22.5:27" 28 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 16 buscador-disco),$(cap 20.7 disco-de-spotify),$(cap 24.5 pared-letra-spotify)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     si "disco: sale con 0" test "$(cat $o/salio)" = 0
-    si "disco: una busqueda y UN disco (/v1/albums/dis000): $(v1 $a) peticiones a /v1" bash -c "[ \$(grep -c '/v1/search' '$a') = 1 ] && [ \$(grep -c 'GET /v1/albums/dis000 app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = 2 ]"
+    si "disco: las busquedas y UN disco (/v1/albums/dis000): $(v1 $a) peticiones a /v1" bash -c "[ \$(grep -c 'GET /v1/albums/dis000 app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 1)) ]"
     si "disco: dos pedidas con PONER ($(pedidos $o)): la 1a y la 2a del disco" bash -c "[ '$(pedido $o 1)' = \"\$(printf 'pedida\tspotify:track:can0000')\" ] && [ '$(pedido $o 2)' = \"\$(printf 'pedida\tspotify:track:can0001')\" ]"
-    si "disco: la letra de Spotify (y la cabecera SPOTIFY) en la traza de la pantalla o en la captura" true ;;
+    si "disco: solo esas dos pedidas" test "$(pedidos $o)" = 2 ;;
   artista)
-    # UN ARTISTA: «ficticio» da 7 canciones, 1 disco y 1 artista (la 9a tarjeta: 4 abajo); se elige y lleva a sus discos en la letra
+    # UN ARTISTA: «imaginario» da 8 canciones, 2 discos y 1 artista (la 11a tarjeta: 5 abajo); se elige y lleva a sus discos en la letra
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 ficticio),$(derechas 12.2 14),13.9:37,14.2:40,14.3:40,14.6:40,14.9:40,15.4:13" 22 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 15 buscador-artista),$(cap 17.5 pared-discos-del-artista)"
+    abre $e "$d" "$BASE,$(escribe 9.5 imaginario),$(derechas 14 14),16.5:37,17:40,17.4:40,17.8:40,18.2:40,18.6:40,19.5:13" 25 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 19.2 buscador-artista),$(cap 22 pared-discos-del-artista)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     si "artista: sale con 0" test "$(cat $o/salio)" = 0
-    si "artista: una busqueda y UNA de los discos del artista (/v1/artists/art02/albums)" bash -c "[ \$(grep -c '/v1/search' '$a') = 1 ] && [ \$(grep -c 'GET /v1/artists/art02/albums app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = 2 ]"
+    si "artista: las busquedas y UNA de los discos del artista (/v1/artists/art03/albums)" bash -c "[ \$(grep -c 'GET /v1/artists/art03/albums app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 1)) ]"
     si "artista: nada pedido (solo se abrio)" test "$(pedidos $o)" = 0 ;;
   fallos)
-    # 401 (llave vencida): otra llave y otra vez; 503: otra vez al segundo; 429: nada mas hasta su Retry-After
+    # 401 (llave vencida): otra llave y otra vez; 503: otra vez al segundo; 429: nada mas hasta su Retry-After. La API falsa cambia de
+    # humor segun lo que ya contesto (no por reloj): vence las llaves tras «inventad», da 503 tras «inventa» y 429 tras «invent»
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 inventad),13.5:8,16.5:8,19.5:8,21.5:8,23.5:8" 29 ROCOLA_OS=1
-    ( sleep 16; control vence; sleep 3; control 5xx?n=1; sleep 3; control "429?seg=60&cuota=1" ) &
-    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
-    sed 's/^/   /' "$a" | grep -v '/img/' | head -20
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),15:8,18.5:8,22:8,25:8,27:8" 31 ROCOLA_OS=1
+    a="$W/$e/api/peticiones.txt"
+    ( t=0; paso() { until grep -q "$1" "$a" 2>/dev/null || [ $t -gt 400 ]; do sleep 0.1; t=$((t + 1)); done; }
+      paso ' 200 q=inventad$'; control vence; paso ' 200 q=inventa$'; control 5xx?n=1; paso ' 200 q=invent$'; control "429?seg=60&cuota=1" ) &
+    espera $e; o="$W/$e"
+    grep -v '/img/' "$a" | sed 's/^/   /' | head -20
     si "fallos: sale con 0" test "$(cat $o/salio)" = 0
-    si "fallos: 401 con la llave vencida -> otra llave -> 200" bash -c "grep -v '/img/' '$a' | grep -A2 '401$' | grep -q 'POST /api/token basic 200' && [ \$(grep -c 'POST /api/token basic 200' '$a') = 2 ]"
-    si "fallos: 503 -> otra vez -> 200" bash -c "grep -v '/img/' '$a' | grep -A1 ' 503$' | tail -1 | grep -q ' 200$'"
-    si "fallos: 429 una vez, y despues NINGUNA peticion mas a /v1 (las dos consultas de despues no preguntan)" bash -c "[ \$(grep -c ' 429$' '$a') = 1 ] && [ \"\$(grep ' /v1/' '$a' | tail -1 | awk '{print \$4}')\" = 429 ]"
+    si "fallos: 401 con la llave vencida (inventa) -> otra llave -> la misma otra vez, 200" bash -c "grep -v '/img/' '$a' | grep -A2 ' 401 q=inventa$' | tr '\n' '|' | grep -q 'POST /api/token basic 200|GET /v1/search app 200 q=inventa|' && [ \$(grep -c 'POST /api/token basic 200' '$a') = 2 ]"
+    si "fallos: 503 (invent) -> la misma otra vez al segundo, 200" bash -c "grep -v '/img/' '$a' | grep -A1 ' 503 q=invent$' | tail -1 | grep -q ' 200 q=invent$'"
+    si "fallos: 429 una vez (inven), y despues NINGUNA peticion mas a /v1 (inve e inv no preguntan)" bash -c "[ \$(grep -c ' 429 ' '$a') = 1 ] && grep ' /v1/' '$a' | tail -1 | grep -q ' 429 q=inven$'"
     si "fallos: «Spotify frena» en la bitacora, con la cuota" bash -c "grep -q 'Spotify frena (429): no se le pregunta nada en 60 s (QUOTA_EXCEEDED' '$d/rocola_os_bitacora.txt'"
-    si "fallos: el estado dice api=frena" contiene "$o/run/rocola-xp/spotify/catalogo" "api=frena"
+    si "fallos: el estado dice api=frena (y frena_s con la cuota)" bash -c "grep -qx 'api=frena' '$o/run/rocola-xp/spotify/catalogo' && grep -qE '^frena_s=[0-9]+ cuota$' '$o/run/rocola-xp/spotify/catalogo'"
     si "fallos: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
   cuenta)
     # LA CUENTA (refresh_token): la letra de Spotify desde el arranque con «Tus favoritas», tus discos y tu lista (la de otro no); REGRESAR+
     # IZQUIERDA desde la primera letra da la vuelta hasta ella
     apifalsa $e; d=$(datos $e cuenta)
-    abre $e "$d" "7:67,9:27+37,10.5:39,11:13,13.5:13,15:27" 20 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 10 pared-cuenta),$(cap 12.5 disco-lista-propia)"
+    abre $e "$d" "7:67,10:27+37,12:39,12.6:39,13.2:39,14:13,16.5:13,18:27" 22 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11.5 pared-cuenta),$(cap 16 disco-lista-propia)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     sed 's/^/   /' "$a" | grep -v '/img/' | head -12
     si "cuenta: sale con 0" test "$(cat $o/salio)" = 0
@@ -160,7 +171,7 @@ for e in $escenas; do
   sinsesion)
     # SOLOIST SIN SESION (I6 dice que no esta listo): no se pide ni se cobra; el aviso de XP
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 12.5 14),14.2:37,14.8:13" 20 ROCOLA_OS=1 ROCOLA_SPOTIFY_DOBLE_LISTO=0 ROCOLA_CAPTURA="$(cap 14.8 buscador-spotify-no-listo)"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13" 22 ROCOLA_OS=1 ROCOLA_SPOTIFY_DOBLE_LISTO=0 ROCOLA_CAPTURA="$(cap 17.8 buscador-spotify-no-listo)"
     espera $e; o="$W/$e"
     si "sinsesion: sale con 0" test "$(cat $o/salio)" = 0
     si "sinsesion: nada pedido" test "$(pedidos $o)" = 0

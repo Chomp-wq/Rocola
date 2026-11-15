@@ -17,7 +17,7 @@ sus líneas en `RocolaOs/GANCHOS.tsv` y `Pruebas/RocolaOs/catalogo/`.
 | Las portadas | Las de XP: se bajan al salir en pantalla a `/run/rocola-xp/spotify/portadas/<id>.jpg` (en memoria), y su miniatura a `/run/rocola-xp/spotify/miniaturas` (gancho g43); la previa de 32 px no va a `previews32-v1.bin` (g50). **Nada de Spotify al disco.** | 0 a la API (vienen del servidor de imágenes) |
 
 Lo de Spotify **no entra en la biblioteca de XP** (`albums`, `byLetter`, `searchIndex`, `rocola_biblioteca.txt`): son `Album` y `Track`
-de XP que viven en `RocolaOs.SpotifyCatalogo.cs`, con la carpeta `::SPOTIFY::<tipo>:<id>` y la ruta `spotify:track:<id>` (la `Uri` de I6),
+de XP que viven en `RocolaOs.SpotifyCatalogo.cs`, con la carpeta `/::SPOTIFY::/<tipo>:<id>` (absoluta y sin palabras: XP adivina el género por el nombre de la carpeta y de la de encima) y la ruta `spotify:track:<id>` (la `Uri` de I6),
 y entran a XP solo por los ganchos y por I6. Un resultado de Spotify elegido **no** pasa a los atajos «Buscaste:» de XP (no se guarda).
 
 **Sin el modo** (`spotify=0`, de fábrica, o sin `ROCOLA_OS`) cada gancho devuelve lo de XP tal cual: ni letra, ni resultados, ni una sola

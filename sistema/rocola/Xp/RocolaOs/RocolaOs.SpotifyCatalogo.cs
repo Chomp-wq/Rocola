@@ -10,7 +10,7 @@
 //   - LAS PORTADAS se bajan a /run/rocola-xp/spotify/portadas/<id>.jpg al salir en pantalla (nunca al disco), y XP las lee como las suyas;
 //     su miniatura tambien va a /run (gancho g43), no a rocola_miniaturas.
 // Las de Spotify NO entran en la biblioteca de XP (albums, byLetter, searchIndex): son Album y Track de XP que viven aqui, con la carpeta
-// «::SPOTIFY::...» y la ruta «spotify:track:ID» (la Uri de I6), y entran a XP solo por los ganchos g40-g49 y por I6.
+// «/::SPOTIFY::/...» y la ruta «spotify:track:ID» (la Uri de I6), y entran a XP solo por los ganchos g40-g50 y por I6.
 //
 // SIN EL MODO (spotify=0, o sin ROCOLA_OS) cada gancho devuelve lo de XP tal cual: ni letra, ni resultados, ni peticiones a la red.
 // Las reglas de las partes de Form1 (PLAN_FASE11.md §2.2): nombres RocolaOs..., sin inicializadores de campo con efectos ni constructores
@@ -36,7 +36,9 @@ namespace Rocola
     public partial class Form1
     {
         internal const char RocolaOsSpotifyMarca = '♫';      // la letra de Spotify en la barra (WGL4: esta en las letras de XP)
-        internal const string RocolaOsSpotifyCarpeta = "::SPOTIFY::";
+        // la «carpeta» de un disco de Spotify (no existe): absoluta y sin palabras, porque XP adivina el genero de un disco por el nombre de
+        // su carpeta y de la de encima (NombreDice, Form1.Biblioteca.cs); relativa, la de encima seria el directorio actual
+        internal const string RocolaOsSpotifyCarpeta = "/::SPOTIFY::/";
         private const int RocolaOsSpotifyXpArriba = 8;            // cuantas de XP van antes de las de Spotify en el buscador
         private const int RocolaOsSpotifyRecientesMax = 40;
 
@@ -81,13 +83,13 @@ namespace Rocola
 
         // g40 (Form1.Biblioteca.cs, RecomputeResults: «searchOverlay.Results = res;»): LO DE SPOTIFY EN EL BUSCADOR. Sin el modo, res tal cual.
         // Con el, las de XP siguen igual y en su orden; despues de las primeras 8, lo de Spotify de esa consulta (si ya se tiene: si no, se
-        // pide a los 300 ms y se mete al llegar, con la misma consulta) y luego el resto de XP.
+        // pide a los 300 ms y se mete al llegar, con la misma consulta) y luego el resto de XP. Con menos de 3 letras no se pregunta (cuota).
         private List<SearchItem> RocolaOsSpotifyCatalogoResultados(string consulta, List<SearchItem> res)
         {
             if (!RocolaOsSpotifyCatalogoVa) return res;
             string q = RocolaOsSpotifyCatalogoClave(consulta);
             rocolaOsSpXp = res; rocolaOsSpConsulta = q; rocolaOsSpEscrito = consulta;
-            if (q.Length < 2 || !RocolaOsSpotifyCatalogoApi.HayLlave) { RocolaOsSpotifyCatalogoApi.OlvidaBusqueda(); return res; }
+            if (q.Length < 3 || !RocolaOsSpotifyCatalogoApi.HayLlave) { RocolaOsSpotifyCatalogoApi.OlvidaBusqueda(); return res; }
             RocolaOsSpotifyCatalogoBusqueda b = RocolaOsSpotifyCatalogoApi.BuscaYa(q);
             if (b != null) return RocolaOsSpotifyCatalogoMezcla(res, b);
             RocolaOsSpotifyCatalogoApi.Busca(q, delegate (object r, string error)
