@@ -123,7 +123,9 @@ Del codigo de Soloist v1.3.10 (desensamblado; no se ejecuto nunca):
   empezado y, al mirarlo, no queda nada pendiente. Si el escritor ya relleno,
   no se avisa: Soloist tapa en cada underflow y un aviso de mas seria un corte.
 - `pa_strerror` fuera de rango devuelve NULL, como libpulse.
-- `PA_RATE_MAX` es el de las cabeceras con que se comparo (384 000 Hz).
+- `PA_RATE_MAX` es el de libpulse 17 (48 000 x 16 = 768 000 Hz; la 16 decia 384 000).
+- El aviso «change» de la entrada sale solo si el volumen guardado de verdad
+  cambio (pedir el mismo no avisa), como el servidor de PulseAudio.
 - `pa_stream_write` solo admite `PA_SEEK_RELATIVE` con desplazamiento 0 o
   positivo (silencio); lo demas, `PA_ERR_NOTSUPPORTED`.
 
@@ -303,3 +305,66 @@ pacat, paplay y mpv no pidieron ninguna funcion que no tuvieramos (por eso hay
   (lo que se hizo para la v1.3.10).
 - Solo reproduccion: grabar (`pa_stream_connect_record`) da
   `PA_ERR_NOTSUPPORTED`.
+
+## Revision (abi-y-semantica)
+
+Revision independiente del 15-11-2026: las 48 funciones contra la semantica de
+libpulse 17 y sus tipos, y contra como las usa Soloist v1.3.10 (su codigo
+desensamblado, `analisis/driver-nombres.asm` de la carpeta de trabajo; Soloist
+no se ejecuto).
+
+Lo que se comprobo y estaba bien:
+
+- La ABI contra las cabeceras de libpulse **17.0** (sacadas del codigo fuente
+  oficial, fuera del repositorio, solo para comparar): los 109 tamanos y
+  desplazamientos de TODOS los campos de las 11 estructuras de `pulso_abi.h`
+  iguales; de las 180 constantes `PA_*`, 179 iguales.
+- Las firmas: los 185 prototipos de `pulso_api.h` compilan junto a las
+  cabeceras de la 16.1 y de la 17.0 (tres toman los avisos como `void *`: la
+  misma ABI).
+- Como lo usa Soloist: arranca el bucle antes de conectar y espera mientras el
+  contexto este en 1-3 (CONNECTING, AUTHORIZING, SETTING_NAME) y el flujo en
+  CREATING; sus avisos de estado, `started` y del tapado solo apuntan y hacen
+  `signal`; espera `flush` y `update_timing_info` mirando
+  `pa_operation_get_state` (aqui acaban en el hilo del bucle, primero el aviso
+  y luego DONE, todo con el cerrojo: no se queda colgado); de los tiempos solo
+  lee `write_index` (desplazamiento 56) y `read_index` (72) y calcula lo
+  pendiente como su resta (`sink_usec` no lo usa); escribe trozos enteros con
+  solo mirar que `writable_size` no sea 0 (por eso la cola local); en el aviso
+  de cambio lee el volumen en el desplazamiento 172 de `pa_sink_input_info`
+  (igual que aqui); no libera las operaciones de `cork` ni de `subscribe`
+  (como en libpulse, se quedan sin liberar: unos bytes por pausa).
+- `pa_strerror`, `pa_cvolume_set/avg`, `pa_usec_to_bytes`, `pa_timeval_diff`,
+  `pa_gettimeofday`, los indices tras `flush` (`write_index = read_index`),
+  los estados que entrega en el acto (CONNECTING, CREATING, TERMINATED) y lo
+  que devuelve cada una con argumentos malos: como libpulse.
+
+Lo que se arreglo:
+
+1. `PA_RATE_MAX` era el de la 16 (384 000 Hz); en la 17 es 768 000. Ahora el
+   de la 17 (y `abi.c` acepta la diferencia conocida con cabeceras viejas).
+2. Pedir el mismo volumen avisaba «change» siempre; el servidor de PulseAudio
+   solo avisa si cambio. Soloist contesta a ese aviso pidiendo la info y
+   pasando el volumen hacia arriba: un aviso de mas podia hacer un bucle.
+   Ahora solo avisa si cambio (`flujo_pon_volumen` dice si cambio), y
+   `cliente.c` lo comprueba en los 9 escenarios completos.
+3. Las pruebas de la ABI eran una muestra (141 lineas): ahora `abi.c` compara
+   TODOS los campos y TODAS las constantes de `pulso_abi.h` (289 lineas), hay
+   un paso `firmas` (los prototipos contra las cabeceras) y, con
+   `PULSO_CABECERAS=<carpeta con pulse/*.h>`, `abi-otras` y `firmas-otras`
+   comparan tambien contra otra version (asi se comparo con la 17).
+
+Comprobado de la revision (15-11-2026, `prueba/prueba.sh` completo con
+`PULSO_CABECERAS` apuntando a las cabeceras de libpulse 17.0): **17 pasos
+bien, 0 mal**. abi 289 iguales a la 16.1 y 289 iguales a la 17.0; firmas 185
+y 185; cliente 18 de 18 escenarios, 757 comprobaciones bien, 0 mal (las 18 de
+mas son el «mismo volumen no avisa»); raro 113 bien, 0 mal; paplay, pacat y
+mpv identicos cuadro a cuadro (72 000, 66 150, 72 000 y 72 000 cuadros);
+consumo 480 000 cuadros identicos; ThreadSanitizer, AddressSanitizer + UBSan y
+valgrind sin avisos.
+
+Lo que queda (no se puede arreglar aqui): ver «Limites». Ademas, para el grupo
+«soloist»: el anillo se crea 0644, asi que Soloist tiene que correr con el
+mismo usuario que lo crea (o con uno que pueda escribirlo); si lo crea
+rocola-xp como root y Soloist corre con otro usuario, el contexto falla
+(`PA_ERR_CONNECTIONREFUSED`) y Soloist usa su controlador mudo.

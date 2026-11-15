@@ -558,21 +558,24 @@ EXPORTA pa_stream *pa_stream_new_extended(pa_context *c, const char *nombre, pa_
     return NULL;
 }
 
-void flujo_pon_volumen(pa_stream *s, const pa_cvolume *v)
+int flujo_pon_volumen(pa_stream *s, const pa_cvolume *v)
 {
     if (!pa_cvolume_valid(v))
-        return;
+        return 0;
+    pa_cvolume antes = s->vol;
     if (v->channels == s->ss.channels)
         s->vol = *v;
     else
         pa_cvolume_set(&s->vol, s->ss.channels, pa_cvolume_avg(v));
+    int cambio = !pa_cvolume_equal(&antes, &s->vol);
     pa_volume_t m = pa_cvolume_avg(&s->vol);
     pthread_mutex_lock(&g_mx);
     anillo_cabecera *h = cab(s);
     if (s->activo && g_activo == s && h)
         A_GUARDA32(&h->volumen_pedido, m > 65536 ? 65536 : m);
     pthread_mutex_unlock(&g_mx);
-    TRAZA("flujo %p: volumen pedido %u (no se aplica)", (void *)s, m);
+    TRAZA("flujo %p: volumen pedido %u (no se aplica)%s", (void *)s, m, cambio ? "" : " (el mismo)");
+    return cambio;
 }
 
 EXPORTA int pa_stream_connect_playback(pa_stream *s, const char *disp, const pa_buffer_attr *attr,

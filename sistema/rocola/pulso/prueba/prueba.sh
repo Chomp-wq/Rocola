@@ -45,11 +45,44 @@ else
 fi
 
 echo "== (5b) ABI contra las cabeceras publicas de libpulse"
-./bin/abi-real >"$TMP/abi-real.txt" && ./bin/abi-nuestro >"$TMP/abi-nuestro.txt"
-if diff "$TMP/abi-real.txt" "$TMP/abi-nuestro.txt" >"$TMP/abi-diff.txt"; then
-    paso abi BIEN "$(wc -l <"$TMP/abi-real.txt") tamanos, desplazamientos y valores iguales a libpulse $(pkg-config --modversion libpulse 2>/dev/null)"
+./bin/abi-real | grep -v '^#' >"$TMP/abi-real.txt" && ./bin/abi-nuestro | grep -v '^#' >"$TMP/abi-nuestro.txt"
+if [ -s "$TMP/abi-real.txt" ] && diff "$TMP/abi-real.txt" "$TMP/abi-nuestro.txt" >"$TMP/abi-diff.txt"; then
+    paso abi BIEN "$(wc -l <"$TMP/abi-real.txt") tamanos, desplazamientos y valores iguales a $(./bin/abi-real | sed -n 's/^# cabeceras: //p')"
 else
     paso abi MAL "$(cat "$TMP/abi-diff.txt" | head -5 | tr '\n' ' ')"
+fi
+# Las firmas: cada prototipo de pulso_api.h compilado junto a las cabeceras de
+# verdad (un tipo distinto en un argumento o en lo que devuelve no compila).
+# Tres toman las funciones de aviso como void * (la misma ABI): fuera.
+firmas() { # firmas [carpeta de cabeceras]
+    sed -e '/#include "pulso_abi.h"/d' -e '/pa_update_mode_t;/d' ../pulso_api.h |
+        grep -v -E 'pa_context_set_event_callback|pa_context_get_source_info_(list|by_index)' >"$TMP/firmas.h"
+    printf '#include <pulse/pulseaudio.h>\n#include <pulse/mainloop-signal.h>\n#include "%s"\n' "$TMP/firmas.h" |
+        ${CC:-gcc} ${1:+-I"$1"} -fsyntax-only -Werror -x c - >"$TMP/firmas-error.txt" 2>&1
+}
+if firmas; then
+    paso firmas BIEN "$(grep -c '^[a-z].*(' "$TMP/firmas.h") prototipos iguales a los de las cabeceras del sistema"
+else
+    paso firmas MAL "$(grep -m3 error "$TMP/firmas-error.txt" | tr '\n' ' ')"
+fi
+if [ -n "${PULSO_CABECERAS:-}" ]; then
+    if firmas "$PULSO_CABECERAS"; then
+        paso firmas-otras BIEN "$(grep -c '^[a-z].*(' "$TMP/firmas.h") prototipos iguales a los de $PULSO_CABECERAS"
+    else
+        paso firmas-otras MAL "$(grep -m3 error "$TMP/firmas-error.txt" | tr '\n' ' ')"
+    fi
+fi
+# Las de otra version (PULSO_CABECERAS=<carpeta con pulse/*.h>, p. ej. libpulse 17)
+if [ -n "${PULSO_CABECERAS:-}" ]; then
+    if make -s abi-otras PULSO_CABECERAS="$PULSO_CABECERAS" >"$TMP/abi-otras-make.txt" 2>&1 &&
+        ./bin/abi-otras | grep -v '^#' >"$TMP/abi-otras.txt" && [ -s "$TMP/abi-otras.txt" ] &&
+        diff "$TMP/abi-otras.txt" "$TMP/abi-nuestro.txt" >"$TMP/abi-otras-diff.txt"; then
+        paso abi-otras BIEN "$(wc -l <"$TMP/abi-otras.txt") iguales a $(./bin/abi-otras | sed -n 's/^# cabeceras: //p')"
+    else
+        paso abi-otras MAL "$(cat "$TMP/abi-otras-make.txt" "$TMP/abi-otras-diff.txt" 2>/dev/null | head -5 | tr '\n' ' ')"
+    fi
+else
+    paso abi-otras SALTADO "sin PULSO_CABECERAS"
 fi
 
 echo "== (1) el cliente como Soloist (18 escenarios)"

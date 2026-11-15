@@ -218,7 +218,8 @@ void flujo_termina(pa_stream *s, pa_stream_state_t est, int error);
 int flujo_completa_op(pa_operation *o); /* 1 si ya acabo */
 pa_stream *flujo_por_indice(pa_context *c, uint32_t idx);
 void flujo_info(pa_stream *s, pa_sink_input_info *i, pa_format_info *fmt);
-void flujo_pon_volumen(pa_stream *s, const pa_cvolume *v);
+/* 1 si el volumen guardado cambio (libpulse solo avisa «change» entonces) */
+int flujo_pon_volumen(pa_stream *s, const pa_cvolume *v);
 
 /* utiles.c */
 size_t pulso_tam_muestra(pa_sample_format_t f);

@@ -37,6 +37,13 @@ $(B)/abi-nuestro: abi.c ../pulso_abi.h | $(B)
 $(B)/abi-real: abi.c | $(B)
 	$(CC) -O0 -o $@ abi.c
 
+# Con PULSO_CABECERAS=<carpeta con pulse/*.h> (por ejemplo las de libpulse 17
+# sacadas de su codigo fuente, fuera del repositorio) se compara tambien contra
+# ellas: make abi-otras PULSO_CABECERAS=...
+.PHONY: abi-otras
+abi-otras: | $(B)
+	$(CC) -O0 -I$(PULSO_CABECERAS) -o $(B)/abi-otras abi.c
+
 $(B)/genera-wav: genera-wav.c senal.h | $(B)
 	$(CC) -O1 -o $@ genera-wav.c -lm
 

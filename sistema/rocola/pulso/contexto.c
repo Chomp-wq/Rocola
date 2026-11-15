@@ -108,10 +108,14 @@ static void completa_op_ctx(pa_operation *o)
     case O_VOLUMEN: {
         pa_stream *s = flujo_por_indice(c, o->indice);
         if (s) {
-            flujo_pon_volumen(s, &o->vol);
+            /* Como el servidor de PulseAudio: el «change» solo si de verdad
+             * cambio (pedir el mismo volumen no avisa; asi un cliente que
+             * responde al aviso volviendo a pedirlo no entra en un bucle). */
+            int cambio = flujo_pon_volumen(s, &o->vol);
             if (o->cb)
                 ((pa_context_success_cb_t)o->cb)(c, 1, o->ud);
-            ctx_evento(c, PA_SUBSCRIPTION_EVENT_SINK_INPUT | PA_SUBSCRIPTION_EVENT_CHANGE, o->indice);
+            if (cambio)
+                ctx_evento(c, PA_SUBSCRIPTION_EVENT_SINK_INPUT | PA_SUBSCRIPTION_EVENT_CHANGE, o->indice);
         } else {
             ctx_error(c, PA_ERR_NOENTITY);
             if (o->cb)

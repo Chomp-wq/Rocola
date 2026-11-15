@@ -295,6 +295,13 @@ static int escenario(const char *lib, pa_sample_format_t f, int canales, uint32_
             pa_threaded_mainloop_wait(p->m);
         COMPRUEBA(p->eventos_cambio > ev0, "aviso de cambio de la entrada tras el volumen");
         COMPRUEBA(p->vol_info == 30000, "get_sink_input_info da el volumen pedido (%u)", p->vol_info);
+        /* el mismo volumen otra vez: libpulse no avisa «change» (sin bucles) */
+        int ev1 = p->eventos_cambio;
+        espera_op(p, pa_context_set_sink_input_volume(p->c, pa_stream_get_index(s), &v2, exito_ctx_cb, p));
+        pa_threaded_mainloop_unlock(p->m);
+        duerme_ms(200);
+        pa_threaded_mainloop_lock(p->m);
+        COMPRUEBA(p->eventos_cambio == ev1, "el mismo volumen no avisa cambio (%d avisos)", p->eventos_cambio - ev1);
         anillo an;
         if (anillo_abre(&an, anillo_ruta()) == 0) {
             COMPRUEBA(A_CARGA32(&an.cab->volumen_pedido) == 30000, "volumen_pedido en el anillo (%u)", A_CARGA32(&an.cab->volumen_pedido));
