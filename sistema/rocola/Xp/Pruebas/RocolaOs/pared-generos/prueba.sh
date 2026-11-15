@@ -9,7 +9,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-orden pastilla hojea hojeaxp abre portadas tope descarga sincatalogo apagado cero sinllave}"
+escenas="${*:-orden pastilla hojea hojeaxp abre portadas tope descarga contrato sincatalogo apagado cero sinllave}"
 T=${T:-/root/rocola-trabajo/fase11/pared-generos}
 API=${API:-$T/api-falsa}
 W=${W:-$T/prueba}
@@ -236,6 +236,24 @@ PY
     printf 'sha256=%064d\nbytes=%d\n' 7 $(stat -c %s "$C3/rocola_catalogo.tsv.gz") > "$C3/rocola_catalogo.txt"
     apifalsa ${e}4 "$C3"; d=$(datos ${e}4 encendido); abre ${e}4 "$d" "$BASE" 14 ROCOLA_OS=1 ROCOLA_IA_DATOS="$DD"; espera ${e}4
     si "descarga 4: uno que no es el de su sha256 no se usa: sigue el de antes ($(est $W/${e}4 catalogo), $(est $W/${e}4 catalogo_discos) discos)" bash -c "grep -q 'no es el que dice su sha256' '$W/datos-${e}4/rocola_os_bitacora.txt' && [ '$(est $W/${e}4 catalogo_discos)' = 24074 ]" ;;
+  contrato)
+    # EL CONTRATO «I8» CON EL GRUPO catalogo-datos: su archivo de prueba tal cual (contrato/rocola_catalogo_prueba.tsv.gz, copia del de
+    # sistema/catalogo/prueba de su rama: 176 artistas y 652 discos inventados, las 27 letras, acentos, «Ñ», #, discos sin año, sin id y sin
+    # portada) y un .txt con TODAS las claves que escribe su armador (formato, version, fecha, sha256, bytes, artistas, discos, fuentes, licencia)
+    C4="$W/catalogo-contrato"; mkdir -p "$C4"; cp "$G/contrato/rocola_catalogo_prueba.tsv.gz" "$C4/rocola_catalogo.tsv.gz"
+    printf 'formato=1\nversion=20261114.1\nfecha=2026-11-15\nsha256=%s\nbytes=%d\nartistas=176\ndiscos=652\nfuentes=MusicBrainz, Wikidata, ListenBrainz\nlicencia=CC0 y CC BY-NC-SA 3.0\n' \
+      "$(sha256sum "$C4/rocola_catalogo.tsv.gz" | cut -d' ' -f1)" "$(wc -c < "$C4/rocola_catalogo.tsv.gz")" > "$C4/rocola_catalogo.txt"
+    apifalsa $e "$C4"; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,12:27+39" 20 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11 pared-generos-catalogo-del-contrato)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
+    si "contrato: sale con 0" test "$(cat $o/salio)" = 0
+    si "contrato: el catalogo del grupo catalogo-datos se bajo y se leyo entero ($(est $o catalogo), $(est $o catalogo_discos) discos)" bash -c "[ '$(est $o catalogo)' = bajado ] && [ '$(est $o catalogo_discos)' = 652 ]"
+    si "contrato: ninguna peticion a la API (/v1: $(v1 $a))" test "$(v1 $a)" = 0
+    for L in A B; do
+      python3 "$G/contrato.py" "$o/volcado/letra-$L.tsv" "$C4/rocola_catalogo.tsv.gz" $L $([ $L = A ] && echo 5 || echo 1) > "$o/verifica-$L.txt" 2>&1; r=$?
+      sed 's/^/   /' "$o/verifica-$L.txt"
+      si "contrato: la letra $L armada con los discos del archivo (nombres, genero, orden de cada artista) y los tuyos" test $r = 0
+    done ;;
   sincatalogo)
     # SIN CATALOGO (la red no lo tiene): la pared de XP tal cual (la A con tus 5 discos, sin pastilla) y ninguna peticion a la API
     apifalsa $e ""; d=$(datos $e encendido)
