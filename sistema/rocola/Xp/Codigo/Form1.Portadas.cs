@@ -734,7 +734,7 @@ namespace Rocola
             catch { identidad += "|sin-archivo"; }
             ulong h = Fnv64(identidad);
             // Version nueva: nunca reutilizar el JPEG anterior, que perdia alfa y calidad.
-            return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png");
+            return RocolaOsSpotifyCatalogoMiniatura(coverPath, Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png"));   // ROCOLA OS g43: (XP) return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png"); — la miniatura de una portada de Spotify va a /run, no a rocola_miniaturas: nada de Spotify al disco (RocolaOs/RocolaOs.SpotifyCatalogo.cs; lo demas, la de XP)
         }
 
         // CARATULAS EN JPEG (interruptor de Ctrl+F3, apagado de fabrica). La identidad de arriba no cambia; con el

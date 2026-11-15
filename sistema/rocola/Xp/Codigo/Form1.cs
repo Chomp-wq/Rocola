@@ -2275,7 +2275,7 @@ namespace Rocola
 
         private void AddSong(Track t, Album disc)
         {
-            if (t == null) return;
+            if (t == null || RocolaOsSpotifyCatalogoPone(t, disc)) return;   // ROCOLA OS g42: (XP) if (t == null) return; — PONER en un disco de Spotify la pide por I6 (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, false)
             PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disc;
             AddResult r = AddItem(it);
             if (r == AddResult.Added) ShowSongAddedToast(false);
