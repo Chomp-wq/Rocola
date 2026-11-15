@@ -1285,7 +1285,7 @@ namespace Rocola
         {
             // La comparacion a ciegas se acaba antes de armar otra cancion: si no, se armaria con lo del tramo que suene (CompararCiegas.cs).
             if (ciegoActivo) TerminaCiego("Se acaba la cancion: comparacion cortada. ");
-            CadenaCancion c = new CadenaCancion();
+            CadenaCancion c = new CadenaCancion(); t = RocolaOsCalidadCancion(t, source);   // ROCOLA OS g61: (XP) CadenaCancion c = new CadenaCancion(); — si el lector es la version de Spotify de una cancion tuya, la cadena se arma con una copia de tu cancion con la ruta de Spotify (sus medidas, ninguna de tu MP3); lo que se ve sigue siendo tu cancion (RocolaOs/RocolaOs.Calidad.cs; de XP, la misma t)
             c.Cancion = t; c.Lector = source; c.IaMejorada = iaMejorada;
             OlvidaSiEsOtroArchivo(t.Path, source);   // en esa ruta hay hoy otro archivo: lo aprendido del de antes no vale
             c.Fuente = FuenteDeLector(t.Path, source);
