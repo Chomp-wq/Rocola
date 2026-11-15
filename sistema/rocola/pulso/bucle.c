@@ -446,7 +446,17 @@ static int iterate(pa_mainloop *m, int bloquea)
     m->en_poll = 0;
     if (r < 0 && err != EINTR) {
         TRAZA("poll fallo: %s", strerror(err));
-        return -1;
+        if (err != ENOMEM && err != EAGAIN)
+            return -1;
+        /* Falta de memoria pasajera: libpulse dejaria morir el hilo del
+         * bucle (y Soloist se quedaria esperando para siempre); aqui se
+         * espera 10 ms sin el cerrojo y se sigue. */
+        int c2 = m->hilo ? suelta_todo(m->hilo) : 0;
+        struct timespec diez = {0, 10000000L};
+        nanosleep(&diez, NULL);
+        if (m->hilo)
+            retoma(m->hilo, c2);
+        return n;
     }
     if (r > 0 && (m->pfd[0].revents & POLLIN)) {
         uint64_t v;

@@ -82,11 +82,19 @@ const char *anillo_ruta(void);
 /* Abre (y crea o rehace por renombre si no es valido). 0 bien, si no el errno. */
 int anillo_abre(anillo *a, const char *ruta);
 void anillo_cierra(anillo *a);
-/* 1 si el archivo de la ruta ya no es el mapeado (otro inodo o borrado). */
+/* 1 si el archivo de la ruta ya no es el mapeado (otro inodo o borrado), o
+ * si el mapeado ya no mide lo que debe o perdio la magia (alguien lo trunco). */
 int anillo_cambio(const anillo *a);
 /* Cuadros pendientes = escrito - max(leido, vaciado_hasta), acotado a [0, capacidad]. */
 uint64_t anillo_pendientes(const anillo_cabecera *c);
-/* 1 si hay lector: lector_presente y latido_lector de hace 2 s o menos. */
+/* Cuadros que el escritor puede copiar sin pisar nada que el lector pueda
+ * estar copiando todavia: capacidad - (escrito - leido), con el leido TAL
+ * CUAL (sin el vaciado). Tras un vaciado con el anillo lleno, lo nuevo no
+ * cae encima de lo viejo hasta que el lector salta (leido = vaciado_hasta).
+ * Nunca es mas que capacidad - pendientes (I1). */
+uint64_t anillo_libre(const anillo_cabecera *c);
+/* 1 si hay lector: lector_presente y latido_lector a 2 s o menos de ahora
+ * (hacia atras, o hacia adelante si el reloj del lector va algo por delante). */
 int anillo_hay_lector(const anillo_cabecera *c, uint64_t ahora_ns);
 uint64_t anillo_ahora_ns(void);
 

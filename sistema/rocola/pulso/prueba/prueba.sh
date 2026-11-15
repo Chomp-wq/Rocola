@@ -103,6 +103,15 @@ else
 fi
 sed 's/^/    /' "$TMP/raro.txt" | grep -v '^    raro:'
 
+echo "== (2b) hilos y robustez (carreras con vaciados, anillo rehecho, ciclos, cabecera, consumo)"
+mkdir -p "$TMP/hilos"
+if PRUEBA_DIR="$TMP/hilos" ./bin/hilos >"$TMP/hilos.txt" 2>"$TMP/hilos.err"; then
+    paso hilos BIEN "$(tail -1 "$TMP/hilos.txt")"
+else
+    paso hilos MAL "$(grep -m3 MAL "$TMP/hilos.err" | tr '\n' ' ') $(tail -1 "$TMP/hilos.txt")"
+fi
+sed 's/^/    /' "$TMP/hilos.txt" | grep -v '^    hilos:'
+
 echo "== (4) clientes de verdad de PulseAudio con nuestra libpulse"
 real() { # real NOMBRE BITS CUADROS orden...
     n=$1; b=$2; esperados=$3; shift 3
@@ -174,11 +183,12 @@ if [ "$RAPIDO" != rapido ]; then
         TSAN_OPTIONS="halt_on_error=0 second_deadlock_stack=1" ROCOLA_SPOTIFY_ANILLO="$TMP/tsan/a/sonido.anillo" \
             pesado ./bin-tsan/cliente "$AQUI/bin-tsan/libpulse.so.0" rapido >"$TMP/tsan.txt" 2>&1; r1=$?
         TSAN_OPTIONS="halt_on_error=0" PRUEBA_DIR="$TMP/tsan" pesado ./bin-tsan/raro >>"$TMP/tsan.txt" 2>&1; r2=$?
+        TSAN_OPTIONS="halt_on_error=0 second_deadlock_stack=1" HILOS_CORTO=1 PRUEBA_DIR="$TMP/tsan" pesado ./bin-tsan/hilos >>"$TMP/tsan.txt" 2>&1; r3=$?
         n=$(grep -c 'WARNING: ThreadSanitizer' "$TMP/tsan.txt")
-        if [ "$n" = 0 ] && [ $r1 = 0 ] && [ $r2 = 0 ]; then
-            paso tsan BIEN "cliente (rapido) y los 9 casos raros: 0 avisos; $(grep -h 'comprobaciones' "$TMP/tsan.txt" | tr '\n' ' ')"
+        if [ "$n" = 0 ] && [ $r1 = 0 ] && [ $r2 = 0 ] && [ $r3 = 0 ]; then
+            paso tsan BIEN "cliente (rapido), los 9 casos raros y los de hilos: 0 avisos; $(grep -h 'comprobaciones' "$TMP/tsan.txt" | tr '\n' ' ')"
         else
-            paso tsan MAL "$n avisos (salidas $r1 $r2): $(grep -m2 -A3 'WARNING: ThreadSanitizer' "$TMP/tsan.txt" | tr '\n' ' ' | cut -c1-400)"
+            paso tsan MAL "$n avisos (salidas $r1 $r2 $r3): $(grep -m2 -A3 'WARNING: ThreadSanitizer' "$TMP/tsan.txt" | tr '\n' ' ' | cut -c1-400)"
         fi
     else paso tsan MAL "no compila"; fi
 
@@ -188,12 +198,13 @@ if [ "$RAPIDO" != rapido ]; then
         export ASAN_OPTIONS="detect_leaks=1"
         ROCOLA_SPOTIFY_ANILLO="$TMP/asan/a/sonido.anillo" LD_PRELOAD= pesado ./bin-asan/cliente "$AQUI/bin-asan/libpulse.so.0" >"$TMP/asan.txt" 2>&1; r1=$?
         PRUEBA_DIR="$TMP/asan" pesado ./bin-asan/raro >>"$TMP/asan.txt" 2>&1; r2=$?
+        HILOS_CORTO=1 PRUEBA_DIR="$TMP/asan" pesado ./bin-asan/hilos >>"$TMP/asan.txt" 2>&1; r3=$?
         unset ASAN_OPTIONS
         n=$(grep -c -E 'ERROR: (Address|Leak)Sanitizer|runtime error' "$TMP/asan.txt")
-        if [ "$n" = 0 ] && [ $r1 = 0 ] && [ $r2 = 0 ]; then
-            paso asan BIEN "cliente (18 escenarios) y los 9 casos raros: 0 avisos de memoria, fugas ni comportamiento indefinido; $(grep -h 'comprobaciones' "$TMP/asan.txt" | tr '\n' ' ')"
+        if [ "$n" = 0 ] && [ $r1 = 0 ] && [ $r2 = 0 ] && [ $r3 = 0 ]; then
+            paso asan BIEN "cliente (18 escenarios), los 9 casos raros y los de hilos: 0 avisos de memoria, fugas ni comportamiento indefinido; $(grep -h 'comprobaciones' "$TMP/asan.txt" | tr '\n' ' ')"
         else
-            paso asan MAL "$n avisos (salidas $r1 $r2): $(grep -m2 -A4 -E 'ERROR: |runtime error' "$TMP/asan.txt" | tr '\n' ' ' | cut -c1-400)"
+            paso asan MAL "$n avisos (salidas $r1 $r2 $r3): $(grep -m2 -A4 -E 'ERROR: |runtime error' "$TMP/asan.txt" | tr '\n' ' ' | cut -c1-400)"
         fi
     else paso asan MAL "no compila"; fi
 

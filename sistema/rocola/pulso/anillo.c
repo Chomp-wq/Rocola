@@ -5,6 +5,7 @@
 #include "interno.h"
 
 #include <errno.h>
+#include <pthread.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,13 +42,27 @@ uint64_t anillo_pendientes(const anillo_cabecera *c)
     return p > ANILLO_CAPACIDAD ? ANILLO_CAPACIDAD : p;
 }
 
+uint64_t anillo_libre(const anillo_cabecera *c)
+{
+    uint64_t e = A_CARGA64(&c->escrito);
+    uint64_t l = A_CARGA64(&c->leido);
+    uint64_t ocupado = l >= e ? 0 : e - l;
+    uint64_t p = anillo_pendientes(c);
+    if (ocupado < p)
+        ocupado = p;
+    return ocupado >= ANILLO_CAPACIDAD ? 0 : ANILLO_CAPACIDAD - ocupado;
+}
+
 int anillo_hay_lector(const anillo_cabecera *c, uint64_t ahora)
 {
     if (A_CARGA32(&c->lector_presente) != 1)
         return 0;
     uint64_t l = A_CARGA64(&c->latido_lector_ns);
+    /* Un latido «del futuro» (mas de 2 s) es basura, no un lector vivo: sin
+     * esto, un lector que apunto mal su reloj y murio dejaria a Soloist
+     * escribiendo para nadie para siempre. */
     if (l >= ahora)
-        return 1;
+        return l - ahora <= 2000000000ull;
     return ahora - l <= 2000000000ull;
 }
 
@@ -157,7 +172,20 @@ static int mapea(anillo *a, const char *ruta, int *invalido)
     return 0;
 }
 
+/* Dos contextos del mismo proceso rehaciendo a la vez usarian el mismo
+ * <ruta>.t.<pid> (uno truncaria el del otro): de uno en uno. */
+static pthread_mutex_t abre_mx = PTHREAD_MUTEX_INITIALIZER;
+static int abre(anillo *a, const char *ruta);
+
 int anillo_abre(anillo *a, const char *ruta)
+{
+    pthread_mutex_lock(&abre_mx);
+    int e = abre(a, ruta);
+    pthread_mutex_unlock(&abre_mx);
+    return e;
+}
+
+static int abre(anillo *a, const char *ruta)
 {
     memset(a, 0, sizeof *a);
     a->fd = -1;
@@ -204,5 +232,12 @@ int anillo_cambio(const anillo *a)
     struct stat st;
     if (stat(a->ruta, &st) != 0)
         return 1;
-    return st.st_dev != a->dev || st.st_ino != a->ino;
+    if (st.st_dev != a->dev || st.st_ino != a->ino)
+        return 1;
+    /* I1: nadie lo trunca. Si alguien lo hiciera igual, tocar las paginas que
+     * ya no existen daria SIGBUS: mirar el tamano ANTES de leer la magia, y
+     * reabrir (se rehace por renombre). Solo acorta el tiempo en peligro. */
+    if (!a->cab || fstat(a->fd, &st) != 0 || (size_t)st.st_size != ANILLO_TAMANO)
+        return 1;
+    return A_CARGA32(&a->cab->magia) != ANILLO_MAGIA;
 }

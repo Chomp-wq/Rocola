@@ -14,7 +14,7 @@ LIBSRC := $(wildcard ../*.c)
 DEP := ../pulso_abi.h ../pulso_api.h ../anillo.h ../interno.h senal.h comun.h soloist48.h
 
 .PHONY: todo limpia
-todo: $(B)/libpulse.so.0 $(B)/lector $(B)/cliente $(B)/raro $(B)/abi-nuestro $(B)/abi-real $(B)/genera-wav
+todo: $(B)/libpulse.so.0 $(B)/lector $(B)/cliente $(B)/raro $(B)/hilos $(B)/abi-nuestro $(B)/abi-real $(B)/genera-wav
 
 $(B):
 	mkdir -p $(B)
@@ -30,6 +30,9 @@ $(B)/cliente: cliente.c ../anillo.c ../traza.c $(DEP) | $(B)
 
 $(B)/raro: raro.c ../anillo.c ../traza.c $(DEP) $(B)/libpulse.so.0 | $(B)
 	$(CC) $(CFLAGS) $(PROPIAS) -o $@ raro.c ../anillo.c ../traza.c -L$(B) -l:libpulse.so.0 -Wl,-rpath,'$$ORIGIN' -lm
+
+$(B)/hilos: hilos.c ../anillo.c ../traza.c $(DEP) $(B)/libpulse.so.0 | $(B)
+	$(CC) $(CFLAGS) $(PROPIAS) -o $@ hilos.c ../anillo.c ../traza.c -L$(B) -l:libpulse.so.0 -Wl,-rpath,'$$ORIGIN' -lm
 
 $(B)/abi-nuestro: abi.c ../pulso_abi.h | $(B)
 	$(CC) -O0 -DNUESTRO -o $@ abi.c

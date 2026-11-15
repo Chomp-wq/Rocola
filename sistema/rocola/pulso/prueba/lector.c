@@ -54,6 +54,9 @@ int main(int argc, char **argv)
     A_GUARDA32(&h->latencia_lector_us, latencia);
     A_GUARDA64(&h->latido_lector_ns, anillo_ahora_ns());
     A_GUARDA32(&h->lector_presente, 1);
+    /* al abrir, lo vaciado antes ya no cuenta (I1: leido = max(leido, vaciado_hasta)) */
+    if (A_CARGA64(&h->vaciado_hasta) > A_CARGA64(&h->leido))
+        A_GUARDA64(&h->leido, A_CARGA64(&h->vaciado_hasta));
 
     uint64_t cuadros = 0, errores = 0, saltos = 0, subdes = 0, reaperturas = 0, flujos = 0, sin_dato = 0;
     char primer_error[256] = "";
@@ -91,6 +94,8 @@ int main(int argc, char **argv)
                 A_GUARDA32(&h->lector_presente, 1);
                 gen_f = A_CARGA32(&h->gen_flujo) - 1; /* fuerza a releer el flujo */
                 gen_v = A_CARGA32(&h->gen_vaciado);
+                if (A_CARGA64(&h->vaciado_hasta) > A_CARGA64(&h->leido))
+                    A_GUARDA64(&h->leido, A_CARGA64(&h->vaciado_hasta));
                 tengo_k = 0;
             }
         }
@@ -119,11 +124,17 @@ int main(int argc, char **argv)
         }
         if (!lee || frec == 0 || A_CARGA32(&h->tapado))
             continue;
+        /* el escritor murio sin avisar (latido de hace mas de 2 s): no consumir */
+        uint64_t le = A_CARGA64(&h->latido_escritor_ns);
+        if (le + 2000000000ull < ahora)
+            continue;
         resto += (double)frec * periodo_ms / 1000.0;
         uint64_t quiere = (uint64_t)resto;
         resto -= (double)quiere;
         uint64_t esc = A_CARGA64(&h->escrito);
-        uint64_t l = A_CARGA64(&h->leido);
+        uint64_t l = A_CARGA64(&h->leido), vh = A_CARGA64(&h->vaciado_hasta);
+        if (vh > l)
+            l = vh; /* I1: pendientes = escrito - max(leido, vaciado_hasta) */
         uint64_t pend = esc > l ? esc - l : 0;
         if (pend > ANILLO_CAPACIDAD)
             pend = ANILLO_CAPACIDAD;

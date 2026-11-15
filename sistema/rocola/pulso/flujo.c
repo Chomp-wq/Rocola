@@ -156,9 +156,10 @@ static void escribe_anillo(pa_stream *s, const float *src, size_t n)
 static void drena_cola(pa_stream *s)
 {
     anillo_cabecera *h = cab(s);
-    if (!s->activo || !h || s->cola_n == 0)
+    /* el flujo que ya no es el del anillo (otro lo desplazo) no escribe */
+    if (!s->activo || g_activo != s || s->gen_activo != g_gen || !h || s->cola_n == 0)
         return;
-    uint64_t libre = ANILLO_CAPACIDAD - anillo_pendientes(h);
+    uint64_t libre = anillo_libre(h);
     size_t k = s->cola_n < libre ? s->cola_n : (size_t)libre;
     if (k == 0)
         return;
@@ -199,7 +200,7 @@ static size_t empuja(pa_stream *s, const float *src, size_t n)
     if (s->activo && h) {
         drena_cola(s);
         if (s->cola_n == 0) {
-            uint64_t libre = ANILLO_CAPACIDAD - anillo_pendientes(h);
+            uint64_t libre = anillo_libre(h);
             size_t k = n < libre ? n : (size_t)libre;
             if (k) {
                 escribe_anillo(s, src, k);
