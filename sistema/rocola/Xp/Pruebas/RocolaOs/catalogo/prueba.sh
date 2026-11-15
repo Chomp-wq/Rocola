@@ -10,14 +10,16 @@
 #   CAPTURAS: si se pone, las capturas para el dueno van ahi (PNG)
 # escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred (las del catalogo) y pared
 #   canciones todos mas atajos pared429 (las de las paredes del buscador, grupo paredes-buscador: FASE11_paredes-buscador.md) y mantenido tiempo
-#   (las de su revision: el rojo mantenido; la atraccion, la moneda y el buscador cerrado por tiempo); todas, de fabrica
+#   (las de su revision: el rojo mantenido; la atraccion, la moneda y el buscador cerrado por tiempo) y hojea (la de la revision
+#   cuota-hilos-y-fallos: hojear deprisa una pared de 17 paginas con la red lenta, y un 503 a media pared) y atajos503 (los atajos de SP9
+#   que no llegaron por un 503 se vuelven a pedir al abrir el buscador pasado un minuto); todas, de fabrica
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo hojea atajos503}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -396,6 +398,43 @@ for e in $escenas; do
     si "tiempo: la pared de Banda de memoria la 2a vez (2 peticiones de artista) y nada de Orquesta" bash -c "[ \$(grep -c '/v1/artists/' '$a') = 2 ] && ! grep -q '/v1/.*art99' '$a'"
     si "tiempo: nada de Spotify pedido ($(pedidos $o))" test "$(pedidos $o)" = 0
     si "tiempo: el buscador se cerro solo y quedo la pared de XP: PONER entro a un disco de XP (ningun disco pedido a /v1 ni la pared de Banda otra vez)" bash -c "! grep -q '/v1/albums/' '$a' && [ \$(grep -c 'pared del buscador: pared_artista' '$d/rocola_os_bitacora.txt') = 2 ]" ;;
+  hojea)
+    # (revision cuota-hilos-y-fallos) HOJEAR DEPRISA CON LA RED LENTA: Banda Interminable con 300 discos (/control/muchos: su pared, 301 casillas,
+    # 17 paginas) y cada peticion a /v1 400 ms mas lenta. Se abre la pared y se MANTIENE ARRIBA 2,5 s (la repeticion de XP la lleva hasta la
+    # ultima pagina): las paginas que pasaron sin que nadie las mirara NO se piden despues (de la cola se quitan las que ya no se miran); la
+    # ultima (off=280 y 290) si, una vez. Despues un 503 a media pared (2 seguidos: la peticion y su reintento): ABAJO pide lo que le falta
+    # a la 16a (off=260 y 270, o solo uno si el otro llego al pasar) y el primero da 503; ARRIBA y ABAJO otra vez: se pide de nuevo y llega.
+    # Lo que se dejo no se apunta como fallo.
+    apifalsa $e; d=$(datos $e encendido); control muchos; control "lento?ms=400"
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,20:38~2500,26:40,29:38,30:40" 34 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 19.5 pared-hojea-al-abrir),$(cap 25.5 pared-hojea-ultima),$(cap 28.5 pared-hojea-503),$(cap 33 pared-hojea-tras-el-503)"
+    ( sleep 25.7; control "5xx?n=2" ) &
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    grep '/v1/artists/' "$a" | sed 's/^/   /' | tr '\n' ';' | cut -c1-900; echo
+    na=$(grep -c '/v1/artists/art50/albums' "$a")
+    si "hojea: sale con 0" test "$(cat $o/salio)" = 0
+    si "hojea: hojeando deprisa, las paginas que nadie miro no se pidieron ($na peticiones de la pared, de las 30 que harian falta para todas; tope 16)" test "$na" -le 16
+    si "hojea: la ultima pagina (off=280 y off=290) se pidio una vez cada una y llego" bash -c "for n in 280 290; do [ \$(grep -c 'art50/albums app 200 t=album,single off='\$n'$' '$a') = 1 ] || exit 1; done"
+    x=$(grep -m1 'art50/albums app 503 ' "$a" | sed 's/.* off=//')
+    si "hojea: el 503 a media pared: el bloque que faltaba en la 16a (off=${x:-ninguno}) dio 503 (la peticion y su reintento) y despues, al volver a mirar la pagina, llego una vez" bash -c "[ -n '$x' ] && [ \$(grep -c 'art50/albums app 503 t=album,single off=$x$' '$a') = 2 ] && [ \$(grep -c 'art50/albums app 200 t=album,single off=$x$' '$a') = 1 ] && [ \$(grep -n 'art50/albums app 200 t=album,single off=$x$' '$a' | cut -d: -f1) -gt \$(grep -n 'art50/albums app 503 ' '$a' | tail -1 | cut -d: -f1) ] && for n in 260 270; do [ \$(grep -c 'art50/albums app 200 t=album,single off='\$n'$' '$a') = 1 ] || exit 1; done"
+    si "hojea: la bitacora dice el 503 de la pagina y nada de las que se dejaron" bash -c "grep -q 'no llego una pagina de la pared: la API contesto 503' '$d/rocola_os_bitacora.txt' && ! grep -q 'ya no se mira' '$d/rocola_os_bitacora.txt'"
+    si "hojea: el estado cuenta las dejadas (dejadas=N, N > 0)" bash -c "grep -qE '^dejadas=[1-9][0-9]*$' '$o/run/rocola-xp/spotify/catalogo'" ;;
+  atajos503)
+    # (revision cuota-hilos-y-fallos) LOS ATAJOS DE SP9 CON SPOTIFY CAIDO AL ABRIR EL BUSCADOR: los dos dan 503 (sin reintento: no los espera
+    # nadie mirando); se cierra el buscador y, abierto otra vez antes del minuto, nada se pide; pasado el minuto (una moneda despierta de la
+    # atraccion), al abrirlo se piden otra vez, llegan y en «Tus mas escuchadas» PONER pide su 1a. Ni una peticion mas.
+    apifalsa $e; d=$(datos $e cuenta)
+    ( sleep 7.6; control "5xx?n=2" ) &
+    abre $e "$d" "7:67,8:27+38,10:27+38,30:27+38,31.5:27+38,69:67,70.5:27+38,73:38,73.5:38,75:39,75.5:13,77.5:13" 80 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 9.5 buscador-atajos-503),$(cap 72.5 buscador-atajos-tras-el-minuto)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    grep '/v1/me/' "$a" | sed 's/^/   /'
+    si "atajos503: sale con 0" test "$(cat $o/salio)" = 0
+    si "atajos503: lo de la cuenta llego antes (me/tracks, me/albums, me/playlists: 200 una vez cada una)" bash -c "[ \$(grep -cE 'GET /v1/me/(tracks|albums|playlists) cuenta 200' '$a') = 3 ]"
+    si "atajos503: cada atajo, un 503 y despues (pasado el minuto) un 200, nada mas" bash -c "for r in top/tracks player/recently-played; do [ \$(grep -c \"GET /v1/me/\$r cuenta 503\" '$a') = 1 ] && [ \$(grep -c \"GET /v1/me/\$r cuenta 200\" '$a') = 1 ] && [ \$(grep -c \"/v1/me/\$r\" '$a') = 2 ] || exit 1; done"
+    si "atajos503: la 1a pedida es la 1a de tus mas escuchadas (can0012)" test "$(pedido $o 1)" = "$(printf 'pedida\tspotify:track:can0012')"
+    si "atajos503: solo esa pedida ($(pedidos $o))" test "$(pedidos $o)" = 1
+    si "atajos503: la bitacora dice que un atajo no llego (503)" contiene "$d/rocola_os_bitacora.txt" "un atajo no llego: la API contesto 503" ;;
   esac
 done
 

@@ -70,12 +70,14 @@ las del catálogo, a `/run/rocola-xp/spotify/portadas` (del servidor de imágene
 | Entrar a «Canciones de ARTISTA» | 1 por cada 10, hasta 5 (solo mientras alguien está dentro); quedarse elegida en la pared: 1 (la primera página) |
 | Un disco de una pared elegido 0,6 s, o al entrar | 1 (el del catálogo, g52/g49; 2 si tiene más de 50 canciones) |
 | REGRESAR al buscador, volver a abrir una pared ya vista | 0 (de memoria) |
+| Los atajos de SP9 | 2 por sesión (con `refresh_token`); 0 sin él. Si no llegaron por la red (sin red, 5xx, 429), otra vez al abrir el buscador pasado un minuto (revisión cuota-hilos-y-fallos) |
+| Hojear deprisa (mantener ARRIBA/ABAJO) | solo las páginas que se están mirando cuando les toca en la cola; las que ya pasaron se dejan sin pedir (revisión cuota-hilos-y-fallos) |
 
 La página de al lado **no** se pide por adelantado (la idea del pendiente decía «y si acaso la siguiente»): así cada página cuesta 1 o 2
 peticiones y solo si alguien la mira; la casilla que aún no llega se ve vacía unos cientos de milisegundos.
-| Los atajos de SP9 | 2 por sesión (con `refresh_token`); 0 sin él |
 
-El estado (`/run/rocola-xp/spotify/catalogo`) suma `paredes=` (páginas de «Todos los discos» y de «Canciones de») y `atajos=`.
+El estado (`/run/rocola-xp/spotify/catalogo`) suma `paredes=` (páginas de «Todos los discos» y de «Canciones de»), `atajos=` y `dejadas=`
+(páginas que se dejaron en la cola sin pedir porque ya nadie las miraba).
 
 ## 4. Las pruebas (con números)
 
@@ -240,3 +242,80 @@ la copia de trabajo):
   hace lo mismo que en un disco de XP (primero la vuelta, luego la ayuda encima). No hay escena automática del asistente en la pared.
 - Nada de esto se probó con la API de verdad, la cuenta del dueño, Soloist de verdad ni en el A4; la repetición de los botones del A4
   (la placa de botones USB) es la que hay que ver allí: mantener el rojo en un disco de una pared y en la pared.
+
+## Revisión (cuota-hilos-y-fallos)
+
+Revisor independiente, con este enfoque: peticiones contadas por acción (nada de fondo, nada por cuadro ni por tecla mantenida), 429 con
+Retry-After, 401, 5xx y sin red a media pared, que el hilo de la pantalla nunca espere a la red, listas que llegan mientras se mira,
+memoria y portadas al hojear deprisa, NativeAOT. Se leyó el código (`RocolaOs.SpotifyCatalogoParedes.cs` entero, lo nuevo del cliente en
+`RocolaOs.SpotifyCatalogoApi.cs` y los ganchos del catálogo que lo llaman) y se corrieron sus pruebas y dos escenas nuevas.
+
+**Lo que se encontró y se arregló:**
+
+1. **Mantener ARRIBA/ABAJO en una pared pedía TODAS las páginas por las que pasaba** (el fallo de cuota de esta revisión). Cada página
+   que la repetición de XP pasaba (unas 30 por segundo) encolaba sus 1 o 2 bloques; la cola los pedía todos, uno tras otro, aunque ya
+   nadie los mirara, y la página donde uno se quedaba esperaba detrás de ellos. Reproducido con la escena nueva `hojea` (300 discos, 17
+   páginas, la red 400 ms más lenta, ARRIBA mantenido 2,5 s) con el programa de 653cefe: **31 peticiones de la pared** (todas las
+   páginas, de off=0 a off=290). Arreglo: cada petición de una página de pared lleva un «sigue» (`Pedido.Sigue`, `PidePagina(..., sigue)`)
+   que el hilo del catálogo pregunta cuando le toca: la pared publica la página que se mira en un campo volátil (`PaginaPub`, en cada
+   `RefreshAlbums`; -1 al dejar la pared) y cada bloque sabe en qué páginas caen sus casillas (`Inicio`/`Fin`, de `Recompone`). Si ya
+   no se mira, se deja **sin preguntar a la red** y se contesta `Dejada` («ya no se mira»): no es un fallo (ni bitácora, ni aviso, ni
+   `Fallados`), y si entre tanto se volvió a esa página, se pide otra vez. Con el arreglo: **11 o 12 peticiones** (off=0..30 al abrir y en
+   la 2.ª página, 1-3 que estaban en camino mientras se hojeaba, la última, off=280 y 290, una vez cada una, y la 16.ª con su 503);
+   `dejadas=22`-`23` en el estado. Las portadas siguen a los bloques que llegan: 93-103 portadas (4,3 MB en `/run`) en vez de unas 300.
+2. **Los atajos de SP9 no volvían en toda la sesión si la primera vez no había red** (5xx, 429 o sin red al abrir el buscador: el
+   router del bar que tarda en prender). Ahora, con un error pasajero (`Pasajero`), se vuelven a pedir al abrir el buscador pasado un
+   minuto (lo que sí llegó sale de memoria, 0 peticiones); un 403 (faltan los permisos `user-top-read`/`user-read-recently-played`) o
+   sin la cuenta, no: una vez por sesión, como antes. El renglón «un atajo no llego» va por `ApuntaCallado` (como mucho uno cada 10
+   min). Sustituye, para los errores pasajeros, el punto «Si los atajos de SP9 fallan [...] no se vuelven a pedir en la sesión» de la
+   revisión de funcionamiento-y-reglas. Escena nueva `atajos503`.
+3. **La mezcla del buscador recorría toda la biblioteca en el hilo de la pantalla** dos veces por cada artista tuyo que Spotify también
+   da (`RocolaOsSpotifyHayMas` y `RocolaOsSpotifyMasTarjeta` llamaban a `RocolaOsSpotifyTusDiscos`, que normalizaba el artista y el
+   disco de cada `Album`). La mezcla corre con cada tecla cuando la búsqueda de Spotify ya está en memoria: con 10 artistas tuyos y 1 500
+   discos, unas 30 000 normalizaciones por tecla (cuenta hecha, no medida). Ahora los discos de cada artista salen de la misma pasada que «tus artistas»
+   (`rocolaOsSpTusDiscos`, rehecha solo si cambia la biblioteca): una búsqueda en un diccionario.
+4. **Un bloque que llega con menos de 10** (en «más en Spotify» se quitan tus discos; Spotify a veces da menos) corre las casillas de
+   detrás: si la elegida ya era un disco y sigue en la misma página, la elección se queda en SU disco en vez de saltar al de al lado.
+   Solo pasa con bloques que llegan fuera de orden (volver a una página tras hojear); no hay escena que lo fuerce.
+
+**Lo que se miró y está bien** (sin cambios):
+
+- El hilo de la pantalla no espera a la red: todo lo que pide va por la cola del catálogo (su hilo) o por el hilo de las portadas, y lo que
+  vuelve, por `RocolaOs.Encarga`; lo que la pantalla lee del cliente (`PaginaYa`, `AtajoYa`, `BuscaYa`) toma el cerrojo solo para mirar
+  un diccionario (el hilo del catálogo nunca lo tiene durante una petición); `HayLlave`/`HayCuenta` leen el archivo como mucho cada 5 s.
+- Nada por cuadro: g52 (en cada cuadro) pide un disco una sola vez por disco y sesión tras 0,6 s elegido (`rocolaOsSpPrevistos`); una
+  casilla vacía (hueco) no pide nada; g47 corre en `RefreshAlbums`, no por cuadro; lo que falló en una página no se repite hasta volver a
+  mirarla (`Fallados`), así que con 429 o sin red no hay tormenta.
+- 429 con Retry-After (segundos o fecha), 401 (una llave nueva y otra vez) y 5xx (un reintento a 1 s) son los del cliente del catálogo;
+  la escena `pared429` y ahora `hojea` (503 a media pared: la página falla, el aviso de XP, y al volver a mirarla llega) lo cubren.
+- Índices: la casilla que llega a un hueco donde ya se entró comprueba el índice contra la lista nueva; `RocolaOsRestaura` acota fila,
+  columna y tarjeta; XP acota página y casilla en `RefreshAlbums`.
+- «Canciones de ARTISTA» sigue pidiendo solo mientras alguien está dentro (si sale, la cadena se para; al volver sigue donde iba).
+
+**Pruebas** (programa de esta revisión, en `/root/rocola-trabajo/fase11/paredes-rev-ch`):
+
+| Comprobación | Resultado |
+|---|---|
+| `dotnet build -c Release` (JIT) | 0 errores, 13 avisos (los de la base; ninguno en `RocolaOs/`) |
+| `dotnet publish` NativeAOT (linux-x64) | sale con 0, **0 avisos IL/AOT** |
+| `hojea` con el programa de 653cefe (JIT, antes del arreglo) | **3 MAL de 6**: **31 peticiones** de la pared (off=0 a 290, todas las páginas), `dejadas` no existe, y el 503 cayó en la cola de lo atrasado |
+| `hojea` con el arreglo | JIT: 12, 11 y 11 peticiones de la pared en tres corridas (las 4 de abrir y la 2.ª página, 3-5 que estaban en camino al hojear, la última página y la 16.ª), `dejadas=22`-`23`, 93-103 portadas (4,3 MB en `/run`) en vez de unas 300; NativeAOT: 11 |
+| `prueba.sh` en JIT (las 23 escenas: las 21 de antes, `hojea` y `atajos503`) | **133 de 138**: los 5 MAL, todos de `fallos`, por la carga de la máquina (load 13 con otras tres baterías a la vez): las letras se escribieron con más de 300 ms entre ellas, salió una búsqueda intermedia («inventa») y los cambios de humor de la API falsa llegaron antes de tiempo. `fallos` repetida sola (load 6): **7 de 7**. Nada de eso pasa por lo cambiado |
+| `prueba.sh` en NativeAOT (las 23) | **137 de 138**: el MAL, la comprobación del 503 de `hojea`, que pedía off=260 y esa vez el bloque que faltaba fue off=270 (el otro llegó al pasar por la página). La comprobación se corrigió (el bloque que dio 503, sea cual sea) y se repitió: **6 de 6** en NativeAOT (y en JIT, con `fallos`, **13 de 13**) |
+| `atajos503` | JIT y NativeAOT **6 de 6**: cada atajo un 503 y, pasado el minuto, un 200 (2 peticiones cada uno); abrir el buscador antes del minuto no pide nada; PONER pide la 1.ª de «Tus más escuchadas» (can0012) |
+| Cuota por escena (JIT / NativeAOT, a /v1) | disco 3/2, artista 5/5, pared 10/8, canciones 10/8, todos 13/11, mas 4/4, atajos 5/5, pared429 5/6, mantenido 7/8, tiempo 7/5, hojea 16/15, atajos503 7/7; las diferencias son búsquedas intermedias al escribir (la carga), lo de las paredes es lo mismo que en el informe del grupo |
+| `ganchos.py` | **TODO BIEN** (31 ganchos; Codigo/ no cambia en esta revisión) |
+| `diff-xp.py --sin-ganchos $(ls Codigo)` | 5 095 / 4 828 / 229, las de la base |
+
+Nivel 0 y nivel 1 no se repitieron: esta revisión no toca `Codigo/` ni nada que corra sin el modo Spotify (todo lo cambiado está detrás
+de `RocolaOsSpotifyCatalogoVa` o en el hilo del catálogo, que sin el modo no se crea).
+
+**Lo que queda abierto** (de este enfoque):
+
+- Las portadas de Spotify en `/run` (tmpfs, en la memoria) no tienen tope en la sesión: cada disco que llega baja la suya (unos 30-40 KB
+  a 300 px). Hojear ya no las multiplica, pero una fiesta larga buscando mucho puede juntar miles (decenas de MB). Es del catálogo, no de
+  las paredes; si en el A4 se ve `/run` crecer, se le pone un tope con borrado de las más viejas.
+- Abrir una pared y cerrar el buscador antes de que llegue: sus 1 o 2 peticiones siguen (son de una acción de alguien; no se dejan).
+- Ni la red lenta del bar, ni la API de verdad, ni la repetición de la placa de botones del A4: `hojea` simula 400 ms por petición y la
+  repetición de XP del arnés (500 ms y ~30/s). En el A4: mantener ARRIBA en la pared de un artista grande y contar en
+  `/run/rocola-xp/spotify/catalogo` `artistas=` y `dejadas=`.

@@ -92,6 +92,8 @@ namespace Rocola
             internal bool Alguien;            // lo espera alguien (va antes que lo de la cuenta)
             internal long NoAntesDe;          // (las busquedas: a los 300 ms de la ultima tecla)
             internal Action<object, string> Listo;   // (resultado o null, error o null), en ESTE hilo: quien lo pide lo encarga a la pantalla
+            internal Func<bool> Sigue;        // (revision cuota-hilos-y-fallos; las paginas de las paredes) null = siempre; si no, se pregunta en
+                                              // este hilo al tocarle: false = ya nadie mira esa pagina, y se deja sin preguntar a la red
         }
         private static readonly object cerrojo = new object();
         private static readonly List<Pedido> cola = new List<Pedido>();
@@ -106,7 +108,7 @@ namespace Rocola
         private static readonly Dictionary<string, List<RocolaOsSpotifyCatalogoCancion>> atajos = new Dictionary<string, List<RocolaOsSpotifyCatalogoCancion>>(StringComparer.Ordinal);
 
         // ---------- lo que se sabe (para el estado y las pruebas: sin secretos) ----------
-        private static long peticiones, peticionesBusqueda, peticionesDisco, peticionesArtista, peticionesCuenta, peticionesLlave, frenadas, fallos, peticionesPared, peticionesAtajos;
+        private static long peticiones, peticionesBusqueda, peticionesDisco, peticionesArtista, peticionesCuenta, peticionesLlave, frenadas, fallos, peticionesPared, peticionesAtajos, dejadas;
         private static int ultimoCodigo;
         private static long frenaHastaMs;          // (Environment.TickCount64) con 429: nada hasta entonces
         private static string frenaRazon = "";
@@ -142,7 +144,11 @@ namespace Rocola
         {
             lock (cerrojo) { RocolaOsSpotifyCatalogoPagina p; return paginas.TryGetValue(que + "\n" + ClavePagina(de, desde), out p) ? p : null; }
         }
-        internal static void PidePagina(string que, string de, int desde, Action<object, string> listo) { Encola(new Pedido { Que = que, Clave = ClavePagina(de, desde), Alguien = true, Listo = listo }); }
+        // (revision cuota-hilos-y-fallos) sigue: si aun hace falta cuando le toque (lo lee ESTE hilo: solo campos volatiles); si no, se deja
+        // sin preguntar y se contesta Dejada. Al hojear deprisa (mantener ARRIBA), cada pagina que pasa pediria lo suyo y la cola lo pediria
+        // TODO despues, pagina por pagina, aunque ya nadie lo mire: con esto, solo la que se mira.
+        internal const string Dejada = "ya no se mira";
+        internal static void PidePagina(string que, string de, int desde, Action<object, string> listo, Func<bool> sigue = null) { Encola(new Pedido { Que = que, Clave = ClavePagina(de, desde), Alguien = true, Listo = listo, Sigue = sigue }); }
         // LOS ATAJOS DE SP9 (AtajoTop, AtajoRecientes): solo con la cuenta, una vez por sesion, detras de lo que alguien espera
         internal static List<RocolaOsSpotifyCatalogoCancion> AtajoYa(string que)
         {
@@ -156,7 +162,12 @@ namespace Rocola
         {
             lock (cerrojo)
             {
-                foreach (Pedido q in cola) if (q.Que == p.Que && q.Clave == p.Clave) { Action<object, string> a = q.Listo, b = p.Listo; q.Listo = delegate (object r, string e) { if (a != null) a(r, e); if (b != null) b(r, e); }; return; }
+                foreach (Pedido q in cola) if (q.Que == p.Que && q.Clave == p.Clave)
+                {
+                    Action<object, string> a = q.Listo, b = p.Listo; q.Listo = delegate (object r, string e) { if (a != null) a(r, e); if (b != null) b(r, e); };
+                    Func<bool> sa = q.Sigue, sb = p.Sigue; q.Sigue = sa == null || sb == null ? null : (() => sa() || sb());   // (lo quiere cualquiera de los dos)
+                    return;
+                }
                 cola.Add(p);
             }
             Despierta();
@@ -196,6 +207,17 @@ namespace Rocola
                 }
                 if (estadoPedido) { estadoPedido = false; EscribeEstado(); }
                 if (p == null) { hayAlgo.WaitOne(espera); continue; }
+                // (revision cuota-hilos-y-fallos) una pagina de pared que ya nadie mira: se deja (ninguna peticion) y se contesta Dejada
+                bool sigue = true;
+                try { sigue = p.Sigue == null || p.Sigue(); } catch { }
+                if (!sigue)
+                {
+                    Interlocked.Increment(ref dejadas);
+                    estadoPedido = true;
+                    try { if (p.Listo != null) p.Listo(null, Dejada); }
+                    catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "al dejar «" + p.Que + "»", ex); }
+                    continue;
+                }
                 object r = null; string error = null;
                 try { r = Atiende(p, out error); }
                 catch (Exception ex) { error = "fallo: " + ex.GetType().Name; RocolaOs.Falla("spotify_catalogo", "pedido «" + p.Que + "»", ex); }
@@ -854,6 +876,7 @@ namespace Rocola
                 sb.Append("artistas=").Append(Interlocked.Read(ref peticionesArtista).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("paredes=").Append(Interlocked.Read(ref peticionesPared).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("atajos=").Append(Interlocked.Read(ref peticionesAtajos).ToString(CultureInfo.InvariantCulture)).Append('\n');
+                sb.Append("dejadas=").Append(Interlocked.Read(ref dejadas).ToString(CultureInfo.InvariantCulture)).Append('\n');   // (paginas que ya nadie miraba: sin peticion)
                 sb.Append("cuenta_peticiones=").Append(Interlocked.Read(ref peticionesCuenta).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("llaves=").Append(Interlocked.Read(ref peticionesLlave).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("frenadas=").Append(Interlocked.Read(ref frenadas).ToString(CultureInfo.InvariantCulture)).Append('\n');

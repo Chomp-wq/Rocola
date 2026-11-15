@@ -57,6 +57,10 @@ namespace Rocola
             internal List<Album> Lista = new List<Album>();
             internal int PaginaMirada = -1;
             internal RocolaOsSpotifyVuelta Vuelta;
+            // (revision cuota-hilos-y-fallos) la pagina que se mira, para el hilo del catalogo (-1: la pared ya no se ve), y la primera y la
+            // ultima casilla de cada bloque por llenar: una pagina pedida que ya nadie mira se deja en la cola sin preguntar a la red
+            internal volatile int PaginaPub;
+            internal readonly Dictionary<int, int> Inicio = new Dictionary<int, int>(), Fin = new Dictionary<int, int>();
         }
         // «Canciones de ARTISTA»: por donde va (se piden de 10 en 10 mientras alguien esta dentro)
         private sealed class RocolaOsSpotifyCancionesDe
@@ -79,10 +83,12 @@ namespace Rocola
         private Dictionary<Album, RocolaOsSpotifyCancionesDe> rocolaOsSpCancionesDe;
         private Dictionary<Album, RocolaOsSpotifyParedQue> rocolaOsSpParedDe;
         private HashSet<string> rocolaOsSpTuyos;                      // tus artistas, sin acentos ni mayusculas
+        private Dictionary<string, HashSet<string>> rocolaOsSpTusDiscos;   // (revision) de cada uno de tus artistas, los nombres de sus discos
         private int rocolaOsSpTuyosDe = -1;
         private List<Album> rocolaOsSpTuyosLista;                     // (la lista de la que salieron: un re-escaneo hace otra)
         private int rocolaOsSpTragaTick;                              // (revision) se volvio al buscador con REGRESAR: su repeticion no borra
         private bool rocolaOsSpAtajosPedidos;
+        private int rocolaOsSpAtajosOtraVez;                          // (revision) un atajo no llego por la red: se vuelve a pedir desde aqui
         private int rocolaOsSpHuecos;
 
         // ================================================================= el buscador =================================================
@@ -118,23 +124,33 @@ namespace Rocola
         private HashSet<string> RocolaOsSpotifyTuyos()
         {
             if (rocolaOsSpTuyos != null && (libBuilding || (rocolaOsSpTuyosDe == albums.Count && ReferenceEquals(rocolaOsSpTuyosLista, albums)))) return rocolaOsSpTuyos;
+            // (revision cuota-hilos-y-fallos) de una pasada, tambien los nombres de los discos de cada artista: antes, cada busqueda con
+            // artistas tuyos recorria toda la biblioteca dos veces por artista, en el hilo de la pantalla (10 artistas y 1500 discos: 30 000
+            // normalizaciones por cada tecla con la busqueda de Spotify ya sabida)
             HashSet<string> h = new HashSet<string>(StringComparer.Ordinal);
+            Dictionary<string, HashSet<string>> dd = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
             if (!libBuilding)
                 foreach (Album a in albums)
-                    if (a != null && !a.IsTop && !string.IsNullOrEmpty(a.Artist) && !RocolaOsEsSpotify(a)) h.Add(MotorBusqueda.Normaliza(a.Artist));
-            rocolaOsSpTuyos = h; rocolaOsSpTuyosDe = libBuilding ? -1 : albums.Count; rocolaOsSpTuyosLista = albums;
+                {
+                    if (a == null || a.IsTop || RocolaOsEsSpotify(a)) continue;
+                    string art = MotorBusqueda.Normaliza(a.Artist ?? "");
+                    if (art.Length > 0) h.Add(art);
+                    HashSet<string> sus;
+                    if (!dd.TryGetValue(art, out sus)) { sus = new HashSet<string>(StringComparer.Ordinal); dd[art] = sus; }
+                    sus.Add(MotorBusqueda.Normaliza(string.IsNullOrEmpty(a.Name) ? (a.Artist ?? "") : a.Name));
+                }
+            rocolaOsSpTuyos = h; rocolaOsSpTusDiscos = dd; rocolaOsSpTuyosDe = libBuilding ? -1 : albums.Count; rocolaOsSpTuyosLista = albums;
             return h;
         }
         // los nombres de tus discos de ese artista, sin acentos ni mayusculas. XP saca artista y disco del nombre de la carpeta («Artista -
         // Disco», SplitArtist); una carpeta sin « - » es solo «artista» y su disco no tiene nombre: entonces cuenta su nombre (un disco con
         // el nombre del artista)
+        // (de RocolaOsSpotifyTuyos, hecho de una pasada; solo se lee: lo comparten la tarjeta y su pared)
         private HashSet<string> RocolaOsSpotifyTusDiscos(string artistaNormalizado)
         {
-            HashSet<string> h = new HashSet<string>(StringComparer.Ordinal);
-            if (libBuilding) return h;
-            foreach (Album a in albums)
-                if (a != null && !a.IsTop && !RocolaOsEsSpotify(a) && MotorBusqueda.Normaliza(a.Artist ?? "") == artistaNormalizado)
-                    h.Add(MotorBusqueda.Normaliza(string.IsNullOrEmpty(a.Name) ? (a.Artist ?? "") : a.Name));
+            RocolaOsSpotifyTuyos();
+            HashSet<string> h;
+            if (libBuilding || rocolaOsSpTusDiscos == null || !rocolaOsSpTusDiscos.TryGetValue(artistaNormalizado, out h)) return new HashSet<string>(StringComparer.Ordinal);
             return h;
         }
         // ¿hay discos suyos que no tienes? Sin pedir nada: si ya se saben TODOS sus discos (una pagina contestada) y los tienes todos, no;
@@ -255,6 +271,7 @@ namespace Rocola
                 return;
             }
             // lo de XP con un artista del buscador (ChooseSearchResult, Kind 0): CloseSearch y NavigateToAlbum, aqui a la pared
+            if (rocolaOsSpPared != null && !ReferenceEquals(rocolaOsSpPared, p)) rocolaOsSpPared.PaginaPub = -1;   // (lo que pedia ya no se mira)
             rocolaOsSpPared = p;
             p.PaginaMirada = 0;
             CloseSearch();
@@ -271,6 +288,7 @@ namespace Rocola
         {
             RocolaOsSpotifyPared p = rocolaOsSpPared;
             if (p.PaginaMirada != page) { p.PaginaMirada = page; p.Fallados.Clear(); }
+            p.PaginaPub = page;   // (revision cuota-hilos-y-fallos) lo pedido para otra pagina que aun espera en la cola se deja
             if (!libBuilding) foreach (int b in RocolaOsSpotifyFaltan(p, page)) RocolaOsSpotifyPideBloque(p, b, null);
             return p.Cabecera;
         }
@@ -302,12 +320,27 @@ namespace Rocola
             };
             RocolaOsSpotifyCatalogoPagina ya = RocolaOsSpotifyCatalogoApi.PaginaYa(p.Tipo, p.De, desde);
             if (ya != null) { listo(ya, null); return; }   // (de memoria: 0 peticiones; igual por un encargo, como lo que llega)
-            RocolaOsSpotifyCatalogoApi.PidePagina(p.Tipo, p.De, desde, listo);
+            // (revision cuota-hilos-y-fallos) las paginas donde caen sus casillas (la 1a, mientras no se sabe cuantas hay): si cuando le toque
+            // en la cola la pagina que se mira es otra, se deja sin preguntar (lo lee el hilo del catalogo: solo PaginaPub, volatil)
+            int pa = 0, pb = 0, i0, i1;
+            if (p.Inicio.TryGetValue(b, out i0) && p.Fin.TryGetValue(b, out i1)) { pa = i0 / PageSize; pb = i1 / PageSize; }
+            RocolaOsSpotifyCatalogoApi.PidePagina(p.Tipo, p.De, desde, listo, delegate { int m = p.PaginaPub; return m >= pa && m <= pb; });
         }
         private void RocolaOsSpotifyLlegoBloque(RocolaOsSpotifyPared p, int b, RocolaOsSpotifyCatalogoPagina pg, string error)
         {
             p.Pedidos.Remove(b);
             bool mirando = ReferenceEquals(rocolaOsSpPared, p) && currentLetter == RocolaOsSpotifyParedMarca;
+            if (pg == null && error == RocolaOsSpotifyCatalogoApi.Dejada)
+            {
+                // (revision cuota-hilos-y-fallos) se dejo porque ya nadie miraba su pagina: ni fallo ni aviso; si entre tanto se volvio a ella,
+                // se pide otra vez (con la pagina que se mira ya publicada: lo pedido de nuevo no se vuelve a dejar)
+                if (mirando && !searchOpen && !libBuilding)
+                {
+                    p.PaginaPub = page;
+                    foreach (int x in RocolaOsSpotifyFaltan(p, page)) RocolaOsSpotifyPideBloque(p, x, null);
+                }
+                return;
+            }
             if (pg == null)
             {
                 p.Fallados.Add(b);
@@ -325,7 +358,15 @@ namespace Rocola
                 if (!l.Contains(a)) l.Add(a);
             }
             p.Bloques[b] = l;
+            // (revision cuota-hilos-y-fallos) un bloque que llega con menos de 10 (los tuyos quitados en «mas en Spotify», o Spotify que da
+            // menos) corre las casillas de detras: la elegida, si ya era un disco y sigue en esta pagina, se queda en SU disco
+            Album elegido = mirando && selAlbumIndex >= 0 && selAlbumIndex < p.Lista.Count ? p.Lista[selAlbumIndex] : null;
             RocolaOsSpotifyRecompone(p);
+            if (elegido != null && !p.HuecoDe.ContainsKey(elegido))
+            {
+                int k = p.Lista.IndexOf(elegido);
+                if (k >= 0 && k != selAlbumIndex && k / PageSize == page) selAlbumIndex = k;
+            }
             if (!mirando || libBuilding || searchOpen) return;
             RefreshAlbums();   // (tambien con el disco abierto: al volver, la pagina ya esta al dia; XP no la rehace en BackToAlbums)
             // se habia entrado a una casilla que aun no llegaba: ahora es su disco
@@ -344,10 +385,12 @@ namespace Rocola
             if (p.Canciones != null) l.Add(p.Canciones);
             int por = RocolaOsSpotifyCatalogoApi.PorPaginaPared;
             int nb = p.Total < 0 ? 0 : (p.Total + por - 1) / por;
+            p.Inicio.Clear(); p.Fin.Clear();
             for (int b = 0; b < nb; b++)
             {
                 List<Album> ya;
                 if (p.Bloques.TryGetValue(b, out ya)) { l.AddRange(ya); continue; }
+                p.Inicio[b] = l.Count;
                 List<Album> h;
                 if (!p.Huecos.TryGetValue(b, out h))
                 {
@@ -361,6 +404,7 @@ namespace Rocola
                     p.Huecos[b] = h;
                 }
                 l.AddRange(h);
+                p.Fin[b] = Math.Max(p.Inicio[b], l.Count - 1);
             }
             p.Lista = l;
         }
@@ -479,6 +523,7 @@ namespace Rocola
         // peticiones) y la misma eleccion
         private void RocolaOsSpotifyVuelveAlBuscador(RocolaOsSpotifyVuelta v)
         {
+            if (rocolaOsSpPared != null && !ReferenceEquals(rocolaOsSpPared, v.Pared)) rocolaOsSpPared.PaginaPub = -1;   // (revision: lo suyo en la cola se deja)
             rocolaOsSpPared = v.Pared;
             char letra = v.Letra;
             if (letra == RocolaOsSpotifyParedMarca && rocolaOsSpPared == null) letra = RocolaOsSpotifyPrimeraLetra();
@@ -543,13 +588,21 @@ namespace Rocola
         private void RocolaOsSpotifyCatalogoAtajos()
         {
             if (!RocolaOs.Activo || !RocolaOsSpotifyCatalogoVa || !RocolaOsSpotifyCatalogoApi.HayCuenta) return;
-            if (!rocolaOsSpAtajosPedidos)
+            // (revision cuota-hilos-y-fallos) si no llegaron por la red (sin red al abrir el buscador, Spotify caido o frenando), se piden otra
+            // vez al abrir el buscador, como mucho una vez por minuto (lo que si llego sale de memoria: 0 peticiones). Un 403 (faltan los
+            // permisos) o sin la cuenta, no: una vez por sesion
+            if (!rocolaOsSpAtajosPedidos || (rocolaOsSpAtajosOtraVez != 0 && unchecked(Environment.TickCount - rocolaOsSpAtajosOtraVez) >= 0))
             {
-                rocolaOsSpAtajosPedidos = true;
+                rocolaOsSpAtajosPedidos = true; rocolaOsSpAtajosOtraVez = 0;
                 Action<object, string> listo = delegate (object r, string error)
                 {
-                    if (r == null && error != null) RocolaOs.Apunta("spotify_catalogo", "un atajo no llego: " + error);
-                    RocolaOs.Encarga("spotify_catalogo:atajos", delegate { if (searchOpen) ArmaAtajos(); });
+                    if (r == null && error != null) RocolaOsSpotifyCatalogoApi.ApuntaCallado("un atajo no llego: " + error);
+                    bool otraVez = r == null && RocolaOsSpotifyCatalogoApi.Pasajero(error);
+                    RocolaOs.Encarga("spotify_catalogo:atajos", delegate
+                    {
+                        if (otraVez && rocolaOsSpAtajosOtraVez == 0) rocolaOsSpAtajosOtraVez = (Environment.TickCount + 60000) | 1;
+                        if (searchOpen) ArmaAtajos();   // (el que si llego; el otro no se vuelve a pedir aqui: falta su minuto)
+                    });
                 };
                 RocolaOsSpotifyCatalogoApi.PideAtajo(RocolaOsSpotifyCatalogoApi.AtajoTop, listo);
                 RocolaOsSpotifyCatalogoApi.PideAtajo(RocolaOsSpotifyCatalogoApi.AtajoRecientes, listo);

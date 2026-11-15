@@ -20,6 +20,9 @@
 //                                            dentro de N s, RFC 9110) y con cuota=1 el cuerpo QUOTA_EXCEEDED
 //   GET  /control/vence                      las llaves dadas dejan de valer (la siguiente a /v1 da 401)
 //   GET  /control/5xx?n=N                    las siguientes N peticiones a /v1 dan 503
+//   (revision cuota-hilos-y-fallos) GET /control/lento?ms=N   cada peticion a /v1 tarda N ms mas (la red lenta del bar)
+//   (revision cuota-hilos-y-fallos) GET /control/muchos       Banda Interminable pasa a tener 300 discos (los 40 y 260 mas, de 1 cancion):
+//                                            su pared son 17 paginas, para hojear deprisa
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -44,6 +47,7 @@ internal static class ApiFalsa
     static string baseUrl, carpeta, clientId = "id-de-prueba", secreto = "secreto-de-prueba", refresco = "refresco-1";
     static readonly HashSet<string> llavesApp = new HashSet<string>(), llavesCuenta = new HashSet<string>();
     static int n429, seg429 = 30, n5xx, nLlave; static bool cuota429, fecha429;
+    static int lento; static bool muchos; static readonly List<Disco> extraInter = new List<Disco>();   // (revision cuota-hilos-y-fallos)
     static readonly object cerrojo = new object();
 
     static int Main(string[] a)
@@ -108,6 +112,13 @@ internal static class ApiFalsa
             for (int k = 1; k <= 3; k++) { Cancion c = new Cancion { Id = "can5" + i.ToString("00", CultureInfo.InvariantCulture) + k.ToString(CultureInfo.InvariantCulture), Nombre = "Pieza Sin Fin " + ((i - 1) * 3 + k).ToString(CultureInfo.InvariantCulture), Art = inter, Dis = d, Numero = k, Ms = 140000 }; d.Canciones.Add(c); canciones.Add(c); }
             discos.Add(d);
         }
+        // (revision cuota-hilos-y-fallos) 260 discos mas de Banda, solo con /control/muchos (ni en las busquedas ni en las demas escenas)
+        for (int i = 41; i <= 300; i++)
+        {
+            Disco d = new Disco { Id = "dis7" + i.ToString("000", CultureInfo.InvariantCulture), Nombre = "Disco Sin Fondo " + i.ToString("000", CultureInfo.InvariantCulture), Art = inter };
+            d.Canciones.Add(new Cancion { Id = "can7" + i.ToString("000", CultureInfo.InvariantCulture), Nombre = "Pieza Del Fondo " + i.ToString(CultureInfo.InvariantCulture), Art = inter, Dis = d, Numero = 1, Ms = 140000 });
+            extraInter.Add(d);
+        }
         Artista otra = new Artista { Id = "art60", Nombre = "Otra Banda" };
         artistas.Add(otra);
         foreach (string n0 in new[] { "Otra Banda", "Segundo Disco", "Tercer Disco" })
@@ -139,6 +150,8 @@ internal static class ApiFalsa
                 if (ruta == "/control/429") { n429 = 1; seg429 = int.Parse(q["seg"] ?? "30", CultureInfo.InvariantCulture); cuota429 = q["cuota"] == "1"; fecha429 = q["fecha"] == "1"; }
                 else if (ruta == "/control/vence") { llavesApp.Clear(); llavesCuenta.Clear(); }
                 else if (ruta == "/control/5xx") n5xx = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
+                else if (ruta == "/control/lento") lento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
+                else if (ruta == "/control/muchos") muchos = true;
             }
             Contesta(c, 200, "{}", ctype, null, extra); return;
         }
@@ -177,6 +190,8 @@ internal static class ApiFalsa
             }
             if (n5xx > 0) { n5xx--; Apunta(c, ruta, tipoLlave, 503); Contesta(c, 503, "{\"error\":{\"status\":503,\"message\":\"Service unavailable\"}}", ctype, null, extra); return; }
         }
+        int espera; lock (cerrojo) espera = lento;
+        if (espera > 0) Thread.Sleep(espera);
         if (tipoLlave != "app" && tipoLlave != "cuenta") { Apunta(c, ruta, tipoLlave, 401); Contesta(c, 401, "{\"error\":{\"status\":401,\"message\":\"The access token expired\"}}", ctype, null, extra); return; }
         try { cuerpo = Api(ruta, q, tipoLlave, out cod); }
         catch (Exception ex) { cod = 500; cuerpo = "{\"error\":{\"status\":500,\"message\":\"" + ex.GetType().Name + "\"}}"; }
@@ -213,7 +228,7 @@ internal static class ApiFalsa
         }
         if (p[0] == "albums" && p.Length >= 2)
         {
-            Disco d = discos.Find(x => x.Id == p[1]);
+            Disco d = discos.Find(x => x.Id == p[1]) ?? (muchos ? extraInter.Find(x => x.Id == p[1]) : null);
             if (d == null) { cod = 404; return "{\"error\":{\"status\":404,\"message\":\"Resource not found\"}}"; }
             if (p.Length >= 3 && p[2] == "tracks") return Escribe(w => Pagina(w, d.Canciones, Math.Min(limite, 50), desde, CancionSimple));
             return Escribe(w => { w.WriteStartObject(); DiscoCampos(w, d); w.WritePropertyName("tracks"); Pagina(w, d.Canciones, 50, 0, CancionSimple); w.WriteEndObject(); });
@@ -221,7 +236,9 @@ internal static class ApiFalsa
         if (p[0] == "artists" && p.Length >= 3 && p[2] == "albums")
         {
             if (limite > 10) { cod = 400; return "{\"error\":{\"status\":400,\"message\":\"Invalid limit\"}}"; }
-            return Escribe(w => Pagina(w, discos.FindAll(x => x.Art.Id == p[1]), limite, desde, (ww, d) => DiscoSimple(ww, d)));
+            List<Disco> suyos = discos.FindAll(x => x.Art.Id == p[1]);
+            if (muchos && p[1] == "art50") suyos.AddRange(extraInter);
+            return Escribe(w => Pagina(w, suyos, limite, desde, (ww, d) => DiscoSimple(ww, d)));
         }
         if (p[0] == "me" || p[0] == "playlists")
         {
