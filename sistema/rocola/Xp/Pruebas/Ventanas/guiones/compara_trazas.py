@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# compara_trazas.py A B [--ruido RUIDO.json] [--holgura H]
-# compara_trazas.py --mide-ruido SALIDA.json A B [C ...]
+# compara_trazas.py A B [--ruido RUIDO.json] [--holgura H] [--ignora PREFIJO ...]
+# compara_trazas.py --mide-ruido SALIDA.json A B [C ...] [--ignora PREFIJO ...]
 # Compara dos trazas de ROCOLA_TRAZA_VENTANAS (Plataforma/TrazaVentanas.cs) de la misma escena: la de la referencia y la de la
 # traduccion (o la referencia contra si misma, para medir el ruido). Lo que llega al codigo de XP se reparte en:
 #  - LA SECUENCIA (tiene que ser igual, sin los milisegundos): lo que entra por la entrada y el bucle de la pantalla en orden (teclas con
@@ -23,7 +23,12 @@
 # el TOTAL de un reloj de cuadro que va saturado en las dos trazas (su intervalo medio pasa del 110 % del plazo) se compara con la
 # holgura del ruido o con el 30 % de la cuenta mayor, lo que sea mas (lo que la referencia se separa de si misma); por segundo, como los
 # demas. Si en alguna de las dos no va saturado, como cualquier reloj.
-import sys, re, json, math, difflib, collections, itertools
+# --ignora PREFIJO (fase 11, grupo andamio; se puede repetir): antes de nada quita de las dos trazas los relojes y los encargos (tambien los
+# perdidos) cuyo nombre empieza por PREFIJO; p. ej. «--ignora RocolaOs:», lo de Rocola OS, que nombra los suyos asi (el latido y sus
+# encargos: RocolaOs/RocolaOs.cs), para comparar una rocola con ROCOLA_OS puesto contra la referencia. Lo mismo con la variable
+# TRAZAS_IGNORA=PREFIJO[,PREFIJO...] (asi lo usan compara.sh y compara_escena.py, que llaman a este sin la opcion). Con algo quitado, una
+# linea «NOTA» dice cuanto. Sin la opcion ni la variable, nada cambia.
+import os, sys, re, json, math, difflib, collections, itertools
 
 PROPIOS = {"Shown", "Alt+F4", "Apagado"}   # encargos que pone el hilo de la pantalla (o el apagado): van en la secuencia
 CORTA = {"tecla", "keyup", "raton", "tick", "encargo", "encargo-perdido", "estado"}   # lo que empieza otro suceso
@@ -60,7 +65,17 @@ def normaliza(que):
     return que
 
 
-def lee(ruta):
+IGNORA = [p for p in os.environ.get("TRAZAS_IGNORA", "").split(",") if p]   # (y las de --ignora: abajo)
+ignorados = collections.Counter()   # (A o B, "tick" o "encargo") -> cuantos se quitaron
+
+
+def ignorado(que):
+    # un reloj o un encargo (perdido o no) cuyo nombre empieza por uno de los prefijos de --ignora
+    p = que.split(" ", 2)
+    return len(p) >= 2 and p[0] in ("tick", "encargo", "encargo-perdido") and any(p[1].startswith(x) for x in IGNORA)
+
+
+def lee(ruta, cual=None):
     ev = []
     with open(ruta, encoding="utf-8") as f:
         for l in f:
@@ -68,6 +83,9 @@ def lee(ruta):
             if not l:
                 continue
             ms, que = l.split("\t", 1)
+            if IGNORA and ignorado(que):
+                ignorados[(cual, "tick" if que.startswith("tick") else "encargo")] += 1
+                continue
             ev.append((int(ms), normaliza(que)))
     return ev
 
@@ -162,7 +180,7 @@ notas = []   # lo que se dice aunque salga igual (los relojes de cuadro saturado
 
 
 def compara(ra, rb, ruido, hol):
-    A, B = Partes(lee(ra)), Partes(lee(rb))
+    A, B = Partes(lee(ra, "A")), Partes(lee(rb, "B"))
     dif = []
     del notas[:]
     if A.sec != B.sec:
@@ -199,6 +217,8 @@ def compara(ra, rb, ruido, hol):
 if __name__ == "__main__":
     args = sys.argv[1:]
     hol, ruido = 2, {}
+    while "--ignora" in args:
+        i = args.index("--ignora"); IGNORA.append(args[i + 1]); del args[i:i + 2]
     if "--holgura" in args:
         i = args.index("--holgura"); hol = int(args[i + 1]); del args[i:i + 2]
     if "--ruido" in args:
@@ -213,6 +233,9 @@ if __name__ == "__main__":
     dif, A, B = compara(args[0], args[1], ruido, hol)
     print("secuencia: %d sucesos; teclas repetidas: %d; relojes: %d ticks; encargos de otros hilos: %d"
           % (len(A.sec), sum(A.reps.values()), sum(A.ticks_total.values()), sum(A.enc_total.values())))
+    if IGNORA:
+        print("NOTA ignorados (%s): en A %d relojes y %d encargos, en B %d relojes y %d encargos"
+              % (", ".join(IGNORA), ignorados[("A", "tick")], ignorados[("A", "encargo")], ignorados[("B", "tick")], ignorados[("B", "encargo")]))
     for n in notas:
         print("NOTA " + n)
     if dif:
