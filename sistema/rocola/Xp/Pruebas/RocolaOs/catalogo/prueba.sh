@@ -8,17 +8,25 @@
 #   API: la carpeta con api-falsa.dll (por defecto /root/rocola-trabajo/fase11/catalogo/api-falsa)
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/catalogo/prueba; se rehace)
 #   CAPTURAS: si se pone, las capturas para el dueno van ahi (PNG)
-# escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion (todas, de fabrica)
-# Mientras el nucleo no este juntado, I6 es el doble (RocolaOs/RocolaOs.SpotifyCatalogoDobleI6.cs): cada pedido queda en
-# run/rocola-xp/spotify/doble-pedidos.
+# escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion suena (todas, de fabrica)
+# I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
+# su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
+# por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 CAPTURAS=${CAPTURAS:-}
+FALSO=${FALSO:-/root/rocola-trabajo/fase11/catalogo/falso}
+SX="$G/../spotify-xp"
+if [ ! -f "$FALSO/soloist-falso.dll" ] || [ "$SX/SoloistFalso/Program.cs" -nt "$FALSO/soloist-falso.dll" ]; then
+  echo "(compilando el Soloist falso en $FALSO)"; mkdir -p "$FALSO"
+  flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$SX/SoloistFalso/SoloistFalso.csproj" -c Release -o "$FALSO" --disable-build-servers \
+    -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$FALSO/obj/" > "$FALSO/build.txt" 2>&1 || { cat "$FALSO/build.txt"; exit 1; }
+fi
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
 rm -rf "$W"; mkdir -p "$W"
 bien=0; mal=0
@@ -41,9 +49,11 @@ control() { curl -s --noproxy '*' "http://127.0.0.1:$P/control/$1" > /dev/null; 
 # LA ROCOLA: abre NOMBRE DATOS "PULSA" SEGUNDOS [VAR=valor...]: fuera de pantalla con esos datos; a los SEGUNDOS, SIGTERM (el apagado)
 abre() {
   local n="$1" d="$2" pulsa="$3" seg="$4"; shift 4
-  local o="$W/$n"; mkdir -p "$o/run"
+  local o="$W/$n"; mkdir -p "$o/run" "$o/soloist"
   ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" \
       ROCOLA_CAPTURA_SALE=0 ROCOLA_TRAZA_VENTANAS="$o/traza.txt" ROCOLA_SPOTIFY_API="http://127.0.0.1:$P/v1" ROCOLA_SPOTIFY_CUENTAS="http://127.0.0.1:$P" \
+      ROCOLA_SOLOIST_DATOS="$o/soloist" ROCOLA_SOLOIST_BIN="$SX/vigilante-falso.sh" SOLOIST_FALSO_BIN="$FALSO" \
+      SOLOIST_FALSO_LOG="$o/falso.txt" VIGILANTE_FALSO_LOG="$o/vigilante.txt" \
       "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
   ROCOLA=$!
   ( sleep "$seg"; kill -TERM $ROCOLA 2>/dev/null; sleep 30; kill -KILL $ROCOLA 2>/dev/null ) & VIG=$!
@@ -65,8 +75,12 @@ cap() { [ -n "$CAPTURAS" ] && echo "$1:$CAPTURAS/$2.png" || echo "$1:$W/$2.png";
 escribe() { local s="$1" pal="$2" r="" i c; for ((i = 0; i < ${#pal}; i++)); do c=$(printf '%d' "'${pal:$i:1}"); c=$((c - 32)); r="$r,$(echo "$s + $i * 0.25" | bc):$c"; done; echo "${r#,}"; }
 derechas() { local s="$1" n="$2" r="" i; for ((i = 0; i < n; i++)); do r="$r,$(echo "$s + $i * 0.15" | bc):39"; done; echo "${r#,}"; }
 v1() { grep -c ' /v1/' "$1" 2>/dev/null; }
-pedidos() { grep -c '^pedida	' "$1/run/rocola-xp/spotify/doble-pedidos" 2>/dev/null || echo 0; }
-pedido() { sed -n "$2p" "$1/run/rocola-xp/spotify/doble-pedidos" 2>/dev/null | cut -f1,2; }
+# las pedidas que entraron (I6 del nucleo): sus «COBRADA» en la bitacora del nucleo, y los «play» que recibio el Soloist falso
+cobradas() { grep -F 'COBRADA spotify:track:' "$W/datos-$(basename "$1")/rocola_spotify.txt" 2>/dev/null; }
+pedidos() { cobradas "$1" | wc -l; }
+pedido() { cobradas "$1" | sed -n "$2p" | sed 's/.*COBRADA \(spotify:track:[A-Za-z0-9]*\).*/pedida	\1/'; }
+plays() { grep -P '	orden	' "$1/falso.txt" 2>/dev/null | grep '"play"' | grep -o 'spotify:track:[A-Za-z0-9]*' | tr '\n' ' '; }
+export -f cobradas plays; export W
 sinsecretos() {   # ninguna llave ni el secreto en lo que escribe la rocola (datos y /run), salvo en el propio archivo de la llave
   ! grep -rlE 'secreto-de-prueba|app-[0-9]+|cuenta-[0-9]+|refresco-[0-9]+' "$1" "$2" 2>/dev/null | grep -v 'rocola_spotify_api.txt' | grep -q .
 }
@@ -104,7 +118,8 @@ for e in $escenas; do
     si "busca: dos pedidas por I6 ($(pedidos $o))" test "$(pedidos $o)" = 2
     si "busca: la 1a pedida es la 1a cancion de la busqueda (spotify:track:can0000)" test "$(pedido $o 1)" = "$(printf 'pedida\tspotify:track:can0000')"
     si "busca: la 2a es la 2a (spotify:track:can0001)" test "$(pedido $o 2)" = "$(printf 'pedida\tspotify:track:can0001')"
-    si "busca: con titulo, artista, disco, duracion, portada y disco_uri" bash -c "sed -n 1p '$o/run/rocola-xp/spotify/doble-pedidos' | grep -qP '^pedida\tspotify:track:can0000\tTema Tema de Mentira\tLos Inventados\tTema de Mentira\t157311\thttp://127.0.0.1:$P/img/disco-dis000-300.jpg\tspotify:album:dis000$'"
+    si "busca: la 1a con su titulo y su artista en la bitacora del nucleo (1 credito, su turno)" bash -c "cobradas $o | sed -n 1p | grep -qF 'COBRADA spotify:track:can0000 «Tema Tema de Mentira» de «Los Inventados»: 1 credito, '"
+    si "busca: al Soloist falso le llego el play de la 1a ($(plays $o))" bash -c "[ \"\$(plays $o | cut -d' ' -f1)\" = spotify:track:can0000 ]"
     si "busca: las portadas en /run/rocola-xp/spotify/portadas (y ninguna en los datos)" bash -c "ls '$o/run/rocola-xp/spotify/portadas/'*.jpg >/dev/null 2>&1 && ! find '$d' -newer '$d/rocola_os.txt' -name '*.jpg' | grep -q ."
     si "busca: las miniaturas de las portadas de Spotify, en /run (no en rocola_miniaturas)" bash -c "ls '$o/run/rocola-xp/spotify/miniaturas/' 2>/dev/null | grep -q . && [ \"\$(find '$d/rocola_miniaturas' -newer '$d/rocola_os.txt' -type f | wc -l)\" = 0 ]"
     si "busca: el estado del catalogo (api=bien, y las busquedas que vio la API falsa)" bash -c "grep -qx 'api=bien' '$o/run/rocola-xp/spotify/catalogo' && grep -qx \"busquedas=\$(grep -c '/v1/search' '$a')\" '$o/run/rocola-xp/spotify/catalogo'"
@@ -168,10 +183,25 @@ for e in $escenas; do
     si "cuenta: Spotify roto la llave de refresco y se guardo encima (0600, sin la vieja)" bash -c "grep -qE '^refresh_token=refresco-[0-9]+$' '$d/rocola_spotify_api.txt' && ! grep -qx 'refresh_token=refresco-1' '$d/rocola_spotify_api.txt' && [ \"\$(find '$d/rocola_spotify_api.txt' -perm 600 | wc -l)\" = 1 ]"
     si "cuenta: un pedido desde la lista propia ($(pedidos $o))" test "$(pedidos $o)" = 1
     si "cuenta: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
+  suena)
+    # LO QUE SUENA CON UNA DE SPOTIFY: se pide la 1a de «inventad», se cierra el buscador y la barra de abajo de XP dice lo que suena. Con la
+    # tarjeta de prueba con reloj (Pruebas/Windows/alsa/reloj.c, la del nucleo): suena a su ritmo y no se acaba en un momento
+    apifalsa $e; d=$(datos $e encendido); o="$W/$e"; mkdir -p "$o"
+    AL=$(dirname "$FALSO")/alsa; mkdir -p "$AL"
+    [ -f "$AL/libasound_module_pcm_reloj.so" ] || gcc -shared -fPIC -DPIC -O2 -o "$AL/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound
+    printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj  file "%s"  registro "%s" }\n' "$AL/libasound_module_pcm_reloj.so" "$o/sonado.raw" "$o/registro.txt" > "$o/alsa.conf"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13,19.5:27+38" 25 ROCOLA_OS=1 ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf \
+      ROCOLA_CAPTURA="$(cap 19.2 buscador-sonando-spotify),$(cap 22.5 suena-spotify)"
+    espera $e
+    si "suena: sale con 0" test "$(cat $o/salio)" = 0
+    si "suena: una pedida, y Soloist la toca ($(plays $o))" bash -c "[ $(pedidos $o) = 1 ] && [ \"\$(plays $o)\" = 'spotify:track:can0000 ' ]"
+    si "suena: el nucleo dice que suena (y no que acabo)" bash -c "grep -qF 'suena spotify:track:can0000' '$d/rocola_spotify.txt' && ! grep -qF 'acabo spotify:track:can0000' '$d/rocola_spotify.txt'"
+    si "suena: por la tarjeta salio sonido (sonado.raw de mas de 1 s)" test "$(cat "$o/sonado.raw" 2>/dev/null | wc -c)" -gt 352800
+    rm -f "$o/sonado.raw" ;;
   sinsesion)
-    # SOLOIST SIN SESION (I6 dice que no esta listo): no se pide ni se cobra; el aviso de XP
+    # SOLOIST SIN SESION (I6 dice que no esta listo: el vigilante sale al momento y no hay Soloist): no se pide ni se cobra; el aviso de XP
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13" 22 ROCOLA_OS=1 ROCOLA_SPOTIFY_DOBLE_LISTO=0 ROCOLA_CAPTURA="$(cap 17.8 buscador-spotify-no-listo)"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13" 22 ROCOLA_OS=1 ROCOLA_SOLOIST_BIN=/bin/true ROCOLA_CAPTURA="$(cap 17.8 buscador-spotify-no-listo)"
     espera $e; o="$W/$e"
     si "sinsesion: sale con 0" test "$(cat $o/salio)" = 0
     si "sinsesion: nada pedido" test "$(pedidos $o)" = 0

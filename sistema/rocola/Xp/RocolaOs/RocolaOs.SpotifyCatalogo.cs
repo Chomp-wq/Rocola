@@ -290,7 +290,8 @@ namespace Rocola
             {
                 Uri = c.Uri, Titulo = c.Titulo, Artista = c.Artista, Disco = c.Disco, DuracionMs = c.DuracionMs, PortadaUrl = c.PortadaUrl, DiscoUri = c.DiscoUri,
             };
-            bool entro = RocolaOsSpotifyPide(p);
+            // (I6 del nucleo: con el buscador abierto, sus avisos son los del buscador, como ChooseSearchResult de XP; si no, los de AddSong)
+            bool entro = RocolaOsSpotifyPide(p, searchOpen);
             if (entro)
             {
                 Album a = disco;
