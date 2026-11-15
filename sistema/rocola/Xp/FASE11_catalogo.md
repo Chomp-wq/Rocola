@@ -49,7 +49,7 @@ de migración de febrero de 2026 y los cambios de marzo, mayo y julio de 2026. L
 | Para qué | Ruta | Llave |
 |---|---|---|
 | La llave de la app | `POST accounts.spotify.com/api/token` `grant_type=client_credentials` (Basic id:secreto) | — |
-| La llave de la cuenta | `POST .../api/token` `grant_type=refresh_token&refresh_token=..&client_id=..` | — |
+| La llave de la cuenta | `POST .../api/token` `grant_type=refresh_token&refresh_token=..&client_id=..` **sin** `Authorization` (PKCE, como dice «Refreshing tokens»); si Spotify la rechaza, una vez con `Basic id:secreto` (por si se autorizó con «Authorization Code») | — |
 | Buscar | `GET /v1/search?q=..&type=track,album,artist&limit=10&market=MX` | app |
 | Abrir un disco | `GET /v1/albums/{id}?market=MX` (y `/albums/{id}/tracks?offset=50&limit=50` si tiene más de 50) | app |
 | Los discos de un artista | `GET /v1/artists/{id}/albums?include_groups=album,single&limit=10&market=MX` | app |
@@ -61,7 +61,11 @@ de migración de febrero de 2026 y los cambios de marzo, mayo y julio de 2026. L
 **La cuota se cuida así**: una petición a la vez (un hilo); lo que alguien espera (buscar, abrir) antes que lo de la cuenta; **nada de
 fondo** (ni SP4, ni discógrafos, ni precargas); todo lo contestado se queda en memoria la sesión entera (buscar lo mismo otra vez: 0
 peticiones); con **429** no se pregunta NADA hasta que pase su `Retry-After` (sin él, 30 s), y se dice «Spotify frena» en la bitácora y en
-el estado; con **401** se pide otra llave y se intenta una vez más; con **5xx** o sin red, una vez más al segundo.
+el estado; el plazo se guarda en `/run/rocola-xp/spotify/catalogo.frena` y vale también si rocola-xp se vuelve a abrir); con **401** se pide
+otra llave y se intenta una vez más; con **5xx** o sin red, una vez más al segundo. Una llave que Spotify **rechaza** (400/401 de
+`/api/token`: client_id o client_secret malos, o la autorización de la cuenta vencida) no se vuelve a pedir hasta que cambie el archivo.
+Lo de la cuenta que no llegó por la red (sin red al arrancar, 5xx, 429) se vuelve a intentar solo a los 30 s (o al acabar el plazo del 429).
+Lo que se repite (sin red, frenando, la llave mala) va a la bitácora como mucho una vez cada 10 minutos.
 
 ### La llave (I7)
 
@@ -146,6 +150,9 @@ API web FALSA de `ApiFalsa/` y el núcleo con el Soloist falso). Diez escenas:
 | `fallos` | 401 de llave vencida, 503 y 429 (la API falsa cambia de humor por lo que ya contestó) | 401 → otra llave → la misma otra vez (200); 503 → otra vez al segundo (200); 429 una vez y **ninguna** petición más a /v1 (dos consultas más no preguntan); «Spotify frena (429)…» con la cuota en la bitácora; el estado dice `api=frena` y `frena_s=N cuota` |
 | `cuenta` | con `refresh_token`: la letra ♫ con lo de la cuenta, abre una lista propia y pide | 3 peticiones de la cuenta, 1 de la lista propia, la ajena nunca; la llave de refresco rotada se guarda encima (0600, sin la vieja); 1 COBRADA |
 | `sinsesion` | sin Soloist (el vigilante sale al momento) | nada pedido ni cobrado; la bitácora lo dice |
+| `llavemala` | `client_secret` malo, 6 búsquedas; a los 16,5 s el archivo bueno | la llave mala se pide **1** vez y **0** a /v1; la bitácora no se llena; con el archivo bueno, 1 llave y la búsqueda (200) |
+| `reabre` | 429 con `Retry-After` como fecha (120 s); se cierra y se abre otro rocola-xp con el mismo /run | la 2.ª vez **0** peticiones (ni la llave); «Spotify sigue frenando…» y `api=frena` con la cuota |
+| `sinred` | con la cuenta y nada escuchando en el puerto de la API; la API aparece a los 12,5 s | sale con 0; «búsqueda sin respuesta: sin red» **1** vez aunque se buscó dos; lo de la cuenta se reintenta solo y llega (3 peticiones) |
 | `suena` | pide una, cierra el buscador | 1 COBRADA y el Soloist la toca; el núcleo dice que suena; salió sonido por la tarjeta |
 
 **Peticiones por acción** (contadas por la API falsa): buscar = **1** (más la llave de la app una vez por hora); abrir un disco = **1**; los
@@ -278,3 +285,65 @@ ChooseSearchResult, AddSong, CurrentList, NavigateToAlbum, EnterAlbum, las minia
 Las escenas son las que pueden mover g51 (la barra de letras: arranque, moneda, captura) y g52 (la pared con la tarjeta: arranque, moneda,
 buscador); sin el modo los dos devuelven lo de XP sin hacer nada más. Las capturas de `/root/rocola-trabajo/fase11/catalogo/capturas` se
 rehicieron con este programa (la ♫ con su número; `pared-discos-del-artista` con «10 canciones»).
+
+## 12. Revisión (api-y-fallos)
+
+Revisión independiente del 15-11-2026 con el enfoque «la API web y los fallos»: las rutas contra la documentación oficial de hoy, la
+cuota, los secretos, los hilos y la rocola sin internet, con la API caída o con llaves malas. Se leyó el diff entero de la rama contra su
+base y, otra vez con curl, la documentación de hoy (developer.spotify.com/documentation/web-api: referencias de get-an-artists-albums,
+get-an-albums-tracks, get-users-saved-tracks y get-a-list-of-current-users-playlists, conceptos rate-limits y quota-modes, el tutorial de
+client credentials; las copias de §2 para la migración de febrero, los cambios de marzo, mayo y julio y «Refreshing tokens»).
+
+**Lo que estaba bien (comprobado, sin cambios):** las rutas y sus topes valen hoy (search con `limit` máximo 10; `artists/{id}/albums`
+máximo 10; `albums/{id}/tracks`, `me/tracks` y `me/playlists` máximo 50; `/playlists/{id}/items` solo de las propias o colaborativas, con la
+canción en `item`); Client Credentials con `Basic id:secreto` y `market` dicho; una petición a la vez en su hilo, lo que alguien espera
+primero y nada de fondo; el 429 sin Retry-After espera 30 s; los secretos no salen en el estado, la bitácora (las rutas van sin la
+consulta), las excepciones (solo el tipo y el mensaje de .NET, que no lleva cabeceras ni cuerpo) ni en pantalla; las respuestas raras
+(JSON de otra forma) se atrapan en el hilo; los hilos son de fondo y el cierre no los espera; nada de red en el hilo de la pantalla.
+
+**Lo encontrado y arreglado (commit 71cfb4a):**
+1. (grave para la cuenta) La llave de la cuenta se renovaba con `Authorization: Basic id:secreto` **y** `client_id`: la documentación de
+   hoy dice que con PKCE (lo que se pensó para el dueño) va **sin** la cabecera. Ahora va como PKCE y, si Spotify la rechaza (400/401), una
+   vez como «Authorization Code» (con el secreto). La API falsa acepta las dos formas y la escena `cuenta` comprueba la de PKCE.
+2. (menor, cuota y bitácora) Con `client_id`/`client_secret` malos (o la autorización de la cuenta vencida), **cada** búsqueda volvía a pedir
+   la llave a `accounts.spotify.com` y apuntaba el 400. Ahora la llave rechazada no se pide otra vez con el mismo archivo; al cambiar el
+   archivo (el dueño pone la buena desde la USB) se intenta de nuevo sin reiniciar. Escena `llavemala`: 1 petición de llave en 6 búsquedas.
+3. (menor, cuota) El plazo de un 429 se perdía si rocola-xp se volvía a abrir (el lanzador la reabre si se cae; un reinicio propio): la
+   nueva preguntaba en seguida y alargaba el bloqueo. Ahora el plazo va a `/run/rocola-xp/spotify/catalogo.frena` («HASTA_MS_UNIX [cuota]»),
+   se lee al arrancar el hilo del catálogo antes de cualquier petición, y el `Retry-After` se lee también como **fecha** (RFC 9110), no solo
+   en segundos. Escena `reabre`: la 2.ª vez, 0 peticiones.
+4. (menor, la letra con la cuenta) Lo de la cuenta se pedía una sola vez por sesión: si al arrancar no había red todavía (el DHCP del bar
+   tarda) o Spotify contestaba 5xx o 429, la letra ♫ se quedaba sin «Tus favoritas», tus discos y tus listas hasta reiniciar. Ahora se
+   reintenta solo a los 30 s (o al acabar el plazo del 429) mientras el fallo sea de la red; los errores de llave o de permiso no se reintentan.
+   Escena `sinred`: llega cuando vuelve la red.
+5. (menor, bitácora) Sin red, con la API caída o frenando, cada cosa escrita en el buscador dejaba un renglón («búsqueda sin respuesta…»,
+   «la API no contestó…»): en una fiesta, la bitácora (256 KB) se llenaba de lo mismo. Ahora lo repetido va una vez cada 10 minutos, con
+   cuántas veces se calló (como `RocolaOs.Falla`).
+6. (menor, hilos) `EscribeEstado` se llamaba desde la pantalla y desde el hilo del catálogo a la vez, con el mismo temporal
+   (`catalogo.t`): se podía perder o mezclar. Ahora la pantalla solo lo pide (`PideEstado`) y lo escribe el hilo del catálogo (y con candado).
+7. (menor, secretos) El temporal de la llave de refresco renovada se creaba con los permisos de fábrica y se ponía 0600 después: ahora se
+   crea 0600 desde el principio (`UnixCreateMode`).
+8. (menor) La preparación del cliente HTTP (la usan el catálogo y las portadas) no tenía candado: dos hilos podían crear dos.
+
+**Queda (no arreglado):**
+- `HayLlave`/`HayCuenta` miran el archivo de la llave desde la pantalla (un `stat`, como mucho cada 5 s; leerlo solo si cambió): es poco,
+  pero es disco en el hilo de la pantalla. Pasarlo al hilo del catálogo pide que la letra y el buscador sepan esperar a la primera lectura.
+- Una portada que no se bajó (sin red) no se vuelve a pedir en la sesión: el disco se queda con la portada de fábrica de XP.
+- No hay todavía cómo saca el dueño su `refresh_token` (la autorización PKCE desde su laptop): sin él, la letra ♫ solo enseña lo buscado y
+  lo abierto. Si se hace, que use PKCE (como espera ahora la renovación) y una redirección `http://127.0.0.1:PUERTO`.
+- Todo contra la API falsa: con la de verdad, en el A4 (§9).
+
+**Comprobaciones repetidas (con el programa de 71cfb4a):**
+
+| Comprobación | Resultado |
+|---|---|
+| `dotnet build -c Release --no-incremental` | 0 errores, 13 avisos (los de la base; ninguno en `RocolaOs/`) |
+| `dotnet publish` NativeAOT | sale con 0, **0 avisos IL/AOT** |
+| `prueba.sh` en JIT (13 escenas: las 10 de antes y `llavemala`, `reabre`, `sinred`) | **74 de 74** BIEN |
+| `prueba.sh` en NativeAOT (13 escenas) | **74 de 74** BIEN |
+| `ganchos.py` | TODO BIEN (`Codigo/` sin tocar: 109 archivos iguales a fc7b667 devolviendo los ganchos) |
+
+Sin el modo nada de esto corre (escenas `apagado` y `cero`: 0 peticiones, nada en /run, la traza igual); los ganchos de `Codigo/` no
+cambiaron, así que el nivel 0 y el nivel 1 de §11 siguen valiendo. Las capturas de `/root/rocola-trabajo/fase11/catalogo/capturas` se
+rehicieron con el programa NativeAOT de 71cfb4a (14 PNG; nueva: `buscador-sin-red`, el buscador de XP sin red: «Sin resultados», sin trabarse).
+
