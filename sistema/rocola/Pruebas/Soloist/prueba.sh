@@ -70,6 +70,9 @@ n = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
 c = struct.pack("<IIIIIIII", 0x4F4C5550, 1, 65536, 2, 44100, 1, 0, 1) + struct.pack("<QQQQQ", 441000, 440000, 0, n, n)
 c += struct.pack("<IIIIQI", 1234, 1, 65536, 5, 0, 20000)
 open(sys.argv[1], "wb").write(c + bytes(4096 - len(c)) + bytes(65536 * 8))
+# (y el recien creado por la rocola, antes de que nadie escriba: la magia y lo demas a cero; con ceros seguidos «od» sin -v pone «*»)
+c0 = struct.pack("<IIIIIIII", 0x4F4C5550, 1, 65536, 2, 0, 0, 0, 0)
+open(sys.argv[1] + "0", "wb").write(c0 + bytes(4096 - len(c0)) + bytes(65536 * 8))
 EOF
 cp "$AQUI/dentro.sh" "$R/prueba.sh"; chmod 755 "$R/usr/bin/"* "$R/usr/lib/rocola-xp/rocola-xp" "$R/prueba.sh"
 # LA MEMORIA USB DE MENTIRA: una imagen en un loop (como /dev/loop99 dentro), con las dos llaves inventadas (CRLF y la marca de UTF-8,

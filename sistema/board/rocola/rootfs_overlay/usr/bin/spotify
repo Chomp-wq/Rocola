@@ -91,10 +91,10 @@ ultimos_problemas() {
 # el anillo de sonido (rocola-pulso -> rocola-xp): su cabecera (I1). «no» si no esta o no vale.
 anillo() {
 	[ -f "$ANILLO" ] || { echo "  El anillo de sonido ($ANILLO): todavia no existe (lo crea la rocola o Soloist al sonar)."; return 2; }
-	set -- $(od -An -tu4 -N 32 "$ANILLO" 2>/dev/null)
+	set -- $(od -v -An -tu4 -N 32 "$ANILLO" 2>/dev/null)   # (-v: sin -v, od pone «*» en las lineas repetidas -los ceros- y el «*» se volvia nombres de archivo)
 	if [ "$1" != 1330402640 ] || [ "$2" != 1 ] || [ "$3" != 65536 ] || [ "$4" != 2 ]; then echo "  El anillo de sonido: NO vale (magia o version distintas)."; return 1; fi
 	fr=$5; tap=$7
-	set -- $(od -An -tu8 -j 32 -N 40 "$ANILLO" 2>/dev/null); esc=$1; lei=$2; le=$4; ll=$5
+	set -- $(od -v -An -tu8 -j 32 -N 40 "$ANILLO" 2>/dev/null); esc=$1; lei=$2; le=$4; ll=$5
 	up=$(awk '{printf "%d", $1 * 1000}' /proc/uptime)   # (ms; los latidos son CLOCK_MONOTONIC en ns)
 	de=$(( (up - le / 1000000) / 1000 )); dl=$(( (up - ll / 1000000) / 1000 ))
 	echo "  El anillo de sonido: vale; $([ "$fr" = 0 ] && echo 'sin flujo' || echo "flujo a $fr Hz, $([ "$tap" = 1 ] && echo 'en pausa' || echo sonando)"); escritos $esc cuadros, leidos $lei."

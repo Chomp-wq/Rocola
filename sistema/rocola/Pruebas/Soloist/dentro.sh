@@ -240,6 +240,13 @@ prueba)   # «spotify prueba» sin nada y con todo
 	echo caido > /srv/.modo; rm -f /usr/lib/rocola-pulso/libpulse.so.0.no
 	spotify prueba > /tmp/o.1; r=$?; sed 's/^/    /' /tmp/o.1
 	ok "$r/$(tail -1 /tmp/o.1)" "1/=== 1 BIEN, 6 MAL ===" "sin nada: solo rocola-pulso bien"
+	# (el anillo recien creado por la rocola, todo a cero salvo la magia: «od» sin -v ponia «*» y salia «arithmetic syntax error»;
+	# lo vio la prueba en QEMU, sistema/ACT_qemu_spotify.md)
+	mkdir -p /run/rocola-xp/spotify; cp /tars/anillo0 /run/rocola-xp/spotify/sonido.anillo
+	# (desde una carpeta con varios archivos de nombre con guion: el «*» se volvia sus nombres y corria los numeros)
+	mkdir -p /tmp/cwd; : > /tmp/cwd/rocola-xp.txt; : > /tmp/cwd/rocola-os.txt; ( cd /tmp/cwd && spotify prueba > /tmp/o.1b 2>&1 ); sed 's/^/    /' /tmp/o.1b
+	ok "$(grep -c -e arithmetic -e syntax /tmp/o.1b)/$(grep -c 'vale; sin flujo; escritos 0 cuadros' /tmp/o.1b)" "0/1" "el anillo recien creado (ceros): se lee sin errores"
+	rm -f /run/rocola-xp/spotify/sonido.anillo
 	limpia; disco; llave; api; srv v2 0; rocola-soloist baja >/dev/null; mkdir -p $SD; echo s > $SD/sesion.falsa
 	mkdir -p /run/rocola-xp/spotify; cp /tars/anillo /run/rocola-xp/spotify/sonido.anillo
 	printf 'ws=1\nsesion=1\nactiva=1\nsonando=0\nen_cola=0\n' > /run/rocola-xp/spotify/estado
