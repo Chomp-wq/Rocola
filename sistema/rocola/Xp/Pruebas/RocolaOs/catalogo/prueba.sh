@@ -12,14 +12,15 @@
 #   canciones todos mas atajos pared429 (las de las paredes del buscador, grupo paredes-buscador: FASE11_paredes-buscador.md) y mantenido tiempo
 #   (las de su revision: el rojo mantenido; la atraccion, la moneda y el buscador cerrado por tiempo) y hojea (la de la revision
 #   cuota-hilos-y-fallos: hojear deprisa una pared de 17 paginas con la red lenta, y un 503 a media pared) y atajos503 (los atajos de SP9
-#   que no llegaron por un 503 se vuelven a pedir al abrir el buscador pasado un minuto); todas, de fabrica
+#   que no llegaron por un 503 se vuelven a pedir al abrir el buscador pasado un minuto) y sinllave ayuda (la 2a revision funcionamiento-y-reglas:
+#   el modo encendido sin llaves es XP; la ayuda con ROJO+ABAJO en medio de la pila); todas, de fabrica
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo hojea atajos503}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -435,6 +436,42 @@ for e in $escenas; do
     si "atajos503: la 1a pedida es la 1a de tus mas escuchadas (can0012)" test "$(pedido $o 1)" = "$(printf 'pedida\tspotify:track:can0012')"
     si "atajos503: solo esa pedida ($(pedidos $o))" test "$(pedidos $o)" = 1
     si "atajos503: la bitacora dice que un atajo no llego (503)" contiene "$d/rocola_os_bitacora.txt" "un atajo no llego: la API contesto 503" ;;
+  sinllave)
+    # (2a revision funcionamiento-y-reglas) EL MODO ENCENDIDO (como viene de fabrica en la junta) SIN NINGUNA LLAVE (ni la de la API ni la
+    # cuenta): las mismas teclas que apagado/cero (buscar, elegir, la pared de XP, un disco de XP, REGRESAR, ARRIBA, REGRESAR): ni una
+    # peticion, ninguna pared ni vuelta del buscador, nada cobrado, y la traza igual a la de sin ROCOLA_OS quitando lo de RocolaOs
+    apifalsa $e
+    T="$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17:13,19:27+38,20.5:27,21:13,22.5:27,23:38,23.5:27"
+    d=$(datos $e apagado); rm -f "$d/rocola_spotify_api.txt"; printf 'spotify=1\n' > "$d/rocola_os.txt"; abre $e "$d" "$T" 26 ROCOLA_OS=1
+    espera $e; o="$W/$e"
+    si "sinllave: sale con 0" test "$(cat $o/salio)" = 0
+    si "sinllave: ninguna peticion a la API falsa (ni la llave)" test "$(wc -l < $o/api/peticiones.txt)" = 0
+    si "sinllave: ninguna pared ni vuelta del buscador en la bitacora" bash -c "! grep -qE 'pared del buscador|vuelta al buscador' '$d/rocola_os_bitacora.txt' 2>/dev/null"
+    si "sinllave: nada cobrado de Spotify ($(pedidos $o)) ni un play al Soloist falso" bash -c "[ $(pedidos $o) = 0 ] && [ -z \"\$(plays '$o')\" ]"
+    if [ -f "$W/apagado/traza.txt" ]; then
+      python3 "$XP/Pruebas/Ventanas/guiones/compara_trazas.py" "$W/apagado/traza.txt" "$o/traza.txt" --ignora RocolaOs: --holgura 80 > "$o/compara.txt" 2>&1; r=$?
+      sed 's/^/   /' "$o/compara.txt" | head -8
+      si "sinllave: la traza igual a la de sin ROCOLA_OS quitando lo de RocolaOs (compara_trazas.py --ignora, holgura 80)" test $r = 0
+    fi ;;
+  ayuda)
+    # (2a revision funcionamiento-y-reglas) LA AYUDA (EL ASISTENTE) EN MEDIO DE LA PILA. En la pared de Banda, ROJO+ABAJO: el rojo es REGRESAR
+    # (el buscador, como en XP desde un disco el rojo saca a la pared) y ABAJO con el rojo abre la ayuda encima; el rojo la cierra y queda el
+    # buscador con lo escrito (PONER abre la pared de Banda otra vez). En un disco de esa pared (2a pagina, casilla 19), ROJO+ABAJO: la pared
+    # (XP: BackToAlbums) y la ayuda encima; el rojo la cierra y la pared sigue en la misma pagina y casilla (PONER entra al mismo disco, PONER
+    # pide su 1a, can5181). REGRESAR, REGRESAR: la pared y el buscador con lo escrito (PONER: la pared por 3a vez). El rojo va PRIMERO y
+    # mantenido 1 s, y ABAJO 0,3 s despues (como la escena asistente de las ventanas): si los dos llegan en el mismo milisegundo, el rojo ya
+    # es el atajo de la ayuda (EsAtajoAyuda de XP: la ayuda se abre encima de la pared o del disco y ahi se queda, como XP en un disco)
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,19.5:27~1000,19.8:40,22.5:27,24.5:13,26.5:38,28.5:13,30.5:27~1000,30.8:40,33.5:27,35.5:13,37:13,39:27,40.5:27,42:13" 45 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 21.5 ayuda-sobre-el-buscador-desde-la-pared),$(cap 24 buscador-al-cerrar-la-ayuda),$(cap 32.5 ayuda-sobre-la-pared-desde-un-disco),$(cap 35 pared-al-cerrar-la-ayuda),$(cap 41.5 buscador-al-final-de-ayuda)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    si "ayuda: sale con 0" test "$(cat $o/salio)" = 0
+    # la ayuda abierta se ve en su captura: el circulo verde de «Poner una cancion» del globo (948,369); cerrada, no (el dibujo de XP)
+    ca="${CAPTURAS:-$W}"; verde() { python3 -c "import sys;from PIL import Image;p=Image.open(sys.argv[1]).convert('RGB').getpixel((948,369));sys.exit(0 if (p[1]>=200 and p[0]<160)==(sys.argv[2]=='1') else 1)" "$ca/$1.png" "$2"; }
+    si "ayuda: la ayuda se abrio en la pared (encima del buscador) y en el disco de la pared (encima de la pared), y el rojo la cerro las dos veces (capturas)" bash -c "$(declare -f verde); ca='$ca'; verde ayuda-sobre-el-buscador-desde-la-pared 1 && verde ayuda-sobre-la-pared-desde-un-disco 1 && verde buscador-al-cerrar-la-ayuda 0 && verde pared-al-cerrar-la-ayuda 0"
+    si "ayuda: tras cerrar la ayuda, el buscador seguia con lo escrito y tras la pared, la misma pagina y casilla (la pared de Banda abierta 3 veces)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$d/rocola_os_bitacora.txt') = 3 ]"
+    si "ayuda: la 1a pedida es la 1a del disco de la casilla 19 (can5181) y es la unica ($(pedidos $o))" bash -c "[ '$(pedido $o 1)' = \"\$(printf 'pedida\tspotify:track:can5181')\" ] && [ $(pedidos $o) = 1 ]"
+    si "ayuda: de Orquesta nada, y la pared de Banda de memoria (4 peticiones de artista: off=0..30)" bash -c "! grep -q '/v1/.*art99' '$a' && [ \$(grep -c '/v1/artists/' '$a') = 4 ]" ;;
   esac
 done
 

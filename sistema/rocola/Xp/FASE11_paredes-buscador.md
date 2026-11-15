@@ -243,6 +243,37 @@ la copia de trabajo):
 - Nada de esto se probó con la API de verdad, la cuenta del dueño, Soloist de verdad ni en el A4; la repetición de los botones del A4
   (la placa de botones USB) es la que hay que ver allí: mantener el rojo en un disco de una pared y en la pared.
 
+### Segunda pasada (funcionamiento-y-reglas, después de c0df5ad)
+
+La revisión de arriba dejó dos huecos de este enfoque sin prueba automática: el modo **encendido sin llaves** (como queda de fábrica
+tras la junta: decisión del 15-11-2026, «Encendido sin llaves la rocola debe quedar como XP en lo que se ve y suena») y **el asistente en
+medio de la pila**. Se comprobó sobre el programa con los cambios de las dos revisiones (c0df5ad; sin cambios de código en esta pasada:
+`Codigo/` y `RocolaOs/` no se tocan; `ganchos.py` **TODO BIEN**, 31 ganchos). Dos escenas nuevas en `prueba.sh`:
+
+| Escena | Qué hace | Comprueba |
+|---|---|---|
+| `sinllave` | `ROCOLA_OS=1`, `spotify=1` y **sin** `rocola_spotify_api.txt` (ni la llave de la API ni la cuenta); las mismas teclas que `apagado`/`cero` (buscar «inventad», elegir, la pared de XP, un disco de XP, REGRESAR, ARRIBA, REGRESAR) | ni una petición (ni la llave); ninguna pared ni vuelta del buscador en la bitácora; nada cobrado ni un `play` al Soloist falso; la traza igual a la de `apagado` (sin `ROCOLA_OS`) quitando lo de `RocolaOs:` (`compara_trazas.py --ignora`, holgura 80) |
+| `ayuda` | pared de Banda; **ROJO (mantenido 1 s) y ABAJO 0,3 s después**: el rojo vuelve al buscador (g53) y ABAJO abre la ayuda encima; el rojo la cierra; PONER (la pared otra vez); ARRIBA; PONER (disco de la casilla 19); **ROJO+ABAJO** igual: la pared (XP) y la ayuda encima; el rojo la cierra; PONER, PONER (pide); REGRESAR, REGRESAR, PONER | la ayuda se ve abierta en las dos capturas y cerrada en las dos de después (el círculo verde del globo, píxel 948,369); la pared de Banda abierta 3 veces (el buscador conservó lo escrito y la elección tras la ayuda); la única pedida es can5181 (la pared conservó página y casilla tras la ayuda); 4 peticiones de artista (de memoria) y nada de Orquesta |
+
+Resultados (programas JIT y NativeAOT de c0df5ad, compilados por la revisión de cuota en `/root/rocola-trabajo/fase11/paredes-rev-ch`,
+usados sin tocar; la prueba corre en `/root/rocola-trabajo/fase11/paredes-rev-fr`):
+
+| Comprobación | Resultado |
+|---|---|
+| `apagado sinllave ayuda` en JIT | **TODO BIEN, 14 de 14** (en la primera corrida, 1 MAL: la comparación de trazas de `sinllave`, porque `apagado` arrancó en frío y su SIGTERM llegó a los 22,1 s de su reloj, antes de sus tres últimas teclas; es el mismo margen de tiempo de `cero`, no del programa) |
+| `apagado sinllave ayuda` en NativeAOT, dos veces | **TODO BIEN, 14 de 14** las dos (`sinllave`: «IGUALES con la holgura del ruido»; `ayuda`: 7 a /v1 = 1 búsqueda, 1 página de búsqueda, 4 de artista, 1 disco) |
+
+**Lo que enseñó la escena `ayuda`** (no es un fallo; es XP): con `27+40` (los dos en el mismo milisegundo, como lo mandó una vez el
+arnés en NativeAOT) el rojo ya cuenta como el atajo de la ayuda (`EsAtajoAyuda` mira también ABAJO apretado), así que la ayuda se abre
+encima de la pared y el cliente se queda en la pared, sin volver al buscador; con el rojo primero, vuelve al buscador y la ayuda se abre
+encima. Es lo mismo que hace XP desde un disco (con el rojo primero, la pared y la ayuda; a la vez, la ayuda encima del disco). Por eso la
+escena aprieta el rojo primero y ABAJO 0,3 s después; las dos formas dejan la pila entera (la pared o el buscador siguen debajo, con su
+página, casilla y lo escrito).
+
+Sigue abierto lo de la lista de arriba (el tope de aperturas al volver al buscador, «spotify apagar» dentro de una pared, la repetición
+real de la placa de botones del A4). Ni esto ni nada de arriba se probó con la API de verdad, la cuenta del dueño, Soloist de verdad ni en
+el A4.
+
 ## Revisión (cuota-hilos-y-fallos)
 
 Revisor independiente, con este enfoque: peticiones contadas por acción (nada de fondo, nada por cuadro ni por tecla mantenida), 429 con
