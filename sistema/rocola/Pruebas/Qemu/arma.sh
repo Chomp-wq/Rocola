@@ -8,9 +8,15 @@
 #   4. el initrd.gz del sistema instalado con el init de ahora;
 #   5. rocola-xp (el ejecutable que se de: el del perfil de QEMU), su libSkiaSharp.so, su «version» (lo que dice --version), la
 #      cancion de prueba y /rocola/datos;
+#   5b. rocola-pulso (el puente de sonido de Spotify Soloist), como el paso 5b de rapida.sh, si la configuracion lo pide
+#      (BR2_PACKAGE_ROCOLA_PULSO=y): compilado aqui con el gcc del anfitrion, con sus 48 funciones y sin pedir una glibc que el sistema no
+#      tenga, en /usr/lib/rocola-pulso/libpulse.so.0 (anadido el 15-11-2026, la prueba de la junta de Spotify: sistema/ACT_qemu_spotify.md);
 #   6. /etc/rocola-sistema-version;
 #   y SOLO PARA LA PRUEBA (no va en Rocola OS): una linea de ordenes de root en el puerto serie (ttyS0, en /etc/inittab), para mirar desde
-#   fuera lo que pasa dentro sin tocar tty1 ni la consola de mantenimiento, y /etc/rocola-prueba-qemu que lo dice.
+#   fuera lo que pasa dentro sin tocar tty1 ni la consola de mantenimiento, y /etc/rocola-prueba-qemu que lo dice. Y (15-11-2026, la prueba
+#   de Spotify) /usr/lib/rocola-prueba/reenvia (reenvia.c: 127.0.0.1 de dentro a los servidores de mentira del anfitrion) y una linea al
+#   principio de /etc/init.d/S99rocola que lee /etc/rocola-prueba-entorno si existe (las variables de prueba de SPOTIFY_SOLOIST.md y
+#   FASE11_catalogo.md: a donde se baja Soloist y donde esta la API web; sin ese archivo no cambia nada).
 #   7. la memoria USB: el disk.img de esa imagen con el sistema nuevo en su particion 1.
 #   bash arma.sh CARPETA_DE_ROCOLA_XP [SALIDA]   (CARPETA: la de dotnet publish, con rocola-xp y libSkiaSharp.so; SALIDA, por omision
 #                                                 /root/rocola-trabajo/act/qemu/usb.img, con huecos: unos 250 MB ocupados)
@@ -54,10 +60,32 @@ install -D -m 644 "$REPO/sistema/rocola/Consola/prueba.mp3" "$M/usr/share/rocola
 install -D -m 644 "$REPO/sistema/rocola/Consola/prueba.mp3" "$M/rocola/musica/Rocola OS - Prueba/prueba.mp3"
 mkdir -p "$M/rocola/datos"
 echo "rocola-xp: $linea"
+# 5b. rocola-pulso (lo mismo que el paso 5b de rapida.sh: el mismo gcc, las mismas comprobaciones)
+if grep -q '^BR2_PACKAGE_ROCOLA_PULSO=y' "$REPO/sistema/configs/rocola_a4_defconfig"; then
+	P=$T/pulso; cp -a "$REPO/sistema/rocola/pulso" "$P"
+	make -C "$P" limpia > /dev/null 2>&1 || true
+	make -C "$P" CC=gcc CFLAGS="-O2 -g0 -pipe -fPIC -march=x86-64 -mtune=generic" todo > "$T/pulso.txt" 2>&1 \
+		|| { tail -n 40 "$T/pulso.txt" >&2; echo "arma.sh: rocola-pulso no compilo" >&2; exit 1; }
+	L=$P/libpulse.so.0
+	da=$(nm -D --defined-only "$L" | awk '$2 ~ /^[TtWiI]$/ {sub(/@.*/, "", $3); print $3}')
+	n=0; for f in $(grep -v '^#' "$REPO/sistema/package/rocola-pulso/funciones.txt"); do
+		echo "$da" | grep -qx "$f" || { echo "arma.sh: rocola-pulso no da $f (Soloist la busca)" >&2; exit 1; }; n=$((n + 1))
+	done
+	hay=$(for b in "$M"/lib/libc.so.6 "$M"/lib/libm.so.6; do objdump -T "$b" 2>/dev/null; done | grep -o 'GLIBC_[0-9][0-9.]*' | sort -u)
+	[ -n "$hay" ] || { echo "arma.sh: no se encontro la libc del sistema" >&2; exit 1; }
+	pide=$(objdump -T "$L" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -u) || true
+	for v in $pide; do echo "$hay" | grep -qx "$v" || { echo "arma.sh: rocola-pulso pide $v y el sistema no la tiene" >&2; exit 1; }; done
+	strip --strip-unneeded "$L"
+	install -D -m 755 "$L" "$M/usr/lib/rocola-pulso/libpulse.so.0"
+	echo "rocola-pulso: libpulse.so.0 con las $n funciones que busca Soloist; glibc hasta $(echo "$pide" | sort -V | tail -1) (el sistema trae hasta $(echo "$hay" | sort -V | tail -1))"
+fi
 # 6. la version del sistema
 echo "$VERSION" > "$M/etc/rocola-sistema-version"
 # SOLO PARA LA PRUEBA: root en el puerto serie (QEMU lo da por un socket) y la marca de que esta imagen es de prueba
 grep -q '^ttyS0::' "$M/etc/inittab" || printf '\n# PRUEBA EN QEMU (sistema/rocola/Pruebas/Qemu/arma.sh): root en el puerto serie; no va en Rocola OS\nttyS0::respawn:-/bin/sh\n' >> "$M/etc/inittab"
+# (15-11-2026, la prueba de Spotify) el reenviador y las variables de prueba (sin /etc/rocola-prueba-entorno no cambia nada)
+gcc -static -O2 -o "$T/reenvia" "$G/reenvia.c" && install -D -m 755 "$T/reenvia" "$M/usr/lib/rocola-prueba/reenvia"
+grep -q rocola-prueba-entorno "$M/etc/init.d/S99rocola" || sed -i '1a # PRUEBA EN QEMU (sistema/rocola/Pruebas/Qemu/arma.sh): las variables de prueba, si estan; no va en Rocola OS\n[ -r /etc/rocola-prueba-entorno ] \&\& { set -a; . /etc/rocola-prueba-entorno; set +a; }' "$M/etc/init.d/S99rocola"
 echo "Imagen de PRUEBA EN QEMU (sistema/rocola/Pruebas/Qemu/arma.sh): Rocola OS con root en el puerto serie (ttyS0). No va en la rocola." > "$M/etc/rocola-prueba-qemu"
 sync; umount "$M"
 e2fsck -fy "$T/sistema.img" >/dev/null 2>&1 || [ $? -le 1 ] || { echo "arma.sh: el sistema quedo con errores" >&2; exit 1; }
