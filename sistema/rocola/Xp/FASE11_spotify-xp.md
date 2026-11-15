@@ -303,3 +303,79 @@ firma es null), así que g19 no hace falta; `EnsureTags` no toca el título (sin
 - Si el escritor rehace el anillo (otro inodo) a media canción, la de Spotify que suena se corta (los contadores del anillo nuevo empiezan
   en 0). Es raro (solo si el anillo deja de valer).
 - `RocolaOs.SpotifyPrueba.cs` sigue dentro del programa (solo con `ROCOLA_OS=...,spotify-prueba`): lo decide la junta.
+
+## Revisión (sonido-hilos-y-fallos)
+
+Revisor independiente, 15-11-2026, sobre 925612b (la base fase11-andamio b75c4a8 sigue igual y no hay fase11-junta0: nada que juntar).
+Enfoque: el hilo del sonido nunca espera; la lectura del anillo (orden de memoria, vaciados, flujos, frecuencia, cortes y empalmes); los
+hilos del WebSocket y del vigilante (vidas, reconexiones, cierres, huérfanos); y lo que pasa cuando algo falla.
+
+**Lo que se comprobó y está bien.** El hilo del sonido no toma cerrojos ni espera: `Toma` copia lo que haya (acquire de `escrito`, release
+de `leido`), `Pide` solo publica la petición, `Apunta` solo encola; la fase se lee antes que el ancla (`EscritoAlPedir`) y el hilo de
+Spotify la escribe en el orden contrario. Los vaciados (`vaciado_hasta` antes de `gen_vaciado`) se aplican esperando y sonando. Los
+eventos de una conexión vieja se tiran por su `Gen`; cada conexión tiene su hilo que acaba con `Abort`. XP no cierra una fuente mientras
+el hilo de la música la lee (`SueltaLectoresAudio` espera a `CuandoPare`). El vigilante y el Soloist falso se van solos si la rocola muere
+(escena «apagon»).
+
+**Lo que estaba mal y se arregló** (commit «Spotify (spotify-xp, revision): ...»):
+
+1. **Un hueco de silencio en el primer segundo de una canción de Spotify.** Al abrirse la salida, el hilo de la música de XP
+   (`BombaSonido`) lee de golpe su primer segundo y su colchón (1,2 s), y el anillo solo guarda lo que Soloist deja por delante (unos
+   250 ms). Si Soloist empieza durante esa lectura de golpe, el anillo se seca y la fuente pone silencio DENTRO de la canción. Con el
+   programa de antes: **la primera canción de cuatro escenas tenía un hueco de 50 a 150 ms a unos 0,8 s de empezar** (dos, pulso,
+   portada, fuera). Ahora la
+   fuente no empieza a leer la canción hasta haber entregado ese 1,3 s en silencio (`ArranqueSinHuecoMs`); lo que llega mientras se queda
+   en el anillo. Si Soloist tarda lo normal en empezar (la red), no cambia nada; con el falso, que empieza al instante, el hueco entre dos
+   canciones pasa de 1,05 s a 1,34 s. Comprobado con `huecos` (tramos de otra cosa entre el primer y el último sonido de cada canción).
+2. **La conversión de frecuencia perdía un cuadro en cada lectura** (un chasquido cada 25 ms en toda la canción). Pasa cuando el anillo no
+   dice al abrirse la fuente la frecuencia que trae después: Soloist abre su flujo con la primera canción (el anillo dice 0 y la fuente
+   declaraba 44,1 kHz) y lo abre a otra frecuencia. Con el programa de antes y el falso a 48 kHz con el flujo abierto tarde: **217 saltos
+   en 7,5 s** (`saltos.py`: el resto de un seno, x[n+1] + x[n-1] − 2 cos(w) x[n]). Ahora la conversión guarda entre lecturas los cuadros
+   que aún hacen falta: **0 saltos**. Y la fuente declara la última frecuencia que tuvo el anillo cuando este dice 0 (`UltimaFrecuencia`),
+   así XP la convierte como un archivo.
+3. **Con Soloist fuera (caído y sin volver, sin llave, caducado, sin sesión), cada una de Spotify de la cola esperaba 15 s en silencio**
+   antes de devolverse (lo que dejó en «queda» la revisión anterior). Ahora, con Soloist fuera más de 10 s (el plazo del WebSocket de R4),
+   la que llega a su turno acaba al momento y devuelve su crédito (R9). Con el programa de antes, en la escena nueva «fuera» la segunda
+   seguía sin devolverse a los 32 s; ahora se devuelve en el mismo segundo que la primera.
+4. **El mapa del anillo se soltaba al cerrar mientras el hilo del sonido podía estar leyendo de él.** El cierre de Rocola OS va ANTES de
+   que XP pare el sonido (`OnFormClosing`), y el hilo de Spotify, al acabar, hacía `SueltaTodo` (munmap): una lectura en ese instante sería
+   un SIGSEGV al cerrar (un reinicio por SIGUSR1 saldría como caída). Ahora el mapa se retira (`Cierra`: `lector_presente` a 0, `Toma` ya no
+   ve nada) y se va con el programa. No se reprodujo (la ventana es de microsegundos); se arregló leyendo el orden del cierre.
+5. **`LectoresAbiertos` podía quedar en −1** si `Acaba` (hilo del sonido) y `Dispose` cruzaran su `contado` (no atómico). Con −1, el
+   `lector_presente` ya no subiría nunca, rocola-pulso daría `writable_size` 0 siempre y ninguna de Spotify volvería a sonar. XP no los
+   cruza hoy (ver arriba), pero ahora es atómico (`Interlocked.Exchange`).
+6. **Menores.** Al entrar la sesión se manda `get_state` (si la sesión entra después de conectar, como con Soloist recién abierto, su
+   `playback_state` de al conectar no llegó, y lo que se sabía de antes de una caída ya no vale). Si la rocola empieza a cerrarse justo
+   mientras abre el vigilante, este recibe SIGTERM al momento (antes quedaba hasta que viera morir a su padre).
+
+**Las pruebas nuevas** (`Pruebas/RocolaOs/spotify-xp/`): `saltos.py`; `frecuencias.py` y `saltos.py` con el registro de la tarjeta (cada
+apertura de la salida a su ritmo: XP abre a 48 kHz para una de 48 kHz, y antes todo `sonado.raw` se medía con la última frecuencia); el
+Soloist falso con `SOLOIST_FALSO_HZ` y `SOLOIST_FALSO_FLUJO_TARDE=1`; el vigilante falso con `VIGILANTE_FALSO_UNA=1` (no vuelve a abrir a
+Soloist); las escenas «fuera» y «frecuencia», y en «dos», «pulso», «vigilante» y «frecuencia» las comprobaciones de huecos y saltos.
+
+**Comprobaciones repetidas (con el candado de lo pesado; el Soloist de verdad nunca se ejecutó):**
+
+| Qué | Resultado |
+|---|---|
+| `dotnet build -c Release --no-incremental` | 0 errores, 13 avisos: los mismos 13 de `avisos-base.txt` (archivo, línea y código) |
+| NativeAOT (`dotnet publish -p:PublishAot=true -r linux-x64`) | salida 0, 0 avisos IL |
+| `prueba.sh`, JIT, las 12 escenas (con «fuera» y «frecuencia»; «pulso» con el libpulse.so.0 de fase11-pulso 896bc5d compilado aparte; «vigilante» con el rocola-soloist de fase11-soloist 0cd4314) | **111 de 111** BIEN |
+| `prueba.sh`, NativeAOT, las 12 escenas | **111 de 111** BIEN |
+| «dos», «fuera» y «frecuencia» contra el programa de antes (925612b, JIT) | **7 MAL de 34** (hueco en la primera de «dos» y de «frecuencia», 217 saltos, la de la cola sin devolver): las escenas atrapan los fallos |
+| `ganchos.py` / `diff-xp.py --sin-ganchos` (109 archivos) | TODO BIEN / 5095, 4828, 229 (lo de la base); Codigo/ no se tocó |
+
+No se repitieron el nivel 0 ni el nivel 1: lo cambiado solo corre con la función «spotify» encendida (la fuente la abre g13 solo con el
+modo encendido) y ni Codigo/ ni los ganchos cambiaron.
+
+**Lo que queda:**
+
+- Si Soloist se queda colgado (vivo, con el WebSocket abierto, sin contestar), nada lo nota hasta el plazo de cada canción: la que suena
+  acaba a los 5 s de anillo seco y las siguientes a los 15 s sin empezar. No se puso un `KeepAliveTimeout` al WebSocket porque no se sabe si
+  Soloist contesta los ping (si no, la rocola se desconectaría cada pocos segundos). Para el A4: mirar si Soloist contesta ping.
+- Con Soloist en «buffering» largo a media canción (la red), la canción espera hasta 30 s de silencio (`SeguridadMs`) antes de acabarse:
+  R4 solo cuenta el anillo seco en «playing». Si en el A4 un corte de internet deja a Soloist en «buffering», tardará 30 s y no 15.
+- Si Soloist manda un «paused» pasajero al empezar una canción (después de que ya dijo «playing» con la pedida), la rocola la daría por
+  parada al momento y devolvería el crédito. El falso no lo hace; la documentación no lo dice. Para el A4: que ninguna se acabe sola al
+  empezar («acaba ...: se paro» con «sono 0.0 s» en la bitácora).
+- Para el A4: la frecuencia con que Soloist abre su flujo (`/run/rocola-xp/spotify/sonido.anillo`, la cabecera en 16) y si lo abre al
+  arrancar o con la primera canción; y que la primera canción tras abrir Soloist suene sin chasquidos.
