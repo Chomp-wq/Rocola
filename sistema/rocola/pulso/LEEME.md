@@ -260,7 +260,31 @@ seccion «Comprobado» abajo.
 
 ## Comprobado
 
-(Se rellena con la ultima corrida de `prueba/prueba.sh`.)
+Ultima corrida de `prueba/prueba.sh` (completa, 15-11-2026, maquina de pruebas
+x86_64 con 4 nucleos compartidos, gcc de la maquina, glibc 2.39; cabeceras de
+libpulse 16.1; pacat y paplay de pulseaudio-utils 16.1 y mpv 0.37 de la
+maquina): **14 pasos bien, 0 mal**.
+
+| Paso | Resultado |
+|---|---|
+| compilar | libpulse.so.0 y las pruebas, 0 avisos del compilador (`-Wall -Wextra`) |
+| (5) exporta | las 48 de Soloist entre 188 funciones `pa_*` (todas con la version `PULSE_0`), 0 fuera de `pa_*`; glibc maxima pedida `GLIBC_2.34`; solo necesita `libc.so.6`; soname `libpulse.so.0` |
+| (5b) abi | 141 tamanos, desplazamientos y valores iguales a los de las cabeceras de libpulse |
+| (1) cliente | 18 de 18 escenarios (S16LE, FLOAT32LE, S32LE x 1, 2, 6 canales x 44 100, 48 000 Hz), las 48 funciones usadas por `dlsym`, 739 comprobaciones bien, 0 mal; en cada uno el lector comprobo cuadro a cuadro 39 690 o 43 200 cuadros, y 0,5 s de sonido tardaron de 0,496 a 0,500 s al ritmo del lector |
+| (2) raro | 113 comprobaciones bien, 0 mal: 11 de 11 formatos exactos; sin lector writable 0 y a los 2,00 s de morir el lector; anillo borrado e invalido rehechos (el lector reabrio 2 veces, 273 600 cuadros sin errores); dos flujos seguidos y dos a la vez; vaciado en medio (48 000 bytes fuera, 60 000 cuadros leidos sin errores); cliente matado (latido parado a los 1,50 s, el siguiente toma el anillo); anillo imposible (FAILED); 51 llamadas con NULL o fuera de orden; bucle sin hilo y cerrojo recursivo |
+| (4) paplay S16 48 000 | 72 000 cuadros identicos, 0 errores |
+| (4) paplay FLOAT 44 100 | 66 150 cuadros identicos, 0 errores |
+| (4) pacat --raw | 72 000 cuadros identicos, 0 errores |
+| (4) mpv --ao=pulse | 72 000 cuadros identicos, 0 errores |
+| consumo | 10 s de paplay: 480 000 cuadros identicos; paplay entero (con libsndfile) 10,003 s de reloj, 0,011 s de usuario y 0,021 s de sistema (0,3 % de un nucleo) |
+| rastreo | 440 lineas (41 de `pa_stream_write`), rota a `.1` con el tope bajado a 30 kB |
+| (3) ThreadSanitizer | cliente (2 escenarios) y los 9 casos raros: 0 avisos |
+| (3) AddressSanitizer + UBSan | cliente (18 escenarios) y los 9 casos raros: 0 avisos de memoria, fugas ni comportamiento indefinido |
+| (3) valgrind | cliente (2 escenarios) y los NULL: 0 errores de memoria, 0 fugas definitivas |
+
+pacat, paplay y mpv no pidieron ninguna funcion que no tuvieramos (por eso hay
+188 y no 48: las que usan esos clientes, como `pa_stream_drain`,
+`pa_context_get_sink_info_by_name`, `pa_signal_*` o `pa_channel_map_*`).
 
 ## Limites y lo que falta
 

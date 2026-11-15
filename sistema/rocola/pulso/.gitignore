@@ -2,3 +2,4 @@
 libpulse.so.0
 prueba/*.o
 prueba/bin/
+prueba/bin-*/

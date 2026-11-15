@@ -664,6 +664,9 @@ void flujo_listo(pa_stream *s)
     if (s->estado != PA_STREAM_CREATING || c->estado != PA_CONTEXT_READY)
         return;
     s->indice = ctx_nuevo_indice();
+    /* el anillo pudo cambiar mientras no habia flujo: mirarlo ya */
+    s->prox_inodo_us = 0;
+    revisa_inodo(s, pulso_ahora_us());
     pthread_mutex_lock(&g_mx);
     if (g_activo && g_activo != s)
         TRAZA("flujo %p desplaza al flujo %p en el anillo", (void *)s, (void *)g_activo);
