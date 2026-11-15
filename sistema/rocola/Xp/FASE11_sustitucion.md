@@ -230,6 +230,7 @@ con reloj; nunca el Soloist de verdad):
 | `caida`, `atasca`, `seguida` con el programa de la base (222fe30, compilado aparte) | **9 MAL de 14**: `caida` **52 peticiones** a `/v1` en 51 s (con el arreglo, 2) y un renglón cada vez; `atasca` 13,8 s de silencio sin volver al MP3 (hasta que el falso volvió a mandar; sin eso, 30 s), con el arreglo 3,8 s y tu MP3 desde los 12,1 s; `seguida` el vals desde Spotify con hueco, con el arreglo de su MP3 con 0,00 s de hueco |
 | Peticiones por escena (JIT) | `isrc` 1, `titulo` 1, `sinpareja` 2 (+0 la sesión siguiente), `nx` 1, `corte` 1, `forma` 1, `frena` 1, `caida` 2, `atasca` 1, `seguida` 1, `apagado`/`sinllave`/`sinsesion` 0 |
 | `ganchos.py` | TODO BIEN (`Codigo/` sin cambios de esta revisión) |
+| Lo de las dos revisiones juntas (`aece67a`, sobre `e9c7b32`), las 16 escenas | JIT **97 de 97** y NativeAOT **97 de 97** (con `apagon` y `tarde` del otro revisor) |
 
 **No se puede probar aquí**: el Soloist de verdad (nunca se ejecutó: ¿pasa a «buffering» sin red, como el falso?; ¿cuánto colchón trae?), la API de
 verdad con la cuenta del dueño (qué 4xx da el modo desarrollo), el A4 (que 5 s de atasco no salten con la red lenta del bar: si salta mucho,
