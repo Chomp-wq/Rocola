@@ -62,6 +62,12 @@ CUAL=${ROCOLA_CUAL:-/rocola/datos/rocola_programa.txt}
 # «rocola-sonido usar N» vale desde la siguiente vez que se abre (antes solo al reiniciar el equipo).
 i=0; while [ -z "$(rocola-tarjeta -c)" ] && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
 ALSA_FIJA=$ROCOLA_ALSA   # (puesta desde fuera, para probarlo: manda siempre)
+# ROCOLA OS ENCIMA DE LA DE XP (fase 11; sistema/rocola/Xp/PLAN_FASE11.md, §2.2 y tanda A): rocola-xp recibe ROCOLA_OS=1 y entonces corre lo
+# propio de Rocola OS que este encendido en /rocola/datos/xp/rocola_os.txt (spotify=, ...). EL INTERRUPTOR DE EMERGENCIA (decision 10):
+# si existe /rocola/datos/xp/rocola_os_apagado (lo escriben a mano la consola de mantenimiento o el buzon; nunca el programa), rocola-xp va
+# con ROCOLA_OS vacia (= sin ella): es la de XP tal cual. Se mira cada vez que se abre. (Una ROCOLA_OS puesta desde fuera, para probarlo,
+# manda.)
+OS_FIJA=$ROCOLA_OS
 # EL MATERIAL PARA ENTRENAR LA IA (3-11-2026): puede crecer a varios GB y datos.img mide 512 MB; instalada, va al disco de la rocola, junto
 # a la musica, en su carpeta propia (ia-xp: la de rocola-consola, ia, se queda como esta). Solo si ese disco esta montado con escritura;
 # si no (la memoria USB, o el disco en solo lectura), sin la variable: rocola-xp lo deja en su carpeta de datos, como XP.
@@ -213,10 +219,12 @@ while :; do
 	prepara_xp
 	[ -f "$EN_CONSOLA" ] && continue   # (se fue a la consola mientras se traia lo de XP)
 	rm -f "$RUN/rocola-xp-reinicio"   # (una marca solo vale para la rocola que se abre ahora)
+	OSV=${OS_FIJA:-1}   # (solo para la rocola, no para el importador: va delante de su orden, abajo)
+	[ -f "$XPDATOS/rocola_os_apagado" ] && { OSV=; echo "--- Rocola OS apagado de emergencia ($XPDATOS/rocola_os_apagado): rocola-xp sin ROCOLA_OS" >> "$REGISTRO"; }
 	# la pantalla por KMS (sin ROCOLA_PANTALLA), el sonido por ROCOLA_ALSA, sus datos y las letras de XP
 	echo "--- rocola-xp ($(cat "${XPBIN%/*}/version" 2>/dev/null)): datos en $XPDATOS, letras de XP en ${XPLETRAS:-(no hay: las del sistema)}" >> "$REGISTRO"
 	t0=$(segundos)
-	ROCOLA_DATOS=$XPDATOS ROCOLA_LETRAS_XP=$XPLETRAS "$XPBIN" >> "$REGISTRO" 2>&1
+	ROCOLA_OS=$OSV ROCOLA_DATOS=$XPDATOS ROCOLA_LETRAS_XP=$XPLETRAS "$XPBIN" >> "$REGISTRO" 2>&1
 	r=$?
 	duro=$(( $(segundos) - t0 ))
 	if [ -f "$EN_CONSOLA" ]; then apunta "La rocola se cerro para la consola de mantenimiento"; seguidas=0; continue; fi   # (no es una caida)
