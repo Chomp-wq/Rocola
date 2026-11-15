@@ -7,7 +7,8 @@
 # Soloist de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): apagado dos mezcla celular fallos apagon
+#   escenas (de fabrica todas): apagado dos mezcla celular fallos apagon pulso
+#   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para la escena «pulso» (sin el, esa escena no se corre)
 #   W: la carpeta de trabajo (/root/rocola-trabajo/fase11/spotify-xp/prueba; se rehace); FALSO: el Soloist falso compilado (se compila si
 #   falta, con el candado de lo pesado); DATOS0 (/root/rocola-trabajo/port/ventanas/datos0, se copian, nunca se tocan)
 # Las cuentas del sonido: frecuencias.py (tramos de 50 ms con la frecuencia dominante). Cada cancion de Spotify de prueba lleva su tono en su
@@ -16,7 +17,8 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado dos mezcla celular fallos apagon}"
+partes="${*:-apagado dos mezcla celular fallos apagon pulso}"
+PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/spotify-xp/falso}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -40,7 +42,7 @@ if [ ! -f "$A/libasound_module_pcm_reloj.so" ]; then gcc -shared -fPIC -DPIC -O2
 
 # ---------- una corrida ----------
 # abre NOMBRE DATOS "PULSA" "PIDE" SEGUNDOS SENAL [VAR=valor...]: la rocola con esos datos, las teclas PULSA (ROCOLA_PULSA), los pedidos de
-# Spotify PIDE («SEG:pide URI|TITULO|ARTISTA|DISCO|MS;...», al doble del catalogo), y a los SEGUNDOS la SENAL. Deja en $W/NOMBRE: salida.txt,
+# Spotify PIDE («SEG:pide URI|TITULO|ARTISTA|DISCO|MS;...», al doble del catalogo; «SEG:copia» copia el estado de /run a estado.txt), y a los SEGUNDOS la SENAL. Deja en $W/NOMBRE: salida.txt,
 # traza.txt, run/ (ROCOLA_RUN), soloist/ (sus datos), falso.txt (lo que recibio y paso en el Soloist falso), vigilante.txt, sonado.raw,
 # registro.txt, frec.txt, salio y tardo (de la senal a la salida).
 abre() {
@@ -58,7 +60,8 @@ EOC
   # los pedidos, a su hora (el doble del catalogo los lee en su latido)
   ( IFS=';'; for x in $pide; do [ -z "$x" ] && continue; s="${x%%:*}"; l="${x#*:}"
       while [ "$(echo "$(date +%s.%N) - $T0 < $s" | bc)" = 1 ]; do sleep 0.1; done
-      mkdir -p "$o/run/rocola-xp/spotify"; echo "$l" >> "$o/run/rocola-xp/spotify/prueba-pide"; done ) &
+      mkdir -p "$o/run/rocola-xp/spotify"
+      if [ "$l" = copia ]; then cp "$o/run/rocola-xp/spotify/estado" "$o/estado.txt" 2>/dev/null; else echo "$l" >> "$o/run/rocola-xp/spotify/prueba-pide"; fi; done ) &
   local q=$!
   sleep "$seg"; kill $q 2>/dev/null
   [ "$sen" != NADA ] && kill -"$sen" $p 2>/dev/null; local t0; t0=$(date +%s.%N)
@@ -69,11 +72,11 @@ EOC
   [ -f "$o/sonado.raw" ] && python3 "$G/frecuencias.py" "$o/sonado.raw" "${hz:-44100}" > "$o/frec.txt"
 }
 datos() { local d="$W/datos-$1"; rm -rf "$d"; mkdir -p "$d"; cp -r "$DATOS0"/. "$d"/; rm -f "$d/rocola_estado.txt"; echo "$d"; }
-oye() { awk -v f="$2" '$3>=f-15 && $3<=f+15 {s+=$2-$1} END {printf "%.2f\n", s+0}' "$1"; }   # segundos que se oyo HZ
+oye() { [ -f "$1" ] || { echo 0.00; return; }; awk -v f="$2" '$3>=f-15 && $3<=f+15 {s+=$2-$1} END {printf "%.2f\n", s+0}' "$1"; }   # segundos que se oyo HZ
 primero() { awk -v f="$2" '$3>=f-15 && $3<=f+15 && $2-$1>=0.3 {print $1; exit}' "$1"; }    # cuando empezo a oirse HZ (de verdad)
 ultimo() { awk -v f="$2" '$3>=f-15 && $3<=f+15 && $2-$1>=0.3 {u=$2} END {print u+0}' "$1"; }
 log() { echo "$1/run/rocola-xp/spotify/prueba-pide.log"; }
-estado() { sed -n "s/^$2=//p" "$1/run/rocola-xp/spotify/estado" 2>/dev/null; }
+estado() { sed -n "s/^$2=//p" "$1/estado.txt" 2>/dev/null; }   # (el estado de /run copiado con «SEG:copia», antes de cerrar)
 T0=0
 P="Prueba|Artista inventado|Disco inventado"
 
@@ -98,7 +101,7 @@ fi
 if [[ " $partes " == *" dos "* ]]; then
   echo "== dos (pedir, sonar entera, la siguiente, el autoplay pausado, el cierre)"
   d=$(datos dos); T0=$(date +%s.%N)
-  abre dos "$d" "7:67" "9:pide spotify:track:f440d008aa|$P|8000;9.2:pide spotify:track:f550d006bb|$P|6000" 32 TERM ROCOLA_OS=spotify,spotify-prueba
+  abre dos "$d" "7:67" "9:pide spotify:track:f440d008aa|$P|8000;9.2:pide spotify:track:f550d006bb|$P|6000;31:copia" 32 TERM ROCOLA_OS=spotify,spotify-prueba
   o="$W/dos"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
   sed 's/^/   /' "$f" | head -20
   si "dos: sale con 0" test "$(cat $o/salio)" = 0
@@ -172,7 +175,7 @@ fi
 if [[ " $partes " == *" celular "* ]]; then
   echo "== celular (R3: lo que no pidio la rocola se pausa; R4: inactiva; I6: sin sesion no se pide)"
   d=$(datos celular); T0=$(date +%s.%N)
-  abre celular "$d" "7:67" "11:pide spotify:track:f440d020aa|$P|20000;23:pide spotify:track:f550d020bb|$P|20000;34:pide spotify:track:f880d010cc|$P|10000" 38 TERM \
+  abre celular "$d" "7:67" "11:pide spotify:track:f440d020aa|$P|20000;23:pide spotify:track:f550d020bb|$P|20000;34:pide spotify:track:f880d010cc|$P|10000;37:copia" 38 TERM \
     ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="9:celular:spotify:track:f660d030zz;17:celular:spotify:track:f770d030yy;20:cola:spotify:track:f770d030xx;29:inactiva;33:sinsesion"
   o="$W/celular"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
   sed 's/^/   /' "$f" | head -30
@@ -193,7 +196,7 @@ fi
 if [[ " $partes " == *" fallos "* ]]; then
   echo "== fallos (R4 y R9: el credito vuelve y la rocola sigue)"
   d=$(datos fallos); T0=$(date +%s.%N)
-  abre fallos "$d" "7:67" "9:pide spotify:track:nx0001|$P|30000;27:pide spotify:track:f440d030aa|$P|30000;41:pide spotify:track:f550d030bb|$P|30000;58:pide spotify:track:f660d004cc|$P|4000" 66 TERM \
+  abre fallos "$d" "7:67" "9:pide spotify:track:nx0001|$P|30000;27:pide spotify:track:f440d030aa|$P|30000;41:pide spotify:track:f550d030bb|$P|30000;58:pide spotify:track:f660d004cc|$P|4000;65:copia" 66 TERM \
     ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="31:corta;38:sigue;47:cae"
   o="$W/fallos"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
   sed 's/^/   /' "$f" | head -30
@@ -213,13 +216,30 @@ if [[ " $partes " == *" apagon "* ]]; then
   d=$(datos apagon); T0=$(date +%s.%N)
   abre apagon1 "$d" "7:67" "9:pide spotify:track:f440d030aa|$P|30000;9.2:pide spotify:track:f550d030bb|$P|30000" 14 KILL ROCOLA_OS=spotify,spotify-prueba
   cp "$d/rocola_estado.txt" "$W/apagon-estado.txt" 2>/dev/null
-  si "apagon: el estado de XP guardado con la que suena y la de la cola, de Spotify, y 2 creditos" bash -c "grep -qx 'creditos=2' '$W/apagon-estado.txt' && grep -qF 'sonando=S|spotify:track:f440d030aa' '$W/apagon-estado.txt' && grep -qF 'cola=S|spotify:track:f550d030bb' '$W/apagon-estado.txt'"
+  si "apagon: el estado de XP guardado con la que suena y la de la cola, de Spotify, y 2 creditos" bash -c "tr -d '\\r' < '$W/apagon-estado.txt' | grep -qx 'creditos=2' && grep -qF 'sonando=S|spotify:track:f440d030aa' '$W/apagon-estado.txt' && grep -qF 'cola=S|spotify:track:f550d030bb' '$W/apagon-estado.txt'"
   sleep 3
-  si "apagon: el vigilante y el Soloist falso se fueron solos al morir la rocola" bash -c "grep -q 'murio el padre' '$W/apagon1/vigilante.txt' && ! pgrep -f 'soloist-falso.dll.*$W/apagon1' >/dev/null"
+  si "apagon: el vigilante y el Soloist falso se fueron solos al morir la rocola" bash -c "grep -q 'murio el padre' '$W/apagon1/vigilante.txt' && ! pgrep -f '[s]oloist-falso.dll.*apagon1/soloist' >/dev/null"
   T0=$(date +%s.%N)
   abre apagon2 "$d" "" "" 14 TERM ROCOLA_OS=spotify,spotify-prueba ROCOLA_ESTADO_EN="12:$W/apagon2-xp.txt"
   si "apagon: al volver, lo pagado de Spotify vuelve como credito (2 + 2 = 4)" contiene "$W/apagon2-xp.txt" "creditos=4"
   si "apagon: y no suena nada de Spotify" bash -c "python3 -c \"import sys; sys.exit(0 if $(oye "$W/apagon2/frec.txt" 440)+$(oye "$W/apagon2/frec.txt" 550) < 0.1 else 1)\""
+fi
+
+# ---------------------------------------------------------------- pulso: lo mismo que «dos», con el sonido por NUESTRO libpulse.so.0
+if [[ " $partes " == *" pulso "* ]]; then
+  echo "== pulso (el Soloist falso escribe por el libpulse.so.0 de rocola-pulso, como lo haria Soloist)"
+  if [ ! -f "$PULSO" ]; then echo "(sin $PULSO: no se corre; compila sistema/rocola/pulso con make)"; else
+  d=$(datos pulso); T0=$(date +%s.%N)
+  abre pulso "$d" "7:67" "9:pide spotify:track:f440d008aa|$P|8000;9.2:pide spotify:track:f550d006bb|$P|6000;31:copia" 32 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_PULSO="$PULSO"
+  o="$W/pulso"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$f" | head -20
+  si "pulso: el Soloist falso conecto por el libpulse.so.0" contiene "$o/falso.txt" "conectado por $PULSO"
+  si "pulso: la primera entera (8 s: $(oye "$f" 440) s)" entre "$(oye "$f" 440)" 7.7 8.3
+  si "pulso: la segunda entera (6 s: $(oye "$f" 550) s)" entre "$(oye "$f" 550)" 5.7 6.3
+  si "pulso: en su orden" entre "$(primero "$f" 550)" "$(ultimo "$f" 440)" 1000
+  si "pulso: el autoplay no se oye ($(oye "$f" 990) s)" entre "$(oye "$f" 990)" 0 0.15
+  si "pulso: 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
+  fi
 fi
 
 echo
