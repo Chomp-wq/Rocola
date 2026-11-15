@@ -9,6 +9,12 @@
 //   GET  /v1/search?q&type&limit&market      limit de 1 a 10 (mas: 400, como la de verdad); busca en nombres y artistas
 //   GET  /v1/albums/{id}, /v1/albums/{id}/tracks, /v1/artists/{id}/albums (limit hasta 10)
 //   GET  /v1/me/tracks, /v1/me/albums, /v1/me/playlists, /v1/playlists/{id}/items     (solo con la llave de la cuenta: si no, 401)
+//   GET  /v1/me/top/tracks, /v1/me/player/recently-played                             (los atajos de SP9; solo con la cuenta)
+//   (grupo paredes-buscador) search con offset y con «artist:"NOMBRE"» (las canciones de ese artista); los artistas de una busqueda: los
+//   que contienen lo escrito o estan a dos letras, y detras uno que no tiene que ver (como hace Spotify); un artista con 40 discos (Banda
+//   Interminable: 3 paginas de pared y 120 canciones) y «Otra Banda» (un artista de los datos de prueba de XP: su carpeta no lleva
+//   « - » y XP la toma por un disco sin nombre de «Otra Banda») con un disco del mismo nombre (el que la rocola ya tiene) y dos mas.
+//   El registro apunta « q=..» en search y, si la peticion trae offset, « t=tipo off=N» detras.
 //   GET  /img/{nombre}.jpg                   una portada dibujada (JPEG de 300x300)
 //   GET  /control/429?seg=N[&cuota=1][&fecha=1]  la siguiente peticion a /v1 contesta 429 con Retry-After N (o, con fecha=1, la fecha de
 //                                            dentro de N s, RFC 9110) y con cuota=1 el cuerpo QUOTA_EXCEEDED
@@ -93,6 +99,23 @@ internal static class ApiFalsa
         Disco dl = new Disco { Id = "dis999", Nombre = "Sesenta Temas Inventados", Art = largo };
         for (int k = 1; k <= 60; k++) { Cancion c = new Cancion { Id = "can9" + k.ToString("000", CultureInfo.InvariantCulture), Nombre = "Pieza Larga " + k.ToString(CultureInfo.InvariantCulture), Art = largo, Dis = dl, Numero = k, Ms = 120000 }; dl.Canciones.Add(c); canciones.Add(c); }
         discos.Add(dl);
+        // (paredes) un artista con 40 discos de 3 canciones, y «Otra Banda» (en los datos de XP, un disco sin nombre de «Otra Banda»)
+        Artista inter = new Artista { Id = "art50", Nombre = "Banda Interminable" };
+        artistas.Add(inter);
+        for (int i = 1; i <= 40; i++)
+        {
+            Disco d = new Disco { Id = "dis5" + i.ToString("00", CultureInfo.InvariantCulture), Nombre = "Disco Interminable " + i.ToString("00", CultureInfo.InvariantCulture), Art = inter };
+            for (int k = 1; k <= 3; k++) { Cancion c = new Cancion { Id = "can5" + i.ToString("00", CultureInfo.InvariantCulture) + k.ToString(CultureInfo.InvariantCulture), Nombre = "Pieza Sin Fin " + ((i - 1) * 3 + k).ToString(CultureInfo.InvariantCulture), Art = inter, Dis = d, Numero = k, Ms = 140000 }; d.Canciones.Add(c); canciones.Add(c); }
+            discos.Add(d);
+        }
+        Artista otra = new Artista { Id = "art60", Nombre = "Otra Banda" };
+        artistas.Add(otra);
+        foreach (string n0 in new[] { "Otra Banda", "Segundo Disco", "Tercer Disco" })
+        {
+            Disco d = new Disco { Id = "dis6" + discos.Count.ToString("00", CultureInfo.InvariantCulture), Nombre = n0, Art = otra };
+            for (int k = 1; k <= 3; k++) { Cancion c = new Cancion { Id = "can6" + discos.Count.ToString("00", CultureInfo.InvariantCulture) + k.ToString(CultureInfo.InvariantCulture), Nombre = "Cancion Lejana " + k.ToString(CultureInfo.InvariantCulture), Art = otra, Dis = d, Numero = k, Ms = 150000 }; d.Canciones.Add(c); canciones.Add(c); }
+            discos.Add(d);
+        }
         Lista propia = new Lista { Id = "lis001", Nombre = "Mi Lista de Prueba", Dueno = "dueno-falso" };
         for (int k = 0; k < 6; k++) propia.Canciones.Add(canciones[k * 3]);
         listas.Add(propia);
@@ -171,14 +194,20 @@ internal static class ApiFalsa
         {
             if (limite < 0 || limite > 10) { cod = 400; return "{\"error\":{\"status\":400,\"message\":\"Invalid limit\"}}"; }
             if (q["limit"] == null) limite = 5;
+            if (desde < 0 || desde > 1000) { cod = 400; return "{\"error\":{\"status\":400,\"message\":\"Invalid offset\"}}"; }
             string t = (q["q"] ?? "").ToLowerInvariant();
             string tipos = q["type"] ?? "";
+            // «artist:"NOMBRE"»: solo las de ese artista (como el filtro de campo de Spotify)
+            string deArtista = null;
+            if (t.StartsWith("artist:\"", StringComparison.Ordinal) && t.EndsWith("\"", StringComparison.Ordinal) && t.Length > 9) deArtista = t.Substring(8, t.Length - 9);
+            List<Artista> arts = artistas.FindAll(x => x.Nombre.ToLowerInvariant().Contains(t) || Distancia(x.Nombre.ToLowerInvariant(), t) <= 2);
+            if (arts.Count > 0 && !arts.Contains(artistas[2])) arts.Add(artistas[2]);   // (y uno que no tiene que ver: Grupo Ficticio)
             return Escribe(w =>
             {
                 w.WriteStartObject();
-                if (tipos.Contains("track")) { w.WritePropertyName("tracks"); Pagina(w, canciones.FindAll(x => (x.Nombre + " " + x.Art.Nombre).ToLowerInvariant().Contains(t)), limite, desde, CancionEntera); }
+                if (tipos.Contains("track")) { w.WritePropertyName("tracks"); Pagina(w, canciones.FindAll(x => deArtista != null ? x.Art.Nombre.ToLowerInvariant() == deArtista : (x.Nombre + " " + x.Art.Nombre).ToLowerInvariant().Contains(t)), limite, desde, CancionEntera); }
                 if (tipos.Contains("album")) { w.WritePropertyName("albums"); Pagina(w, discos.FindAll(x => (x.Nombre + " " + x.Art.Nombre).ToLowerInvariant().Contains(t)), limite, desde, (ww, d) => DiscoSimple(ww, d)); }
-                if (tipos.Contains("artist")) { w.WritePropertyName("artists"); Pagina(w, artistas.FindAll(x => x.Nombre.ToLowerInvariant().Contains(t)), limite, desde, ArtistaEntero); }
+                if (tipos.Contains("artist")) { w.WritePropertyName("artists"); Pagina(w, deArtista != null ? new List<Artista>() : arts, limite, desde, ArtistaEntero); }
                 w.WriteEndObject();
             });
         }
@@ -199,6 +228,10 @@ internal static class ApiFalsa
             if (llave != "cuenta") { cod = 401; return "{\"error\":{\"status\":401,\"message\":\"Valid user authentication required\"}}"; }
             if (p[0] == "me" && p.Length >= 2 && p[1] == "tracks")
                 return Escribe(w => Pagina(w, canciones.GetRange(3, 7), limite, desde, (ww, x) => { ww.WriteStartObject(); ww.WriteString("added_at", "2026-11-01T00:00:00Z"); ww.WritePropertyName("track"); CancionEntera(ww, x); ww.WriteEndObject(); }));
+            if (p[0] == "me" && p.Length >= 3 && p[1] == "top" && p[2] == "tracks")
+                return Escribe(w => Pagina(w, new List<Cancion> { canciones[12], canciones[5], canciones[1], canciones[20] }, limite, desde, CancionEntera));
+            if (p[0] == "me" && p.Length >= 3 && p[1] == "player" && p[2] == "recently-played")
+                return Escribe(w => Pagina(w, new List<Cancion> { canciones[2], canciones[7], canciones[2], canciones[9] }, limite, desde, (ww, x) => { ww.WriteStartObject(); ww.WriteString("played_at", "2026-11-14T22:00:00Z"); ww.WritePropertyName("track"); CancionEntera(ww, x); ww.WriteEndObject(); }));
             if (p[0] == "me" && p.Length >= 2 && p[1] == "albums")
                 return Escribe(w => Pagina(w, discos.GetRange(1, 2), limite, desde, (ww, x) => { ww.WriteStartObject(); ww.WriteString("added_at", "2026-11-01T00:00:00Z"); ww.WritePropertyName("album"); ww.WriteStartObject(); DiscoCampos(ww, x); ww.WritePropertyName("tracks"); Pagina(ww, x.Canciones, 50, 0, CancionSimple); ww.WriteEndObject(); ww.WriteEndObject(); }));
             if (p[0] == "me" && p.Length >= 2 && p[1] == "playlists")
@@ -287,9 +320,21 @@ internal static class ApiFalsa
         }
     }
 
+    static int Distancia(string a, string b)
+    {
+        int[,] d = new int[a.Length + 1, b.Length + 1];
+        for (int i = 0; i <= a.Length; i++) d[i, 0] = i;
+        for (int j = 0; j <= b.Length; j++) d[0, j] = j;
+        for (int i = 1; i <= a.Length; i++)
+            for (int j = 1; j <= b.Length; j++)
+                d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+        return d[a.Length, b.Length];
+    }
     static void Apunta(HttpListenerContext c, string ruta, string llave, int cod)
     {
-        string qq = ruta == "/v1/search" ? " q=" + (System.Web.HttpUtility.ParseQueryString(c.Request.Url.Query)["q"] ?? "") : "";
+        var qs = System.Web.HttpUtility.ParseQueryString(c.Request.Url.Query);
+        string qq = ruta == "/v1/search" ? " q=" + (qs["q"] ?? "") : "";
+        if (qs["offset"] != null) qq += " t=" + (qs["type"] ?? qs["include_groups"] ?? "") + " off=" + qs["offset"];
         lock (cerrojo) File.AppendAllText(Path.Combine(carpeta, "peticiones.txt"), c.Request.HttpMethod + " " + ruta + " " + llave + " " + cod.ToString(CultureInfo.InvariantCulture) + qq + "\n");
     }
     static void Contesta(HttpListenerContext c, int cod, string cuerpo, string ctype, byte[] bin, Dictionary<string, string> extra)

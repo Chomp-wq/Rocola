@@ -8,14 +8,15 @@
 #   API: la carpeta con api-falsa.dll (por defecto /root/rocola-trabajo/fase11/catalogo/api-falsa; se compila si falta o si cambio)
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/catalogo/prueba; se rehace)
 #   CAPTURAS: si se pone, las capturas para el dueno van ahi (PNG)
-# escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred (todas, de fabrica)
+# escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred (las del catalogo) y pared
+#   canciones todos mas atajos pared429 (las de las paredes del buscador, grupo paredes-buscador: FASE11_paredes-buscador.md); todas, de fabrica
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -95,6 +96,10 @@ sinsecretos() {   # ninguna llave ni el secreto en lo que escribe la rocola (dat
 }
 # lo que hace la rocola en todas: moneda a los 7 s, abre el buscador a los 8 s (REGRESAR+ARRIBA) y escribe desde los 9,5 s
 BASE="7:67,8:27+38"
+# (paredes) LA CUOTA DE LA ESCENA: cuantas peticiones vio la API falsa, por clase (sin las portadas, que no son de la API)
+cuota() { local a="$1"; echo "   cuota: $(grep -c ' /v1/' "$a") a /v1 = $(grep -c '/v1/search app [0-9]* q=[^ ]*$' "$a") busquedas, $(grep -c '/v1/search.* off=' "$a") paginas de busqueda, $(grep -c '/v1/artists/' "$a") de artista, $(grep -c '/v1/albums/' "$a") discos, $(grep -c '/v1/me/' "$a") de la cuenta; $(grep -c '/api/token' "$a") llaves"; }
+# una sola vez cada pagina (PATRON), y ninguna otra de esa clase
+una() { [ "$(grep -c -- "$2" "$1")" = 1 ]; }
 
 for e in $escenas; do
   echo "== $e"
@@ -102,8 +107,10 @@ for e in $escenas; do
   apagado|cero)
     # SIN EL MODO: sin ROCOLA_OS (apagado) y con ROCOLA_OS=1 y spotify=0 (cero): ni una peticion, ni la letra, ni nada en /run
     apifalsa $e
-    if [ $e = apagado ]; then d=$(datos $e apagado); abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17:13" 22 ROCOLA_OS=
-    else d=$(datos $e apagado); printf 'spotify=0\n' > "$d/rocola_os.txt"; abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17:13" 22 ROCOLA_OS=1; fi
+    # (paredes: y despues, ya en la pared de XP, REGRESAR, un disco, REGRESAR dentro, ARRIBA y REGRESAR otra vez: g53 y g54 sin el modo)
+    T="$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17:13,19:27+38,20.5:27,21:13,22.5:27,23:38,23.5:27"
+    if [ $e = apagado ]; then d=$(datos $e apagado); abre $e "$d" "$T" 26 ROCOLA_OS=
+    else d=$(datos $e apagado); printf 'spotify=0\n' > "$d/rocola_os.txt"; abre $e "$d" "$T" 26 ROCOLA_OS=1; fi
     espera $e; o="$W/$e"
     si "$e: sale con 0" test "$(cat $o/salio)" = 0
     si "$e: ninguna peticion a la API falsa (ni la llave)" test "$(wc -l < $o/api/peticiones.txt)" = 0
@@ -118,7 +125,8 @@ for e in $escenas; do
   busca)
     # EL BUSCADOR: «inventad» (XP no tiene nada): las de Spotify llegan, se entra a las tarjetas y se piden la 1a y la 2a
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13,18.4:39,19.2:13" 25 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 13.8 buscador-solo-spotify),$(cap 20.5 buscador-pedidas)"
+    # (paredes: el artista de Spotify «Los Inventados» va arriba, porque XP no da artistas: las canciones son la 2a y la 3a tarjeta)
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17.4:13,18.4:40,18.9:37,19.4:13" 25 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 13.8 buscador-solo-spotify),$(cap 20.5 buscador-pedidas)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     si "busca: sale con 0" test "$(cat $o/salio)" = 0
     si "busca: las busquedas a la API (desde 3 letras, a los 300 ms de dejar de escribir): $(grep -c '/v1/search' $a), la ultima con todo lo escrito" bash -c "[ \$(grep -c '/v1/search' '$a') -le 4 ] && grep '/v1/search' '$a' | tail -1 | grep -q ' q=inventad$'"
@@ -144,22 +152,28 @@ for e in $escenas; do
     si "mezcla: sale con 0" test "$(cat $o/salio)" = 0
     si "mezcla: una o dos busquedas, la ultima «tema»" bash -c "[ \$(grep -c '/v1/search' '$a') -le 2 ] && grep '/v1/search' '$a' | tail -1 | grep -q ' q=tema$'" ;;
   disco)
-    # UN DISCO: «mentira» da [cancion, disco]; se elige el disco (2a tarjeta), se abre en la vista de XP y se piden la 1a y la 2a con PONER;
-    # REGRESAR deja la pared en la letra de Spotify con ese disco
+    # UN DISCO: «mentira» da [cancion, disco, «Todos los discos de...»]; se elige el disco (2a tarjeta), se abre en la vista de XP y se piden
+    # la 1a y la 2a con PONER. REGRESAR (paredes, pedido del 7-11-2026): el disco NO estaba en la letra de Spotify -> vuelve AL BUSCADOR con
+    # lo escrito y la misma eleccion: PONER lo abre otra vez (de memoria) y se pide la 3a. Ahora ya esta en la letra: REGRESAR -> la pared
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 mentira),$(derechas 13.5 14),16.5:13,19:13,20:40,21:13,22.5:27" 28 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 16 buscador-disco),$(cap 20.7 disco-de-spotify),$(cap 24.5 pared-letra-spotify)"
-    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
+    abre $e "$d" "$BASE,$(escribe 9.5 mentira),$(derechas 13.5 14),16.5:13,19:13,20:40,21:13,22.5:27,24.5:13,26.5:40,27:40,27.6:13,29:27" 33 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 16 buscador-disco),$(cap 20.7 disco-de-spotify),$(cap 24 buscador-al-volver-del-disco),$(cap 31 pared-letra-spotify)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
     si "disco: sale con 0" test "$(cat $o/salio)" = 0
-    si "disco: las busquedas y UN disco (/v1/albums/dis000): $(v1 $a) peticiones a /v1" bash -c "[ \$(grep -c 'GET /v1/albums/dis000 app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 1)) ]"
-    si "disco: dos pedidas con PONER ($(pedidos $o)): la 1a y la 2a del disco" bash -c "[ '$(pedido $o 1)' = \"\$(printf 'pedida\tspotify:track:can0000')\" ] && [ '$(pedido $o 2)' = \"\$(printf 'pedida\tspotify:track:can0001')\" ]"
-    si "disco: solo esas dos pedidas" test "$(pedidos $o)" = 2 ;;
+    si "disco: las busquedas y UN disco (/v1/albums/dis000), aunque se abrio dos veces: $(v1 $a) peticiones a /v1" bash -c "[ \$(grep -c 'GET /v1/albums/dis000 app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 1)) ]"
+    si "disco: dos pedidas con PONER: la 1a y la 2a del disco" bash -c "[ '$(pedido $o 1)' = \"\$(printf 'pedida\tspotify:track:can0000')\" ] && [ '$(pedido $o 2)' = \"\$(printf 'pedida\tspotify:track:can0001')\" ]"
+    si "disco: REGRESAR volvio al buscador con «mentira» y el disco elegido: PONER lo abrio otra vez y se pidio la 3a (can0002)" test "$(pedido $o 3)" = "$(printf 'pedida\tspotify:track:can0002')"
+    si "disco: solo esas tres pedidas ($(pedidos $o))" test "$(pedidos $o)" = 3 ;;
   artista)
-    # UN ARTISTA: «imaginario» da 8 canciones, 2 discos y 1 artista (la 11a tarjeta: 5 abajo); se elige y lleva a sus discos en la letra
+    # UN ARTISTA: «imaginario» da el artista (arriba: XP no da artistas; el otro que da la API, «Grupo Ficticio», no contiene lo escrito y no
+    # sale), 8 canciones y 2 discos; se elige y abre SU PARED (paredes): «Canciones de Trio Imaginario» y sus 2 discos; a la derecha, el 1o
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 imaginario),$(derechas 14 14),16.5:37,17:40,17.4:40,17.8:40,18.2:40,18.6:40,19.5:13" 25 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 19.2 buscador-artista),$(cap 22 pared-discos-del-artista)"
-    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
+    abre $e "$d" "$BASE,$(escribe 9.5 imaginario),$(derechas 14 14),16.5:37,17.5:13,20:39" 25 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 17 buscador-artista),$(cap 19.5 pared-artista-pocos),$(cap 22 pared-discos-del-artista)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
     si "artista: sale con 0" test "$(cat $o/salio)" = 0
-    si "artista: las busquedas, UNA de los discos del artista (/v1/artists/art03/albums) y UNA del disco que se queda elegido en la pared (g52: /v1/albums/dis006)" bash -c "[ \$(grep -c 'GET /v1/artists/art03/albums app 200' '$a') = 1 ] && [ \$(grep -c 'GET /v1/albums/dis006 app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 2)) ]"
+    si "artista: las busquedas, UNA pagina de su pared (/v1/artists/art03/albums off=0: tiene 2) y UNA del disco que se queda elegido en la pared (g52: /v1/albums/dis006)" bash -c "[ \$(grep -c 'GET /v1/artists/art03/albums app 200 t=album,single off=0$' '$a') = 1 ] && [ \$(grep -c 'GET /v1/albums/dis006 app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 2)) ]"
+    si "artista: la pared en la bitacora (3 casillas: «Canciones de» y los 2 discos)" contiene "$d/rocola_os_bitacora.txt" "pared del buscador: pared_artista (3 casillas)"
+    si "artista: nada de «Grupo Ficticio» (no contiene lo escrito: su foto no se bajo)" bash -c "! grep -q 'artista-art02' '$a'"
     si "artista: nada pedido (solo se abrio)" test "$(pedidos $o)" = 0 ;;
   fallos)
     # 401 (llave vencida): otra llave y otra vez; 503: otra vez al segundo; 429: nada mas hasta su Retry-After. La API falsa cambia de
@@ -197,7 +211,7 @@ for e in $escenas; do
     # LO QUE SUENA CON UNA DE SPOTIFY: se pide la 1a de «inventad», se cierra el buscador y la barra de abajo de XP dice lo que suena. Con la
     # tarjeta de prueba con reloj: suena a su ritmo y no se acaba en un momento
     apifalsa $e; d=$(datos $e encendido); o="$W/$e"
-    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13,19.5:27+38" 25 ROCOLA_OS=1 \
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17.4:13,19.5:27+38" 25 ROCOLA_OS=1 \
       ROCOLA_CAPTURA="$(cap 19.2 buscador-sonando-spotify),$(cap 22.5 suena-spotify)"
     espera $e
     si "suena: sale con 0" test "$(cat $o/salio)" = 0
@@ -252,11 +266,104 @@ for e in $escenas; do
   sinsesion)
     # SOLOIST SIN SESION (I6 dice que no esta listo: el vigilante sale al momento y no hay Soloist): no se pide ni se cobra; el aviso de XP
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),16.6:37,17.4:13" 22 ROCOLA_OS=1 ROCOLA_SOLOIST_BIN=/bin/true ROCOLA_CAPTURA="$(cap 17.8 buscador-spotify-no-listo)"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17.4:13" 22 ROCOLA_OS=1 ROCOLA_SOLOIST_BIN=/bin/true ROCOLA_CAPTURA="$(cap 17.8 buscador-spotify-no-listo)"
     espera $e; o="$W/$e"
     si "sinsesion: sale con 0" test "$(cat $o/salio)" = 0
     si "sinsesion: nada pedido" test "$(pedidos $o)" = 0
     si "sinsesion: la bitacora dice que no estaba listo" contiene "$d/rocola_os_bitacora.txt" "Spotify aun no esta listo" ;;
+  pared)
+    # LA PARED DE UN ARTISTA QUE SOLO ESTA EN SPOTIFY: «interminable» (XP no tiene nada) da sus artistas arriba (Banda Interminable y Orquesta
+    # Interminable, en el orden de la API: Orquesta y Banda; «Grupo Ficticio» no); se elige Banda (la 2a) (40 discos: su pared tiene 41 casillas, 3 paginas). Se abre con su 1a pagina (off=0 y
+    # off=10); ARRIBA (la pagina siguiente, como en XP) pide off=20 y off=30; se entra al 1er disco de esa pagina y se pide su 1a; REGRESAR: la
+    # pared en la misma pagina y casilla (PONER entra al mismo disco y se pide la 2a); REGRESAR: el buscador con lo escrito y la misma eleccion
+    # (PONER abre otra vez la pared de Banda, de memoria); REGRESAR y REGRESAR+ARRIBA: el buscador se cierra y queda la pared de XP de antes
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,20:38,22.5:13,25:13,26:27,27:13,28:40,28.6:13,29.5:27,31:27,33.5:13,35.5:27,37:27+38" 40 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 15.5 buscador-artistas-de-spotify),$(cap 19 pared-artista),$(cap 22 pared-artista-pagina2),$(cap 24.5 disco-de-la-pared),$(cap 30.5 pared-al-volver-del-disco),$(cap 32.5 buscador-al-volver-de-la-pared),$(cap 35 pared-otra-vez),$(cap 39 pared-xp-al-cerrar-el-buscador)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    si "pared: sale con 0" test "$(cat $o/salio)" = 0
+    si "pared: la 1a pagina con DOS peticiones (off=0 y off=10) y la 2a con otras DOS (off=20 y off=30), una vez cada una aunque se abrio dos veces" bash -c "for n in 0 10 20 30; do [ \$(grep -c 'GET /v1/artists/art50/albums app 200 t=album,single off='\$n'$' '$a') = 1 ] || exit 1; done; [ \$(grep -c '/v1/artists/' '$a') = 4 ]"
+    si "pared: la 3a pagina no se pidio (nadie la miro)" bash -c "! grep -q 'art50/albums.* off=40' '$a'"
+    si "pared: el disco de la 2a pagina con UNA peticion (/v1/albums/dis518), y nada mas que las busquedas: $(v1 $a) a /v1" bash -c "[ \$(grep -c 'GET /v1/albums/dis518 app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 5)) ]"
+    si "pared: la 1a pedida es la 1a del disco de la casilla 19 (can5181)" test "$(pedido $o 1)" = "$(printf 'pedida\tspotify:track:can5181')"
+    si "pared: REGRESAR dejo la pared en la misma pagina y casilla: PONER entro al mismo disco y la 2a pedida es su 2a (can5182)" test "$(pedido $o 2)" = "$(printf 'pedida\tspotify:track:can5182')"
+    si "pared: solo esas dos pedidas ($(pedidos $o))" test "$(pedidos $o)" = 2
+    si "pared: el buscador volvio con lo escrito y la misma eleccion (PONER abrio otra vez la de Banda: 2 veces en la bitacora; de Orquesta, nada)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$d/rocola_os_bitacora.txt') = 2 ] && ! grep -q '/v1/.*art99' '$a'"
+    si "pared: de «Canciones de» solo su 1a pagina (off=0: se quedo elegida al abrir, para que la ficha diga cuantas trae); las demas no (nadie entro)" bash -c "[ \$(grep -c 'q=artist:' '$a') = 1 ] && grep -q 'q=artist:\"Banda Interminable\" t=track off=0$' '$a'"
+    si "pared: sin la cuenta, nada de la cuenta ni de los atajos (/v1/me)" bash -c "! grep -q '/v1/me/' '$a'"
+    si "pared: el estado cuenta las paginas del artista (artistas=4)" bash -c "grep -qx 'artistas=4' '$o/run/rocola-xp/spotify/catalogo'"
+    si "pared: nada de Spotify en los datos de XP (solo la bitacora del nucleo y la llave)" bash -c "! grep -rlE 'spotify:|can5|dis5|Interminable' '$d' | grep -vE '/(rocola_spotify\.txt|rocola_spotify_api\.txt|rocola_os_bitacora\.txt)$' | grep -q ." ;;
+  canciones)
+    # «CANCIONES DE ARTISTA»: la casilla 1 de la pared de Banda Interminable; al entrar se piden sus canciones (search artist:"..." de 10 en 10)
+    # mientras se esta dentro, hasta 50 (5 peticiones); PONER pide la 1a; ARRIBA desde la 1a da la vuelta a la ultima (la 50a) y se pide
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,19:13,21.5:13,24:38,24.6:13,26:27,27:27" 30 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 20.8 disco-canciones-de),$(cap 25.5 disco-canciones-de-al-final)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    si "canciones: sale con 0" test "$(cat $o/salio)" = 0
+    si "canciones: 5 peticiones de canciones (off=0 a 40), una vez cada una, y no la 6a" bash -c "for n in 0 10 20 30 40; do [ \$(grep -c 'GET /v1/search app 200 q=artist:\"Banda Interminable\" t=track off='\$n'$' '$a') = 1 ] || exit 1; done; [ \$(grep -c 'q=artist:' '$a') = 5 ]"
+    si "canciones: la 1a pedida es la 1a de la busqueda por artista (can5011)" test "$(pedido $o 1)" = "$(printf 'pedida\tspotify:track:can5011')"
+    si "canciones: la 2a es la 50a (can5172): llegaron las 50" test "$(pedido $o 2)" = "$(printf 'pedida\tspotify:track:can5172')"
+    si "canciones: solo esas dos pedidas ($(pedidos $o))" test "$(pedidos $o)" = 2 ;;
+  todos)
+    # «TODOS LOS DISCOS DE «LO ESCRITO»»: la ultima tarjeta de los discos de Spotify (la 14a: 6 abajo); su pared con los 41 discos de la
+    # busqueda (3 paginas): se abre con off=0 y off=10; ARRIBA, off=20 y off=30; ARRIBA, off=40; ARRIBA en la ultima no hace nada (ni pide);
+    # ABAJO dos veces vuelve a la 1a (de memoria); REGRESAR: el buscador
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),16.4:40,16.8:40,17.2:40,17.6:40,18:40,18.4:40,19.5:13,22:38,23.5:38,25.5:38,26.5:40,27:40,28:27" 32 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 19.2 buscador-todos-los-discos),$(cap 21.5 pared-todos),$(cap 25 pared-todos-pagina3),$(cap 29.5 buscador-al-volver-de-todos)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    si "todos: sale con 0" test "$(cat $o/salio)" = 0
+    si "todos: 5 paginas de la busqueda de discos (off=0 a 40), una vez cada una, ninguna mas" bash -c "for n in 0 10 20 30 40; do [ \$(grep -c 'GET /v1/search app 200 q=interminable t=album off='\$n'$' '$a') = 1 ] || exit 1; done; [ \$(grep -c 't=album off=' '$a') = 5 ]"
+    si "todos: lo demas, las busquedas y como mucho un disco por pagina mirada (g52; el de 60 canciones son 2): $(v1 $a) a /v1" bash -c "n=\$(grep -c '/v1/albums/' '$a'); [ \$n -le 4 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search app [0-9]* q=[^ ]*$' '$a') + 5 + n)) ]"
+    si "todos: la pared en la bitacora (41 casillas)" contiene "$d/rocola_os_bitacora.txt" "pared del buscador: pared_todos (41 casillas)"
+    si "todos: el estado cuenta las paginas de las paredes (paredes=5)" bash -c "grep -qx 'paredes=5' '$o/run/rocola-xp/spotify/catalogo'" ;;
+  mas)
+    # «ARTISTA · MAS EN SPOTIFY»: «otra» da tu artista «Otra Banda» (la tarjeta de XP de siempre) y, justo detras, «Otra Banda · más en
+    # Spotify» (Spotify la tiene, con 3 discos). Su pared: «Canciones de Otra Banda» y los discos que NO tienes. En los datos de prueba tu
+    # carpeta «Otra Banda» no lleva « - »: para XP es un disco sin nombre de «Otra Banda», y cuenta como el disco «Otra Banda» (de los 3 de
+    # Spotify quedan Segundo y Tercero). Dos a la derecha (la 3a casilla: el Tercero) y PONER; REGRESAR dos veces: el buscador; la tarjeta de
+    # XP lleva a tu pared, como XP
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 otra),$(derechas 12.5 14),16.5:13,19:39,19.15:39,19.8:13,22:27,23:27,25:37,25.8:13" 30 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 15.5 buscador-mas-en-spotify),$(cap 18.5 pared-mas-en-spotify),$(cap 21.5 disco-mas-en-spotify),$(cap 24.5 buscador-al-volver-de-mas),$(cap 27.5 pared-xp-del-artista)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    si "mas: sale con 0" test "$(cat $o/salio)" = 0
+    si "mas: UNA pagina de su pared (/v1/artists/art60/albums off=0: tiene 3)" bash -c "[ \$(grep -c 'GET /v1/artists/art60/albums app 200 t=album,single off=0$' '$a') = 1 ] && [ \$(grep -c '/v1/artists/' '$a') = 1 ]"
+    si "mas: sin el disco que ya tienes: la 3a casilla es el Tercero (/v1/albums/dis651), y del que tienes (dis649) nada" bash -c "[ \$(grep -c 'GET /v1/albums/dis651 app 200' '$a') = 1 ] && ! grep -q 'albums/dis649' '$a'"
+    si "mas: la pared en la bitacora (3 casillas)" contiene "$d/rocola_os_bitacora.txt" "pared del buscador: pared_artista (3 casillas)"
+    si "mas: la tarjeta de XP de tu artista llevo a tu pared, sin pedir nada (las peticiones: las busquedas, la pared y el disco)" bash -c "[ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 2)) ]" ;;
+  atajos)
+    # SP9, LOS ATAJOS DEL BUSCADOR (con la cuenta): al abrir el buscador se piden «tus mas escuchadas» y «escuchado hace poco» (una vez cada
+    # una por sesion) y salen como los atajos de XP, detras de los suyos. ARRIBA dos veces: a los atajos; a la derecha, «Tus mas escuchadas»:
+    # sus canciones; PONER pide la 1a. REGRESAR sale del atajo; otra vez a los atajos y «Escuchado hace poco» (sin repetidas): PONER pide la 1a.
+    # Se cierra y se abre el buscador: no se pide nada mas
+    apifalsa $e; d=$(datos $e cuenta)
+    abre $e "$d" "7:67,8:27+38,10:38,10.5:38,12:39,12.5:13,14.5:13,16:27,16.8:38,17.4:39,17.9:39,18.5:13,20.5:13,22:27+38,23.5:27+38" 27 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 11.5 buscador-atajos-spotify),$(cap 14 buscador-tus-mas-escuchadas),$(cap 20 buscador-escuchado-hace-poco)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    si "atajos: sale con 0" test "$(cat $o/salio)" = 0
+    si "atajos: UNA peticion de tus mas escuchadas y UNA de lo escuchado hace poco, con la llave de la cuenta (aunque se abrio el buscador dos veces)" bash -c "[ \$(grep -c 'GET /v1/me/top/tracks cuenta 200' '$a') = 1 ] && [ \$(grep -c 'GET /v1/me/player/recently-played cuenta 200' '$a') = 1 ]"
+    si "atajos: la 1a pedida es la 1a de tus mas escuchadas (can0012)" test "$(pedido $o 1)" = "$(printf 'pedida\tspotify:track:can0012')"
+    si "atajos: la 2a es la 1a de lo escuchado hace poco (can0002)" test "$(pedido $o 2)" = "$(printf 'pedida\tspotify:track:can0002')"
+    si "atajos: solo esas dos pedidas ($(pedidos $o))" test "$(pedidos $o)" = 2
+    si "atajos: el estado cuenta los atajos (atajos=2)" bash -c "grep -qx 'atajos=2' '$o/run/rocola-xp/spotify/catalogo'"
+    si "atajos: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
+  pared429)
+    # 429 A MEDIA PARED: se abre la de Banda Interminable (off=0 y off=10); entonces Spotify frena (429, 60 s); ARRIBA: la 2a pagina pide off=20
+    # (429) y off=30 ya no sale; ABAJO y ARRIBA otra vez: nada a la red (frena); REGRESAR: el buscador (de memoria); elegir Orquesta: nada a la
+    # red, el aviso de XP y el buscador se queda
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,20:38,22.5:40,23.5:38,25:27,26:37,26.5:13" 30 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 21.5 pared-429),$(cap 27.2 buscador-429-artista)"
+    a="$W/$e/api/peticiones.txt"
+    ( t=0; until grep -q 'art50/albums app 200 t=album,single off=10$' "$a" 2>/dev/null || [ $t -gt 400 ]; do sleep 0.1; t=$((t + 1)); done; control "429?seg=60" ) &
+    espera $e; o="$W/$e"; cuota "$a"
+    si "pared429: sale con 0" test "$(cat $o/salio)" = 0
+    si "pared429: UN 429 y despues NINGUNA peticion a /v1 (la 2a pagina, off=20, nunca llego)" bash -c "[ \$(grep -c ' 429 ' '$a') = 1 ] && grep ' /v1/' '$a' | tail -1 | grep -q ' 429 ' && ! grep -q 'app 200 t=album,single off=20$' '$a'"
+    si "pared429: de Orquesta nada (frena)" bash -c "! grep -q '/v1/.*art99' '$a'"
+    si "pared429: la bitacora dice que frena y que la pagina no llego" bash -c "grep -q 'Spotify frena (429)' '$d/rocola_os_bitacora.txt' && grep -q 'no llego una pagina de la pared: Spotify frena' '$d/rocola_os_bitacora.txt'"
+    si "pared429: el estado dice api=frena" bash -c "grep -qx 'api=frena' '$o/run/rocola-xp/spotify/catalogo'" ;;
   esac
 done
 
