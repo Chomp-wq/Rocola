@@ -7,14 +7,14 @@
 # volumen (la 1 o la 2 de RocolaOsCalidad.Envolvente, para la forma). Las canciones se piden con el doble «calidad-prueba» (AddSong de XP).
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion
+#   escenas (de fabrica todas): reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion apagon tarde
 #   W (/root/rocola-trabajo/fase11/sustitucion/prueba; se rehace), API y FALSO (la API falsa y el Soloist falso compilados; se compilan si
 #   faltan o cambiaron, con el candado de lo pesado)
 # Cada comprobacion: BIEN o MAL en una linea; al final «TODO BIEN (N comprobaciones)» o cuantas MAL (y sale con 1).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SX="$G/../spotify-xp"; CA="$G/../catalogo"
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion}"
+partes="${*:-reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion apagon tarde}"
 W=${W:-/root/rocola-trabajo/fase11/sustitucion/prueba}
 API=${API:-/root/rocola-trabajo/fase11/sustitucion/api-falsa}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/sustitucion/falso}
@@ -314,6 +314,46 @@ if [[ " $partes " == *" sinsesion "* ]]; then
   si "sinsesion: sale con 0, ni una peticion" bash -c "[ '$(cat $o/salio)' = 0 ] && [ $(v1 sinsesion) = 0 ]"
   si "sinsesion: tu MP3 suena (330 Hz: $(oye "$f" 330) s, desde ${t330:-?} s del sonado: sin esperar los 6 s) y nada de Spotify" bash -c "grep -q '^mira .*01 bolero.mp3 .* lector=xp' '$(log sinsesion)' && [ -n '$t330' ] && python3 -c 'import sys; sys.exit(0 if $(oye "$f" 330) >= 8 and $t330 < 3 and $(oye "$f" 440) <= 0.1 else 1)'"
   si "sinsesion: no se sustituye ni se busca (Soloist sin sesion)" bash -c "! grep -q 'suena desde Spotify' '$b' && ! grep -q 'se busca su pareja' '$b'"
+fi
+
+# ---------------------------------------------------------------- apagon (revision «invisible-y-reglas»): tras un corte de luz con una
+# sustituida sonando, el estado de XP es el de tus MP3 (nada de «spotify:»), lo pagado no se devuelve (R5 es solo para lo que se pidio de
+# Spotify) ni se cobra otra vez, y al volver la rocola retoma como XP: la que sonaba desde el principio y la de la cola despues. (La de la
+# cola es la 03 y no la 02: entre dos pistas seguidas de un disco continuo suena tu MP3 por el relevo de XP, RocolaOsCalidadEmpalma.)
+if [[ " $partes " == *" apagon "* ]]; then
+  sec "apagon (corte de luz con una sustituida sonando: el estado de XP es el de tus MP3; al volver, ni devuelve ni cobra)"
+  d=$(datos apagon); apifalsa apagon
+  siembra "$d" "MP3:01 bolero.mp3	0	0	f440d032m1bo	MXA112600001	32000	32000	1	1	-3	-5	-8	0.95	isrc" "MP3:03 cumbia.mp3	0	0	f660d032m1cu	MXA112600003	32000	32000	1	1	-3	-5	-8	0.95	isrc"
+  abre apagon1 "$d" "7:67" "9:pon 01 bolero.mp3;9.3:pon 03 cumbia.mp3;17:mira" 21 KILL $ROS
+  cp "$d/rocola_estado.txt" "$W/apagon-estado.txt" 2>/dev/null; fin; sleep 3
+  apifalsa apagon2
+  abre apagon2 "$d" "" "26:mira;52:mira;53:copia" 54 TERM $ROS
+  fin; b=$(bit "$d"); e="$W/apagon-estado.txt"
+  grep -F '[calidad_spotify]' "$b" | sed 's/^[0-9-]* [0-9:]*  /   /'; sed 's/^/   1: /' "$(log apagon1)"; sed 's/^/   2: /' "$(log apagon2)"; tr -d '\r' < "$e" | sed 's/^/   estado: /'
+  si "apagon: antes del corte sonaba desde Spotify (lector=spotify, 2 creditos, 1 en la cola)" bash -c "grep -q '^mira .*01 bolero.mp3 .* lector=spotify creditos=2 cola=1' '$(log apagon1)'"
+  si "apagon: el estado de XP lleva tus MP3 (sonando el bolero, en la cola la cumbia), 2 creditos y nada de «spotify:»" bash -c "tr -d '\\r' < '$e' | grep -qx 'creditos=2' && tr -d '\\r' < '$e' | grep -q '^sonando=S|.*01 bolero.mp3$' && tr -d '\\r' < '$e' | grep -q '^cola=S|.*03 cumbia.mp3$' && ! grep -q 'spotify:' '$e'"
+  si "apagon: al volver retoma la que sonaba, con los mismos 2 creditos (nada devuelto como de Spotify) y la de la cola detras" bash -c "grep -q '^mira .*01 bolero.mp3 .* creditos=2 cola=1' '$(log apagon2)' && grep -q '^mira .*03 cumbia.mp3 .* creditos=2 cola=0' '$(log apagon2)'"
+  t440=$(oye "$W/apagon2/frec.txt" 440); t660=$(oye "$W/apagon2/frec.txt" 660); t330=$(oye "$W/apagon2/frec.txt" 330); t390=$(oye "$W/apagon2/frec.txt" 390)
+  si "apagon: al volver el bolero suena UNA vez, entero, desde Spotify o tu MP3 (440+330: $t440+$t330 s) y la cumbia detras (660+390: $t660+$t390 s)" bash -c "python3 -c 'import sys; a=$t440+$t330; v=$t660+$t390; sys.exit(0 if 31 <= a <= 33 and 15 <= v <= 33 else 1)'"
+  si "apagon: ni COBRADA ni DEVUELTA como de Spotify, ni avisos de credito devuelto" bash -c "! grep -qE 'COBRADA|DEVUELTA' '$d/rocola_spotify.txt' && ! grep -qs 'credito devuelto' '$W/apagon1/traza.txt' '$W/apagon2/traza.txt'"
+  si "apagon: al volver, Soloist ya listo, la de la cola suena desde Spotify (660 Hz: $t660 s; 390: $t390 s)" bash -c "grep -q '^mira .*03 cumbia.mp3 .* lector=spotify' '$(log apagon2)' && python3 -c 'import sys; sys.exit(0 if $t660 >= 15 and $t390 <= 0.1 else 1)'"
+  si "apagon: ninguna tabla de XP con «spotify:» (ni el estado)" bash -c "! grep -rlsF 'spotify:' '$d' --include='rocola_*.txt' | grep -vE 'rocola_spotify.txt|rocola_os_bitacora.txt|rocola_error.txt' | grep -q ."
+fi
+
+# ---------------------------------------------------------------- tarde (revision «invisible-y-reglas»): Soloist tiene sesion cuando lo de
+# la cola ya se abrio por delante como MP3: se suelta y, al tocarle, suena desde Spotify (antes, esa vez, tu MP3)
+if [[ " $partes " == *" tarde "* ]]; then
+  sec "tarde (Soloist llega tarde: lo que XP abrio por delante como MP3 se suelta y la de la cola suena desde Spotify)"
+  d=$(datos tarde); apifalsa tarde
+  siembra "$d" "MP3:01 bolero.mp3	0	0	f440d032m1bo	MXA112600001	32000	32000	1	1	-3	-5	-8	0.95	isrc" "MP3:03 cumbia.mp3	0	0	f660d032m1cu	MXA112600003	32000	32000	1	1	-3	-5	-8	0.95	isrc"
+  abre tarde "$d" "7:67" "8:pon 01 bolero.mp3;8.3:pon 03 cumbia.mp3;20:mira;55:mira;56:copia" 57 TERM $ROS ROCOLA_SOLOIST_BIN="$G/vigilante-tarde.sh" VIGILANTE_TARDE=14
+  fin; o="$W/tarde"; f="$o/frec.txt"; b=$(bit "$d")
+  grep -F '[calidad_spotify]' "$b" | sed 's/^[0-9-]* [0-9:]*  /   /'; sed 's/^/   /' "$(log tarde)"
+  si "tarde: sale con 0" test "$(cat $o/salio)" = 0
+  si "tarde: la primera, sin sesion aun, tu MP3 al momento (330 Hz: $(oye "$f" 330) s; lector=xp)" bash -c "grep -q '^mira .*01 bolero.mp3 .* lector=xp' '$(log tarde)' && python3 -c 'import sys; sys.exit(0 if 31 <= $(oye "$f" 330) <= 33 else 1)'"
+  si "tarde: lo abierto por delante como MP3 se suelta en cuanto Soloist tiene sesion" contiene "$b" "03 cumbia.mp3: lo que XP habia abierto por delante como MP3 se suelta (ya va desde Spotify)"
+  si "tarde: y la de la cola suena desde Spotify (660 Hz: $(oye "$f" 660) s) y nada de su MP3 (390: $(oye "$f" 390) s)" bash -c "grep -q '^mira .*03 cumbia.mp3 .* lector=spotify creditos=2 cola=0' '$(log tarde)' && python3 -c 'import sys; sys.exit(0 if $(oye "$f" 660) >= 10 and $(oye "$f" 390) <= 0.1 else 1)'"
+  si "tarde: ni COBRADA ni DEVUELTA" bash -c "! grep -qE 'COBRADA|DEVUELTA' '$d/rocola_spotify.txt'"
 fi
 
 echo

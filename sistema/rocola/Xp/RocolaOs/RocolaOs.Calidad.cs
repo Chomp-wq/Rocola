@@ -369,8 +369,24 @@ namespace Rocola
         private void RocolaOsLatidoCalidad()
         {
             if (!RocolaOsCalidad.Va) return;
-            RocolaOsCalidadMira(nowPlaying);
+            // (revision «invisible-y-reglas») la MUDA del diagnostico completo de Ctrl+F3 (DiagArrancaPropia: una cancion al azar, sin pagar) no es
+            // una pedida: ni se mira ni se busca su pareja (al abrirla ya iba por tu MP3: PlayTrackForMeasurement)
+            if (!EsMudaDiag(nowPlaying)) RocolaOsCalidadMira(nowPlaying);
             for (int i = 0; i < queue.Count && i < 64; i++) RocolaOsCalidadMira(queue[i]);
+            RocolaOsCalidadSueltaSiYaNoVale();
+        }
+        // (revision «invisible-y-reglas») LO QUE EL CALENTADOR ABRIO POR DELANTE COMO MP3 Y YA SE SUSTITUIRIA. g60 le da la ruta de Spotify a la que
+        // se va a sustituir, pero lo que XP abrio ANTES de poder sustituirla (al arrancar, con Soloist aun sin sesion; o al volver de un apagon,
+        // con la de la cola) se quedaba esperando como MP3 y BeginAudioOpen se lo llevaba (Toma, por la ruta del MP3): esa vez sonaba tu MP3
+        // aunque Soloist ya estuviera listo. Cada segundo, sin disco: si lo que espera ya iria por Spotify, se suelta (al tocarle se abre por g13).
+        private void RocolaOsCalidadSueltaSiYaNoVale()
+        {
+            MiraPorDelante<IAudioSource> la = lookahead;
+            string para = la != null ? la.Para : null;
+            if (para == null || para.StartsWith("spotify:", StringComparison.Ordinal)) return;
+            if (string.Equals(RocolaOsCalidadRuta(para), para, StringComparison.Ordinal)) return;   // (sigue siendo tu MP3: se queda)
+            la.Suelta();
+            RocolaOsCalidad.Apunta(Path.GetFileName(para) + ": lo que XP habia abierto por delante como MP3 se suelta (ya va desde Spotify)");
         }
         private void RocolaOsCalidadMira(PlayItem it)
         {

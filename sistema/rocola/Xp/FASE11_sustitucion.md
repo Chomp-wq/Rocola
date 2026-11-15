@@ -38,10 +38,10 @@ frecuencia, la duración):
 - 128 kbps (CBR) con el corte medido bajo 17,5 kHz;
 - pre-eco medido, 192 kbps o menos (CBR) y el corte medido bajo 19 kHz.
 
-En VBR (y en lo que no es MP3) solo cuenta el corte. **Sin medida no se sustituye**: una regla que pide el corte y no lo hay no cuenta (un
+En VBR solo cuentan el corte y la frecuencia (revisión «invisible-y-reglas», I1); en lo que no es MP3, solo el corte. **Sin medida no se sustituye**: una regla que pide el corte y no lo hay no cuenta (un
 MP3 de 128 kbps aún sin repasar no se sustituye; uno de 96 kbps CBR sí, porque la cabecera ya lo dice).
 
-**B, la pareja, estricta** (`Elige`): con el ISRC del MP3 (marco TSRC) se busca `isrc:XXX` y vale la que trae **ese** ISRC (`external_ids`);
+**B, la pareja, estricta** (`Elige`): con el ISRC del MP3 (marco TSRC) se busca `isrc:XXX` y vale la que trae **ese** ISRC (`external_ids`) y dura lo mismo a 3 s (I2 de la revisión «invisible-y-reglas»);
 si no trae ISRC o no salió nada, `track:"TÍTULO" artist:"ARTISTA"` (límite 10) y la **regla 2**: título base igual (sin lo de entre paréntesis
 ni la cola « - …» de versión, remasterización o año), las **mismas marcas de versión** (en vivo, remix, acústica, karaoke, instrumental, demo,
 cover, a capella, regrabada, acelerada, lenta, sinfónica, «versión banda/norteña/…»; remasterizada o editada para radio son la misma), el
@@ -189,3 +189,66 @@ Resultados (programa de esta rama):
    real da muchos «no se sabe», ajustar los tramos.
 6. Contar en `/run/rocola-xp/spotify/calidad` y en `/run/rocola-xp/spotify/catalogo` las peticiones tras una noche de uso (`peticiones=`).
 7. Lo del relinking (FASE11_spotify-xp.md, A4 12): si Soloist toca otra uri, la de la sustitución no empieza y a los 6 s suena tu MP3.
+
+## Revisión (invisible-y-reglas)
+
+15-11-2026, revisor independiente (enfoque: que de verdad no se note nada —pantalla, avisos, estado, lo más sonado, estadísticas, el crédito,
+`rocola_estado.txt` tras un apagón, el buscador—, las reglas A, B y C al pie de la letra contra las decisiones del 6 y 7-11-2026 y el programa
+anterior —`Motor/SustitucionSpotify.cs` y `SpotifyMas.cs`—, que con todo apagado o sin llaves sea XP tal cual, y que nunca suene algo que no se
+pagó ni se cobre dos veces). Comprobado en el código y corriendo las escenas. Lo arreglado (solo `RocolaOs/RocolaOs.CalidadReglas.cs`,
+`RocolaOs/RocolaOs.Calidad.cs` —el latido— y la prueba; **ningún gancho nuevo**, `Codigo/` sin tocar; lo del otro revisor no se tocó):
+
+| # | Qué pasaba | Arreglo | Escena |
+|---|---|---|---|
+| I1 | **A, la frecuencia en VBR**: un VBR grabado a menos de 44,1 kHz (22 o 32 kHz) no contaba como «suena peor» hasta que el repaso midiera su corte. En el programa anterior la regla «en VBR solo el corte» quitaba la **tasa** (que en VBR sale de la música), no la frecuencia, que la cabecera dice igual | La frecuencia se mira antes de lo del VBR; en VBR la tasa y el pre-eco siguen sin contar | `reglas` (+3 casos: VBR a 22 kHz sí; VBR de 90 kbps con pre-eco y corte de 16,5 kHz no; lo que no es MP3 sin corte no) |
+| I2 | **B, por el ISRC sin mirar la duración**: valía cualquier canción con el mismo ISRC. El programa anterior pedía además la duración a 3 s («Spotify a veces devuelve parecidas»; un ISRC mal puesto en la etiqueta o un MP3 cortado) | Mismo ISRC **y** la duración a 3 s (si se saben las dos; sin la del MP3, el ISRC basta). Si ninguna pasa queda «sin pareja» sin probar por título (más estricto que antes: no cuesta peticiones) | `reglas` (+3 casos: 4 s de más no; 2,5 s sí aunque el título sea otro; sin duración, el ISRC) |
+| I3 | **La muda del diagnóstico completo** (Ctrl+F3 → Imagen: una canción al azar que la rocola pone callada, sin pagar) la miraba el latido como si alguien la hubiera pedido: si sonaba peor, **una o dos peticiones a la API por algo que nadie pagó** (al abrirla ya iba por tu MP3: `PlayTrackForMeasurement`) | El latido no mira la muda (`EsMudaDiag`) | — (pide el diagnóstico con la tarjeta; arreglo de una línea, visto en el código) |
+| I4 | **Lo abierto por delante como MP3 se quedaba**: lo que el calentador de XP abría para la de la cola **antes** de poder sustituirla (al arrancar, con Soloist aún sin sesión; al volver de un apagón) esperaba como MP3 y `BeginAudioOpen` se lo llevaba por la ruta del MP3: esa vez sonaba tu MP3 aunque Soloist ya estuviera listo. (Lo que llegaba con la pareja ya se soltaba; esto no.) | Cada segundo, en el latido y sin disco: si lo que espera por delante ya iría desde Spotify (g60), se suelta; al tocarle entra por g13 | `tarde` (nueva; sin el arreglo, 2 MAL: la cumbia sonó 16,1 s de su MP3 y 0 de Spotify) |
+
+Lo que se miró y **está bien** (sin cambios):
+- **La pantalla**: lo que suena, la cola, la portada, el título, el artista y el disco son los del `PlayItem` de XP, que no cambia (`mira`, campo por
+  campo, igual con tu MP3 —`frena`— que con su versión de Spotify —`isrc`—). Lo único que puede verse distinto es el reloj de lo que suena
+  (`Fmt(cur) / Fmt(tot)` del lector): ya sonando dice lo que dura la de Spotify (a 2 s de la tuya por la regla B) más lo que tardó en empezar
+  (~1 s); y si Spotify no empieza, cuenta los 6 s de silencio y vuelve a 0:00 con tu MP3. Es el lector, no un aviso: se deja así.
+- **Avisos**: ninguno. La fuente del núcleo va con `SinDevolver` (ni «No se pudo reproducir: crédito devuelto» ni `RefundCredit`); volver al MP3 es
+  el camino de XP que retoma una canción, sin `ShowToast` ni `EstadoPasajero` (`nx`, `apagon`).
+- **El crédito y el turno**: se cobra una vez, al pedir, como XP (`AddSong`); volver al MP3 no cobra (`PlayTrack`, no `PlayNext`) ni devuelve. Si tu
+  MP3 tampoco abre, lo de XP: crédito devuelto, como con una dañada. `rocola_spotify.txt` sin COBRADA ni DEVUELTA en todas las escenas.
+- **Lo más sonado y las estadísticas**: `RecordPlay` cuenta al pedir, con tu MP3 (g20 solo calla `spotify:`); ninguna tabla de lo aprendido de XP
+  recibe `spotify:` (g23/g24 con la ruta de la sombra) (`isrc`, `apagon`).
+- **El apagón**: `rocola_estado.txt` lleva tus MP3 (`sonando=` y `cola=`, `PathKey` del `PlayItem`), nunca `spotify:`, así que R5 del núcleo (lo
+  pagado de Spotify que no sonó vuelve como crédito) no los toca: al volver, los mismos créditos, la que sonaba desde el principio (como XP) y la
+  de la cola detrás, cada una una vez (`apagon`, nueva).
+- **El buscador**: la sustitución no toca nada de él (g40/g41 son del catálogo); lo que encuentra y lo que se pide es tu canción.
+- **Nada suena sin pagar**: Soloist solo recibe la uri de la pareja de la canción que le toca sonar (`nowPlaying`, R4 del otro revisor); el
+  calentador no abre `spotify:` (`AudioFileSignature` da null), así que el relevo sin pausa nunca se lleva una de Spotify; lo que llega tarde lo
+  pausa el núcleo (`NoPedido`). La de Ctrl+F3 que mide y la retomada van por tu MP3.
+- **Apagado y sin llaves = XP**: sin `ROCOLA_OS`, con `calidad_spotify=0` o sin la función «spotify», g60/g61/g62 devuelven lo de XP; sin la llave
+  de la API no hay ni una petición; sin sesión de Soloist, tu MP3 al momento (`apagado`, `sinllave`, `sinsesion`).
+- **A, B y C contra el 7-11-2026**: las cinco reglas de A (con I1); B con ISRC (con I2) o regla 2 —título base, mismas marcas, artista principal
+  palabra por palabra sin acentos (`UnicodeXp.FormaD`), duración a 2 s, el disco con tu nombre y no recopilatorios (aquí el disco con tu nombre gana
+  siempre y la duración desempata; antes, con 1,5 s de diferencia, la duración le podía ganar: una diferencia menor, se deja)—; C con r ≥ 0,80 y < 0,55, ±3 tramos, al menos 40 tramos y la forma plana «no se sabe», como antes.
+
+**Diferencias con el programa anterior que quedan, para que el dueño decida** (no se cambiaron):
+- *128 kbps sin el corte medido*: el programa anterior la sustituía (`!conCorte || corte < 17 500`); aquí no hasta que el repaso mida el corte
+  («sin medida no se sustituye», la letra de la decisión: «128 kbps con corte bajo 17,5 kHz»). Con el repaso de XP hecho da lo mismo.
+- *Sin título, artista o duración*: el anterior ni preguntaba; aquí se pregunta por el ISRC si lo hay (la regla 2 sin duración no casa nada:
+  una petición perdida en un caso raro).
+
+**Abierto** (no arreglado): lo de §8; el reloj de lo que suena (arriba); la bitácora del billar con el id de Spotify. La muda del diagnóstico (I3)
+no tiene escena (pide el diagnóstico completo con tarjeta).
+
+Pruebas de esta revisión (rocola-xp de esta rama con lo que el otro revisor tenía en la copia de trabajo en ese momento; Soloist falso, API
+falsa, tarjeta con reloj; **nunca el Soloist de verdad**, ni la cuenta del dueño, ni el A4):
+
+| Qué | Resultado |
+|---|---|
+| `dotnet build -c Release` (JIT) | 0 errores, 13 avisos (los de siempre) |
+| `dotnet publish -p:PublishAot=true -r linux-x64` | salida 0, 0 avisos IL/AOT |
+| `--prueba-calidad` | **40 de 40** (34 de antes + 6 de I1 e I2) |
+| `tarde` sin el arreglo I4 (JIT) | 3 de 5: **2 MAL** (no se suelta; la cumbia, 16,1 s de su MP3 y 0 de Spotify): el fallo existe |
+| `sustitucion/prueba.sh`, JIT, 13 escenas (las 11 de antes, `apagon` y `tarde`) | **83 de 83** |
+| `sustitucion/prueba.sh`, NativeAOT, las mismas 13 | **82 de 83** la primera vez: en `apagon` el `mira` de la primera sesión, a 1 s del corte, no llegó a contestarse (la comprobación de la prueba, no el programa: la bitácora dice «suena desde Spotify» antes del corte); con el `mira` a los 17 s, `apagon` **7 de 7** en NativeAOT y en JIT |
+| `ganchos.py` | TODO BIEN (`Codigo/` sin tocar) |
+
+Las escenas nuevas del otro revisor (`caida`, `atasca`, `seguida`) no se corrieron en esta revisión: son suyas.

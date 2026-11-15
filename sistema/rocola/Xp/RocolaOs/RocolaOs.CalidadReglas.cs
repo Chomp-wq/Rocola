@@ -9,7 +9,7 @@
 //       - grabada a menos de 44,1 kHz;
 //       - 128 kbps (CBR) con el corte medido bajo 17,5 kHz;
 //       - pre-eco medido, 192 kbps o menos (CBR) y el corte medido bajo 19 kHz.
-//     En VBR solo cuenta el corte (su tasa media sale de la musica, no de la calidad). SIN MEDIDA NO SE SUSTITUYE: lo que pide el corte y no lo
+//     En VBR solo cuenta el corte, y la frecuencia (su tasa media sale de la musica, no de la calidad). SIN MEDIDA NO SE SUSTITUYE: lo que pide el corte y no lo
 //     hay, no cuenta.
 //  B  LA PAREJA, ESTRICTA: con el ISRC del MP3 (TSRC), la que tenga ESE ISRC; si no lo trae (o no hay), regla 2: el titulo base igual (sin lo de
 //     entre parentesis ni lo de tras « - » que no es version), las mismas marcas de version (en vivo, remix, acustica, karaoke, instrumental,
@@ -39,6 +39,7 @@ namespace Rocola
     {
         internal const float CorteMalHz = 16000f, Corte128Hz = 17500f, CortePreEcoHz = 19000f;
         internal const int DuracionTolMs = 2000;
+        internal const int DuracionIsrcTolMs = 3000;   // (revision «invisible-y-reglas») por el ISRC, la duracion a 3 s, como el programa anterior (SpotifyMas.cs)
         internal const double TramoSeg = 0.5;
         internal const int LagMax = 3, TramosMin = 40;
         internal const double RMisma = 0.80, ROtra = 0.55;
@@ -50,9 +51,12 @@ namespace Rocola
             motivo = null;
             bool conCorte = corteHz > 100f;
             if (conCorte && corteHz < CorteMalHz) { motivo = "agudos cortados en " + ((int)corteHz).ToString(CultureInfo.InvariantCulture) + " Hz"; return true; }
-            if (!i.EsMp3 || i.Vbr) return false;   // en VBR (y en lo que no es MP3) solo cuenta el corte
-            if (i.Kbps > 0 && i.Kbps < 128) { motivo = i.Kbps.ToString(CultureInfo.InvariantCulture) + " kbps"; return true; }
+            if (!i.EsMp3) return false;   // (lo que no es MP3: solo el corte)
+            // (revision «invisible-y-reglas») la frecuencia va ANTES de mirar si es VBR, como en el programa anterior (SustitucionSpotify.cs:
+            // «en VBR solo cuenta el corte» era por la TASA, que en VBR sale de la musica; la frecuencia la dice la cabecera igual)
             if (i.Hz > 0 && i.Hz < 44100) { motivo = "grabada a " + i.Hz.ToString(CultureInfo.InvariantCulture) + " Hz"; return true; }
+            if (i.Vbr) return false;   // en VBR solo cuenta el corte (y la frecuencia, arriba)
+            if (i.Kbps > 0 && i.Kbps < 128) { motivo = i.Kbps.ToString(CultureInfo.InvariantCulture) + " kbps"; return true; }
             if (i.Kbps == 128 && conCorte && corteHz < Corte128Hz) { motivo = "128 kbps y agudos hasta " + ((int)corteHz).ToString(CultureInfo.InvariantCulture) + " Hz"; return true; }
             if (preEco && i.Kbps > 0 && i.Kbps <= 192 && conCorte && corteHz < CortePreEcoHz) { motivo = "pre-eco, " + i.Kbps.ToString(CultureInfo.InvariantCulture) + " kbps y agudos hasta " + ((int)corteHz).ToString(CultureInfo.InvariantCulture) + " Hz"; return true; }
             return false;
@@ -275,6 +279,9 @@ namespace Rocola
                 if (porIsrc)
                 {
                     if (mp3.Isrc == null || !string.Equals(c.Isrc, mp3.Isrc, StringComparison.Ordinal)) continue;
+                    // (revision «invisible-y-reglas») el mismo ISRC Y la duracion a 3 s, como el programa anterior (SpotifyMas.cs: «Spotify a veces
+                    // devuelve parecidas»; un ISRC mal puesto en la etiqueta o un MP3 cortado no pasan). Sin una de las dos duraciones, el ISRC basta.
+                    if (dif != int.MaxValue && dif > DuracionIsrcTolMs) { porQue = "su ISRC, pero dura distinto"; continue; }
                 }
                 else
                 {
@@ -344,6 +351,10 @@ namespace Rocola
             ok(!SuenaPeor(0, false, vbr, out mo), "A: VBR de 100 kbps de media sin corte medido: no");
             ok(SuenaPeor(15500, false, vbr, out mo), "A: VBR con el corte bajo 16 kHz: si");
             ok(SuenaPeor(0, false, hz32, out mo), "A: grabada a 32 kHz (" + mo + ")");
+            RocolaOsCalidadMp3 vbr22 = new RocolaOsCalidadMp3 { EsMp3 = true, Kbps = 64, Hz = 22050, Vbr = true }, vbr44 = new RocolaOsCalidadMp3 { EsMp3 = true, Kbps = 90, Hz = 44100, Vbr = true };
+            ok(SuenaPeor(0, false, vbr22, out mo), "A: VBR grabada a 22 kHz, sin medir el corte: si, la frecuencia vale tambien en VBR (" + mo + ")");
+            ok(!SuenaPeor(16500, true, vbr44, out mo), "A: VBR de 90 kbps de media, con pre-eco y corte 16,5 kHz: no (en VBR la tasa y el pre-eco no cuentan)");
+            ok(!SuenaPeor(0, false, new RocolaOsCalidadMp3 { EsMp3 = false, Hz = 22050 }, out mo), "A: lo que no es MP3, sin el corte: no");
             ok(SuenaPeor(17000, false, cbr128, out mo), "A: 128 kbps y corte 17 kHz (" + mo + ")");
             ok(!SuenaPeor(0, false, cbr128, out mo), "A: 128 kbps sin corte medido: no (sin medida no se sustituye)");
             ok(!SuenaPeor(18000, false, cbr128, out mo), "A: 128 kbps y corte 18 kHz: no");
@@ -382,6 +393,20 @@ namespace Rocola
             ok(e != null && e.Id == "recop", "B: sin la de su disco, el recopilatorio vale (" + (e != null ? e.Id : "ninguna") + ")");
             e = Elige(new RocolaOsCalidadMp3(), "Vals Sin Codigo (En Vivo)", "Trio Calidad", "", 32000, cand, false, out pq);
             ok(e != null && e.Id == "envivo", "B: la tuya en vivo casa con la en vivo");
+            // B por el ISRC: la duracion a 3 s (revision «invisible-y-reglas»)
+            RocolaOsCalidadMp3 conIsrc = new RocolaOsCalidadMp3 { Isrc = "MXA112600001" };
+            List<RocolaOsCalidadCandidata> ci = new List<RocolaOsCalidadCandidata>
+            {
+                new RocolaOsCalidadCandidata { Id = "isrclargo", Titulo = "Otra Cosa", Artistas = { "Otro" }, Isrc = "MXA112600001", DuracionMs = 36000 },
+                new RocolaOsCalidadCandidata { Id = "isrcotro", Titulo = "Bolero de Prueba", Artistas = { "Trio Calidad" }, Isrc = "MXA112600002", DuracionMs = 32000 },
+            };
+            e = Elige(conIsrc, "Bolero de Prueba", "Trio Calidad", "", 32000, ci, true, out pq);
+            ok(e == null, "B: por el ISRC, el mismo ISRC pero 4 s mas larga: no (" + (e != null ? e.Id : pq) + ")");
+            ci.Add(new RocolaOsCalidadCandidata { Id = "isrcbien", Titulo = "Otro Nombre (Remastered)", Artistas = { "Otro" }, Isrc = "MXA112600001", DuracionMs = 34500 });
+            e = Elige(conIsrc, "Bolero de Prueba", "Trio Calidad", "", 32000, ci, true, out pq);
+            ok(e != null && e.Id == "isrcbien", "B: por el ISRC, el mismo ISRC a 2,5 s: si, aunque el titulo sea otro (" + (e != null ? e.Id : pq) + ")");
+            e = Elige(conIsrc, "Bolero de Prueba", "Trio Calidad", "", 0, ci, true, out pq);
+            ok(e != null && (e.Id == "isrcbien" || e.Id == "isrclargo"), "B: por el ISRC sin la duracion del MP3: el ISRC basta");
             // C: la misma forma con otro nivel y algo de diferencia (misma), otra forma (otra), plana (no se sabe), poca (no se sabe)
             int T = 120; Random rr = new Random(7);
             double[] em = new double[T], es = new double[T], eo = new double[T], ep = new double[T]; long[] nm = new long[T], ns = new long[T], np = new long[T];
