@@ -64,7 +64,11 @@ static unsafe class SoloistFalso
     static string nombre = "Soloist", datos = ".", log;
     static readonly long t0 = Environment.TickCount64;
     static readonly List<Cliente> clientes = new List<Cliente>();
-    const int Rate = 44100;
+    // la frecuencia del flujo (SOLOIST_FALSO_HZ; de fabrica 44 100, la de Spotify) y, con SOLOIST_FALSO_FLUJO_TARDE=1, el flujo del anillo se
+    // conecta con la primera cancion y no al arrancar (como un cliente de PulseAudio que abre su flujo al tocar: hasta entonces el anillo
+    // dice frecuencia 0). Revision «sonido-hilos-y-fallos»: para probar la conversion de frecuencia de la fuente.
+    static readonly int Rate = int.TryParse(Environment.GetEnvironmentVariable("SOLOIST_FALSO_HZ"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int hzf) && hzf >= 8000 && hzf <= 192000 ? hzf : 44100;
+    static readonly bool FlujoTarde = Environment.GetEnvironmentVariable("SOLOIST_FALSO_FLUJO_TARDE") == "1";
     const string Autoplay = "spotify:track:f990d030autoplay";
 
     sealed class Cliente { internal WebSocket Ws; internal readonly object Envio = new object(); }
@@ -433,12 +437,20 @@ static unsafe class SoloistFalso
             if (string.IsNullOrEmpty(ruta)) ruta = Path.Combine(Environment.GetEnvironmentVariable("ROCOLA_RUN") ?? "/run", "rocola-xp/spotify/sonido.anillo");
             escritorActual = this;
             Abre();
+            if (FlujoTarde) { Volatile.Write(ref *(uint*)(b + 16), 0u); Apunta("anillo", "el flujo se conecta con la primera cancion"); return; }
+            Conecta();
+        }
+        bool conectado;
+        void Conecta()
+        {
+            conectado = true;
             // un flujo conectado (como pa_stream_connect_playback): gen_flujo y gen_vaciado suben, frecuencia y formato
             Volatile.Write(ref *(uint*)(b + 16), (uint)Rate);
             Volatile.Write(ref *(uint*)(b + 84), 5u);   // PA_SAMPLE_FLOAT32LE
             Volatile.Write(ref *(uint*)(b + 72), (uint)Environment.ProcessId);
             Vacia();
             genFlujo = Interlocked.Increment(ref *(uint*)(b + 20));
+            Apunta("anillo", "flujo conectado a " + Rate.ToString(CultureInfo.InvariantCulture) + " Hz");
         }
         void Abre()
         {
@@ -490,6 +502,7 @@ static unsafe class SoloistFalso
         }
         internal override void Escribe(float[] src, int n)
         {
+            if (!conectado) Conecta();
             long e = Volatile.Read(ref *(long*)(b + 32));
             float* d = (float*)(b + Cab);
             for (int i = 0; i < n; i++)
@@ -559,7 +572,7 @@ static unsafe class SoloistFalso
             F<F_int_ptr>("pa_threaded_mainloop_start")(ml);
             F_int_ptr ctxState = F<F_int_ptr>("pa_context_get_state");
             for (int i = 0; i < 200; i++) { lockF(ml); int s = ctxState(ctx); unlockF(ml); if (s == 4) break; if (s >= 5) throw new Exception("contexto en " + s); Thread.Sleep(10); }   // PA_CONTEXT_READY = 4
-            SampleSpec ss = new SampleSpec { format = 5, rate = Rate, channels = 2 };   // PA_SAMPLE_FLOAT32LE
+            SampleSpec ss = new SampleSpec { format = 5, rate = (uint)Rate, channels = 2 };   // PA_SAMPLE_FLOAT32LE
             lockF(ml);
             st = F<F_stream_new>("pa_stream_new")(ctx, "Soloist", ref ss, IntPtr.Zero);
             BufferAttr at = new BufferAttr { maxlength = uint.MaxValue, tlength = (uint)(Rate / 4 * 8), prebuf = uint.MaxValue, minreq = uint.MaxValue, fragsize = uint.MaxValue };

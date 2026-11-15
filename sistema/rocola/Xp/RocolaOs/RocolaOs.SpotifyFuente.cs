@@ -33,28 +33,42 @@ namespace Rocola
             internal const int NoEmpiezaMs = 15000;      // R4: no llega a sonar en 15 s desde el play
             internal const int SeguridadMs = 30000;      // (por si el hilo de Spotify no contestara: 30 s sin nada, se acaba)
             internal const double PocoSonidoSeg = 10.0;   // R4: un fallo con menos de 10 s de sonido devuelve el credito
+            // (revision «sonido-hilos-y-fallos») EL ARRANQUE SIN HUECO. Al abrirse la salida, el hilo de la musica de XP (BombaSonido) lee de
+            // golpe su primer segundo y su colchon (ArranqueMs + ColchonMs) y despues va al paso de la tarjeta. El anillo solo guarda lo que
+            // Soloist deja por delante (su tlength, unos 250 ms): si Soloist empieza DURANTE esa lectura de golpe, el anillo se seca y queda un
+            // hueco de silencio dentro del primer segundo de la cancion (medido con el Soloist falso: 100 ms a los 0,8 s). Por eso la cancion
+            // no empieza a leerse del anillo hasta que la fuente ya entrego eso (en silencio); con Soloist tardando lo de siempre en empezar
+            // (la red) no cambia nada. Lo que llega mientras se queda en el anillo: no se pierde nada.
+            internal const int ArranqueSinHuecoMs = BombaSonido.ArranqueMs + BombaSonido.ColchonMs + 100;
             private readonly string uri, titulo;
             private readonly int duracionCatalogoMs;
             private readonly NAudio.Wave.WaveFormat formato;
             private readonly int hz;
             private volatile float volumen = 1f;
             private RocolaOsSpotifyPeticion p;
-            private bool acabada, saltado, contado;
+            private bool acabada, saltado;
             private long inicioMs;
             private long cuadrosEntregados;     // lo que se le dio a XP (sonido y silencio): CurrentTime
             private long cuadrosSonido;         // lo que de verdad llego de Soloist
             private long inicioCancion = -1;    // el cuadro del anillo donde empieza (EscritoAlPedir)
             private long silencioAntes;         // cuadros de silencio antes del primer sonido (para TotalTime)
             private long ultimoSonidoMs;
-            private float[] tmp;                // (conversion de frecuencia, si el anillo trae otra)
-            private double fase;                // (idem: la posicion fraccionaria)
+            // (conversion de frecuencia, si el anillo trae otra que la declarada: revision «sonido-hilos-y-fallos»; antes se perdia un cuadro
+            // en cada lectura -un chasquido cada 20 a 100 ms-: ahora lo que no se uso se queda para la siguiente)
+            private float[] tmp;                // los cuadros del anillo que aun hacen falta (los primeros «tmpN»)
+            private int tmpN;
+            private double fase;                // la posicion fraccionaria dentro de tmp
+            private int contado;                // (1 mientras cuenta en LectoresAbiertos; Interlocked: lo sueltan Acaba y Dispose)
 
             internal RocolaOsFuenteSpotify(string uri, string titulo, int duracionMs)
             {
                 this.uri = uri; this.titulo = titulo; duracionCatalogoMs = duracionMs;
                 RocolaOsSpotifyAnillo a = RocolaOsSpotify.Anillo;
                 int f = a != null ? a.Frecuencia : 0;
-                hz = (f >= 8000 && f <= 192000) ? f : 44100;   // (Soloist da 44,1 kHz; si el anillo dice otra, esa)
+                // la del anillo; sin flujo (0: Soloist aun no abrio el suyo, o lo cierra entre canciones), la ULTIMA que tuvo (revision: asi la
+                // declarada es la de verdad y XP la convierte como con un archivo); sin ninguna, 44,1 kHz (la de Spotify)
+                if (!(f >= 8000 && f <= 192000)) f = Volatile.Read(ref RocolaOsSpotify.UltimaFrecuencia);
+                hz = (f >= 8000 && f <= 192000) ? f : 44100;
                 formato = NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(hz, 2);
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
@@ -85,7 +99,7 @@ namespace Rocola
                     p = new RocolaOsSpotifyPeticion(uri, titulo, duracionCatalogoMs);
                     inicioMs = ultimoSonidoMs = ahora;
                     if (a != null) a.Tira();
-                    Interlocked.Increment(ref RocolaOsSpotify.LectoresAbiertos); contado = true;
+                    if (Interlocked.Exchange(ref contado, 1) == 0) Interlocked.Increment(ref RocolaOsSpotify.LectoresAbiertos);
                     RocolaOsSpotify.Pide(p);
                 }
                 int pedidos = d.Length / 2;
@@ -97,7 +111,9 @@ namespace Rocola
                 long ep = fasePedida >= RocolaOsSpotifyPeticion.Suena ? Interlocked.Read(ref p.EscritoAlPedir) : -1;
                 long frontera = Interlocked.Read(ref p.Frontera);
                 bool porDuracion = false;
-                if (ep >= 0 && a != null)
+                if (ep >= 0 && a != null && Interlocked.Read(ref cuadrosSonido) == 0 && Interlocked.Read(ref cuadrosEntregados) < (long)hz * ArranqueSinHuecoMs / 1000)
+                    a.SaltaVaciado();   // (el arranque sin hueco: aun no; los vaciados si se saltan, como esperando)
+                else if (ep >= 0 && a != null)
                 {
                     if (!saltado) { a.SaltaA(ep); inicioCancion = ep; saltado = true; }
                     // donde acaba: su frontera (Soloist paso a otra) o su duracion desde que empezo, lo primero
@@ -135,30 +151,43 @@ namespace Rocola
                 return pedidos * 2;
             }
             private static int FrecuenciaAnillo(RocolaOsSpotifyAnillo a) { int f = a.Frecuencia; return f >= 8000 && f <= 192000 ? f : 44100; }
-            // LO QUE HAY EN EL ANILLO, a la frecuencia que se declaro: igual (lo normal) o convertido con una interpolacion lineal (si Soloist
-            // cambio de frecuencia a media sesion: no deberia, Spotify es 44,1 kHz)
+            // LO QUE HAY EN EL ANILLO, a la frecuencia que se declaro: igual (lo normal) o convertido con una interpolacion lineal (si el anillo
+            // trae otra que la declarada al abrirse: Soloist abrio su flujo despues, o lo cambio). La conversion guarda entre lecturas los
+            // cuadros que aun hacen falta (tmp/tmpN) y la posicion (fase): la onda sigue sin saltos (revision: antes se perdia un cuadro por
+            // lectura, un chasquido cada 20 a 100 ms en toda la cancion).
             private int TomaConvertida(RocolaOsSpotifyAnillo a, Span<float> d, int pedidos, long hasta, bool paraEnVaciado, out long leidoDespues, out bool vaciado)
             {
                 int fa = FrecuenciaAnillo(a);
-                if (fa == hz) return a.Toma(d.Slice(0, pedidos * 2), hasta, paraEnVaciado, out leidoDespues, out vaciado);
+                if (fa == hz) { tmpN = 0; fase = 0; return a.Toma(d.Slice(0, pedidos * 2), hasta, paraEnVaciado, out leidoDespues, out vaciado); }
                 double paso = fa / (double)hz;
-                int necesito = (int)Math.Ceiling(pedidos * paso + fase) + 1;
-                if (tmp == null || tmp.Length < necesito * 2) tmp = new float[necesito * 2 + 64];
-                int k = a.Toma(tmp.AsSpan(0, necesito * 2), hasta, paraEnVaciado, out leidoDespues, out vaciado);
-                if (vaciado && paraEnVaciado) return 0;
+                // la salida j esta en x = fase + j*paso y necesita los cuadros floor(x) y floor(x)+1
+                int necesito = (int)Math.Floor(fase + (pedidos - 1) * paso) + 2;
+                if (tmp == null || tmp.Length < necesito * 2) { float[] t2 = new float[necesito * 2 + 64]; if (tmp != null) Array.Copy(tmp, t2, tmpN * 2); tmp = t2; }
+                leidoDespues = 0; vaciado = false;
+                if (tmpN < necesito)
+                {
+                    int k = a.Toma(tmp.AsSpan(tmpN * 2, (necesito - tmpN) * 2), hasta, paraEnVaciado, out leidoDespues, out vaciado);
+                    if (vaciado && paraEnVaciado) { tmpN = 0; fase = 0; return 0; }
+                    if (vaciado) { Array.Copy(tmp, tmpN * 2, tmp, 0, k * 2); tmpN = 0; fase = 0; }   // (lo de antes del vaciado no se oye: solo lo nuevo)
+                    tmpN += k;
+                }
+                else leidoDespues = a.Leido;
                 int hechos = 0;
                 double x = fase;
                 while (hechos < pedidos)
                 {
                     int i = (int)x;
-                    if (i + 1 >= k) break;
+                    if (i + 1 >= tmpN) break;
                     float t = (float)(x - i);
                     float l0 = tmp[i * 2], r0 = tmp[i * 2 + 1];
                     d[hechos * 2] = l0 + (tmp[(i + 1) * 2] - l0) * t;
                     d[hechos * 2 + 1] = r0 + (tmp[(i + 1) * 2 + 1] - r0) * t;
                     hechos++; x += paso;
                 }
-                fase = Math.Max(0, x - Math.Max(0, k - 1));   // (el ultimo cuadro tomado no se repite: se pierde uno por lectura, inaudible)
+                // se quitan los cuadros que ya no hacen falta (los de antes de floor(x)); lo demas se queda para la siguiente lectura
+                int quita = Math.Min((int)x, tmpN);
+                if (quita > 0) { Array.Copy(tmp, quita * 2, tmp, 0, (tmpN - quita) * 2); tmpN -= quita; }
+                fase = x - quita;
                 return hechos;
             }
             private void Aplica(Span<float> d)
@@ -185,7 +214,9 @@ namespace Rocola
                 Interlocked.Add(ref cuadrosEntregados, n);
                 return n * 2;
             }
-            private void Suelta() { if (contado) { contado = false; Interlocked.Decrement(ref RocolaOsSpotify.LectoresAbiertos); } }
+            // (atomico: si Acaba y Dispose se cruzaran, LectoresAbiertos no puede quedar en -1; con -1 el lector_presente ya no subiria nunca y
+            // ninguna de Spotify volveria a sonar)
+            private void Suelta() { if (Interlocked.Exchange(ref contado, 0) == 1) Interlocked.Decrement(ref RocolaOsSpotify.LectoresAbiertos); }
             // XP la cierra (acabo, SALTAR, otra cancion, la rocola se cierra): si aun sonaba, la rocola la corto (sin devolver: como una de XP saltada)
             public void Dispose()
             {

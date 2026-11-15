@@ -19,6 +19,8 @@ while kill -0 "$padre" 2>/dev/null; do
   done
   wait "$hijo"; c=$?
   echo "$(date +%s.%N) soloist salio con $c" >> "$log"
+  # (revision) con VIGILANTE_FALSO_UNA=1 no lo vuelve a abrir (como sin llave o caducado): espera a SIGTERM o a que muera el padre
+  if [ "${VIGILANTE_FALSO_UNA:-0}" = 1 ]; then hijo=; while kill -0 "$padre" 2>/dev/null; do sleep 0.5 & wait $!; done; echo "$(date +%s.%N) murio el padre" >> "$log"; exit 0; fi
   # (el guion de eventos es de la primera vida: la segunda arranca limpia)
   unset SOLOIST_FALSO_GUION
   sleep 2 & wait $!

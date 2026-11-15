@@ -99,6 +99,7 @@ namespace Rocola
         internal static RocolaOsSpotifyPeticion Actual { get { return Volatile.Read(ref actual); } }
         internal static int LectoresAbiertos;          // fuentes de Spotify leyendo (Interlocked)
         internal static int LatenciaUs = 1000000;      // lo que tarda en oirse lo que se lee (lo pone el latido: RetrasoAudible de XP)
+        internal static int UltimaFrecuencia;          // la ultima frecuencia de flujo que dijo el anillo (la fuente la declara si el anillo dice 0)
         internal static int EnCola;                    // de Spotify en la cola de XP (lo cuenta el latido)
         internal static long Cobradas, Devueltas, SinCredito, NoPedidas, Sonadas;
         internal static string UltimoError = "";
@@ -216,6 +217,8 @@ namespace Rocola
                     {
                         ultimoAnilloMs = ahora;
                         if (a.Abierto) a.Mira(); else a.Abre();
+                        int fr = a.Frecuencia;
+                        if (fr >= 8000 && fr <= 192000) Volatile.Write(ref UltimaFrecuencia, fr);
                     }
                     bool presente = Volatile.Read(ref LectoresAbiertos) > 0;
                     if (presente && ahora - ultimoLatidoMs >= 250) { ultimoLatidoMs = ahora; a.Late(true, LatenciaUs); }
@@ -234,7 +237,10 @@ namespace Rocola
             }
             catch { }
             CierraWs("la rocola se cierra");
-            try { a.Late(false, 0); a.SueltaTodo(); } catch { }
+            // el mapa NO se suelta (revision «sonido-hilos-y-fallos»): esto corre ANTES de que XP pare el sonido (el cierre de Rocola OS va
+            // antes de OnFormClosing), y el hilo del sonido puede estar copiando del anillo justo ahora: soltarlo seria leer memoria ya
+            // devuelta (SIGSEGV al cerrar). Se retira (lector_presente 0; Toma ya no ve nada) y el mapa se va con el programa.
+            try { a.Late(false, 0); a.Cierra(); } catch { }
             EscribeEstado();
         }
 
@@ -530,6 +536,9 @@ namespace Rocola
                 Apunta("sesion de Spotify dentro (bocina «" + st.Dispositivo + "»" + (st.Activa ? ", activa" : "") + ")");
                 ArreglaOpciones(ahora, true);
                 if (!st.Activa) Activa(ahora, "al entrar");
+                // (revision) lo que toca de verdad: si la sesion entra despues de conectar (Soloist recien abierto), su playback_state de al
+                // conectar no llego; lo que se sabia de antes de una caida (la cancion, su estado) ya no vale
+                Manda(Orden("get_state"));
             }
             else if (!st.Sesion && sesionAntes) Apunta("Soloist sin sesion (falta emparejar la bocina desde la app de Spotify, o se cerro la sesion)");
             sesionAntes = st.Sesion;
@@ -608,16 +617,29 @@ namespace Rocola
             }
             if (motivo != RocolaOsSpotifyPeticion.SinSesion && (s == "playing" || s == "buffering")) { PausaNuestra(); }
         }
+        // desde cuando Soloist no esta para tocar (sin el WebSocket o sin sesion; 0 = si esta)
+        private static long fueraDesdeMs;
+        internal const int FueraMs = 10000;
         private static void Peticiones(long ahora)
         {
             RocolaOsSpotifyPeticion n = Actual;
             if (n != null && !vivas.Contains(n) && !n.Rematada) vivas.Add(n);
             RocolaOsSpotifyEstado st = Estado;
+            if (st.Ws && st.Sesion) fueraDesdeMs = 0; else if (fueraDesdeMs == 0) fueraDesdeMs = ahora;
+            bool fuera = fueraDesdeMs != 0 && ahora - fueraDesdeMs > FueraMs;
             for (int i = 0; i < vivas.Count; i++)
             {
                 RocolaOsSpotifyPeticion p = vivas[i];
                 int f = Volatile.Read(ref p.Fase);
                 if (f == RocolaOsSpotifyPeticion.Acabada) { Remata(p); vivas.RemoveAt(i); i--; continue; }
+                // (revision «sonido-hilos-y-fallos») SOLOIST FUERA mas de 10 s (el WebSocket caido o sin sesion: se cayo, caduco, no tiene la
+                // llave, no hay internet para entrar) y a esta le toca o espera: no puede sonar. Acaba YA y su credito vuelve (R4 y R9), en vez
+                // de 15 s de silencio por cada una de la cola. La fuente la remata al momento (Frontera y Motivo antes de mandar play).
+                if ((f == RocolaOsSpotifyPeticion.Nueva || f == RocolaOsSpotifyPeticion.Mandada) && fuera && Volatile.Read(ref p.Motivo) == 0)
+                {
+                    Termina(p, st.Ws ? RocolaOsSpotifyPeticion.SinSesion : RocolaOsSpotifyPeticion.WsCaido);
+                    continue;
+                }
                 if (f == RocolaOsSpotifyPeticion.Nueva && ReferenceEquals(p, Actual) && st.Ws && st.Sesion)
                 {
                     // PLAY (R3): la bocina activa, shuffle y repeat apagados, y la que pidio la rocola
@@ -799,6 +821,9 @@ namespace Rocola
                     si.Environment["ROCOLA_SPOTIFY_ANILLO"] = RocolaOsSpotifyAnillo.Ruta;
                     pr = Process.Start(si);
                     vigilante = pr;
+                    // (revision) si la rocola empezo a cerrarse mientras se abria, ParaVigilante pudo no verlo aun: SIGTERM aqui (dos SIGTERM no le
+                    // hacen nada: rocola-soloist solo apunta que tiene que parar). Asi no queda un vigilante sin que nadie se lo pida.
+                    if (parar) { try { kill(pr.Id, 15); } catch { } }
                     Apunta("vigilante abierto: " + bin + " corre (pid " + pr.Id.ToString(CultureInfo.InvariantCulture) + ")");
                 }
                 catch (Exception ex)

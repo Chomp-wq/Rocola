@@ -7,7 +7,7 @@
 # Soloist de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): apagado dos mezcla celular carrera fallos apagon portada pulso vigilante
+#   escenas (de fabrica todas): apagado dos mezcla celular carrera fallos fuera frecuencia apagon portada pulso vigilante
 #   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
 #   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
 #   «vigilante» (sin el, no se corre): rocola-xp lo abre y el abre el Soloist falso por soloist-envoltorio.sh (SOLOIST_BIN)
@@ -19,7 +19,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado dos mezcla celular carrera fallos apagon portada pulso vigilante}"
+partes="${*:-apagado dos mezcla celular carrera fallos fuera frecuencia apagon portada pulso vigilante}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -71,14 +71,20 @@ EOC
   ( sleep 40; kill -KILL $p 2>/dev/null ) & local v=$!
   wait $p; echo $? > "$o/salio"; kill $v 2>/dev/null; wait $v 2>/dev/null
   echo "$(date +%s.%N) - $t0" | bc > "$o/tardo"
-  local hz; hz=$(sed -n 's/.* rate=\([0-9]*\) .*/\1/p' "$o/registro.txt" 2>/dev/null | tail -1)
-  [ -f "$o/sonado.raw" ] && python3 "$G/frecuencias.py" "$o/sonado.raw" "${hz:-44100}" > "$o/frec.txt"
+  # (revision) con el registro de la tarjeta: cada apertura de la salida a su ritmo (XP abre a 48 kHz para una de 48 kHz)
+  [ -f "$o/sonado.raw" ] && python3 "$G/frecuencias.py" "$o/sonado.raw" "$([ -f "$o/registro.txt" ] && echo "$o/registro.txt" || echo 44100)" > "$o/frec.txt"
 }
 datos() { local d="$W/datos-$1"; rm -rf "$d"; mkdir -p "$d"; cp -r "$DATOS0"/. "$d"/; rm -f "$d/rocola_estado.txt"; echo "$d"; }
 oye() { [ -f "$1" ] || { echo 0.00; return; }; awk -v f="$2" '$3>=f-15 && $3<=f+15 {s+=$2-$1} END {printf "%.2f\n", s+0}' "$1"; }   # segundos que se oyo HZ
 primero() { awk -v f="$2" '$3>=f-15 && $3<=f+15 && $2-$1>=0.3 {print $1; exit}' "$1"; }    # cuando empezo a oirse HZ (de verdad)
 ultimo() { awk -v f="$2" '$3>=f-15 && $3<=f+15 && $2-$1>=0.3 {u=$2} END {print u+0}' "$1"; }
 log() { echo "$1/run/rocola-xp/spotify/prueba-pide.log"; }
+# (revision) los saltos de la onda de HZ en lo que sono (cuadros perdidos o repetidos; saltos.py), sin los 0,3 s de cada punta
+saltos() { local d h r; d=$(primero "$1" "$3"); h=$(ultimo "$1" "$3"); [ -z "$d" ] && { echo -1; return; }
+  r=$(python3 "$G/saltos.py" "$2" "$4" "$(echo "$d + 0.3" | bc)" "$(echo "$h - 0.3" | bc)"); echo "$r" >&2; echo "$r" | awk '{print $2}'; }
+# (revision) cuantos tramos de OTRA cosa (silencio u otro tono) hay entre el primer y el ultimo sonido de HZ: un hueco dentro de la cancion
+huecos() { awk -v f="$2" 'BEGIN{p=-1} {es=($3>=f-15 && $3<=f+15); if (es) {if (p>=0 && n>0) h+=n; p=NR; n=0} else if (p>=0) n++} END {print h+0}' "$1"; }
+hzde() { echo "$1/registro.txt"; }   # (lo que saltos.py necesita para saber el ritmo de cada tramo)
 estado() { sed -n "s/^$2=//p" "$1/estado.txt" 2>/dev/null; }   # (el estado de /run copiado con «SEG:copia», antes de cerrar)
 T0=0
 P="Prueba|Artista inventado|Disco inventado"
@@ -131,6 +137,8 @@ sys.exit(0 if u[:2]==['spotify:track:f440d008aa','spotify:track:f550d006bb'] els
   hueco=$(echo "$(primero "$f" 550) - $(ultimo "$f" 440)" | bc)
   si "dos: el hueco entre las dos, menos de 3 s ($hueco s)" entre "$hueco" 0 3
   si "dos: el autoplay del final (990 Hz) no se oye ($t990 s)" entre "$t990" 0 0.15
+  si "dos: ni un hueco dentro de cada una (revision: el arranque sin hueco; 440: $(huecos "$f" 440), 550: $(huecos "$f" 550))" test "$(huecos "$f" 440)$(huecos "$f" 550)" = 00
+  si "dos: la onda de cada una sin saltos (revision: ni un cuadro perdido ni repetido)" bash -c "[ '$(saltos "$f" "$o/sonado.raw" 440 "$(hzde $o)")' = 0 ] && [ '$(saltos "$f" "$o/sonado.raw" 550 "$(hzde $o)")' = 0 ]"
   si "dos: tras cada una, pause (Soloist no sigue solo)" bash -c "[ \$(grep -c '\"pause\"' '$o/falso.txt') -ge 2 ]"
   si "dos: la bitacora: 2 cobradas y 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c 'COBRADA' '$b') = 2 ] && [ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
   si "dos: el estado: ws=1 sesion=1 cobradas=2 devueltas=0" bash -c "[ '$(estado $o ws)$(estado $o sesion)' = 11 ] && [ '$(estado $o cobradas)' = 2 ] && [ '$(estado $o devueltas)' = 0 ]"
@@ -231,6 +239,50 @@ if [[ " $partes " == *" fallos "* ]]; then
   si "fallos: 3 devueltas y la ultima cobrada: quedan 3 creditos (estado: devueltas=$(estado $o devueltas))" bash -c "[ '$(estado $o devueltas)' = 3 ] && grep -qF 'pide spotify:track:f660d004cc listo=1 entro=1 creditos 4->3' '$(log $o)'"
 fi
 
+# ---------------------------------------------------------------- fuera: Soloist se cae y NO vuelve (sin llave, caducado) (revision)
+# Con Soloist fuera mas de 10 s, lo de Spotify de la cola acaba al momento y devuelve su credito (R4, R9): no 15 s de silencio cada una.
+if [[ " $partes " == *" fuera "* ]]; then
+  echo "== fuera (R9: Soloist se cae y no vuelve; lo de la cola se devuelve al momento)"
+  d=$(datos fuera); T0=$(date +%s.%N)
+  abre fuera "$d" "7:67" "9:pide spotify:track:f440d030aa|$P|30000;9.2:pide spotify:track:f550d030bb|$P|30000;31:copia" 32 TERM \
+    ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="13:cae" VIGILANTE_FALSO_UNA=1
+  o="$W/fuera"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$f" | head -20; grep -E 'acaba|DEVUELTA' "$b" | sed 's/^/   /'
+  si "fuera: sale con 0" test "$(cat $o/salio)" = 0
+  si "fuera: la que sonaba acaba (WebSocket caido mas de 10 s) y se devuelve" bash -c "grep -q 'acaba spotify:track:f440d030aa: el WebSocket se cayo mas de 10 s' '$b' && grep -q 'DEVUELTA spotify:track:f440d030aa' '$b'"
+  si "fuera: la de la cola tambien se devuelve" contiene "$b" "DEVUELTA spotify:track:f550d030bb"
+  dt=$(python3 - "$b" <<'EOP'
+import sys, datetime
+t={}
+for l in open(sys.argv[1]):
+    for u in ('f440d030aa','f550d030bb'):
+        if 'DEVUELTA spotify:track:'+u in l: t[u]=datetime.datetime.strptime(l[:19],'%Y-%m-%d %H:%M:%S')
+print((t['f550d030bb']-t['f440d030aa']).total_seconds() if len(t)==2 else 99)
+EOP
+)
+  si "fuera: y sin esperar sus 15 s (${dt} s despues de la primera)" entre "$dt" 0 3
+  si "fuera: el estado: devueltas=2, ws=0" bash -c "[ '$(estado $o devueltas)' = 2 ] && [ '$(estado $o ws)' = 0 ]"
+fi
+
+# ---------------------------------------------------------------- frecuencia: Soloist a 48 kHz y su flujo abierto con la primera (revision)
+# La primera se abre con el anillo sin flujo (0 Hz): la fuente declara 44,1 kHz y convierte lo que llega a 48 kHz; la segunda ya declara
+# 48 kHz (la ultima que tuvo el anillo) y la convierte XP. Las dos enteras, en su tono y sin saltos en la onda.
+if [[ " $partes " == *" frecuencia "* ]]; then
+  echo "== frecuencia (el anillo a 48 kHz, abierto tarde: la conversion de la fuente y la de XP)"
+  d=$(datos frecuencia); T0=$(date +%s.%N)
+  abre frecuencia "$d" "7:67" "9:pide spotify:track:f440d008aa|$P|8000;9.2:pide spotify:track:f550d006bb|$P|6000;31:copia" 32 TERM \
+    ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_HZ=48000 SOLOIST_FALSO_FLUJO_TARDE=1
+  o="$W/frecuencia"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$f" | head -20
+  si "frecuencia: el falso abrio su flujo a 48 kHz con la primera" bash -c "grep -q 'el flujo se conecta con la primera cancion' '$o/falso.txt' && grep -q 'flujo conectado a 48000 Hz' '$o/falso.txt'"
+  si "frecuencia: la primera entera y en su tono (8 s: $(oye "$f" 440) s)" entre "$(oye "$f" 440)" 7.7 8.3
+  si "frecuencia: la segunda entera y en su tono (6 s: $(oye "$f" 550) s)" entre "$(oye "$f" 550)" 5.7 6.3
+  si "frecuencia: ni un hueco dentro de cada una (440: $(huecos "$f" 440), 550: $(huecos "$f" 550))" test "$(huecos "$f" 440)$(huecos "$f" 550)" = 00
+  si "frecuencia: la primera sin saltos (convertida por la fuente)" test "$(saltos "$f" "$o/sonado.raw" 440 "$(hzde $o)")" = 0
+  si "frecuencia: la segunda sin saltos" test "$(saltos "$f" "$o/sonado.raw" 550 "$(hzde $o)")" = 0
+  si "frecuencia: 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
+fi
+
 # ---------------------------------------------------------------- apagon: lo pagado de Spotify vuelve como credito (R5)
 if [[ " $partes " == *" apagon "* ]]; then
   echo "== apagon (R5)"
@@ -282,6 +334,7 @@ if [[ " $partes " == *" pulso "* ]]; then
   si "pulso: el Soloist falso conecto por el libpulse.so.0" contiene "$o/falso.txt" "conectado por $PULSO"
   si "pulso: la primera entera (8 s: $(oye "$f" 440) s)" entre "$(oye "$f" 440)" 7.7 8.3
   si "pulso: la segunda entera (6 s: $(oye "$f" 550) s)" entre "$(oye "$f" 550)" 5.7 6.3
+  si "pulso: ni un hueco dentro de cada una (440: $(huecos "$f" 440), 550: $(huecos "$f" 550))" test "$(huecos "$f" 440)$(huecos "$f" 550)" = 00
   si "pulso: en su orden" entre "$(primero "$f" 550)" "$(ultimo "$f" 440)" 1000
   si "pulso: el autoplay no se oye ($(oye "$f" 990) s)" entre "$(oye "$f" 990)" 0 0.15
   si "pulso: 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
@@ -315,6 +368,7 @@ if [[ " $partes " == *" vigilante "* ]]; then
   si "vigilante: la primera entera (8 s: $(oye "$f" 440) s)" entre "$(oye "$f" 440)" 7.7 8.3
   si "vigilante: la segunda entera (6 s: $(oye "$f" 550) s)" entre "$(oye "$f" 550)" 5.7 6.3
   si "vigilante: el autoplay no se oye ($(oye "$f" 990) s)" entre "$(oye "$f" 990)" 0 0.15
+  si "vigilante: ni un hueco dentro de cada una (440: $(huecos "$f" 440), 550: $(huecos "$f" 550))" test "$(huecos "$f" 440)$(huecos "$f" 550)" = 00
   si "vigilante: 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
   si "vigilante: la llave no sale en ninguna bitacora ni estado" bash -c "! grep -rqsF -- '$K' '$b' '$v' '$o/run' '$o/estado.txt' '$o/vigilante-estado.txt' '$o/salida.txt'"
   si "vigilante: al cerrar la rocola, el vigilante y el Soloist falso se van (en $(cat $o/tardo) s)" bash -c "! pgrep -f '[s]potify-xp.*rocola-soloist corre' >/dev/null && ! pgrep -f '[s]oloist-falso.dll.*vigilante/soloist' >/dev/null"
