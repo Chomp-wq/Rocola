@@ -1,0 +1,8 @@
+/* rocola-pulso: solo se exportan las funciones pa_*, con la version de
+ * libpulse (PULSE_0) para que los clientes enlazados con libpulse la acepten. */
+PULSE_0 {
+  global:
+    pa_*;
+  local:
+    *;
+};
