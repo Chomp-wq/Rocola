@@ -2,8 +2,9 @@
 // nada en la rocola: es una funcion de Rocola OS de mentira, «spotify-prueba», que solo va con ROCOLA_OS=lista que la nombre (SoloEnLaLista:
 // con «1» nunca, diga lo que diga rocola_os.txt). En su latido (hilo de la pantalla) lee $ROCOLA_RUN/rocola-xp/spotify/prueba-pide, un
 // renglon por pedido, y lo hace con I6 como lo haria el catalogo:
-//   pide URI|TITULO|ARTISTA|DISCO|MS[|PORTADA_URL]    RocolaOsSpotifyPide (como PONER en un disco)
-//   busca URI|TITULO|ARTISTA|DISCO|MS                  RocolaOsSpotifyPide(p, true) (como desde el buscador)
+//   pide URI|TITULO|ARTISTA|DISCO|MS[|PORTADA_URL[|DISCO_URI]]    RocolaOsSpotifyPide (como PONER en un disco)
+//   busca URI|TITULO|ARTISTA|DISCO|MS[|PORTADA_URL[|DISCO_URI]]   RocolaOsSpotifyPide(p, true) (como desde el buscador)
+//   portada URI|TITULO|ARTISTA|DISCO|MS|PORTADA_URL[|DISCO_URI]   RocolaOsSpotifyPortada (como el catalogo al ensenarla)
 // y apunta lo que paso en prueba-pide.log (con RocolaOsSpotifyListo y los creditos de XP antes y despues).
 using System;
 using System.Globalization;
@@ -43,9 +44,15 @@ namespace Rocola
                 int sp = l.IndexOf(' ');
                 string que = sp > 0 ? l.Substring(0, sp) : l, resto = sp > 0 ? l.Substring(sp + 1) : "";
                 string[] c = resto.Split('|');
-                if ((que != "pide" && que != "busca") || c.Length < 5) { log.Append("no entiendo: ").Append(l).Append('\n'); continue; }
+                if ((que != "pide" && que != "busca" && que != "portada") || c.Length < 5) { log.Append("no entiendo: ").Append(l).Append('\n'); continue; }
                 int ms; int.TryParse(c[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out ms);
-                RocolaOsSpotifyPista p = new RocolaOsSpotifyPista { Uri = c[0], Titulo = c[1], Artista = c[2], Disco = c[3], DuracionMs = ms, PortadaUrl = c.Length > 5 ? c[5] : null };
+                RocolaOsSpotifyPista p = new RocolaOsSpotifyPista { Uri = c[0], Titulo = c[1], Artista = c[2], Disco = c[3], DuracionMs = ms, PortadaUrl = c.Length > 5 && c[5].Length > 0 ? c[5] : null, DiscoUri = c.Length > 6 ? c[6] : null };
+                if (que == "portada")
+                {
+                    string r = RocolaOsSpotifyPortada(p);
+                    log.Append("portada ").Append(p.Uri).Append(' ').Append(r ?? "(pedida)").Append('\n');
+                    continue;
+                }
                 int antes = credits;
                 bool listo = RocolaOsSpotifyListo;
                 bool entro = RocolaOsSpotifyPide(p, que == "busca");
