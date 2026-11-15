@@ -139,6 +139,36 @@ es el de MusicBrainz (además, cada fila se comprueba al leerla: si una tabla ca
 
 La prueba, sin red: `sh sistema/catalogo/prueba/prueba.sh`.
 
-## Pruebas
+## Lo probado (15-11-2026)
 
-(Ver la sección «Números» al final.)
+**Sin red, con la copia inventada** (`prueba/prueba.sh`, 2 s; también corre en GitHub al cambiar el flujo): 180 artistas, 688 grupos
+de lanzamiento y 1 239 ediciones inventados dan **176 artistas y 652 discos** (31 738 bytes); dos corridas dan los mismos bytes y son
+iguales a `rocola_catalogo_prueba.tsv.gz`; `valida` pasa; `comprueba.py` mira 30 casos (letras con acento, «Ñ» y `#`; fuera los que no
+tienen Spotify, ni género, ni discos, ni nombre latino; alias; Spotify solo por Wikidata; empates de género por el orden de
+`GenreLabel`; hasta 6 discos sin repetidos, sin Remix ni sencillos ni discos de dos artistas; el id de Spotify de la edición oficial más
+vieja; año, portada de frente o de grupo y no de atrás; país directo, por subdivisión, subiendo dos saltos, por el área de inicio y no
+por un enlace que no es «part of»; orden a igual fama; factores de la fama); `--solo-cc0` deja fuera al que solo tenía etiquetas; con
+`--tope 12` ninguna letra pasa de 12 discos ni un género de 4; `valida` atrapa 8 archivos malos; `extrae` saca de un tar lo mismo.
+
+**Con datos de verdad, en chico** (no cabe aquí la copia de 7 GB): el orden de columnas de las 28 tablas es el de `CreateTables.sql` y
+`caa/CreateTables.sql` de hoy (`esquema`), y cada tabla real que se pudo bajar a trozos (area, iso_3166_1/2, l_area_area, link,
+link_type, genre, tag, artist_tag, artist, los tipos de disco, release_status: hasta 1,16 millones de filas) se lee con sus columnas;
+filas sueltas de release, release_group, release_country, url, artist_alias y artist_credit tienen las columnas esperadas. `extrae`
+leyó el principio real de `mbdump.tar.bz2` (TIMESTAMP, area entera). Wikidata de verdad: P1902 + P434 en una consulta (58 830 artistas,
+7 s), géneros y Wikipedias por lotes (2 000 MBID en 4 s) y nombres de género; ListenBrainz de verdad (artistas y discos; lotes de
+1 000; 1 001 ya lo corta el servidor; 30 peticiones por ventana de 10 s). Ejemplos: Queen → Rock (5 géneros de rock, 2 de metal, 1 de
+pop), Caifanes → Rock, José José → Bolero (MX, 22 Wikipedias).
+
+**No probado aquí**: la corrida entera (va en GitHub Actions). Cálculo: bajar ~8,4 GB (las tres copias), unas 6 GB de tablas extraídas
+(el flujo libera unos 20 GB antes), ~150 000 artistas y ~1 millón de discos por preguntar a ListenBrainz (~1 150 peticiones, 30-45
+min), ~100 consultas a Wikidata (~10 min); en total entre 1,5 y 2,5 horas (tope del flujo: 5,5 h). El informe dice cuánto tardó cada
+paso.
+
+## Lo que hay que mirar en la primera corrida real
+
+- Cuánta música mexicana entra: MusicBrainz y ListenBrainz cubren peor lo regional (bandas, norteño, grupero) que el rock en inglés; la
+  muestra del informe (`muestra.txt`) lo dice artista por artista. Si faltan muchos, se puede subir `FACTOR_MEXICO` o el de Regional.
+- Las reglas de XP aplicadas a nombres de géneros en inglés tienen sorpresas: «classic rock» da Clásica, «garage rock» da DnB,
+  «dancehall» da Electrónica. Con varios géneros por artista casi siempre gana el bueno (pesa 1 cada uno), pero no se cambian las reglas
+  aquí: son las de XP (una sola lista).
+- Licencias: lo de fuente `m` es CC BY-NC-SA (no comercial).

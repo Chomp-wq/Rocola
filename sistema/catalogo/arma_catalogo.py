@@ -336,23 +336,32 @@ def _pide(url, datos, cabeceras, intentos=8, espera_429=30.0):
     raise RuntimeError('sin respuesta de %s: %s' % (url, ultimo))
 
 
-def _sparql(consulta):
-    cuerpo, _ = _pide(WIKIDATA, urllib.parse.urlencode({'query': consulta}).encode(),
-                      {'Accept': 'text/tab-separated-values', 'Content-Type': 'application/x-www-form-urlencoded'})
-    texto = cuerpo.decode('utf-8')
-    if 'java.util.concurrent.TimeoutException' in texto or 'QueryTimeoutException' in texto:
-        raise RuntimeError('Wikidata: la consulta paso de 60 s')
-    lineas = texto.split('\n')
-    cab = [c.lstrip('?') for c in lineas[0].split('\t')]
-    out = []
-    for l in lineas[1:]:
-        if not l:
-            continue
-        c = l.split('\t')
-        if len(c) != len(cab):
-            raise RuntimeError('Wikidata: fila rara: %r' % l[:200])
-        out.append({k: _rdf(v) for k, v in zip(cab, c)})
-    return out
+def _sparql(consulta, intentos=4):
+    """Una consulta SPARQL en TSV. Una respuesta cortada (sin el ultimo salto de linea o con una fila a medias) se vuelve a pedir."""
+    ultimo = None
+    for intento in range(intentos):
+        cuerpo, _ = _pide(WIKIDATA, urllib.parse.urlencode({'query': consulta}).encode(),
+                          {'Accept': 'text/tab-separated-values', 'Content-Type': 'application/x-www-form-urlencoded'})
+        texto = cuerpo.decode('utf-8', errors='replace')
+        if 'TimeoutException' in texto:
+            raise RuntimeError('Wikidata: la consulta paso de 60 s')
+        lineas = texto.split('\n')
+        cab = [c.lstrip('?') for c in lineas[0].split('\t')]
+        out, mala = [], None
+        for l in lineas[1:]:
+            if not l:
+                continue
+            c = l.split('\t')
+            if len(c) != len(cab) or any(v.startswith('"') and not re.search(r'"(@[\w-]+|\^\^<[^>]*>)?$', v) for v in c):
+                mala = l
+                break
+            out.append({k: _rdf(v) for k, v in zip(cab, c)})
+        if mala is None and texto.endswith('\n'):
+            return out
+        ultimo = 'respuesta cortada (%r)' % (mala or lineas[-1])[:80]
+        dice('  Wikidata: %s; otra vez' % ultimo)
+        time.sleep(10 * (intento + 1))
+    raise RuntimeError('Wikidata: ' + ultimo)
 
 
 def _rdf(v):

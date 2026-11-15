@@ -1,0 +1,140 @@
+# EL CATALOGO DE LA ROCOLA (sistema/catalogo/LEEME.md; peticion del dueno del 14-11-2026: hasta 500 paginas por letra con lo mas
+# popular por genero). Baja la copia completa de MusicBrainz, pregunta a Wikidata y ListenBrainz, arma rocola_catalogo.tsv.gz, lo valida
+# y lo publica en la version de GitHub con etiqueta fija «catalogo» (se reemplazan sus archivos): rocola_catalogo.tsv.gz,
+# rocola_catalogo.txt y rocola_catalogo_informe.txt. La rocola baja el .txt y, si cambio la version, el .tsv.gz (sin llave).
+name: Catalogo de la rocola
+
+# SOLO A PEDIDO (como las demas compilaciones): Actions -> «Catalogo de la rocola» -> Run workflow, o cuando el dueno se lo pide a
+# Claude. Al cambiar ESTE archivo corre tambien, para que GitHub lo registre, pero entonces SOLO la prueba sin red (nada grande, nada
+# se publica).
+on:
+  workflow_dispatch:
+    inputs:
+      solo_cc0:
+        description: 'Sin las etiquetas de MusicBrainz (CC BY-NC-SA): todo el catalogo CC0'
+        type: boolean
+        default: false
+  push:
+    branches: [claude/modest-carson-fa2v2n]
+    paths: ['.github/workflows/rocola-catalogo.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rocola-catalogo
+  cancel-in-progress: false
+
+jobs:
+  prueba:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prueba sin red (copia inventada)
+        run: sh sistema/catalogo/prueba/prueba.sh
+
+  armar:
+    needs: prueba
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    env:
+      AGENTE: rocola-catalogo/1
+      SOLO_CC0: ${{ inputs.solo_cc0 && '--solo-cc0' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Disco libre y herramientas
+        run: |
+          df -h / "$RUNNER_TEMP"
+          # lo que no se usa aqui (unos 20 GB): asi caben las tablas (~6 GB) con holgura
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo apt-get update -q && sudo apt-get install -y -q lbzip2
+          df -h /
+          nproc; free -g
+      - name: La copia de MusicBrainz (la ultima)
+        id: copia
+        run: |
+          B=https://data.metabrainz.org/pub/musicbrainz/data/fullexport
+          D=$(curl -fsS -A "$AGENTE" "$B/LATEST" | tr -d ' \r\n')
+          echo "Copia: $D"
+          echo "url=$B/$D" >> "$GITHUB_OUTPUT"
+          curl -fsS -A "$AGENTE" "$B/$D/SHA256SUMS" -o SHA256SUMS
+          cat SHA256SUMS
+      - name: Esquema (orden de columnas contra CreateTables.sql de musicbrainz-server)
+        run: |
+          R=https://raw.githubusercontent.com/metabrainz/musicbrainz-server/master/admin/sql
+          if curl -fsS -A "$AGENTE" "$R/CreateTables.sql" -o CreateTables.sql && curl -fsS -A "$AGENTE" "$R/caa/CreateTables.sql" -o caa.sql; then
+            python3 sistema/catalogo/arma_catalogo.py esquema CreateTables.sql caa.sql
+          else
+            echo "::warning::No se pudo bajar CreateTables.sql: solo queda la comprobacion de columnas de cada fila"
+          fi
+      - name: Extraer mbdump.tar.bz2 (7 GB, una sola lectura)
+        run: |
+          set -o pipefail
+          extrae() {   # extrae ARCHIVO: baja, comprueba sha256 al vuelo y saca solo las tablas que se usan
+            t=$(date +%s)
+            curl -fsSL -A "$AGENTE" --retry 3 "${{ steps.copia.outputs.url }}/$1" \
+              | tee >(sha256sum | cut -d' ' -f1 > "$1.sha256") \
+              | lbzip2 -dc | python3 sistema/catalogo/arma_catalogo.py extrae --salida tablas $SOLO_CC0
+            sleep 2
+            grep -q "^$(cat "$1.sha256") \*$1\$" SHA256SUMS || { echo "::error::sha256 de $1 no coincide"; exit 1; }
+            echo "$1: $(( $(date +%s) - t )) s"; du -sh tablas; df -h / | tail -1
+          }
+          extrae mbdump.tar.bz2
+          ls -la tablas
+      - name: Extraer mbdump-derived.tar.bz2 (etiquetas, CC BY-NC-SA)
+        if: ${{ !inputs.solo_cc0 }}
+        run: |
+          set -o pipefail
+          t=$(date +%s)
+          curl -fsSL -A "$AGENTE" --retry 3 "${{ steps.copia.outputs.url }}/mbdump-derived.tar.bz2" \
+            | tee >(sha256sum | cut -d' ' -f1 > derived.sha256) \
+            | lbzip2 -dc | python3 sistema/catalogo/arma_catalogo.py extrae --salida tablas
+          sleep 2
+          grep -q "^$(cat derived.sha256) \*mbdump-derived.tar.bz2\$" SHA256SUMS || { echo "::error::sha256 de mbdump-derived"; exit 1; }
+          echo "derived: $(( $(date +%s) - t )) s"
+      - name: Extraer mbdump-cover-art-archive.tar.bz2 (que discos tienen portada)
+        run: |
+          set -o pipefail
+          t=$(date +%s)
+          curl -fsSL -A "$AGENTE" --retry 3 "${{ steps.copia.outputs.url }}/mbdump-cover-art-archive.tar.bz2" \
+            | tee >(sha256sum | cut -d' ' -f1 > caa.sha256) \
+            | lbzip2 -dc | python3 sistema/catalogo/arma_catalogo.py extrae --salida tablas
+          sleep 2
+          grep -q "^$(cat caa.sha256) \*mbdump-cover-art-archive.tar.bz2\$" SHA256SUMS || { echo "::error::sha256 del Cover Art Archive"; exit 1; }
+          echo "cover art: $(( $(date +%s) - t )) s"; ls -la tablas; du -sh tablas
+      - name: Armar (pregunta a Wikidata y ListenBrainz)
+        run: |
+          t=$(date +%s)
+          python3 sistema/catalogo/arma_catalogo.py arma --tablas tablas --cache cache --salida salida \
+            --muestra sistema/catalogo/muestra.txt --corrida ${{ github.run_number }} $SOLO_CC0
+          echo "armar: $(( $(date +%s) - t )) s"
+          cat salida/rocola_catalogo.txt
+          cat salida/rocola_catalogo_informe.txt
+      - name: Validar
+        run: python3 sistema/catalogo/arma_catalogo.py valida salida/rocola_catalogo.tsv.gz
+      - name: Guardar el informe y la cache (por si hay que revisar)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogo-${{ github.run_number }}
+          path: |
+            salida/rocola_catalogo.txt
+            salida/rocola_catalogo_informe.txt
+            cache/
+          retention-days: 14
+      - name: Publicar en la version «catalogo»
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(sed -n 's/^version=//p' salida/rocola_catalogo.txt)
+          A=$(sed -n 's/^artistas=//p' salida/rocola_catalogo.txt); D=$(sed -n 's/^discos=//p' salida/rocola_catalogo.txt)
+          printf 'Catalogo de la rocola %s: %s artistas, %s discos (sistema/catalogo/LEEME.md).\nCommit %s.\n' "$V" "$A" "$D" "$GITHUB_SHA" > notas.txt
+          if ! gh release view catalogo > /dev/null 2>&1; then
+            gh release create catalogo --target "$GITHUB_SHA" --title "Catalogo de la rocola" --notes-file notas.txt
+          fi
+          # primero el .tsv.gz y el informe; el .txt al final: la rocola solo mira el .tsv.gz cuando cambia la version del .txt
+          gh release upload catalogo salida/rocola_catalogo.tsv.gz salida/rocola_catalogo_informe.txt --clobber
+          gh release upload catalogo salida/rocola_catalogo.txt --clobber
+          gh release edit catalogo --notes-file notas.txt
