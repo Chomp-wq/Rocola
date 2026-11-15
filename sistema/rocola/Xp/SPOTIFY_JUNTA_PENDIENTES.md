@@ -7,6 +7,8 @@
    cobrar nada, sin letra ♫ ni resultados de Spotify».
 2. Borrar `RocolaOs/RocolaOs.SpotifyCatalogoDobleI6.cs` (el doble de I6 del grupo catalogo) y cambiar sus comprobaciones de «pedidas».
 3. **El buscador con Spotify como lo pidió el dueño el 7-11-2026** (AGENTS.md; lo funcional, sin dibujo nuevo):
+   **HECHO en la rama `paredes-buscador`** (`FASE11_paredes-buscador.md`; 116 de 116 en JIT y NativeAOT con la API falsa). Al elegir un
+   artista de Spotify se abre su pared (punto 4), no sus discos en la letra.
    - Un disco o lista de Spotify abierto desde el buscador que NO está en la pared: REGRESAR vuelve AL BUSCADOR con lo escrito y la
      misma elección (hoy el grupo catalogo vuelve a la pared, a la letra ♫). Si está en la pared, la pared se queda en él.
    - Artistas de Spotify: solo los que NO están en la rocola (ni por el nombre de un disco tuyo, sin acentos ni mayúsculas), hasta 3,
@@ -17,7 +19,8 @@
    - SP9, los atajos del buscador: «tus más escuchadas» (`/v1/me/top/tracks`) y «escuchado hace poco»
      (`/v1/me/player/recently-played`), una petición cada uno por sesión y en memoria; solo con `refresh_token` (si no, no salen).
    - El zoom desde la casilla es visual: a la presentación del final.
-4. **Las paredes del buscador** (decisión del dueño del 15-11-2026, AGENTS.md). Va en un grupo propio («paredes-buscador») encima de la
+4. **Las paredes del buscador** (decisión del dueño del 15-11-2026, AGENTS.md). **HECHO en la rama `paredes-buscador`** (`FASE11_paredes-buscador.md`, ganchos
+   g53-g56). Va en un grupo propio («paredes-buscador») encima de la
    rama `fase11-catalogo` en cuanto ese grupo termine (toca los mismos archivos), y se junta con la base si está a tiempo:
    - Pared del artista que solo está en Spotify: la rejilla de XP (18 por página, IZQ/DER, ARRIBA/ABAJO de página, PONER abre), fuera de
      la barra de letras; la cabecera dice su nombre. Casilla 1: «Canciones de ARTISTA» (`/v1/search?type=track&q=artist:"..."`, hasta
