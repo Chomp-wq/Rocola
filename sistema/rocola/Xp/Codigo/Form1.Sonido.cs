@@ -1293,7 +1293,7 @@ namespace Rocola
             // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
             // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
             // De una cancion retomada a medias no se aprende nada: seria la medida de un trozo.
-            bool entera = saltadoSeg <= 0 && !iaMejorada;
+            bool entera = saltadoSeg <= 0 && !iaMejorada && RocolaOsSpotifyAprende(t.Path);   // ROCOLA OS g23: (XP) bool entera = saltadoSeg <= 0 && !iaMejorada; — de una de Spotify no se aprende ni su sonoridad ni su EQ: suena como una sin medir (R7; RocolaOs/RocolaOs.SpotifyPide.cs); sin Rocola OS o con una de XP, true
             c.MedidaRuta = (entera && normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
             c.EqRuta = (entera && EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
             // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
@@ -1453,7 +1453,7 @@ namespace Rocola
         // sanos y, en el peor caso, hace lo mismo que antes: saltar.
         private IAudioSource OpenAudio(string path)
         {
-            string original = RutaOriginalDe(path);
+            { IAudioSource rocolaOsSpotify = RocolaOsSpotifyAbre(path); if (rocolaOsSpotify != null) return rocolaOsSpotify; } string original = RutaOriginalDe(path);   // ROCOLA OS g13: (XP) string original = RutaOriginalDe(path); — con el modo Spotify (spotify=1), una ruta «spotify:track:» se abre con la fuente de Spotify, que lee el anillo de Soloist (RocolaOs/RocolaOs.SpotifyFuente.cs); apagado, null y lo de XP
             FuenteMedida inicio = CapturaFuente(original);
             try { return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, ComoEstereo(new FileAudioSource(path))))); }   // sin el hueco del codificador ni los silencios largos
             catch

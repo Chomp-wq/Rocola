@@ -2875,7 +2875,7 @@ namespace Rocola
         // Registra una reproduccion pedida (algo que entro a la cola con exito).
         private void RecordPlay(PlayItem it)
         {
-            if (it == null) return;
+            if (it == null || RocolaOsSpotifyNoCuenta(it)) return;   // ROCOLA OS g20: (XP) if (it == null) return; — lo de Spotify no cuenta para lo mas sonado ni las estadisticas (regla del 6-11-2026; RocolaOs/RocolaOs.SpotifyPide.cs); apagado, false
             statsTotal++;
             if (it.IsVideo)
             {
