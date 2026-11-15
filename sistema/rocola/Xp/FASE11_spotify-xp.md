@@ -39,8 +39,11 @@ rama: `PULSO=` y `VIGILANTE=`).
 4. **La primera lectura** (hilo del sonido, sin esperar): tira lo viejo del anillo, crea su petición y la deja marcada. El hilo «spotify»
    (en menos de 50 ms) manda, si hace falta, `activate`; siempre `set_shuffle false`, `set_repeat_track false` y `set_repeat_context false`
    (en ese orden: el de la documentación para «off»); apunta dónde va el anillo (`EscritoAlPedir`) y manda `play` con su uri.
-5. **Lo que llega al anillo después de `EscritoAlPedir` es suyo**: se copia; lo que falta, silencio (la red que tarda). Ritmo: la tarjeta de
-   la rocola (el escritor solo escribe lo que falta para su objetivo, ~250 ms).
+5. **Nada se oye hasta que Soloist dice que toca la suya** (su uri en «playing» o «buffering»: la fase «Suena»; revisión): lo que llegue antes
+   se queda en el anillo sin perderse (solo se saltan los vaciados). Desde ahí, **lo que llega después de `EscritoAlPedir` es suyo**: se
+   copia; lo que falta, silencio (la red que tarda). Si en la espera Soloist tocó otra cosa (un celular, lo de antes que aún no paraba), el
+   ancla pasa a donde va el anillo al empezar la suya y eso no se oye. Ritmo: la tarjeta de la rocola (el escritor solo escribe lo que falta
+   para su objetivo, ~250 ms).
 6. **Acaba** (R4) al llegar a su **frontera** o a su **duración**, lo primero:
    - la frontera la pone el hilo «spotify» al ver que Soloist pasó a otra (`track_changed`), se paró (`paused`/`idle` sin que la rocola lo
      pidiera), dejó de ser la bocina activa, perdió la sesión, el WebSocket se cayó más de 10 s o el anillo no creció en 5 s estando en
@@ -60,7 +63,7 @@ rama: `PULSO=` y `VIGILANTE=`).
 |---|---|
 | R1 apagado de fábrica | La función «spotify» con `DeFabrica = false`: sin `spotify=1` en `rocola_os.txt` (o sin «spotify» en la lista) no se arranca nada (ni hilos, ni vigilante, ni archivos); los ganchos devuelven lo de XP (`RocolaOsSpotifyAbre` → null, `RocolaOsSpotifyNoCuenta` → false, `RocolaOsSpotifyAprende` → true para toda ruta que no empiece por «spotify:»). La orden «spotify encender» es del grupo soloist; vale desde el siguiente arranque (como toda función del andamio) |
 | R2 la bocina y activate | Al entrar la sesión y cuando deja de ser la activa (`device_changed`, `auth_state`, `playback_state`): `activate`, como mucho cada 5 s; antes de cada `play`, si no es la activa, `activate` |
-| R3 se pide en la rocola; lo no pedido se pausa | Solo `RocolaOsSpotifyPide` mete canciones; todo lo que suene en Soloist sin una petición viva de la rocola (un celular, autoplay, radio, su cola) se pausa al momento (como mucho una pausa por segundo; 8 s de gracia mientras Soloist cambia a la pedida) y se apunta «NO PEDIDO»; no se cobra nada. Tras cada canción, `pause`. Shuffle y repeat, apagados al entrar, antes de cada play y si alguien los enciende |
+| R3 se pide en la rocola; lo no pedido se pausa | Solo `RocolaOsSpotifyPide` mete canciones; todo lo que suene en Soloist sin una petición viva de la rocola (un celular, autoplay, radio, su cola) se pausa al momento (como mucho una pausa por segundo; mientras Soloist cambia a la pedida, hasta 8 s de gracia SOLO para lo que ya tocaba al mandar `play`; si en esa espera empieza otra cosa, se le pide otra vez la suya, una vez, y si no, pausa: revisión) y se apunta «NO PEDIDO»; no se cobra nada; y nada de eso se oye (la fuente solo lee con la suya sonando). Tras cada canción, `pause`. Shuffle y repeat, apagados al entrar, antes de cada play y si alguien los enciende |
 | R4 cuándo acaba y cuándo se devuelve | Arriba (6 y 8) |
 | R5 lo pagado que no sonó vuelve | Tras un apagón, y tras un cierre que conserva el estado (SIGUSR1): las de Spotify van en `rocola_estado.txt` («sonando=S|spotify:...», «cola=S|spotify:...»), `RestoreState` de XP no las encuentra en `albums` y suma su crédito (`Form1.Datos.cs` 2826-2840). Con el apagado (SIGTERM, Alt+F4) XP borra el estado entero, también los créditos: es la regla del 8-11-2026 y vale igual para lo de Spotify. Apagar el modo vale desde el siguiente arranque: lo de la cola vuelve por `RestoreState` |
 | R6 no cuenta | Gancho **g20** (`RecordPlay`): ni lo más sonado, ni el artista, ni TOP, ni `rocola_stats.txt`, ni lo más pedido esta noche. `Genre` vacío: `PlayNext` no apunta género |
@@ -227,6 +230,12 @@ modo apagado devuelven lo de XP), y las 17 escenas comparadas (con la pared, el 
     `writable_size` 0 y Soloist espera. Que Soloist no se queje ni se desconecte por eso (su bitácora, `rocola_soloist.txt`) y que la
     siguiente empiece bien.
 11. El cierre (botón de encendido): `rocola_spotify.txt` dice «se cierra (WindowsShutDown) ... en total N ms» con N pequeño, y Soloist sale.
+12. (revisión) Que Soloist diga en `track_changed` la MISMA uri que se le pidió. Si cambiara una canción por su equivalente de otro país
+    (el «relinking» de Spotify) diría otra uri: la rocola la tomaría por no pedida, la pediría otra vez y, si sigue igual, la pausaría y
+    devolvería el crédito a los 15 s (nunca suena algo que no sea la pedida). Si pasa, la bitácora dice «NO PEDIDO: mientras se esperaba
+    spotify:track:...» con la otra uri: el catálogo tendría que buscar con el mercado del dueño (`market`).
+13. (revisión) Qué escribe Soloist en `ws.addr` (la documentación no lo dice): la rocola se conecta siempre a `127.0.0.1` con `ws.port`, y si
+    `ws.addr` dice otra cosa lo apunta una vez en `rocola_spotify.txt` («ws.addr dice ...»).
 
 ## Riesgos
 
@@ -237,3 +246,60 @@ modo apagado devuelven lo de XP), y las 17 escenas comparadas (con la pared, el 
 - **El candado de lo pesado**: los servidores de compilación de .NET (VBCSCompiler) heredan el descriptor del candado y lo retienen hasta
   10 min sin hacer nada; aquí se compiló siempre con `--disable-build-servers -p:UseSharedCompilation=false` para no hacerlo.
 - **La función de prueba va dentro del programa** (`RocolaOs.SpotifyPrueba.cs`, como la del andamio): solo con `ROCOLA_OS=...,spotify-prueba`.
+
+## Revisión (xp-intacto-y-reglas)
+
+Revisor independiente, 15-11-2026, sobre 67a25f8 (la base fase11-andamio b75c4a8 sigue igual y no hay fase11-junta0: nada que juntar).
+Enfoque: con el modo apagado (y sin `ROCOLA_OS`) todo sale como XP, y con el modo encendido R1-R9 e I6 al pie de la letra.
+
+**Lo que se comprobó y está bien.** Los cuatro ganchos, leídos contra el código de hoy: apagados devuelven exactamente lo de XP y sin
+efectos (`RocolaOs.Activo` primero; con `ROCOLA_OS=1` y `spotify=0` solo cambia algo para rutas «spotify:», que XP no puede tener); una
+línea cambiada en su sitio, con su marca y su final de línea (CRLF en Form1.Datos.cs y Form1.Sonido.cs, LF en VolumenParejo.cs, como
+estaban). `ganchos.py`: TODO BIEN (13 ganchos en 7 archivos, Codigo/ vuelve byte a byte a fc7b667); `diff-xp.py --sin-ganchos` en los 109:
+5095 quitadas, 4828 puestas, 229 sin marca (lo de la base). El pedir va por `AddItem` de XP (dañada, sin créditos con la sacudida, «ya va
+seguida», turno, `RecordPlay` -que g20 calla-, cobro, `PlayNext`) con los avisos de `AddSong` y `ChooseSearchResult` copiados letra por
+letra; la devolución por `RefundCredit` con el aviso de XP; tras un apagón `RestoreState` no encuentra la «spotify:» en `albums`,
+`RaizConfiguradaAusente` da null y suma su crédito (R5); la apertura por adelantado nunca abre una «spotify:» (`MiraPorDelante.Pide`: la
+firma es null), así que g19 no hace falta; `EnsureTags` no toca el título (sin extensión .mp3).
+
+**Lo que estaba mal y se arregló** (commit «Spotify (spotify-xp, revision): ...»):
+
+1. **R3, GRAVE: lo que ponía un celular mientras la pedida esperaba SONABA, y la pedida no.** Con `play` mandado y Soloist aún sin tocar la
+   pedida, `NoPedido` dejaba pasar CUALQUIER cosa 8 s, y la fuente oía todo lo que llegaba al anillo desde el `play`. Reproducido con la
+   escena nueva «carrera» (Soloist que tarda 3 s en empezar y un celular a 1 s del `play`) contra el programa de antes: **el celular se oyó
+   6,00 s, la pedida 0,00 s y el crédito NO se devolvió** (el vaciado de Soloist al empezar la pedida, ya con «sonido», la acabó ahí).
+   Ahora: la fuente no lee nada hasta la fase «Suena» (Soloist dice que toca SU uri; lo de antes se queda en el anillo sin perderse); si en
+   la espera Soloist tocó otra cosa, el ancla pasa a donde va el anillo al empezar la suya; y en la espera solo tiene gracia (8 s) lo que ya
+   tocaba al mandar `play`: otra cosa es «NO PEDIDO» al momento y se le pide otra vez la suya (una vez; si vuelve a pasar, pausa y, a los
+   15 s, el crédito). Con el arreglo: celular 0,00 s, la pedida 8,00 s entera, 1 cobrada y 0 devueltas, también por rocola-pulso.
+2. **I2: la conexión usaba `ws.addr:ws.port`.** La documentación de Soloist no dice si `ws.addr` trae solo la dirección; si trae
+   «127.0.0.1:PUERTO», la uri salía mal y la rocola no se conectaba NUNCA. Ahora siempre `ws://127.0.0.1:PUERTO` (lo que dice I2); un
+   `ws.addr` distinto solo se apunta una vez.
+3. **El LEEME de rocola-pulso** (su revisión 94ad648/896bc5d, «Lo que el LECTOR tiene que hacer», paso 4) pide saltar los vaciados también
+   sin consumir; la fuente lo hace ahora mientras espera (`SaltaVaciado`). Lo demás de esa lista ya se cumplía o no hace daño: consumir con
+   `tapado=1` (paso 3) se dejó como estaba (lo pendiente hasta la frontera es el final de la suya; en `flujo.c` de rocola-pulso, `started`
+   solo cuenta destapado y destapar vuelve a marcar desde lo consumido).
+
+**Comprobaciones repetidas (con el candado de lo pesado):**
+
+| Qué | Resultado |
+|---|---|
+| `dotnet build -c Release --no-incremental` | 0 errores, 13 avisos: los mismos 13 de `avisos-base.txt` (archivo, línea y código) |
+| NativeAOT (`dotnet publish -p:PublishAot=true -r linux-x64`) | salida 0, 0 avisos IL/AOT |
+| `prueba.sh`, JIT, las 10 escenas (con «carrera») | **92 de 92** BIEN; y «pulso» con el libpulse.so.0 de la rama de hoy de rocola-pulso (896bc5d): **9 de 9** (con «pulso-carrera») |
+| `prueba.sh`, NativeAOT, las 10 escenas | **95 de 95** BIEN (con «pulso-carrera»; vigilante: el rocola-soloist de fase11-soloist 0cd4314) |
+| «carrera» contra el programa de antes (67a25f8, JIT) | **3 MAL de 6**: celular 6,00 s, pedida 0,00 s (la escena sí atrapa el fallo) |
+| `ganchos.py` / `diff-xp.py --sin-ganchos` | TODO BIEN / 5095, 4828, 229 (lo de la base) |
+| Nivel 0 (sin `ROCOLA_OS`, alternadas con la referencia; `nivel0.sh` de fase11-nivel0 00ae545, programa e78b6aa) | JIT arranque, moneda, kill9, buscador IGUALES y sigterm ACEPTADA (el estado se borra); NativeAOT arranque, kill9, buscador IGUALES: **8 BIEN, 1 ACEPTADO, 0 MAL** |
+| Nivel 1 (`NIVEL=1`, `ROCOLA_OS=1`, spotify apagada de fábrica, sin red) | JIT arranque, moneda, buscador IGUALES y sigterm ACEPTADA; NativeAOT arranque y buscador IGUALES: **6 BIEN, 1 ACEPTADO, 0 MAL** |
+
+**Lo que queda (no se arregla aquí; para la junta o el A4):**
+
+- Un celular A MEDIA canción de la rocola: lo que Soloist escriba de la otra entre su cambio y que la rocola vea el `track_changed`
+  (milisegundos) se oye, salvo que Soloist vacíe el flujo al cambiar (el falso lo hace y no se oye nada: 0,00 s). La escena acepta hasta
+  0,2 s. Solo se sabe en el A4.
+- Con Soloist caído o sin sesión, cada una de Spotify que llegue a su turno espera 15 s en silencio antes de devolverse (R4 al pie de la
+  letra; R9 se cumple, pero tres seguidas son 45 s sin música). Se podría acortar a 10 s con el WebSocket caído; no se hizo sin decidirlo.
+- Si el escritor rehace el anillo (otro inodo) a media canción, la de Spotify que suena se corta (los contadores del anillo nuevo empiezan
+  en 0). Es raro (solo si el anillo deja de valer).
+- `RocolaOs.SpotifyPrueba.cs` sigue dentro del programa (solo con `ROCOLA_OS=...,spotify-prueba`): lo decide la junta.
