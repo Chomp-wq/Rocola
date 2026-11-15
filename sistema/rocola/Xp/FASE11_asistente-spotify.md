@@ -100,7 +100,7 @@ grupos (carga de 7 a 11 en 4 núcleos).
 | `diff-xp.py --sin-ganchos` (109 archivos) | **5 095 / 4 828 / 229**, las de la base; 47 ganchos devueltos en 17 archivos |
 | `Pruebas/RocolaOs/asistente/prueba.sh` (9 escenas) | **JIT 26 de 26** y **AOT 26 de 26** (abajo) |
 | Arnés `VistasAsistente` (la copia contra la referencia congelada, con `RocolaOs/` compilado) | **IGUALES** con las letras falsas y con DejaVu: 2 043 líneas, 777 llamadas directas a la traducida |
-| Nivel 0 (`nivel0.sh`, sin `ROCOLA_OS`, contra la referencia) | VER_NIVEL0 |
+| Nivel 0 (`nivel0.sh`, sin `ROCOLA_OS`, contra la referencia congelada; pasos previo, codigo, ganchos, escenas y aot con el programa ya compilado y publicado; las escenas que pasan por el asistente y la fila de arriba) | `Codigo/` 109 de 109 con sus líneas, CRLF y último byte; ganchos.py y diff-xp.py como arriba; **JIT: arranque, asistente, buscador, video (a la segunda: la primera, el volcado del estado en otro sitio por la hora), captura y moneda IGUALES**; **AOT: arranque y buscador IGUALES**; la escena asistente en AOT (no es de las 7 de AOT del nivel 0: se añadió aquí) dio «solo cuentas» en las dos primeras corridas (con su repetición), **en los dos sentidos** (el reloj `Form1.cs:724`: 342 frente a 303 y 259 frente a 353; 282 frente a 354 y 12 frente a 21 en el primer segundo; el encargo `MedidasBitacora.cs:129` igual), con la carga a 9-10 en 4 núcleos, y en la tercera **IGUAL a la segunda** (la primera, 8 frente a 17 en el primer segundo): el ruido de la máquina cargada, no una diferencia de la secuencia. El resumen de la primera corrida, «13 BIEN, 1 MAL», es por esa escena |
 
 Las escenas de `asistente/prueba.sh` (las teclas con `ROCOLA_PULSA`; la ayuda con ROJO mantenido 1 s y ABAJO a los 0,3 s):
 
