@@ -23,7 +23,8 @@
 //       sinsesion     pierde la sesion
 //       sesion        vuelve la sesion
 //       corta         deja de mandar sonido (la red) aunque sigue «playing»
-//       sigue         vuelve a mandar
+//       atasca        deja de mandar sonido y pasa a «buffering» (la red que se cae: el nucleo no lo da por cortado hasta 30 s)
+//       sigue         vuelve a mandar (y de «buffering» a «playing»)
 //       cae           se cae (sale con 1, sin borrar ws.port: como un fallo de verdad)
 //       cierraws      cierra las conexiones WebSocket (y sigue)
 //       cola:URI      alguien anade URI a la cola de Spotify (queue_changed)
@@ -404,7 +405,8 @@ static unsafe class SoloistFalso
                 case "sinsesion": lock (cerrojo) { sesion = false; status = "idle"; } Manda(Auth()); break;
                 case "sesion": lock (cerrojo) sesion = true; Manda(Auth()); Manda(Estado()); break;
                 case "corta": lock (cerrojo) cortado = true; break;
-                case "sigue": lock (cerrojo) cortado = false; break;
+                case "sigue": { bool ab; lock (cerrojo) { cortado = false; ab = status == "buffering"; if (ab) status = "playing"; } if (ab) Manda("{\"type\":\"playback_changed\",\"status\":\"playing\"}"); } break;
+                case "atasca": lock (cerrojo) { cortado = true; if (status == "playing") status = "buffering"; } Manda("{\"type\":\"playback_changed\",\"status\":\"buffering\"}"); break;
                 case "cola": lock (cerrojo) colaSpotify.Add(arg); Manda("{\"type\":\"queue_changed\",\"previous\":[],\"upcoming\":[{\"uid\":\"" + arg + "\",\"source\":\"queue\",\"item\":" + Entidad(arg) + "}]}"); break;
                 case "cierraws":
                     { Cliente[] cs; lock (clientes) cs = clientes.ToArray(); foreach (Cliente c in cs) try { c.Ws.Abort(); } catch { } }

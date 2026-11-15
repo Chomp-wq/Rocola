@@ -190,6 +190,51 @@ Resultados (programa de esta rama):
 6. Contar en `/run/rocola-xp/spotify/calidad` y en `/run/rocola-xp/spotify/catalogo` las peticiones tras una noche de uso (`peticiones=`).
 7. Lo del relinking (FASE11_spotify-xp.md, A4 12): si Soloist toca otra uri, la de la sustitución no empieza y a los 6 s suena tu MP3.
 
+## Revisión (sonido-cuota-y-fallos)
+
+15-11-2026, revisor independiente (enfoque: el paso MP3 ↔ Spotify, la cuota, la tabla de parejas, los hilos y NativeAOT). Comprobado en el
+código y corriendo las escenas, no en el informe. Lo que estaba mal y se arregló (solo `RocolaOs/RocolaOs.Calidad.cs`,
+`RocolaOs.CalidadFuente.cs`, el Soloist falso y la prueba; **ningún gancho nuevo**, `Codigo/` sin tocar):
+
+| # | Qué pasaba | Arreglo | Escena |
+|---|---|---|---|
+| R1 | **La cuota, en bucle**: cuando la búsqueda no llegaba (sin red, 5xx, 4xx, la llave mala) se quitaba la canción de `Vistas` y el latido la mandaba otra vez al segundo siguiente: con la API en 503, dos peticiones cada ~3 s **por cada mala de la cola mientras estuviera en la cola o sonando**; con un 403/400, para siempre. Sin sesión, sin llave o frenando (429): un renglón en la bitácora y la cabecera del MP3 leída **cada segundo** | `Vistas` guarda desde cuándo se puede volver a mirar: 1 min sin sesión de Soloist, 5 min sin red / 5xx / 429, 30 min con un 4xx, la llave mala o sin la llave. Un renglón por vez | `caida` (nueva), `frena` y `sinllave` (un renglón por canción) |
+| R2 | **Una vuelta al MP3 «desde donde iba» dejaba la marca puesta** (`NoSustituir` solo se quitaba si no había retomada): g60 daba la ruta del MP3 y esa canción **ya no se sustituía en toda la sesión** (con un solo fallo, no dos) | La marca se quita antes de mirar `reanudarEn` | `atasca` (la segunda vez, otra vez desde Spotify) |
+| R3 | **Spotify atascado en «buffering» a media canción**: el núcleo solo lo da por cortado con Soloist en «playing» (5 s) o sin WebSocket (10 s); en «buffering» (lo que hace al quedarse sin red) esperaba **30 s de silencio** (`SeguridadMs`) antes de volver a tu MP3 | La fuente de la sustitución cuenta lo entregado sin que llegue nada: **5 s** ya sonando → tu MP3 desde donde iba. Contado en cuadros entregados, no en el reloj. A 5 s o menos del final de la de Spotify se da por acabada (sigue la siguiente) | `atasca` (nueva: el Soloist falso gana el evento `atasca`) |
+| R4 | **La apertura por delante**: `RocolaOsCalidadAbre` creaba la fuente de Spotify también cuando el calentador abría el MP3 de la **siguiente** (si la pareja llegaba entre g60 y esa apertura): el relevo sin pausa se la podía llevar y el hilo de la forma leía el MP3 entero para nada | Solo se sustituye la que le toca sonar (`nowPlaying` con esa ruta: PlayNext y la vuelta al MP3 lo ponen antes de abrir) | `seguida` |
+| R5 | **El disco que sigue sin pausa**: XP encadena la pista siguiente del mismo disco en la misma lectura (`SiguienteDelDisco`: sin fundidos). Una sustituida entra por PlayNext (la salida se cierra y se abre, y Soloist tarda en empezar): en un disco en vivo o una mezcla, un **corte** que XP no tiene | Si la frontera es **continua** (la que suena acaba con música —`FinUtil` del algoritmo 6 a 1 s o menos del final— y la siguiente no empieza con silencio), g60 da la ruta del MP3 y suena tu MP3 por el relevo de XP. Entre pistas con su silencio (lo normal en estudio) o sin la medida, se sustituye como antes. **Decisión del revisor**: el dueño puede preferir la calidad también ahí (una línea: `RocolaOsCalidadEmpalma`) | `seguida` (nueva: 0,00 s de hueco; el vals con pareja suena de su MP3) |
+| R6 | **La tabla crecía sin tope** (y se reescribe entera en cada cambio) | Al leerla se quitan los «sin pareja» de más de 30 días (se volverían a preguntar igual) y, pasadas 20 000, las más viejas («sin pareja» primero); si quitó algo, se guarda una vez | (no hay escena: se ve en la bitácora «renglones viejos fuera») |
+
+Lo que se miró y **está bien** (sin cambios): la cola de una petición del catálogo con prioridad baja, 429 (no pregunta mientras frena),
+401 (una llave nueva y otra vez, la de siempre del catálogo); `EscribeSeguro` (temporal, fsync, cambio de nombre y `.bak`) y la lectura con
+`LeeLineasSeguro` (cae al `.bak`): un apagón no deja la tabla a medias; solo el hilo «calidad_spotify» la escribe. En la pantalla no hay ni red
+ni disco: el latido, g60, g61, g62 y la vuelta al MP3 solo miran tablas en memoria (`eqCache`, `integCache`, `durCache`, la tabla de parejas) y
+la bitácora no espera al disco; `FileInfo`, la cabecera, la red y la forma van en el hilo que abre, en el de la función y en el de la forma
+(nice 19). `reader.Volume` es siempre 1 (`FixedVolume`), así que V1 mide lo que llega de Spotify sin el nivelado. El modo noche va en la cadena
+(`LevelTap.Master`) y le toca igual a la sustituida y a la vuelta al MP3. La fuente no espera ni toma cerrojos al leer; lo único que reserva es en
+lo que pasa una vez por canción (al acabar o al volver al MP3). Peticiones por canción pedida: 1 o 2 (y, con 5xx, cada una con su reintento: hasta 4).
+
+**Lo que sigue abierto** (no arreglado): lo de §8; si una canción va dos veces seguidas en la cola y la primera vuelve al MP3, el calentador
+de la segunda podría quitarle la marca a la primera (sonaría otra vez desde Spotify y, si falla, otra vez al MP3: un fallo más; caso raro);
+si la siguiente empieza con silencio pero aún no estaba medida cuando el calentador la abrió, suena tu MP3 (como XP, con su hueco).
+
+Pruebas de esta revisión (rocola-xp de esta rama con lo del otro revisor que estaba en la copia de trabajo; Soloist falso, API falsa, tarjeta
+con reloj; nunca el Soloist de verdad):
+
+| Qué | Resultado |
+|---|---|
+| `dotnet build -c Release --no-incremental` (JIT) | 0 errores, **13 avisos**, los de siempre (ninguno en `RocolaOs/`) |
+| `dotnet publish -p:PublishAot=true -r linux-x64` | sale con 0, **0 avisos IL/AOT** |
+| `sustitucion/prueba.sh`, JIT, las 14 escenas | **85 de 85** (las 70 de antes más 15: `caida` 4, `atasca` 6, `seguida` 4 y una en `frena`; `sinllave` cuenta un renglón) |
+| `sustitucion/prueba.sh`, NativeAOT, las 14 escenas | **85 de 85** |
+| `caida`, `atasca`, `seguida` con el programa de la base (222fe30, compilado aparte) | **9 MAL de 14**: `caida` **52 peticiones** a `/v1` en 51 s (con el arreglo, 2) y un renglón cada vez; `atasca` 13,8 s de silencio sin volver al MP3 (hasta que el falso volvió a mandar; sin eso, 30 s), con el arreglo 3,8 s y tu MP3 desde los 12,1 s; `seguida` el vals desde Spotify con hueco, con el arreglo de su MP3 con 0,00 s de hueco |
+| Peticiones por escena (JIT) | `isrc` 1, `titulo` 1, `sinpareja` 2 (+0 la sesión siguiente), `nx` 1, `corte` 1, `forma` 1, `frena` 1, `caida` 2, `atasca` 1, `seguida` 1, `apagado`/`sinllave`/`sinsesion` 0 |
+| `ganchos.py` | TODO BIEN (`Codigo/` sin cambios de esta revisión) |
+
+**No se puede probar aquí**: el Soloist de verdad (nunca se ejecutó: ¿pasa a «buffering» sin red, como el falso?; ¿cuánto colchón trae?), la API de
+verdad con la cuenta del dueño (qué 4xx da el modo desarrollo), el A4 (que 5 s de atasco no salten con la red lenta del bar: si salta mucho,
+subir `AtascoMs`), y discos en vivo de verdad para `seguida` (que `FinUtil` del repaso los reconozca).
+
 ## Revisión (invisible-y-reglas)
 
 15-11-2026, revisor independiente (enfoque: que de verdad no se note nada —pantalla, avisos, estado, lo más sonado, estadísticas, el crédito,

@@ -8,6 +8,10 @@
 //     cancion). Si ya no le toca (se salto), solo acaba.
 //   - LO QUE DURA (lo que ve XP): 0 hasta la primera lectura (asi ArmaCadena no le pone fundido de salida: la de Spotify trae su final); mientras
 //     espera, lo que dura tu MP3 (la barra no salta y el relevo sin pausa no se prepara antes de tiempo); sonando, lo que dice la de Spotify.
+//   - EL ATASCO (revision «sonido-cuota-y-fallos»): ya sonando, 5 s seguidos entregados sin que llegue nada de Soloist (la red que se cae a
+//     media cancion) es un fallo y vuelve tu MP3 desde donde iba. El nucleo solo lo ve con Soloist en «playing» (5 s) o sin WebSocket (10
+//     s); con Soloist en «buffering» (lo que hace al quedarse sin red) esperaba 30 s de silencio (SeguridadMs). Se cuenta en lo entregado, no
+//     en el reloj: si la salida no lee, no cuenta. A 5 s o menos de lo que dura en Spotify, se da por acabada (sigue la siguiente).
 //   - V1: lo que llega de Spotify (antes de la cadena) pasa por el medidor del repaso (MedidorBs1770) si la pareja aun no tiene medida.
 //   - C: su volumen por tramos de 0,5 s, para compararlo con la forma de tu MP3 (que mide otro hilo) la primera vez.
 using System;
@@ -29,8 +33,9 @@ namespace Rocola
             private readonly MedidorBs1770 medidor;     // V1 (null si la pareja ya esta medida)
             private readonly double[] e; private readonly long[] n; private readonly long porTramo;   // C
             private readonly RocolaOsCalidad.Forma forma;   // la de tu MP3 (null si la forma ya se decidio)
+            internal const int AtascoMs = 5000;
             private int estado;
-            private long t0 = -1, sonidoAntes;
+            private long t0 = -1, sonidoAntes, sinLlegar;   // sinLlegar: cuadros entregados en silencio desde lo ultimo que llego (ya sonando)
             private volatile bool abandona;
             private int resultado;                      // (1: ya se mando el resultado)
 
@@ -82,12 +87,26 @@ namespace Rocola
                 int r = sp.Read(buf, off, count);
                 long s = sp.CuadrosSonido;
                 int nuevos = (int)Math.Max(0, Math.Min(r / 2, s - sonidoAntes));
-                if (nuevos > 0) { Mide(buf, off, nuevos); sonidoAntes += nuevos; if (estado == Esperando) estado = Sonando; }
+                if (nuevos > 0) { Mide(buf, off, nuevos); sonidoAntes += nuevos; sinLlegar = 0; if (estado == Esperando) estado = Sonando; }
+                else if (estado == Sonando) sinLlegar += Math.Max(0, r / 2);
                 if (sp.Terminada)
                 {
                     if (sp.FinMotivo == RocolaOsSpotifyPeticion.Termino) { estado = Acabo; Resultado(true); return r; }
                     Vuelve(s / (double)hz, RocolaOsSpotifyPeticion.Motivos[Math.Max(0, Math.Min(RocolaOsSpotifyPeticion.Motivos.Length - 1, sp.FinMotivo))]);
                     if (r < count) Array.Clear(buf, off + r, count - r);
+                    return count;
+                }
+                if (estado == Sonando && sinLlegar > (long)hz * AtascoMs / 1000)
+                {
+                    sp.Dispose();   // (Cortada, sin devolver: el nucleo la remata con su pausa)
+                    if (CercaDelFinal())
+                    {   // a 5 s o menos de su final: se da por acabada (XP sigue con la siguiente), sin volver al MP3 por unos segundos
+                        estado = Acabo; Resultado(false);
+                        RocolaOsCalidad.Apunta("la de Spotify de " + System.IO.Path.GetFileName(Ruta) + " se atasco a menos de 5 s del final: se da por acabada");
+                        return 0;
+                    }
+                    Vuelve(sonidoAntes / (double)hz, "Spotify se atasco " + (AtascoMs / 1000).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s a media cancion");
+                    Array.Clear(buf, off, count);
                     return count;
                 }
                 if (s == 0 && ahora - t0 > RocolaOsCalidad.EsperaMs)
@@ -98,6 +117,11 @@ namespace Rocola
                     return count;
                 }
                 return r;
+            }
+            private bool CercaDelFinal()
+            {
+                int ms = Par.DurSpMs > 0 ? Par.DurSpMs : Par.DurMp3Ms;
+                return ms > 0 && sonidoAntes * 1000.0 / hz >= ms - 5000;
             }
             // lo que llego de Spotify (al principio del bloque: la fuente del nucleo pone su sonido primero y el silencio despues)
             private void Mide(float[] buf, int off, int cuadros)

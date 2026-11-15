@@ -48,6 +48,13 @@ namespace Rocola
         internal const long OlvidaSinParejaSeg = 30L * 24 * 3600;   // «sin pareja»: no se vuelve a preguntar en 30 dias
         internal const int EsperaMs = 6000;                          // Spotify tiene 6 s para empezar a sonar; si no, tu MP3
         internal const int FallosSesion = 2;                         // dos veces sin sonar en la sesion: esa pareja, ya no en esta sesion
+        // (revision «sonido-cuota-y-fallos») LO QUE NO SE PUDO PREGUNTAR se vuelve a mirar, si sigue en la cola, solo despues de esperar: antes se
+        // quitaba de Vistas y el latido la mandaba otra vez al segundo siguiente, asi que sin red o con la API en 5xx salian dos peticiones cada
+        // ~3 s por cada cancion mala de la cola (y con 403/400, para siempre), y sin sesion, sin llave o frenando, un renglon de bitacora y la
+        // cabecera del MP3 leida cada segundo
+        internal const int ReintentoSesionMs = 60000;                // Soloist aun sin sesion (al arrancar tarda unos segundos)
+        internal const int ReintentoPasajeroMs = 300000;             // sin red, 5xx, frenando (429)
+        internal const int ReintentoOtroMs = 1800000;                // un 4xx, la llave mala, sin la llave de la API
 
         // UNA PAREJA (un renglon de rocola_spotify_pares.txt). Inmutable: al cambiar se pone otra (la leen otros hilos sin cerrojo).
         internal sealed class Pareja
@@ -68,7 +75,10 @@ namespace Rocola
         private static int encendida;
         // LA FUNCION VA en esta sesion: encendida, con el nucleo de Spotify encendido y la tabla leida
         internal static bool Va { get { return Volatile.Read(ref encendida) != 0 && cargada && RocolaOsSpotify.Encendido; } }
-        internal static readonly ConcurrentDictionary<string, long> Vistas = new ConcurrentDictionary<string, long>(StringComparer.Ordinal);    // (las mira el latido una vez por sesion)
+        // (las mira el latido una vez por sesion) 0: ya mirada; si no, el Environment.TickCount64 desde el que se puede volver a mirar
+        internal static readonly ConcurrentDictionary<string, long> Vistas = new ConcurrentDictionary<string, long>(StringComparer.Ordinal);
+        internal static void Reintenta(string ruta, int ms) { Vistas[ruta] = Environment.TickCount64 + ms; }
+        private static string Min(int ms) { return (ms / 60000).ToString(CultureInfo.InvariantCulture) + " min"; }
         internal static readonly ConcurrentDictionary<string, byte> NoSustituir = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal); // una vez tu MP3 (volvio de Spotify)
         private static readonly ConcurrentDictionary<string, byte> pendientes = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
         internal static readonly ConcurrentDictionary<string, int> Fallos = new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
@@ -105,7 +115,8 @@ namespace Rocola
         private static readonly List<Resultado> esperandoForma = new List<Resultado>();
         private static void Corre()
         {
-            Carga();
+            int quitadas = Carga();
+            if (quitadas > 0) { Guarda(); Apunta(quitadas.ToString(CultureInfo.InvariantCulture) + " renglones viejos fuera de " + Archivo + " («sin pareja» de hace mas de 30 dias, o pasado el tope de " + TopeTabla.ToString(CultureInfo.InvariantCulture) + ")"); }
             cargada = true;
             Apunta("encendida: " + pares.Count.ToString(CultureInfo.InvariantCulture) + " canciones en " + Archivo
                 + " (" + Contar(true).ToString(CultureInfo.InvariantCulture) + " con pareja)");
@@ -157,14 +168,14 @@ namespace Rocola
                 long hace = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - p.BuscadaUnix;
                 if (hace < OlvidaSinParejaSeg) { Apunta(Nom(c.Ruta) + " suena peor (" + motivo + "), sin pareja (buscada hace " + (hace / 86400).ToString(CultureInfo.InvariantCulture) + " dias): no se vuelve a preguntar"); return; }
             }
-            string porQueNo = null;
-            if (!RocolaOsSpotify.Listo) porQueNo = "Soloist sin sesion";
-            else if (!RocolaOsSpotifyCatalogoApi.HayLlave) porQueNo = "sin la llave de la API";
-            else if (RocolaOsSpotifyCatalogoApi.Frena) porQueNo = "Spotify frena (429)";
+            string porQueNo = null; int espera = 0;
+            if (!RocolaOsSpotify.Listo) { porQueNo = "Soloist sin sesion"; espera = ReintentoSesionMs; }
+            else if (!RocolaOsSpotifyCatalogoApi.HayLlave) { porQueNo = "sin la llave de la API"; espera = ReintentoOtroMs; }
+            else if (RocolaOsSpotifyCatalogoApi.Frena) { porQueNo = "Spotify frena (429)"; espera = ReintentoPasajeroMs; }
             if (porQueNo != null)
             {
-                long v; Vistas.TryRemove(c.Ruta, out v);   // (la proxima vez que entre a la cola se vuelve a mirar)
-                Apunta(Nom(c.Ruta) + " suena peor (" + motivo + "): no se busca su pareja (" + porQueNo + ")");
+                Reintenta(c.Ruta, espera);   // (si sigue en la cola, se vuelve a mirar pasado ese rato: no cada segundo)
+                Apunta(Nom(c.Ruta) + " suena peor (" + motivo + "): no se busca su pareja (" + porQueNo + "; si sigue en la cola, se vuelve a mirar en " + Min(espera) + ")");
                 return;
             }
             if (!pendientes.TryAdd(c.Ruta, 0)) return;
@@ -191,8 +202,9 @@ namespace Rocola
             RocolaOsCalidadRespuesta r = l.R as RocolaOsCalidadRespuesta;
             if (r == null)
             {
-                long v; Vistas.TryRemove(l.C.Ruta, out v);
-                Apunta(Nom(l.C.Ruta) + ": la busqueda de su pareja no llego (" + (l.Error ?? "sin respuesta") + "): nada se apunta; se vuelve a mirar la proxima vez que entre a la cola");
+                int espera = RocolaOsSpotifyCatalogoApi.Pasajero(l.Error) || l.Error == null ? ReintentoPasajeroMs : ReintentoOtroMs;
+                Reintenta(l.C.Ruta, espera);
+                Apunta(Nom(l.C.Ruta) + ": la busqueda de su pareja no llego (" + (l.Error ?? "sin respuesta") + "): nada se apunta; si sigue en la cola, se vuelve a mirar en " + Min(espera));
                 return false;
             }
             string porQue;
@@ -260,11 +272,17 @@ namespace Rocola
 
         // ---------- la tabla ----------
         internal static string RutaTabla { get { return RocolaOs.Datos(Archivo); } }
-        private static void Carga()
+        // (revision «sonido-cuota-y-fallos») LA TABLA NO CRECE SIN TOPE: se reescribe entera en cada cambio, asi que al leerla se quitan los
+        // «sin pareja» de hace mas de 30 dias (se volverian a preguntar igual) y, pasado TopeTabla, los renglones mas viejos (los «sin pareja»
+        // primero). Las parejas se quedan aunque el archivo ya no este (al volver el disco, valen); el tope las acota.
+        internal const int TopeTabla = 20000;
+        private static int Carga()
         {
             string[] ls;
             try { ls = Form1.RocolaOsLeeLineas(RutaTabla); } catch { ls = null; }
-            if (ls == null) return;
+            if (ls == null) return 0;
+            long ahora = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            int quitadas = 0;
             foreach (string l in ls)
             {
                 if (string.IsNullOrEmpty(l) || l[0] == '#' || l == Cabecera) continue;
@@ -276,10 +294,18 @@ namespace Rocola
                         DurSpMs = (int)L(c[5]), DurMp3Ms = (int)L(c[6]), Verif = (int)L(c[7]), BuscadaUnix = L(c[8]), PicoDb = Fl(c[9]), P99Db = Fl(c[10]), P90Db = Fl(c[11]), R = Fl(c[12]),
                         Por = c.Length > 13 && c[13] != "-" ? c[13] : null };
                     if (p.Id != null && RocolaOsSpotify.IdBase62("spotify:track:" + p.Id, "spotify:track:").Length == 0) continue;
+                    if (p.Id == null && ahora - p.BuscadaUnix >= OlvidaSinParejaSeg) { quitadas++; continue; }
                     if (p.Ruta.Length > 0) pares[p.Ruta] = p;
                 }
                 catch { }
             }
+            if (pares.Count > TopeTabla)
+            {
+                List<Pareja> l = new List<Pareja>(pares.Values);
+                l.Sort((x, y) => (x.Id != null) != (y.Id != null) ? (x.Id == null ? -1 : 1) : x.BuscadaUnix.CompareTo(y.BuscadaUnix));
+                for (int i = 0; i < l.Count && pares.Count > TopeTabla; i++) { Pareja z; if (pares.TryRemove(l[i].Ruta, out z)) quitadas++; }
+            }
+            return quitadas;
         }
         private static long L(string s) { long v; return long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out v) ? v : 0; }
         private static float Fl(string s) { float v; return s != "-" && float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out v) ? v : float.NaN; }
@@ -394,7 +420,12 @@ namespace Rocola
             string p = it.Song.Path;
             if (string.IsNullOrEmpty(p) || p.StartsWith("spotify:", StringComparison.Ordinal)) return;
             if (RocolaOsCalidad.Vistas.Count > 20000) RocolaOsCalidad.Vistas.Clear();
-            if (!RocolaOsCalidad.Vistas.TryAdd(p, Environment.TickCount64)) return;
+            long hasta;   // (0: ya mirada en la sesion; si no, desde cuando se puede volver a mirar: lo que no se pudo preguntar)
+            if (RocolaOsCalidad.Vistas.TryGetValue(p, out hasta))
+            {
+                if (hasta == 0 || Environment.TickCount64 < hasta || !RocolaOsCalidad.Vistas.TryUpdate(p, 0, hasta)) return;
+            }
+            else if (!RocolaOsCalidad.Vistas.TryAdd(p, 0)) return;
             float corte = 0f;
             try { float[] c; if (eqCache != null && eqCache.TryGetValue(p, out c) && c != null && c.Length > EqCut) corte = c[EqCut]; } catch { }
             bool pe = false; try { pe = PreEcoDe(p); } catch { }
@@ -412,9 +443,18 @@ namespace Rocola
         private IAudioSource RocolaOsCalidadAbre(string path)
         {
             if (!RocolaOs.Activo || !RocolaOsCalidad.Va || path == null || path.StartsWith("spotify:", StringComparison.Ordinal)) return null;
-            if (RocolaOs.EnLaPantalla || audioOpeningForMeasurement || reanudarEn > 0) return null;
+            if (RocolaOs.EnLaPantalla || audioOpeningForMeasurement) return null;
+            // (revision «sonido-cuota-y-fallos») SOLO LA QUE LE TOCA SONAR: PlayNext y la vuelta al MP3 ponen nowPlaying antes de abrirla. Lo que el
+            // calentador abre por delante para la siguiente (MiraPorDelante: g60 le dio la ruta del MP3, p. ej. un disco que sigue sin pausa) es
+            // tu MP3: antes, si la pareja llegaba entre g60 y esa apertura, o g60 daba la ruta del MP3 a proposito, el relevo se llevaba una
+            // fuente de Spotify (y el hilo de la forma leia tu MP3 entero para nada)
+            PlayItem np = nowPlaying;
+            if (np == null || np.IsVideo || np.Song == null || !string.Equals(np.Song.Path, path, StringComparison.Ordinal)) return null;
             byte b;
-            if (RocolaOsCalidad.NoSustituir.TryRemove(path, out b)) return null;   // (volvio de Spotify: esta vez tu MP3)
+            // (volvio de Spotify: esta vez tu MP3). ANTES de mirar la retomada: si volvia desde donde iba (reanudarEn), la marca se quedaba
+            // puesta, g60 daba la ruta del MP3 y el calentador la abria como MP3: esa cancion ya no se sustituia en toda la sesion
+            if (RocolaOsCalidad.NoSustituir.TryRemove(path, out b)) return null;
+            if (reanudarEn > 0) return null;   // (una retomada de XP: hay que saltar a media cancion y Spotify no se puede)
             RocolaOsCalidad.Pareja p = RocolaOsCalidad.Elegible(path);
             if (p == null || !RocolaOsSpotify.Listo) return null;
             try { FileInfo fi = new FileInfo(path); if (!fi.Exists || fi.Length != p.Bytes || fi.LastWriteTimeUtc.Ticks != p.FechaTicks) return null; }
@@ -434,7 +474,35 @@ namespace Rocola
             if (!RocolaOs.Activo || path == null || !RocolaOsCalidad.Va || path.StartsWith("spotify:", StringComparison.Ordinal)) return path;
             if (RocolaOsCalidad.NoSustituir.ContainsKey(path) || !RocolaOsSpotify.Listo) return path;
             RocolaOsCalidad.Pareja p = RocolaOsCalidad.Elegible(path);
-            return p != null ? p.Uri : path;
+            if (p == null) return path;
+            if (RocolaOsCalidadEmpalma(path)) return path;   // (el disco que sigue sin pausa: tu MP3 por el relevo de XP)
+            return p.Uri;
+        }
+        // (revision «sonido-cuota-y-fallos») EL DISCO QUE SIGUE SIN PAUSA. XP encadena la pista que sigue del mismo disco en la misma lectura (relevo
+        // sin pausa: SiguienteDelDisco le quita el fundido de salida a la que suena y el de entrada a la siguiente; un disco en vivo o una
+        // mezcla siguen continuos). Una sustituida no puede ir por el relevo (entra por PlayNext: la salida se cierra y se abre, y Soloist tarda
+        // en empezar): en un disco continuo seria un corte que XP no tiene. Por eso, si la frontera es CONTINUA (la que suena acaba con musica
+        // y esta no empieza con silencio, por lo que midio el repaso: FinUtil e InicioUtil del algoritmo 6, a 1 s o menos de la orilla), suena tu
+        // MP3 por el relevo de XP. Sin la medida de la que suena, o entre pistas con su silencio (lo normal en un disco de estudio), se sustituye.
+        // En la pantalla (g60 lo pregunta desde PideLookahead y PreparaSiguienteSinPausa), sin disco: las tablas de XP en memoria.
+        internal const float EmpalmeSeg = 1.0f;
+        private bool RocolaOsCalidadEmpalma(string path)
+        {
+            PlayItem a = nowPlaying, b = queue.Count > 0 ? queue[0] : null;
+            if (a == null || b == null || b.Song == null || a.Song == null || !string.Equals(b.Song.Path, path, StringComparison.Ordinal) || !SiguienteDelDisco(a, b)) return false;
+            return RocolaOsCalidadFronteraContinua(a.Song.Path, path);
+        }
+        private bool RocolaOsCalidadFronteraContinua(string antes, string despues)
+        {
+            Dictionary<string, SonoridadIntegrada> t = integCache;
+            SonoridadIntegrada x, y;
+            if (t == null || antes == null || despues == null || !t.TryGetValue(antes, out x) || x.Algoritmo < 6 || float.IsNaN(x.FinUtil)) return false;
+            float dur = SegundosDe(antes);
+            if (!(dur > 0f) || dur - x.FinUtil > EmpalmeSeg) return false;   // la que suena acaba con su silencio (o no se sabe): se sustituye
+            // la siguiente: si ya se midio y empieza con su silencio, tampoco es continua. Aun sin medir (el calentador la mide DESPUES de abrirla
+            // por delante, y g60 se pregunta antes) cuenta como continua: suena tu MP3, como en XP
+            if (t.TryGetValue(despues, out y) && y.Algoritmo >= 6 && !float.IsNaN(y.InicioUtil) && y.InicioUtil > EmpalmeSeg) return false;
+            return true;
         }
         // g61 (Codigo/Form1.Sonido.cs, ArmaCadena): si el lector es la version de Spotify de una cancion tuya, la cadena se arma con una copia de
         // tu cancion con la ruta de Spotify (sus medidas -ninguna de XP: g23 no aprende nada de «spotify:»-, su nivelado -g62- y nada del MP3:

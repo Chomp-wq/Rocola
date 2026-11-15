@@ -7,14 +7,14 @@
 # volumen (la 1 o la 2 de RocolaOsCalidad.Envolvente, para la forma). Las canciones se piden con el doble «calidad-prueba» (AddSong de XP).
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion apagon tarde
+#   escenas (de fabrica todas): reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde
 #   W (/root/rocola-trabajo/fase11/sustitucion/prueba; se rehace), API y FALSO (la API falsa y el Soloist falso compilados; se compilan si
 #   faltan o cambiaron, con el candado de lo pesado)
 # Cada comprobacion: BIEN o MAL en una linea; al final «TODO BIEN (N comprobaciones)» o cuantas MAL (y sale con 1).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SX="$G/../spotify-xp"; CA="$G/../catalogo"
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion apagon tarde}"
+partes="${*:-reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde}"
 W=${W:-/root/rocola-trabajo/fase11/sustitucion/prueba}
 API=${API:-/root/rocola-trabajo/fase11/sustitucion/api-falsa}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/sustitucion/falso}
@@ -110,6 +110,7 @@ abre() {
       case "$l" in
         copia) cp "$o/run/rocola-xp/spotify/estado" "$o/estado.txt" 2>/dev/null; cp "$o/run/rocola-xp/spotify/calidad" "$o/calidad.txt" 2>/dev/null ;;
         429) control "429?seg=120" ;;
+        5xx) control "5xx?n=1000" ;;
         *) echo "$l" >> "$o/run/rocola-xp/spotify/prueba-xp" ;;
       esac; done ) &
   local q=$!
@@ -265,7 +266,9 @@ if [[ " $partes " == *" frena "* ]]; then
   si "frena: sale con 0" test "$(cat $o/salio)" = 0
   si "frena: una sola peticion a /v1, la del 429" bash -c "[ $(v1 frena) = 1 ] && grep -q ' 429 q=isrc:MXA112600001' '$o/api/peticiones.txt'"
   si "frena: no se apunta nada (la busqueda no llego: Spotify frena)" bash -c "grep -q '01 bolero.mp3: la busqueda de su pareja no llego (Spotify frena)' '$b' && [ -z \"\$(par '$d' '01 bolero.mp3')\" ]"
-  si "frena: la siguiente mala ni se pregunta" contiene "$b" "02 vals.mp3 suena peor (96 kbps): no se busca su pareja (Spotify frena (429))"
+  si "frena: la siguiente mala ni se pregunta" contiene "$b" "02 vals.mp3 suena peor (96 kbps): no se busca su pareja (Spotify frena (429); si sigue en la cola, se vuelve a mirar en 5 min)"
+  # (revision «sonido-cuota-y-fallos»: antes, frenando, cada segundo un renglon y la cabecera leida otra vez por cada mala de la cola)
+  si "frena: un solo renglon por cancion en toda la escena (vals $(grep -c '02 vals.mp3 suena peor' "$b"), bolero $(grep -c '01 bolero.mp3: la busqueda de su pareja no llego' "$b"))" bash -c "[ \$(grep -c '02 vals.mp3 suena peor' '$b') = 1 ] && [ \$(grep -c '01 bolero.mp3: la busqueda de su pareja no llego' '$b') = 1 ]"
   # (lo que la rocola da por sonando con tu MP3 aqui y con la version de Spotify en «isrc»: lo mismo campo por campo, sin el lector)
   if [ -f "$(log isrc)" ]; then
     a=$(grep '^mira ' "$(log isrc)" | head -1 | sed 's/.*musica\///; s/ | lector=.*//'); z=$(grep '^mira ' "$(log frena)" | head -1 | sed 's/.*musica\///; s/ | lector=.*//')
@@ -299,7 +302,7 @@ if [[ " $partes " == *" sinllave "* ]]; then
   d=$(datos sinllave); rm -f "$d/rocola_spotify_api.txt"; apifalsa sinllave
   abre sinllave "$d" "7:67" "9:pon 01 bolero.mp3;20:mira;21:copia" 22 TERM $ROS
   fin; o="$W/sinllave"; f="$o/frec.txt"; b=$(bit "$d")
-  si "sinllave: sale con 0, ni una peticion (ni la llave) y lo dice" bash -c "[ '$(cat $o/salio)' = 0 ] && [ ! -s '$o/api/peticiones.txt' ] && grep -q '01 bolero.mp3 suena peor (96 kbps): no se busca su pareja (sin la llave de la API)' '$b'"
+  si "sinllave: sale con 0, ni una peticion (ni la llave) y lo dice" bash -c "[ '$(cat $o/salio)' = 0 ] && [ ! -s '$o/api/peticiones.txt' ] && grep -q '01 bolero.mp3 suena peor (96 kbps): no se busca su pareja (sin la llave de la API; ' '$b' && [ \$(grep -c '01 bolero.mp3 suena peor' '$b') = 1 ]"
   si "sinllave: suena tu MP3 (330 Hz: $(oye "$f" 330) s)" bash -c "grep -q '^mira .*01 bolero.mp3 .* lector=xp' '$(log sinllave)' && python3 -c 'import sys; sys.exit(0 if $(oye "$f" 330) >= 8 else 1)'"
 fi
 
@@ -314,6 +317,57 @@ if [[ " $partes " == *" sinsesion "* ]]; then
   si "sinsesion: sale con 0, ni una peticion" bash -c "[ '$(cat $o/salio)' = 0 ] && [ $(v1 sinsesion) = 0 ]"
   si "sinsesion: tu MP3 suena (330 Hz: $(oye "$f" 330) s, desde ${t330:-?} s del sonado: sin esperar los 6 s) y nada de Spotify" bash -c "grep -q '^mira .*01 bolero.mp3 .* lector=xp' '$(log sinsesion)' && [ -n '$t330' ] && python3 -c 'import sys; sys.exit(0 if $(oye "$f" 330) >= 8 and $t330 < 3 and $(oye "$f" 440) <= 0.1 else 1)'"
   si "sinsesion: no se sustituye ni se busca (Soloist sin sesion)" bash -c "! grep -q 'suena desde Spotify' '$b' && ! grep -q 'se busca su pareja' '$b'"
+fi
+
+# ================================================================ (revision «sonido-cuota-y-fallos»)
+# ---------------------------------------------------------------- caida: la API en 503 todo el rato: dos peticiones (la y su reintento) y ya
+if [[ " $partes " == *" caida "* ]]; then
+  sec "caida (la API contesta 503 a todo: la busqueda no llega UNA vez y no se vuelve a preguntar cada segundo; suena tu MP3)"
+  d=$(datos caida); apifalsa caida
+  abre caida "$d" "7:67" "8:5xx;9:pon relleno.mp3;9.5:pon 01 bolero.mp3;45:mira;60:copia" 61 TERM $ROS
+  fin; o="$W/caida"; f="$o/frec.txt"; b=$(bit "$d")
+  grep -F '[calidad_spotify]' "$b" | sed 's/^[0-9-]* [0-9:]*  /   /'; cuota caida
+  si "caida: sale con 0" test "$(cat $o/salio)" = 0
+  si "caida: DOS peticiones a /v1 en 51 s con la mala en la cola y sonando (la del ISRC y su reintento de 5xx: $(v1 caida))" bash -c "[ $(v1 caida) = 2 ] && [ \$(grep -c ' 503 q=isrc:MXA112600001' '$o/api/peticiones.txt') = 2 ]"
+  si "caida: un solo renglon (la API contesto 503) y se vuelve a mirar en 5 min" bash -c "[ \$(grep -c '01 bolero.mp3: la busqueda de su pareja no llego' '$b') = 1 ] && grep -q '01 bolero.mp3: la busqueda de su pareja no llego (la API contesto 503): nada se apunta; si sigue en la cola, se vuelve a mirar en 5 min' '$b'"
+  si "caida: suena tu MP3 (330 Hz: $(oye "$f" 330) s; lector=xp) y nada se apunta en la tabla" bash -c "grep -q '^mira .*01 bolero.mp3 .* lector=xp' '$(log caida)' && python3 -c 'import sys; sys.exit(0 if $(oye "$f" 330) >= 25 else 1)' && [ -z \"\$(par '$d' '01 bolero.mp3')\" ]"
+fi
+
+# ---------------------------------------------------------------- atasca: Soloist se queda en «buffering» sin sonido a media cancion
+if [[ " $partes " == *" atasca "* ]]; then
+  sec "atasca (Soloist se queda en «buffering» sin mandar nada: a los 5 s tu MP3 desde donde iba, no a los 30; y la siguiente vez otra vez desde Spotify)"
+  d=$(datos atasca); apifalsa atasca
+  abre atasca "$d" "7:67" "9:pon relleno.mp3;9.5:pon 06 cortada.mp3;70:pon 06 cortada.mp3;105:copia" 106 TERM $ROS SOLOIST_FALSO_GUION="42:atasca;56:sigue"
+  fin; o="$W/atasca"; f="$o/frec.txt"; b=$(bit "$d")
+  grep -F '[calidad_spotify]' "$b" | sed 's/^[0-9-]* [0-9:]*  /   /'; cuota atasca
+  p240=$(primero "$f" 240)
+  a770=$(awk -v t="${p240:-0}" '$3>=755 && $3<=785 && $2<=t+0.05 {s+=$2-$1} END {printf "%.2f\n", s+0}' "$f")
+  u770=$(awk -v t="${p240:-0}" '$3>=755 && $3<=785 && $2<=t+0.05 && $2-$1>=0.3 {u=$2} END {print u+0}' "$f")
+  d770=$(awk -v t="${p240:-0}" '$3>=755 && $3<=785 && $1>t {s+=$2-$1} END {printf "%.2f\n", s+0}' "$f")
+  desde=$(sed -n 's/.*vuelve a tu MP3: 06 cortada.mp3 (Spotify se atasco 5 s a media cancion), desde \([0-9.]*\) s.*/\1/p' "$b" | head -1)
+  t240=$(oye "$f" 240)
+  si "atasca: sale con 0" test "$(cat $o/salio)" = 0
+  si "atasca: vuelve a tu MP3 por el atasco, desde donde iba (${desde:-?} s; sono de Spotify $a770 s)" bash -c "[ -n '$desde' ] && python3 -c 'import sys; sys.exit(0 if 10 <= $desde and abs($desde - $a770) <= 1.5 else 1)'"
+  si "atasca: el hueco entre lo ultimo de Spotify y tu MP3, de 2,5 a 8 s y no los 30 del nucleo (${u770:-?} -> ${p240:-?}; 5 s de lo entregado, menos el colchon de la salida)" entre "$(echo "${p240:-0} - ${u770:-0}" | bc)" 2.5 8
+  si "atasca: y suena el resto del MP3 (240 Hz: $t240 s; 32 - ${desde:-?})" bash -c "python3 -c 'import sys; sys.exit(0 if abs($t240 - (32 - ${desde:-0})) <= 1.5 else 1)'"
+  # (la segunda vez se pide cuando tu MP3 ya acabo: XP no deja pedir la que suena)
+  si "atasca: la siguiente vez, otra vez desde Spotify (dos «suena desde Spotify»; 770 Hz despues: $d770 s)" bash -c "[ \$(grep -c 'suena desde Spotify: 06 cortada.mp3' '$b') = 2 ] && python3 -c 'import sys; sys.exit(0 if $d770 >= 25 else 1)'"
+  si "atasca: sin devolver ni cobrar como de Spotify, y al_mp3=1" bash -c "! grep -qE 'DEVUELTA|COBRADA' '$d/rocola_spotify.txt' && [ '$(cal atasca al_mp3)' = 1 ]"
+fi
+
+# ---------------------------------------------------------------- seguida: la pista que sigue del mismo disco, con la frontera continua
+if [[ " $partes " == *" seguida "* ]]; then
+  sec "seguida (la pista que sigue del mismo disco y empalma con musica: suena su MP3 por el relevo sin pausa de XP, sin hueco, aunque tenga pareja)"
+  d=$(datos seguida); apifalsa seguida
+  siembra "$d" "MP3:02 vals.mp3	0	0	f550d032m1va	-	32000	32000	1	1	-3	-5	-8	0.95	titulo"
+  abre seguida "$d" "7:67" "9:pon relleno.mp3;9.5:pon 01 bolero.mp3;10:pon 02 vals.mp3;75:mira;96:copia" 97 TERM $ROS
+  fin; o="$W/seguida"; f="$o/frec.txt"; b=$(bit "$d")
+  grep -F '[calidad_spotify]' "$b" | sed 's/^[0-9-]* [0-9:]*  /   /'; cuota seguida
+  u440=$(ultimo "$f" 440); p360=$(primero "$f" 360)
+  si "seguida: sale con 0" test "$(cat $o/salio)" = 0
+  si "seguida: el bolero (su pareja por ISRC, 1 peticion) suena desde Spotify (440 Hz: $(oye "$f" 440) s)" bash -c "[ $(v1 seguida) = 1 ] && grep -q 'suena desde Spotify: 01 bolero.mp3' '$b' && python3 -c 'import sys; sys.exit(0 if 31 <= $(oye "$f" 440) <= 33 else 1)'"
+  si "seguida: el vals, con pareja, suena de su MP3 (360 Hz: $(oye "$f" 360) s; 550: $(oye "$f" 550); lector=xp)" bash -c "! grep -q 'suena desde Spotify: 02 vals.mp3' '$b' && grep -q '^mira .*02 vals.mp3 .* lector=xp' '$(log seguida)' && python3 -c 'import sys; sys.exit(0 if $(oye "$f" 360) >= 30 and $(oye "$f" 550) <= 0.1 else 1)'"
+  si "seguida: sin hueco entre las dos (${u440:-?} -> ${p360:-?})" entre "$(echo "${p360:-0} - ${u440:-0}" | bc)" -0.3 0.4
 fi
 
 # ---------------------------------------------------------------- apagon (revision «invisible-y-reglas»): tras un corte de luz con una
