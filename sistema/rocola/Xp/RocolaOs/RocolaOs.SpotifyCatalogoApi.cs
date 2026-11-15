@@ -20,7 +20,10 @@
 // LA CUOTA (por cuenta de desarrollador; con 429 hay bloqueos de horas): UNA peticion a la vez, en su hilo; lo que alguien espera (buscar,
 // abrir) antes que lo de la cuenta; nada de recorridos de fondo; todo lo contestado se guarda en memoria toda la sesion; una busqueda se pide
 // a los 300 ms de dejar de escribir (y solo la ultima); con 429 no se pregunta NADA hasta que pase su Retry-After («Spotify frena» en la
-// bitacora y en el estado); con 401 se pide otra llave y se intenta una vez mas; con 5xx o sin red, una vez mas al segundo.
+// bitacora y en el estado; el plazo se guarda en /run y vale tambien si rocola-xp se vuelve a abrir); con 401 se pide otra llave y se
+// intenta una vez mas; con 5xx o sin red, una vez mas al segundo. Una llave que Spotify rechaza (client_id/client_secret malos, o la
+// autorizacion de la cuenta vencida) no se vuelve a pedir hasta que cambie el archivo. Lo de la cuenta que no llego por la red (sin red al
+// arrancar, 5xx o 429) se vuelve a intentar solo: a los 30 s, o al acabar el plazo del 429 (3 peticiones, una vez que llegue).
 //
 // PARA LAS PRUEBAS (solo ahi): ROCOLA_SPOTIFY_API (en lugar de https://api.spotify.com/v1) y ROCOLA_SPOTIFY_CUENTAS (en lugar de
 // https://accounts.spotify.com): la API falsa de Pruebas/RocolaOs/catalogo.
@@ -63,6 +66,7 @@ namespace Rocola
     {
         internal const string Archivo = "rocola_spotify_api.txt";
         internal const int EsperaBusquedaMs = 300;
+        internal const int ReintentoCuentaMs = 30000;
 
         // ---------- los pedidos ----------
         private sealed class Pedido
@@ -143,6 +147,7 @@ namespace Rocola
         // ---------- el hilo: una peticion a la vez ----------
         private static void Corre()
         {
+            Prepara();   // (antes de nada: el plazo de un 429 de antes de abrir)
             while (true)
             {
                 Pedido p = null; int espera = 5000;
@@ -153,17 +158,33 @@ namespace Rocola
                     if (b != null && b.NoAntesDe <= ahora) { p = b; busquedaPendiente = null; }
                     else
                     {
-                        int i = cola.FindIndex(x => x.Alguien);
-                        if (i < 0 && b == null && cola.Count > 0) i = 0;   // lo de la cuenta, solo si nadie espera nada
+                        int i = cola.FindIndex(x => x.Alguien && x.NoAntesDe <= ahora);
+                        if (i < 0 && b == null) i = cola.FindIndex(x => x.NoAntesDe <= ahora);   // lo de la cuenta, solo si nadie espera nada
                         if (i >= 0) { p = cola[i]; cola.RemoveAt(i); }
-                        else if (b != null) espera = (int)Math.Max(1, b.NoAntesDe - ahora);
+                        else
+                        {
+                            if (b != null) espera = (int)Math.Max(1, b.NoAntesDe - ahora);
+                            foreach (Pedido x in cola) if (x.NoAntesDe > ahora) espera = (int)Math.Max(1, Math.Min(espera, x.NoAntesDe - ahora));   // (lo que ya toca espera a la busqueda)
+                        }
                     }
                 }
+                if (estadoPedido) { estadoPedido = false; EscribeEstado(); }
                 if (p == null) { hayAlgo.WaitOne(espera); continue; }
                 object r = null; string error = null;
                 try { r = Atiende(p, out error); }
                 catch (Exception ex) { error = "fallo: " + ex.GetType().Name; RocolaOs.Falla("spotify_catalogo", "pedido «" + p.Que + "»", ex); }
                 if (r == null && error == null) error = "sin respuesta";
+                // LO DE LA CUENTA que no llego por la red (sin red al arrancar, 5xx, 429): otra vez a los 30 s o al acabar el plazo del 429,
+                // sin contestar todavia (nadie lo espera mirando: la letra lo pone cuando llegue)
+                if (r == null && p.Que == "cuenta" && error != null && Pasajero(error))
+                {
+                    long ahora = Environment.TickCount64, hasta = Volatile.Read(ref frenaHastaMs);
+                    p.NoAntesDe = Math.Max(ahora + ReintentoCuentaMs, hasta + 1000);
+                    ApuntaCallado("lo de la cuenta no llego (" + error + "): se vuelve a intentar solo");
+                    lock (cerrojo) cola.Add(p);
+                    EscribeEstado();
+                    continue;
+                }
                 try { if (p.Listo != null) p.Listo(r, error); }
                 catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "al contestar «" + p.Que + "»", ex); }
                 EscribeEstado();
@@ -325,7 +346,13 @@ namespace Rocola
         private static HttpClient http;
         private static string base_, cuentas;
         private static string Base { get { Prepara(); return base_; } }
+        private static readonly object cerrojoHttp = new object();
         private static void Prepara()
+        {
+            if (Volatile.Read(ref http) != null) return;
+            lock (cerrojoHttp) PreparaYa();
+        }
+        private static void PreparaYa()
         {
             if (http != null) return;
             string b = Environment.GetEnvironmentVariable("ROCOLA_SPOTIFY_API"), cu = Environment.GetEnvironmentVariable("ROCOLA_SPOTIFY_CUENTAS");
@@ -335,7 +362,8 @@ namespace Rocola
             SocketsHttpHandler h = new SocketsHttpHandler { UseProxy = !local, PooledConnectionLifetime = TimeSpan.FromMinutes(5), ConnectTimeout = TimeSpan.FromSeconds(8), AutomaticDecompression = DecompressionMethods.All };
             HttpClient c = new HttpClient(h) { Timeout = TimeSpan.FromSeconds(15) };
             c.DefaultRequestHeaders.UserAgent.ParseAdd("rocola-xp/1");
-            http = c;
+            LeeFrena();
+            Volatile.Write(ref http, c);
         }
         internal static HttpClient Http { get { Prepara(); return http; } }
 
@@ -361,7 +389,7 @@ namespace Rocola
                     Interlocked.Increment(ref fallos); api = "falla";
                     error = "sin red (" + ex.GetType().Name + ")";
                     if (intento == 0 && reintenta) { Thread.Sleep(1000); continue; }
-                    RocolaOs.Apunta("spotify_catalogo", "la API no contesto: " + error);
+                    ApuntaCallado("la API no contesto: " + error);
                     return null;
                 }
                 using (r)
@@ -380,13 +408,34 @@ namespace Rocola
                     Interlocked.Increment(ref fallos);
                     if (cod >= 500 || cod == 401 || cod == 403) api = "falla";
                     error = "la API contesto " + cod.ToString(CultureInfo.InvariantCulture);
-                    RocolaOs.Apunta("spotify_catalogo", error + " (" + RutaSinConsulta(ruta) + ")");
+                    ApuntaCallado(error + " (" + RutaSinConsulta(ruta) + ")");
                     return null;
                 }
             }
             return null;
         }
         private static string RutaSinConsulta(string ruta) { int i = ruta.IndexOf('?'); return i < 0 ? ruta : ruta.Substring(0, i); }
+        // un error que se arregla solo (la red, Spotify caido o frenando), no una llave mala ni un 4xx
+        internal static bool Pasajero(string error)
+        {
+            return error != null && (error.StartsWith("sin red", StringComparison.Ordinal) || error == "Spotify frena"
+                || error.StartsWith("la API contesto 5", StringComparison.Ordinal) || error.StartsWith("la llave no se dio (5", StringComparison.Ordinal));
+        }
+        // LO QUE SE REPITE (sin red, la API caida o frenando, en una fiesta con una busqueda por cada cosa escrita): el mismo renglon, como
+        // mucho una vez cada 10 minutos en la bitacora, con cuantas veces se callo
+        private static readonly Dictionary<string, KeyValuePair<long, int>> callados = new Dictionary<string, KeyValuePair<long, int>>(StringComparer.Ordinal);
+        internal static void ApuntaCallado(string que)
+        {
+            long ahora = Environment.TickCount64; int veces;
+            lock (callados)
+            {
+                KeyValuePair<long, int> c;
+                if (callados.TryGetValue(que, out c) && ahora - c.Key < RocolaOs.SilencioDeFallosMs) { callados[que] = new KeyValuePair<long, int>(c.Key, c.Value + 1); return; }
+                veces = callados.TryGetValue(que, out c) ? c.Value : 0;
+                callados[que] = new KeyValuePair<long, int>(ahora, 0);
+            }
+            RocolaOs.Apunta("spotify_catalogo", que + (veces > 0 ? " (y " + veces.ToString(CultureInfo.InvariantCulture) + " veces mas, calladas)" : ""));
+        }
 
         // 429: nada hasta que pase el Retry-After (sin el, 30 s); se dice en la bitacora y en el estado
         private static void Frenada(HttpResponseMessage r)
@@ -394,8 +443,10 @@ namespace Rocola
             int seg = 30;
             try
             {
-                IEnumerable<string> v;
-                if (r.Headers.TryGetValues("Retry-After", out v)) foreach (string s in v) { int n; if (int.TryParse(s.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out n) && n >= 0) seg = Math.Max(1, n); break; }
+                // (Retry-After en segundos o como fecha, RFC 9110; sin el, 30 s)
+                System.Net.Http.Headers.RetryConditionHeaderValue ra = r.Headers.RetryAfter;
+                if (ra != null && ra.Delta.HasValue) seg = (int)Math.Max(1, Math.Min(int.MaxValue / 1000 - 1, ra.Delta.Value.TotalSeconds));
+                else if (ra != null && ra.Date.HasValue) seg = (int)Math.Max(1, Math.Min(int.MaxValue / 1000 - 1, Math.Ceiling((ra.Date.Value - DateTimeOffset.UtcNow).TotalSeconds)));
             }
             catch { }
             string razon = "";
@@ -403,14 +454,51 @@ namespace Rocola
             catch { }
             Volatile.Write(ref frenaHastaMs, Environment.TickCount64 + seg * 1000L);
             frenaRazon = razon;
+            GuardaFrena(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + seg * 1000L, razon.Length > 0);
             Interlocked.Increment(ref frenadas);
             api = "frena";
             RocolaOs.Apunta("spotify_catalogo", "Spotify frena (429): no se le pregunta nada en " + seg.ToString(CultureInfo.InvariantCulture) + " s" + razon);
         }
 
+        // EL PLAZO DEL 429 EN /run (/run/rocola-xp/spotify/catalogo.frena: «HASTA_MS_UNIX [cuota]»): si rocola-xp se vuelve a abrir (se cayo
+        // y el lanzador la abrio, o un reinicio propio), sigue sin preguntar hasta que pase; con el equipo apagado, /run se borra
+        private static string RutaFrena { get { return RocolaOs.Run("rocola-xp/spotify/catalogo.frena"); } }
+        private static void GuardaFrena(long hastaUnixMs, bool cuota)
+        {
+            try
+            {
+                string ruta = RutaFrena;
+                Directory.CreateDirectory(Path.GetDirectoryName(ruta));
+                File.WriteAllText(ruta + ".t", hastaUnixMs.ToString(CultureInfo.InvariantCulture) + (cuota ? " cuota" : "") + "\n");
+                File.Move(ruta + ".t", ruta, true);
+            }
+            catch { }
+        }
+        private static void LeeFrena()
+        {
+            try
+            {
+                string ruta = RutaFrena;
+                if (!File.Exists(ruta)) return;
+                string[] t = File.ReadAllText(ruta).Trim().Split(' ');
+                long hasta;
+                if (t.Length == 0 || !long.TryParse(t[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out hasta)) return;
+                long falta = hasta - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                if (falta <= 0) return;
+                Volatile.Write(ref frenaHastaMs, Environment.TickCount64 + falta);
+                if (t.Length > 1 && t[1] == "cuota") frenaRazon = " (QUOTA_EXCEEDED: la cuota de la cuenta de desarrollador)";
+                api = "frena";
+                RocolaOs.Apunta("spotify_catalogo", "Spotify sigue frenando (429 de antes de abrir): no se le pregunta nada en " + ((falta + 999) / 1000).ToString(CultureInfo.InvariantCulture) + " s" + frenaRazon);
+            }
+            catch { }
+        }
+
         // ---------- las llaves ----------
         private static string llaveApp, llaveCuenta;
         private static long venceApp, venceCuenta;
+        // la llave que Spotify RECHAZO (400/401 del /api/token): no se vuelve a pedir con el mismo archivo (cada busqueda la pediria otra vez:
+        // peticiones de mas y la bitacora llena); al cambiar el archivo (otro client_secret, otra autorizacion) se intenta de nuevo
+        private static Config rechazadaApp, rechazadaCuenta;
         private static void OlvidaLlave(bool deUsuario) { if (deUsuario) llaveCuenta = null; else llaveApp = null; }
         private static string Llave(Config c, bool deUsuario, out string error)
         {
@@ -418,30 +506,46 @@ namespace Rocola
             long ahora = Environment.TickCount64;
             if (!deUsuario && llaveApp != null && ahora < venceApp - 60000) return llaveApp;
             if (deUsuario && llaveCuenta != null && ahora < venceCuenta - 60000) return llaveCuenta;
-            string cuerpo = deUsuario
-                ? "grant_type=refresh_token&refresh_token=" + Uri.EscapeDataString(c.Refresco) + "&client_id=" + Uri.EscapeDataString(c.Id)
-                : "grant_type=client_credentials";
-            HttpResponseMessage r;
-            try
+            if (ReferenceEquals(deUsuario ? rechazadaCuenta : rechazadaApp, c))
             {
-                Prepara();
-                HttpRequestMessage q = new HttpRequestMessage(HttpMethod.Post, cuentas + "/api/token");
-                q.Headers.TryAddWithoutValidation("Authorization", "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(c.Id + ":" + c.Secreto)));
-                q.Content = new StringContent(cuerpo, Encoding.ASCII, "application/x-www-form-urlencoded");
-                Interlocked.Increment(ref peticionesLlave);
-                r = http.Send(q);
+                api = "falla";
+                error = deUsuario ? "la llave no se dio (antes: la autorizacion de la cuenta vencio o la quitaron)" : "la llave no se dio (antes: client_id o client_secret no valen)";
+                return null;
             }
-            catch (Exception ex) { api = "falla"; error = "sin red al pedir la llave (" + ex.GetType().Name + ")"; return null; }
+            // la de la cuenta, como dice Spotify para PKCE (la autorizacion que hace el dueno desde su laptop): client_id en el cuerpo y SIN el
+            // secreto; si Spotify la rechaza, una vez como la de «Authorization Code» (con el secreto), por si se autorizo asi
+            HttpResponseMessage r = null;
+            int cod = 0;
+            for (int modo = deUsuario ? 0 : 1; modo < 2; modo++)
+            {
+                string cuerpo = deUsuario
+                    ? "grant_type=refresh_token&refresh_token=" + Uri.EscapeDataString(c.Refresco) + (modo == 0 ? "&client_id=" + Uri.EscapeDataString(c.Id) : "")
+                    : "grant_type=client_credentials";
+                try
+                {
+                    Prepara();
+                    HttpRequestMessage q = new HttpRequestMessage(HttpMethod.Post, cuentas + "/api/token");
+                    if (modo == 1) q.Headers.TryAddWithoutValidation("Authorization", "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(c.Id + ":" + c.Secreto)));
+                    q.Content = new StringContent(cuerpo, Encoding.ASCII, "application/x-www-form-urlencoded");
+                    Interlocked.Increment(ref peticionesLlave);
+                    r = http.Send(q);
+                }
+                catch (Exception ex) { api = "falla"; error = "sin red al pedir la llave (" + ex.GetType().Name + ")"; return null; }
+                cod = (int)r.StatusCode;
+                if (cod == 200 || modo == 1 || (cod != 400 && cod != 401)) break;
+                r.Dispose();
+            }
             using (r)
             {
-                int cod = (int)r.StatusCode;
                 ultimoCodigo = cod;
                 if (cod == 429) { Frenada(r); error = "Spotify frena"; return null; }
                 if (cod != 200)
                 {
                     api = "falla";
-                    error = "la llave no se dio (" + cod.ToString(CultureInfo.InvariantCulture) + (cod == 400 || cod == 401 ? (deUsuario ? ": la autorizacion de la cuenta vencio o la quitaron" : ": client_id o client_secret no valen") : "") + ")";
-                    RocolaOs.Apunta("spotify_catalogo", error);
+                    bool rechazada = cod == 400 || cod == 401;
+                    if (rechazada) { if (deUsuario) rechazadaCuenta = c; else rechazadaApp = c; }
+                    error = "la llave no se dio (" + cod.ToString(CultureInfo.InvariantCulture) + (rechazada ? (deUsuario ? ": la autorizacion de la cuenta vencio o la quitaron" : ": client_id o client_secret no valen") : "") + ")";
+                    ApuntaCallado(error);
                     return null;
                 }
                 try
@@ -534,7 +638,9 @@ namespace Rocola
                 }
                 if (!puesta) sb.Append("refresh_token=").Append(nueva).Append('\n');
                 string t = ruta + ".t." + Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
-                File.WriteAllText(t, sb.ToString());
+                // (0600 desde que se crea: el secreto nunca queda legible para otros, ni un momento)
+                FileStreamOptions fo = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite };
+                using (FileStream fs = new FileStream(t, fo)) { byte[] b = new UTF8Encoding(false).GetBytes(sb.ToString()); fs.Write(b, 0, b.Length); fs.Flush(true); }
                 try { File.SetUnixFileMode(t, UnixFileMode.UserRead | UnixFileMode.UserWrite); } catch { }
                 File.Move(t, ruta, true);
                 lock (cerrojoConfig) { c.Refresco = nueva; configFecha = File.GetLastWriteTimeUtc(ruta); }
@@ -653,8 +759,13 @@ namespace Rocola
 
         // ---------- el estado (/run/rocola-xp/spotify/catalogo: sin secretos) ----------
         private static long estadoEscrito = long.MinValue / 2;
+        private static volatile bool estadoPedido;
+        private static readonly object cerrojoEstado = new object();
+        // desde el hilo de la pantalla: lo escribe el hilo del catalogo (nada de archivos en la pantalla)
+        internal static void PideEstado() { estadoPedido = true; Despierta(); }
         internal static void EscribeEstado()
         {
+            lock (cerrojoEstado)
             try
             {
                 long ahora = Environment.TickCount64;

@@ -77,7 +77,7 @@ namespace Rocola
             rocolaOsSpCuenta = new List<Album>(); rocolaOsSpRecientes = new List<Album>(); rocolaOsSpLetra = new List<Album>();
             RocolaOs.Apunta("spotify_catalogo", "encendido: la API web con la app del dueno (" + (RocolaOsSpotifyCatalogoApi.HayLlave ? "con llave" : "SIN llave: " + RocolaOsSpotifyCatalogoApi.Archivo + " sin client_id o client_secret")
                 + (RocolaOsSpotifyCatalogoApi.HayCuenta ? ", con la cuenta" : ", sin la cuenta") + ")");
-            RocolaOsSpotifyCatalogoApi.EscribeEstado();
+            RocolaOsSpotifyCatalogoApi.PideEstado();   // (lo escribe el hilo del catalogo: en la pantalla, nada de archivos)
         }
         private static bool RocolaOsEsSpotify(Album a) { return a != null && a.Folder != null && a.Folder.StartsWith(RocolaOsSpotifyCarpeta, StringComparison.Ordinal); }
         private static bool RocolaOsEsSpotify(Track t) { return t != null && t.Path != null && t.Path.StartsWith("spotify:track:", StringComparison.Ordinal); }
@@ -119,7 +119,8 @@ namespace Rocola
         {
             if (b == null)
             {
-                if (error != null && error != "sin_llave") RocolaOs.Apunta("spotify_catalogo", "busqueda sin respuesta: " + error);
+                // (sin red, la API caida o frenando, esto saldria en cada cosa escrita: el mismo renglon, una vez cada 10 minutos)
+                if (error != null && error != "sin_llave") RocolaOsSpotifyCatalogoApi.ApuntaCallado("busqueda sin respuesta: " + error);
                 return;
             }
             if (!searchOpen || rocolaOsSpConsulta != q || rocolaOsSpXp == null) return;   // ya se escribio otra cosa (o se cerro)
@@ -135,7 +136,7 @@ namespace Rocola
             CuentaResultados(rocolaOsSpEscrito, (lastMatches != null ? lastMatches.Count : 0) + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
             searchOverlay.DatosVer++;   // (la cache de las tarjetas se rehace: la consulta es la misma)
             searchOverlay.Invalidate();
-            RocolaOsSpotifyCatalogoApi.EscribeEstado();
+            RocolaOsSpotifyCatalogoApi.PideEstado();
         }
         private List<SearchItem> RocolaOsSpotifyCatalogoMezcla(List<SearchItem> xp, RocolaOsSpotifyCatalogoBusqueda b)
         {
@@ -394,7 +395,7 @@ namespace Rocola
         {
             if (d == null || d.Canciones == null)
             {
-                RocolaOs.Apunta("spotify_catalogo", "no se pudo abrir el disco: " + (error ?? "sin respuesta"));
+                RocolaOsSpotifyCatalogoApi.ApuntaCallado("no se pudo abrir el disco: " + (error ?? "sin respuesta"));
                 if (yo == rocolaOsSpAbriendo && (desdeBuscador ? searchOpen : (panelSongs.Visible && currentAlbum == a))) RocolaOsSpotifyCatalogoAviso("Espera un momento y vuelve a intentarlo");
                 return;
             }
@@ -440,7 +441,7 @@ namespace Rocola
         {
             if (l == null || l.Count == 0)
             {
-                RocolaOs.Apunta("spotify_catalogo", "no se pudieron traer los discos del artista: " + (error ?? "no tiene"));
+                RocolaOsSpotifyCatalogoApi.ApuntaCallado("no se pudieron traer los discos del artista: " + (error ?? "no tiene"));
                 if (yo == rocolaOsSpAbriendo && searchOpen) RocolaOsSpotifyCatalogoAviso("Espera un momento y vuelve a intentarlo");
                 return;
             }

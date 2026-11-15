@@ -8,14 +8,14 @@
 #   API: la carpeta con api-falsa.dll (por defecto /root/rocola-trabajo/fase11/catalogo/api-falsa; se compila si falta o si cambio)
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/catalogo/prueba; se rehace)
 #   CAPTURAS: si se pone, las capturas para el dueno van ahi (PNG)
-# escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion suena (todas, de fabrica)
+# escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred (todas, de fabrica)
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -45,8 +45,8 @@ cuenta() { local n; n=$(grep -cE -- "$2" "$1" 2>/dev/null); echo "${n:-0}"; }
 
 # LA API FALSA: un puerto libre, su carpeta y su registro de peticiones
 P=$((20000 + $$ % 20000))
-apifalsa() {   # NOMBRE: arranca una API falsa nueva (sin peticiones) para la escena; deja su registro en $W/NOMBRE/api/peticiones.txt
-  local o="$W/$1/api"; mkdir -p "$o"; P=$((P + 1))
+apifalsa() {   # NOMBRE [MISMO]: arranca una API falsa nueva (sin peticiones) para la escena; deja su registro en $W/NOMBRE/api/peticiones.txt
+  local o="$W/$1/api"; mkdir -p "$o"; [ -n "${2:-}" ] || P=$((P + 1))   # (con MISMO, en el puerto de antes: el que ya tiene la rocola)
   dotnet "$API/api-falsa.dll" $P "$o" id-de-prueba secreto-de-prueba refresco-1 > "$o/salida.txt" 2>&1 &
   APIPID=$!
   for i in $(seq 1 100); do [ -f "$o/listo" ] && break; sleep 0.1; done
@@ -191,6 +191,7 @@ for e in $escenas; do
     si "cuenta: la de otro no se pide nunca" nocontiene "$a" "lis002"
     si "cuenta: Spotify roto la llave de refresco y se guardo encima (0600, sin la vieja)" bash -c "grep -qE '^refresh_token=refresco-[0-9]+$' '$d/rocola_spotify_api.txt' && ! grep -qx 'refresh_token=refresco-1' '$d/rocola_spotify_api.txt' && [ \"\$(find '$d/rocola_spotify_api.txt' -perm 600 | wc -l)\" = 1 ]"
     si "cuenta: un pedido desde la lista propia ($(pedidos $o))" test "$(pedidos $o)" = 1
+    si "cuenta: la llave de la cuenta se renovo como PKCE (client_id en el cuerpo, sin el secreto)" bash -c "grep -q '^POST /api/token nada 200' '$a' && ! grep -q '^POST /api/token nada 400' '$a'"
     si "cuenta: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
   suena)
     # LO QUE SUENA CON UNA DE SPOTIFY: se pide la 1a de «inventad», se cierra el buscador y la barra de abajo de XP dice lo que suena. Con la
@@ -205,6 +206,49 @@ for e in $escenas; do
     si "suena: el nucleo dice que suena (y no que acabo)" bash -c "grep -qF 'suena spotify:track:can0000' '$d/rocola_spotify.txt' && ! grep -qF 'acabo spotify:track:can0000' '$d/rocola_spotify.txt'"
     si "suena: por la tarjeta salio sonido (sonado.raw de mas de 1 s)" test "$(cat "$o/sonado.raw" 2>/dev/null | wc -c)" -gt 352800; rm -f "$o/sonado.raw"
     si "suena: nada de Spotify en los datos de XP (solo en rocola_spotify.txt, la bitacora del nucleo, y la llave)" bash -c "! grep -rlE 'spotify:|can0000|dis000|Inventados' '$d' | grep -vE '/(rocola_spotify\.txt|rocola_spotify_api\.txt)$' | grep -q ." ;;
+  llavemala)
+    # LLAVES MALAS: client_secret que Spotify rechaza (400 invalid_client): se pide UNA vez y no otra con el mismo archivo, aunque se busque
+    # mas; XP sigue igual. Al poner el bueno (el archivo cambia) se pide otra vez y se busca (y cuenta: una sola llave buena)
+    apifalsa $e; d=$(datos $e encendido); printf 'client_id=id-de-prueba\nclient_secret=secreto-malo\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(escribe 13 x),$(escribe 14 y),20:8,20.5:8,$(escribe 21 o)" 26 ROCOLA_OS=1
+    ( sleep 16.5; printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\n' > "$d/rocola_spotify_api.txt.n"; chmod 600 "$d/rocola_spotify_api.txt.n"; mv "$d/rocola_spotify_api.txt.n" "$d/rocola_spotify_api.txt" ) &
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
+    grep -v '/img/' "$a" | sed 's/^/   /' | head -8
+    si "llavemala: sale con 0" test "$(cat $o/salio)" = 0
+    si "llavemala: la llave mala se pidio UNA sola vez ($(grep -c 'POST /api/token basic 400' $a)) aunque se busco 6 veces" test "$(grep -c 'POST /api/token basic 400' $a)" = 1
+    si "llavemala: con la mala, ninguna peticion a /v1" bash -c "! sed '/POST \/api\/token basic 200/,\$d' '$a' | grep -q ' /v1/'"
+    si "llavemala: la bitacora dice el 400 una vez, y en las 6 busquedas no se llena ($(grep -c 'no valen' $d/rocola_os_bitacora.txt) renglones)" bash -c "[ \$(grep -c '\] la llave no se dio (400: client_id o client_secret no valen)' '$d/rocola_os_bitacora.txt') = 1 ] && [ \$(grep -c 'no valen' '$d/rocola_os_bitacora.txt') -le 3 ]"
+    si "llavemala: con el archivo bueno, una llave (200) y la busqueda (200)" bash -c "[ \$(grep -c 'POST /api/token basic 200' '$a') = 1 ] && grep -q 'GET /v1/search app 200' '$a'"
+    si "llavemala: ni el secreto ni las llaves en los datos ni en /run" bash -c "! grep -rlE 'secreto-malo|secreto-de-prueba|app-[0-9]+' '$d' '$o/run' 2>/dev/null | grep -v 'rocola_spotify_api.txt' | grep -q ." ;;
+  reabre)
+    # EL 429 VALE TAMBIEN SI ROCOLA-XP SE VUELVE A ABRIR (se cayo y el lanzador la abrio): la 1a vez la API contesta 429 con Retry-After como
+    # FECHA (RFC 9110) de dentro de 120 s; la 2a vez (otro rocola-xp, el mismo /run) no le pregunta nada aunque se busque
+    apifalsa $e; d=$(datos $e encendido); control "429?seg=120&cuota=1&fecha=1"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad)" 15 ROCOLA_OS=1
+    wait $ROCOLA; echo $? > "$W/$e/salio1"; kill $VIG 2>/dev/null; wait $VIG 2>/dev/null
+    a="$W/$e/api/peticiones.txt"; antes=$(v1 $a)
+    abre $e "$d" "$BASE,$(escribe 9.5 imaginario),15:8,15.5:8,$(escribe 16 x)" 20 ROCOLA_OS=1
+    espera $e; o="$W/$e"
+    grep -v '/img/' "$a" | sed 's/^/   /' | head -6
+    si "reabre: sale con 0 las dos veces" test "$(cat $o/salio1)$(cat $o/salio)" = 00
+    si "reabre: la 1a vez, un 429 y nada mas a /v1 ($antes)" bash -c "[ $antes = 1 ] && grep -q ' 429 q=inv' '$a'"
+    si "reabre: el plazo del 429 en /run (catalogo.frena, con la cuota)" bash -c "grep -qE '^[0-9]+ cuota$' '$o/run/rocola-xp/spotify/catalogo.frena'"
+    si "reabre: la 2a vez, NINGUNA peticion a /v1 ni a la llave ($(v1 $a) a /v1 en total)" bash -c "[ \$(grep -c ' /v1/' '$a') = 1 ] && [ \$(grep -c 'POST /api/token' '$a') = 1 ]"
+    si "reabre: la 2a vez la bitacora dice que sigue frenando (unos 100 s)" bash -c "grep -qE 'Spotify sigue frenando \(429 de antes de abrir\): no se le pregunta nada en (9[0-9]|1[01][0-9]) s \(QUOTA_EXCEEDED' '$d/rocola_os_bitacora.txt'"
+    si "reabre: el estado dice api=frena con la cuota" bash -c "grep -qx 'api=frena' '$o/run/rocola-xp/spotify/catalogo' && grep -qE '^frena_s=[0-9]+ cuota$' '$o/run/rocola-xp/spotify/catalogo'" ;;
+  sinred)
+    # SIN INTERNET AL ARRANCAR (la API no contesta: nada escucha en su puerto) con la cuenta: XP sigue; lo buscado no traba ni llena la
+    # bitacora (el mismo renglon una vez); lo de la cuenta se vuelve a intentar solo y, cuando vuelve la red (la API a los 12 s), llega
+    d=$(datos $e cuenta); P=$((P + 1)); o="$W/$e"; mkdir -p "$o/api"; : > "$o/api/peticiones.txt"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(escribe 11.4 x)" 46 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11.8 buscador-sin-red)"
+    sleep 12.5; apifalsa $e mismo
+    espera $e; a="$o/api/peticiones.txt"
+    grep -v '/img/' "$a" | sed 's/^/   /' | head -8
+    si "sinred: sale con 0" test "$(cat $o/salio)" = 0
+    si "sinred: sin red, «busqueda sin respuesta: sin red» UNA vez en la bitacora aunque se busco dos veces ($(grep -c 'busqueda sin respuesta: sin red' $d/rocola_os_bitacora.txt))" test "$(grep -c 'busqueda sin respuesta: sin red' $d/rocola_os_bitacora.txt)" = 1
+    si "sinred: lo de la cuenta se vuelve a intentar solo" contiene "$d/rocola_os_bitacora.txt" "se vuelve a intentar solo"
+    si "sinred: al volver la red, lo de la cuenta llego (me/tracks, me/albums, me/playlists: una vez cada una)" bash -c "[ \$(grep -cE 'GET /v1/me/(tracks|albums|playlists) cuenta 200' '$a') = 3 ]"
+    si "sinred: la bitacora dice lo de la cuenta" contiene "$d/rocola_os_bitacora.txt" "lo de la cuenta: " ;;
   sinsesion)
     # SOLOIST SIN SESION (I6 dice que no esta listo: el vigilante sale al momento y no hay Soloist): no se pide ni se cobra; el aviso de XP
     apifalsa $e; d=$(datos $e encendido)

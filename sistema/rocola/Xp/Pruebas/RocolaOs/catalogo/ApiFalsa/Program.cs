@@ -4,12 +4,14 @@
 //   api-falsa PUERTO CARPETA [client_id client_secret refresh_token]
 // Escribe CARPETA/peticiones.txt (una linea por peticion: «metodo ruta-sin-consulta llave codigo») y CARPETA/listo cuando escucha.
 // Lo que sabe hacer:
-//   POST /api/token                          client_credentials (Basic con el id y el secreto) o refresh_token (da uno nuevo: rota)
+//   POST /api/token                          client_credentials (Basic con el id y el secreto) o refresh_token (da uno nuevo: rota; como
+//                                            PKCE, sin Authorization y con client_id, o como Authorization Code, con el Basic)
 //   GET  /v1/search?q&type&limit&market      limit de 1 a 10 (mas: 400, como la de verdad); busca en nombres y artistas
 //   GET  /v1/albums/{id}, /v1/albums/{id}/tracks, /v1/artists/{id}/albums (limit hasta 10)
 //   GET  /v1/me/tracks, /v1/me/albums, /v1/me/playlists, /v1/playlists/{id}/items     (solo con la llave de la cuenta: si no, 401)
 //   GET  /img/{nombre}.jpg                   una portada dibujada (JPEG de 300x300)
-//   GET  /control/429?seg=N[&cuota=1]        la siguiente peticion a /v1 contesta 429 con Retry-After N (y el cuerpo QUOTA_EXCEEDED)
+//   GET  /control/429?seg=N[&cuota=1][&fecha=1]  la siguiente peticion a /v1 contesta 429 con Retry-After N (o, con fecha=1, la fecha de
+//                                            dentro de N s, RFC 9110) y con cuota=1 el cuerpo QUOTA_EXCEEDED
 //   GET  /control/vence                      las llaves dadas dejan de valer (la siguiente a /v1 da 401)
 //   GET  /control/5xx?n=N                    las siguientes N peticiones a /v1 dan 503
 using System;
@@ -35,7 +37,7 @@ internal static class ApiFalsa
     static readonly List<Lista> listas = new List<Lista>();
     static string baseUrl, carpeta, clientId = "id-de-prueba", secreto = "secreto-de-prueba", refresco = "refresco-1";
     static readonly HashSet<string> llavesApp = new HashSet<string>(), llavesCuenta = new HashSet<string>();
-    static int n429, seg429 = 30, n5xx, nLlave; static bool cuota429;
+    static int n429, seg429 = 30, n5xx, nLlave; static bool cuota429, fecha429;
     static readonly object cerrojo = new object();
 
     static int Main(string[] a)
@@ -111,7 +113,7 @@ internal static class ApiFalsa
         {
             lock (cerrojo)
             {
-                if (ruta == "/control/429") { n429 = 1; seg429 = int.Parse(q["seg"] ?? "30", CultureInfo.InvariantCulture); cuota429 = q["cuota"] == "1"; }
+                if (ruta == "/control/429") { n429 = 1; seg429 = int.Parse(q["seg"] ?? "30", CultureInfo.InvariantCulture); cuota429 = q["cuota"] == "1"; fecha429 = q["fecha"] == "1"; }
                 else if (ruta == "/control/vence") { llavesApp.Clear(); llavesCuenta.Clear(); }
                 else if (ruta == "/control/5xx") n5xx = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
             }
@@ -123,7 +125,9 @@ internal static class ApiFalsa
             string form; using (StreamReader r = new StreamReader(c.Request.InputStream)) form = r.ReadToEnd();
             var f = System.Web.HttpUtility.ParseQueryString(form);
             string esperado = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(clientId + ":" + secreto));
-            if (auth != esperado) { cod = 400; cuerpo = "{\"error\":\"invalid_client\",\"error_description\":\"Invalid client\"}"; }
+            // (la de la cuenta se renueva como PKCE: sin Authorization y con client_id en el cuerpo; o como Authorization Code, con el secreto)
+            bool pkce = auth.Length == 0 && f["grant_type"] == "refresh_token" && f["client_id"] == clientId;
+            if (auth != esperado && !pkce) { cod = 400; cuerpo = "{\"error\":\"invalid_client\",\"error_description\":\"Invalid client\"}"; }
             else if (f["grant_type"] == "client_credentials")
             {
                 string t; lock (cerrojo) { t = "app-" + (++nLlave).ToString(CultureInfo.InvariantCulture); llavesApp.Add(t); }
@@ -143,7 +147,7 @@ internal static class ApiFalsa
             if (n429 > 0)
             {
                 n429--;
-                extra["Retry-After"] = seg429.ToString(CultureInfo.InvariantCulture);
+                extra["Retry-After"] = fecha429 ? DateTime.UtcNow.AddSeconds(seg429).ToString("r", CultureInfo.InvariantCulture) : seg429.ToString(CultureInfo.InvariantCulture);
                 Apunta(c, ruta, tipoLlave, 429);
                 Contesta(c, 429, cuota429 ? "{\"error\":{\"status\":429,\"message\":\"Too many requests\",\"reason\":\"QUOTA_EXCEEDED\"}}" : "{\"error\":{\"status\":429,\"message\":\"API rate limit exceeded\"}}", ctype, null, extra);
                 return;
