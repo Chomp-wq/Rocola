@@ -4,7 +4,7 @@
 # las escenas de ventanas, DATOS0), fuera de pantalla con un KMS SIMULADO (RocolaOs/RocolaOs.PantallaSimulada.cs: los modos de un monitor
 # inventado, la tabla de gamma de la radeon -256, por la llamada de siempre- y sin matriz de color) y sin sonido. NADA de esto es el A4 ni
 # un monitor de verdad.
-#   bash prueba.sh PROGRAMA [numeros guion ventana arranque caidas malo monitor lista apagada sin]
+#   bash prueba.sh PROGRAMA [numeros guion ventana teclado arranque caidas malo monitor lista apagada sin]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT, con el ejecutable rocola-xp)
 #   W: la carpeta de trabajo (/root/rocola-trabajo/fase11/pantalla/prueba); se rehace en cada corrida
 #   CAPTURAS: donde se copian las capturas que se ensenan (de fabrica, ninguna)
@@ -13,7 +13,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SIS=$(cd "$XP/../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-numeros guion ventana arranque caidas malo monitor lista apagada sin}"
+partes="${*:-numeros guion ventana teclado arranque caidas malo monitor lista apagada sin}"
 W=${W:-/root/rocola-trabajo/fase11/pantalla/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 REF=${REF:-/root/rocola-trabajo/port/ventanas/ref-trazas/sistema/rocola/Xp/bin/Release/net10.0}
@@ -155,6 +155,26 @@ if [[ " $partes " == *" ventana "* ]]; then
   si "la rocola sigue: el apagado de siempre (WindowsShutDown, rocola_estado.txt borrado)" bash -c "grep -q '	closed Form1.Rocola. WindowsShutDown$' '$o/traza.txt' && [ ! -e '$d/rocola_estado.txt' ]"
   si "rocola_error.txt sin fallos de Rocola OS" nocontiene "$d/rocola_error.txt" "Rocola OS"
   for f in ventana-1024 prueba-15s vuelta-sola guardado-1920 colores cerrada; do guarda_captura "$o/$f.png" "$f.png"; done
+fi
+
+if [[ " $partes " == *" teclado "* ]]; then
+  echo "== teclado (lo mismo sin raton: Tab, las flechas, Intro; asi se maneja tambien en la prueba de QEMU)"
+  d=$(datos teclado); o="$W/teclado"
+  # Ctrl+F4 (el foco en la pestana); Tab, Tab: la barra de la resolucion; Fin: la mas grande (1920x1080, sus hercios mas altos: 60);
+  # Tab (los hercios), Tab («Probar»), Intro: cambia y pregunta, con el foco en «No»; Tab («Si»), Intro: guardado.
+  # El foco vuelve a la barra de la resolucion; Tab (los hercios), Tab («Volver a lo automatico»: «Probar» esta en gris), Tab (el brillo),
+  # tres veces derecha: brillo 3; y Escape.
+  P="6:17+115,7:9,7.3:9,7.6:35,8:9,8.3:9,8.6:13,11:9,11.4:13,13:9,13.2:9,13.4:9,13.6:39,13.8:39,14:39,16:27"
+  abre teclado "$d" "$P" "10:teclado-pregunta,15:teclado-guardado" 19 TERM ROCOLA_OS=1 ROCOLA_KMS_SIMULADO="$SIM"
+  k="$o/kms.txt"; sed 's/^/   kms: /' "$k" | cut -c1-110
+  si "sale con 0" test "$(cat $o/salio)" = 0
+  si "con Tab, Fin, Tab, Tab e Intro: la prueba de 1920x1080@60 (la captura de la pregunta mide 1920x1080)" bash -c "grep -q ' modo 1920x1080@60$' '$k' && [ \"\$(medida $o/teclado-pregunta.png)\" = 1920x1080 ]"
+  si "con Tab e Intro en la pregunta («Si»): guardado modo=1920x1080@60 y no vuelve a 1024x768" bash -c "grep -qx 'modo=1920x1080@60' '$d/rocola_pantalla.txt' && [ \$(grep -c ' modo ' '$k') = 2 ]"
+  si "con Tab, Tab, Tab y tres veces la flecha derecha: brillo=3 guardado, y su tabla en la tarjeta" bash -c "grep -qx 'brillo=3' '$d/rocola_pantalla.txt' && [ \"\$(grep ' gamma 256 ' '$k' | tail -1 | cut -d' ' -f5-)\" = \"\$(env ROCOLA_DATOS='$W/o' ROCOLA_PANTALLA=fuera:64x64 timeout 60 ${RX[*]} --prueba-pantalla tabla 256 3 100 100 0 2>/dev/null | grep -v '^Pantalla: ' | head -3 | tr '\n' ' ' | sed 's/ \$//')\" ]"
+  b="$d/rocola_os_bitacora.txt"
+  si "la bitacora dice los modos del monitor al arrancar (7, el automatico con *)" bash -c "grep -qF 'modos del monitor (7): 1920x1080@60 1920x1080@50 1280x1024@75 1280x1024@60 1024x768@75* 1024x768@60 800x600@60' '$b'"
+  si "rocola_error.txt sin fallos de Rocola OS" nocontiene "$d/rocola_error.txt" "Rocola OS"
+  guarda_captura "$o/teclado-pregunta.png" "teclado-pregunta.png"
 fi
 
 if [[ " $partes " == *" arranque "* ]]; then

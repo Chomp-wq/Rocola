@@ -187,6 +187,8 @@ namespace Rocola
                     RocolaOs.Apunta(RocolaOs.NombrePantalla, "prueba de " + nuevo.Clave + " sin confirmar: vuelve a " + antes.Clave);
                 }
                 eligeActual(); pintaRes();
+                // (con el teclado: «Probar» queda en gris -ya es el modo puesto- y el foco se iria solo a la otra tarjeta; se queda en la barra)
+                if (fRes.Item3.Enabled) fRes.Item3.Focus();
             };
             bAuto.Click += delegate
             {
@@ -197,6 +199,7 @@ namespace Rocola
                 RocolaOs.GuardaModoPantalla(null);
                 estadoRes = "Guardado: lo automático.";
                 eligeActual(); pintaRes();
+                if (fRes.Item3.Enabled) fRes.Item3.Focus();
             };
             eligeActual();
             pintaRes();
@@ -321,10 +324,13 @@ namespace Rocola
                 q.Controls.Add(bNo); q.Controls.Add(bSi); q.Controls.Add(lT); q.Controls.Add(lD);
                 q.TeclaAntes += delegate (PulsoTecla ke) { if (ke.KeyCode == Tecla.Escape) { bien = false; q.Close(); } };
                 MonedaTambienAqui(q);
+                long desde = Environment.TickCount64;
                 Reloj r = new Reloj("RocolaOs:pantalla-prueba", null); r.Interval = 1000;
                 r.Tick += delegate
                 {
-                    quedan--;
+                    // POR EL RELOJ, no por la cuenta de avisos: si con el modo nuevo la rocola pinta a tirones (un cuadro de segundos), los avisos de
+                    // 1 s llegan tarde y la vuelta sola tardaria mucho mas de 15 s
+                    quedan = RocolaOs.PantallaPruebaSegundos - (int)((Environment.TickCount64 - desde) / 1000);
                     if (quedan <= 0) { r.Stop(); bien = false; RocolaOs.Apunta(RocolaOs.NombrePantalla, "prueba de " + nuevo.Clave + ": nadie contesto en " + RocolaOs.PantallaPruebaSegundos + " s"); q.Close(); return; }
                     bNo.Text = "No (vuelve en " + quedan + " s)"; bNo.Invalidate();
                 };

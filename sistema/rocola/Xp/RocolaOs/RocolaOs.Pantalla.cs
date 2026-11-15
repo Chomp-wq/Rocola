@@ -184,6 +184,11 @@ namespace Rocola
             {
                 pantallaAvisos.Add("pantalla " + m.Actual.Clave + (pantallaConModoGuardado ? " (la guardada; arranque " + a.SinConfirmar + " sin confirmar)" : " (automatica)")
                     + "; controlador " + (m.Controlador ?? "?") + "; gamma " + (m.TamanoGamma > 0 ? m.TamanoGamma + " por " + m.ViaGamma : "no") + "; CTM " + (m.ConCtm ? "si" : "no"));
+                // (los modos que da el monitor, para saber desde la bitacora -o desde casa- que se puede elegir; «*» el automatico)
+                StringBuilder lm = new StringBuilder();
+                ModoPantalla[] vm = m.Modos;
+                for (int i = 0; i < vm.Length && i < 64; i++) lm.Append(i > 0 ? " " : "").Append(vm[i].Clave).Append(i == m.Automatico ? "*" : "");
+                pantallaAvisos.Add("modos del monitor (" + vm.Length + "): " + lm);
                 if (!a.ColoresDeFabrica)
                 {
                     string e;

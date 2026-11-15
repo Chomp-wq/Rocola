@@ -345,9 +345,10 @@ namespace Rocola.Pantalla
             // no: como estaba (el controlador no cambio nada: sigue en pantalla lo de antes)
             if (otraMedida)
             {
-                Suelta(Guarda());
+                Superficies nueva = Guarda();
                 superficie = v.Gbm; eglSup = v.Egl; boActual = v.Bo; fbs = v.Fbs;
-                EGL.MakeCurrent(egl, eglSup, eglSup, ctx);
+                EGL.MakeCurrent(egl, eglSup, eglSup, ctx);   // (primero la de antes al frente; despues se suelta la que no sirvio)
+                Suelta(nueva);
             }
             modo = v.Modo; Ancho = modo.hdisplay; Alto = modo.vdisplay; puesto = true;
             return false;
