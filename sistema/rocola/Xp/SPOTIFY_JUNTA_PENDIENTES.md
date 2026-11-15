@@ -36,3 +36,7 @@
      pared, apagado = XP tal cual.
 5. **El modo noche también con Spotify** (pregunta del dueño del 15-11-2026): comprobar con una escena que una canción de Spotify (la
    fuente de `RocolaOs.SpotifyFuente.cs` por `ArmaCadena`) baja al `noche_pct` de noche y con «Probar», con su rampa, igual que una de XP.
+6. **Las letras por género** (`PLAN_PARED_GENEROS.md`): HECHO en la rama `pared-generos` (`FASE11_pared-generos.md`, ganchos g90-g94; 53 de 53
+   en JIT y NativeAOT con la API falsa y un catálogo de prueba inventado). **No entra en la compilación del cumpleaños**: se junta después. Al
+   juntar: la prueba del catálogo (`Pruebas/RocolaOs/catalogo/prueba.sh`) ya le pasa `ROCOLA_CATALOGO_URL` a la API falsa (si no, con el modo
+   encendido y la llave, a los 45 s se miraría GitHub); y el formato del .txt del catálogo, con lo que escriba el grupo catalogo-datos.

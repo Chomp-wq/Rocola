@@ -207,6 +207,8 @@ namespace Rocola
         // Lo demas, la de XP tal cual. Estatica y desde los hilos de las portadas de XP: solo compara la ruta.
         private static string RocolaOsSpotifyCatalogoMiniatura(string portada, string deXp)
         {
+            string pg = RocolaOsPgPortadas.CarpetaConBarra;   // (pared-generos) las del catalogo: sus miniaturas, en su cache con tope
+            if (pg != null && portada != null && portada.StartsWith(pg, StringComparison.Ordinal)) return Path.Combine(pg, "miniaturas", Path.GetFileName(deXp));
             string d = RocolaOsSpotifyCatalogoPortadas.Carpeta;
             if (d == null || portada == null || !portada.StartsWith(d, StringComparison.Ordinal)) return deXp;
             return Path.Combine(Path.GetDirectoryName(d.TrimEnd('/')) ?? d, "miniaturas", Path.GetFileName(deXp));
@@ -215,6 +217,8 @@ namespace Rocola
         // g50 (PreviewsIndexadosGpu.cs, IndexedSave): la previa de 32 px de una portada de Spotify no va a previews32-v1.bin (en el disco)
         internal static bool RocolaOsSpotifyCatalogoEsMiniatura(string identidad)
         {
+            string pg = RocolaOsPgPortadas.CarpetaConBarra;   // (pared-generos) ni las del catalogo: son miles y tienen su cache
+            if (pg != null && identidad != null && identidad.StartsWith(pg, StringComparison.Ordinal)) return true;
             string d = RocolaOsSpotifyCatalogoPortadas.Carpeta;
             if (d == null || identidad == null) return false;
             string mini = Path.Combine(Path.GetDirectoryName(d.TrimEnd('/')) ?? d, "miniaturas") + "/";
@@ -233,6 +237,7 @@ namespace Rocola
         private string RocolaOsSpotifyCatalogoLetras(string deXp)
         {
             if (!RocolaOsSpotifyCatalogoVa) return deXp;
+            deXp = RocolaOsPgLetras(deXp);   // (pared-generos) las letras que trae el catalogo
             if (!rocolaOsSpCuentaPedida && RocolaOsSpotifyCatalogoApi.HayCuenta)
             {
                 rocolaOsSpCuentaPedida = true;
@@ -265,6 +270,7 @@ namespace Rocola
         // g47 (Form1.Biblioteca.cs, RefreshAlbums): LA CABECERA de la letra de Spotify dice «SPOTIFY» (como «VIDEOS» o «LO MAS SONADO»)
         private string RocolaOsSpotifyCatalogoSeccion(char letra, string deXp)
         {
+            RocolaOsPgRefresco();   // (pared-generos) la pastilla y las portadas de la pagina que se mira
             if (letra == RocolaOsSpotifyParedMarca && rocolaOsSpPared != null && RocolaOsSpotifyCatalogoVa) return RocolaOsSpotifyParedMira();
             return letra == RocolaOsSpotifyMarca && RocolaOsSpotifyCatalogoVa ? "SPOTIFY" : deXp;
         }
@@ -288,6 +294,7 @@ namespace Rocola
             rocolaOsSpVueltaDisco = null; rocolaOsSpVueltaAlbum = null;   // (otro disco: REGRESAR ya no vuelve al buscador; sin el modo, siempre null)
             if (!RocolaOsEsSpotify(a) || !RocolaOsSpotifyCatalogoVa) return a;
             if (RocolaOsSpotifyParedesEntra(a)) return a;   // «Canciones de ARTISTA» o una casilla de una pared que aun no llega
+            if (RocolaOsPgEntra(a)) return a;               // (pared-generos) un disco del catalogo de las letras
             RocolaOsSpotifyCatalogoDisco d;
             if (a.Tracks.Count == 0 && rocolaOsSpDeDisco.TryGetValue(a, out d)) RocolaOsSpotifyCatalogoAbre(a, false);
             return a;
@@ -329,6 +336,9 @@ namespace Rocola
         private Album RocolaOsSpotifyCatalogoElegido(Album a)
         {
             if (!RocolaOsEsSpotify(a) || a.Tracks.Count > 0 || !RocolaOsSpotifyCatalogoVa) return a;
+            // (pared-generos) un disco del catalogo de las letras aun sin abrir: NO se pide nada (la pared no gasta la cuota) y no hay ficha ni
+            // letrero (dirian «0 canciones»): como si no hubiera disco elegido
+            if (RocolaOsPgEsDelCatalogo(a)) return null;
             int ahora = Environment.TickCount;
             if (!ReferenceEquals(a, rocolaOsSpMirado)) { rocolaOsSpMirado = a; rocolaOsSpMiradoDesde = ahora; return a; }
             if (unchecked(ahora - rocolaOsSpMiradoDesde) < 600) return a;
@@ -377,7 +387,7 @@ namespace Rocola
             if (entro)
             {
                 Album a = disco;
-                if (a == null || rocolaOsSpDeArtista.ContainsKey(a)) a = RocolaOsSpotifyCatalogoDiscoDe(c);
+                if (a == null || rocolaOsSpDeArtista.ContainsKey(a) || RocolaOsPgEsDelCatalogo(a)) a = RocolaOsSpotifyCatalogoDiscoDe(c);   // (pared-generos: a la letra ♫, el suyo)
                 if (a != null && (!rocolaOsSpDeDisco.TryGetValue(a, out RocolaOsSpotifyCatalogoDisco d) || d.Tipo == "album")) RocolaOsSpotifyCatalogoReciente(a);
             }
         }

@@ -140,6 +140,10 @@ namespace Rocola
         }
         internal static void AbreDisco(string id, Action<object, string> listo) { Encola(new Pedido { Que = "disco", Clave = id, Alguien = true, Listo = listo }); }
         internal static void AbreLista(string id, Action<object, string> listo) { Encola(new Pedido { Que = "lista", Clave = id, Alguien = true, Listo = listo }); }
+        // (pared-generos) UN DISCO DEL CATALOGO SIN ID DE SPOTIFY: 1 busqueda por su nombre y su artista (type=album); contesta el disco (sin sus
+        // canciones: luego AbreDisco) o NoEsta si Spotify no da ninguno que se llame asi
+        internal const string CatalogoBusca = "catalogo_busca", NoEsta = "Spotify no lo tiene";
+        internal static void BuscaDiscoDelCatalogo(string artista, string nombre, Action<object, string> listo) { Encola(new Pedido { Que = CatalogoBusca, Clave = (artista ?? "") + "\n" + (nombre ?? ""), Alguien = true, Listo = listo }); }
         // UNA PAGINA DE UNA PARED (que: ParedArtista, ParedTodos o ParedCanciones; de: el id del artista, lo escrito o el nombre del artista;
         // desde: el offset, de 10 en 10). Lo que alguien mira: va antes que lo de la cuenta. La contestada, de memoria toda la sesion.
         internal static string ClavePagina(string de, int desde) { return desde.ToString(CultureInfo.InvariantCulture) + "\n" + (de ?? ""); }
@@ -304,6 +308,24 @@ namespace Rocola
                 using (d) LeeItems(d.RootElement, l);
                 lock (cerrojo) { lista.Canciones = l; }
                 return lista;
+            }
+            if (p.Que == CatalogoBusca)
+            {
+                int corte = p.Clave.IndexOf('\n');
+                string art = p.Clave.Substring(0, corte), nom = p.Clave.Substring(corte + 1);
+                string q = "album:\"" + nom.Replace('"', ' ') + "\" artist:\"" + art.Replace('"', ' ') + "\"";
+                JsonDocument d = Pide(c, false, "/search?q=" + Uri.EscapeDataString(q) + "&type=album&limit=5&market=" + m, ref peticionesBusqueda, true, out error);
+                if (d == null) return null;
+                RocolaOsSpotifyCatalogoBusqueda b;
+                using (d) b = LeeBusqueda(q, d.RootElement);
+                // el que se llama igual (sin acentos ni mayusculas); si no, el primero que lo contiene; si no, ninguno (otro disco no vale)
+                string clave = MotorBusqueda.Normaliza(nom);
+                RocolaOsSpotifyCatalogoDisco mejor = null;
+                foreach (RocolaOsSpotifyCatalogoDisco x in b.Discos) if (MotorBusqueda.Normaliza(x.Nombre) == clave) { mejor = x; break; }
+                if (mejor == null && clave.Length > 0) foreach (RocolaOsSpotifyCatalogoDisco x in b.Discos) if (MotorBusqueda.Normaliza(x.Nombre).Contains(clave)) { mejor = x; break; }
+                if (mejor == null) { error = NoEsta; return null; }
+                lock (cerrojo) { if (!discos.ContainsKey(mejor.Id)) discos[mejor.Id] = mejor; }
+                return mejor;
             }
             if (p.Que == ParedArtista || p.Que == ParedTodos || p.Que == ParedCanciones) return AtiendePagina(c, m, p, out error);
             if (p.Que == AtajoTop || p.Que == AtajoRecientes)
