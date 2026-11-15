@@ -61,6 +61,8 @@ namespace Rocola
             // ultima casilla de cada bloque por llenar: una pagina pedida que ya nadie mira se deja en la cola sin preguntar a la red
             internal volatile int PaginaPub;
             internal readonly Dictionary<int, int> Inicio = new Dictionary<int, int>(), Fin = new Dictionary<int, int>();
+            // (revision cuota-hilos-y-fallos, 2a pasada) hasta donde llego cada bloque contestado (su offset + lo que trajo «items»)
+            internal readonly Dictionary<int, int> FinCrudo = new Dictionary<int, int>();
         }
         // «Canciones de ARTISTA»: por donde va (se piden de 10 en 10 mientras alguien esta dentro)
         private sealed class RocolaOsSpotifyCancionesDe
@@ -350,6 +352,20 @@ namespace Rocola
             }
             p.Fallados.Remove(b);
             if (p.Total < 0) p.Total = Math.Min(pg.Total, RocolaOsSpotifyCatalogoApi.TopeTodos);
+            // (revision cuota-hilos-y-fallos, 2a pasada) DONDE SE ACABA DE VERDAD: el «total» de search es una estimacion (puede decir 1000 y
+            // acabarse en 40) y el de un artista puede bajar entre una pagina y otra. Si no se corrige, la pagina que se mira se llena de casillas
+            // que nunca llegan: cada bloque vacio corre la lista, la pagina pide los siguientes, y asi solo, sin que nadie toque nada, hasta el
+            // final (unas 95 peticiones en «Todos los discos»). Un bloque con menos de 10 en «items» (contando los null) es el final, y un
+            // «total» mas chico que el de antes manda; nunca por debajo de lo que ya llego.
+            int desdeB = b * RocolaOsSpotifyCatalogoApi.PorPaginaPared;
+            if (pg.Crudos > 0) p.FinCrudo[b] = desdeB + pg.Crudos;   // (uno vacio no prueba nada: puede llegar antes que el de delante)
+            int fin = pg.Crudos < RocolaOsSpotifyCatalogoApi.PorPaginaPared ? desdeB + pg.Crudos : int.MaxValue;
+            fin = Math.Min(fin, Math.Max(pg.Total, desdeB + pg.Crudos));
+            if (fin < p.Total)
+            {
+                foreach (KeyValuePair<int, int> kv in p.FinCrudo) if (kv.Value > fin) fin = kv.Value;
+                if (fin < p.Total) p.Total = fin;
+            }
             List<Album> l = new List<Album>();
             foreach (RocolaOsSpotifyCatalogoDisco d in pg.Discos)
             {
@@ -361,6 +377,8 @@ namespace Rocola
             // (revision cuota-hilos-y-fallos) un bloque que llega con menos de 10 (los tuyos quitados en «mas en Spotify», o Spotify que da
             // menos) corre las casillas de detras: la elegida, si ya era un disco y sigue en esta pagina, se queda en SU disco
             Album elegido = mirando && selAlbumIndex >= 0 && selAlbumIndex < p.Lista.Count ? p.Lista[selAlbumIndex] : null;
+            Album hueco = rocolaOsSpEntrandoHueco;
+            int enHueco = hueco != null ? p.Lista.IndexOf(hueco) : -1;
             RocolaOsSpotifyRecompone(p);
             if (elegido != null && !p.HuecoDe.ContainsKey(elegido))
             {
@@ -370,7 +388,17 @@ namespace Rocola
             if (!mirando || libBuilding || searchOpen) return;
             RefreshAlbums();   // (tambien con el disco abierto: al volver, la pagina ya esta al dia; XP no la rehace en BackToAlbums)
             // se habia entrado a una casilla que aun no llegaba: ahora es su disco
-            Album hueco = rocolaOsSpEntrandoHueco;
+            if (hueco != null && panelSongs.Visible && ReferenceEquals(currentAlbum, hueco) && enHueco >= p.Lista.Count)
+            {
+                // (revision cuota-hilos-y-fallos, 2a pasada) la lista se acabo antes de esa casilla (el «total» de Spotify era de mas): no
+                // hay disco que abrir; de vuelta a la pared (lo de XP al salir de un disco), en la ultima casilla, y no un disco vacio para siempre
+                rocolaOsSpEntrandoHueco = null;
+                selAlbumIndex = Math.Max(0, p.Lista.Count - 1); page = selAlbumIndex / PageSize;
+                BackToAlbums();
+                AbortDiscTrans();
+                RefreshAlbums();
+                return;
+            }
             if (hueco != null && panelSongs.Visible && ReferenceEquals(currentAlbum, hueco) && selAlbumIndex >= 0 && selAlbumIndex < p.Lista.Count && !p.HuecoDe.ContainsKey(p.Lista[selAlbumIndex]))
             {
                 rocolaOsSpEntrandoHueco = null;
@@ -491,7 +519,7 @@ namespace Rocola
                 a.Tracks.Add(new Track { Path = ruta, Artist = t.Artista ?? "", Title = t.Titulo ?? "", Album = t.Disco ?? "", Genre = "" });
             }
             c.Siguiente = desde + RocolaOsSpotifyCatalogoApi.PorPaginaPared;
-            if (pg.Canciones.Count < RocolaOsSpotifyCatalogoApi.PorPaginaPared || c.Siguiente >= Math.Min(c.Total, RocolaOsSpotifyCatalogoApi.TopeCanciones)) c.Acabado = true;
+            if (pg.Crudos < RocolaOsSpotifyCatalogoApi.PorPaginaPared || c.Siguiente >= Math.Min(c.Total, RocolaOsSpotifyCatalogoApi.TopeCanciones)) c.Acabado = true;
             generoVer++; duracionesVer++;   // (la ficha y el letrero de XP se rehacen con lo que ya vigilan)
             if (!dentro) return;
             // ya estaba dentro: las nuevas entran a la lista de XP como en EnterAlbum, sin mover la eleccion

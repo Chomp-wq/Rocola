@@ -350,3 +350,62 @@ de `RocolaOsSpotifyCatalogoVa` o en el hilo del catálogo, que sin el modo no se
 - Ni la red lenta del bar, ni la API de verdad, ni la repetición de la placa de botones del A4: `hojea` simula 400 ms por petición y la
   repetición de XP del arnés (500 ms y ~30/s). En el A4: mantener ARRIBA en la pared de un artista grande y contar en
   `/run/rocola-xp/spotify/catalogo` `artistas=` y `dejadas=`.
+
+### Segunda pasada (cuota-hilos-y-fallos, después de e944058)
+
+Mismo enfoque, sobre lo que la primera pasada no cubrió: qué pasa cuando Spotify **dice de más** (el `total`), las **portadas sin red** y
+una casilla a la que se entró y que resulta no existir. Se leyó otra vez el cliente (`AtiendePagina`, `Pide`, la cola) y las paredes.
+
+**Lo que se encontró y se arregló:**
+
+1. **Con un `total` de más, la pared pedía sola hasta el final** (el fallo de cuota de esta pasada). La pared se arma con el `total` del
+   primer bloque, y el de `search` es una estimación de Spotify que puede quedarse muy por encima de lo que da de verdad (la API falsa
+   ahora lo imita: `/control/miente?total=N`). Al llegar a la última página de verdad, los bloques de detrás llegan vacíos: la lista se
+   corría, la página que se mira se llenaba de casillas de los bloques siguientes, `RefreshAlbums` las pedía, llegaban vacías, y así
+   **sin que nadie tocara nada** hasta `offset=990`. Reproducido con la escena nueva `miente` («Todos los discos de «interminable»», 41
+   discos y `total` 1000) con el programa de c0df5ad/e944058: **100 peticiones de la búsqueda de discos** (off=0 a 990) en 8 s.
+   Arreglo (`RocolaOsSpotifyLlegoBloque`): un bloque que trae menos de 10 en `items` (contando los `null`, `Pagina.Crudos`) es el final, y
+   un `total` más chico que el de antes manda; nunca por debajo de lo que ya llegó (`FinCrudo`; uno vacío no cuenta: puede llegar antes que
+   el de delante). Con el arreglo: **6** (off=0 a 50; off=50 sale con la 3.ª página, vacío). «Canciones de» también corta por `Crudos`
+   (antes, por las canciones leídas: un `null` a media página lo cortaba antes de tiempo).
+2. **Las portadas que no se bajaban por la red no volvían en toda la sesión** (del catálogo, pero se nota en las paredes: una pared abierta
+   con el router del bar a medio prender se quedaba sin portadas hasta reiniciar). El disco no la vuelve a pedir (queda esperándola), y
+   el hilo de las portadas apuntaba **un renglón por portada** en la bitácora. Ahora (`RocolaOsSpotifyCatalogoPortadas`), sin red, con
+   5xx o 429 del servidor de imágenes, otra vez a los 15 s y, si tampoco, a los 60 s (no gasta la cuota de la API; un 404 o una de más de
+   4 MB, no); y el renglón va por `ApuntaCallado` (como mucho uno igual cada 10 min). Escena nueva `portadas` (`/control/imgfalla?n=N`:
+   el servidor de imágenes da 503 a todo hasta los 21 s): con el programa de antes, **23 portadas con 503, 0 llegaron, 23 renglones**; con
+   el arreglo, las 23 llegaron (un 503 y un 200 cada una) y **1 renglón**.
+3. **Una casilla a la que se entró y que resultó no existir** (el `total` era de más) dejaba un disco vacío abierto para siempre. Ahora,
+   al saberse que la lista se acaba antes, se vuelve a la pared (lo de XP al salir de un disco), en la última casilla. No hay escena que
+   lo fuerce (hay que entrar justo a una casilla de más antes de que llegue su bloque); se leyó el camino.
+
+**Lo que se miró y está bien** (sin cambios): un bloque vacío que llega antes que el de delante no sube el final; los bloques de detrás que ya
+iban en camino llegan y se ignoran (`Recompone` solo recorre hasta el `total` nuevo); la página que se mira y la elegida las acota XP en
+`RefreshAlbums` al encoger la lista; el «sigue» de la cola (primera pasada) sigue valiendo con el `total` corregido; nada de esto corre en
+el hilo de la pantalla salvo lo de memoria (`Recompone`, una pasada por la lista al llegar un bloque).
+
+**Pruebas** (programa de esta pasada en `/root/rocola-trabajo/fase11/paredes-rev-ch`; el de antes, c0df5ad, guardado allí como
+`jit-antes`/`aot-antes`):
+
+| Comprobación | Resultado |
+|---|---|
+| `dotnet build -c Release` (JIT) | 0 errores, 13 avisos (los de la base; ninguno en `RocolaOs/`) |
+| `dotnet publish` NativeAOT (linux-x64) | sale con 0, **0 avisos IL/AOT** |
+| `miente` y `portadas` con el programa de antes (c0df5ad, JIT) | **4 MAL de 8**: `miente` 100 páginas de la búsqueda de discos (off=0 a 990, 107 a /v1); `portadas` 23 con 503 y ninguna llegó, 23 renglones |
+| `prueba.sh` en JIT (las 25 escenas: las 23 de antes, `miente` y `portadas`) | **TODO BIEN, 156 de 156** |
+| `prueba.sh` en NativeAOT (las 25) | **TODO BIEN, 156 de 156** |
+| Cuota de las escenas nuevas (JIT / NativeAOT, a /v1) | `miente` 12 / 11 (1-2 búsquedas, 6 páginas de la búsqueda de discos: off=0 a 50, 4 discos de g52); `portadas` 4 / 5 (1-2 búsquedas, 1 página, 2 de artista) y 46 a `/img/` (23 con 503 y 23 con 200) |
+| Cuota de las demás (JIT / NativeAOT) | disco 4/2, artista 4/4, pared 8/8, canciones 8/9, todos 10/10, mas 4/4, atajos 5/5, pared429 4/4, mantenido 9/8, tiempo 4/6, hojea 15/15, atajos503 7/7, ayuda 7/8: lo de la primera pasada (las diferencias son búsquedas intermedias al escribir) |
+| `ganchos.py` | **TODO BIEN** (Codigo/ no cambia en esta pasada) |
+
+Nivel 0 y nivel 1 no se repitieron: no se toca `Codigo/` y todo lo cambiado corre solo con el modo Spotify (el hilo de las portadas y las
+paredes ni se crean sin él; `sinllave`, `apagado` y `cero` siguen en 0 peticiones y con la traza de XP).
+
+**Lo que queda abierto** (de este enfoque, además de lo de la primera pasada):
+
+- Las portadas de `/run` siguen sin tope en la sesión (lo de la primera pasada): con los reintentos no crecen más (es la misma portada).
+- Una casilla de más a la que se entra justo antes de saberse el final (punto 3): leído, sin escena.
+- Si Spotify da un `total` de más y además el último bloque llega lleno (10 justos), la pared enseña una página más de casillas vacías
+  hasta que alguien la mira: entonces se pide 1 bloque, llega vacío y la lista se acaba. Una petición, no una cadena.
+- Nada de esto con la API de verdad (cómo de equivocado viene su `total` de search en 2026), ni con el servidor de imágenes de verdad, ni
+  en el A4.

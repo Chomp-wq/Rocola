@@ -13,14 +13,16 @@
 #   (las de su revision: el rojo mantenido; la atraccion, la moneda y el buscador cerrado por tiempo) y hojea (la de la revision
 #   cuota-hilos-y-fallos: hojear deprisa una pared de 17 paginas con la red lenta, y un 503 a media pared) y atajos503 (los atajos de SP9
 #   que no llegaron por un 503 se vuelven a pedir al abrir el buscador pasado un minuto) y sinllave ayuda (la 2a revision funcionamiento-y-reglas:
-#   el modo encendido sin llaves es XP; la ayuda con ROJO+ABAJO en medio de la pila); todas, de fabrica
+#   el modo encendido sin llaves es XP; la ayuda con ROJO+ABAJO en medio de la pila) y miente portadas (la 2a pasada de cuota-hilos-y-fallos:
+#   el «total» de search que dice de mas no hace pedir solo hasta el final; las portadas que no se bajaron por la red se vuelven a pedir);
+#   todas, de fabrica
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -472,6 +474,35 @@ for e in $escenas; do
     si "ayuda: tras cerrar la ayuda, el buscador seguia con lo escrito y tras la pared, la misma pagina y casilla (la pared de Banda abierta 3 veces)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$d/rocola_os_bitacora.txt') = 3 ]"
     si "ayuda: la 1a pedida es la 1a del disco de la casilla 19 (can5181) y es la unica ($(pedidos $o))" bash -c "[ '$(pedido $o 1)' = \"\$(printf 'pedida\tspotify:track:can5181')\" ] && [ $(pedidos $o) = 1 ]"
     si "ayuda: de Orquesta nada, y la pared de Banda de memoria (4 peticiones de artista: off=0..30)" bash -c "! grep -q '/v1/.*art99' '$a' && [ \$(grep -c '/v1/artists/' '$a') = 4 ]" ;;
+  miente)
+    # (revision cuota-hilos-y-fallos, 2a pasada) EL «TOTAL» DE SEARCH QUE DICE DE MAS: Spotify da en search un «total» estimado que puede
+    # quedarse muy por encima (aqui 1000 para los 41 discos de «interminable»). Se abre «Todos los discos» y ARRIBA hasta la 3a pagina (la
+    # ultima de verdad: off=40 trae 1) y otra vez; despues 7 s sin tocar nada. Sin el arreglo, cada bloque vacio corria la lista, la pagina
+    # pedia los siguientes y asi solo hasta off=990 (unas 95 peticiones); con el, la lista se acaba donde se acaba: off=0 a 50 como mucho
+    apifalsa $e; d=$(datos $e encendido); control "miente?total=1000"
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),16.4:40,16.8:40,17.2:40,17.6:40,18:40,18.4:40,19.5:13,22:38,23.5:38,25.5:38,27:38" 35 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 21.5 pared-todos-miente),$(cap 33 pared-todos-miente-al-final)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    na=$(grep -c 't=album off=' "$a")
+    si "miente: sale con 0" test "$(cat $o/salio)" = 0
+    si "miente: las 5 paginas de verdad (off=0 a 40) una vez cada una" bash -c "for n in 0 10 20 30 40; do [ \$(grep -c 'GET /v1/search app 200 q=interminable t=album off='\$n'$' '$a') = 1 ] || exit 1; done"
+    si "miente: nada mas alla del final ($na paginas de la busqueda de discos; como mucho 6: off=50 puede salir con la 3a pagina)" bash -c "[ $na -le 6 ] && ! grep -qE 't=album off=([6-9][0-9]|[1-9][0-9][0-9])$' '$a'"
+    si "miente: la pared en la bitacora (con el total que dijo Spotify, 1000 casillas)" contiene "$d/rocola_os_bitacora.txt" "pared del buscador: pared_todos (1000 casillas)" ;;
+  portadas)
+    # (revision cuota-hilos-y-fallos, 2a pasada) LAS PORTADAS QUE NO SE BAJARON POR LA RED: el servidor de imagenes da 503 a todo hasta los
+    # 21 s (el buscador y la pared de Banda Interminable ya se abrieron); antes se quedaban sin portada toda la sesion. Ahora cada una se pide
+    # otra vez a los 15 s (y a los 60 s): todas llegan, como mucho 3 veces cada una, y la bitacora lo dice una sola vez
+    apifalsa $e; d=$(datos $e encendido); control "imgfalla?n=100000"
+    ( sleep 21; control "imgfalla?n=0" ) &
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13" 42 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 20 pared-portadas-sin-red),$(cap 40 pared-portadas-al-volver-la-red)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    n503=$(grep -c ' /img/.* img 503' "$a"); n200=$(grep -c ' /img/.* img 200' "$a")
+    echo "   portadas: $n503 con 503, $n200 con 200"
+    si "portadas: sale con 0" test "$(cat $o/salio)" = 0
+    si "portadas: cada portada que dio 503 llego despues (200) y ninguna se pidio mas de 3 veces ($n503 con 503, $n200 con 200)" bash -c "[ $n503 -gt 0 ] && for f in \$(grep ' img 503' '$a' | awk '{print \$2}' | sort -u); do grep -q \"GET \$f img 200\" '$a' || exit 1; [ \$(grep -c \"GET \$f img\" '$a') -le 3 ] || exit 1; done"
+    si "portadas: estan en /run (las de la pared y el buscador: $(ls $o/run/rocola-xp/spotify/portadas 2>/dev/null | grep -c 'jpg$'))" bash -c "[ \$(ls '$o/run/rocola-xp/spotify/portadas' | grep -c 'jpg$') -ge $n200 ] && [ $n200 -gt 0 ]"
+    si "portadas: la bitacora lo dice una sola vez ($(grep -c 'una portada no se bajo' $d/rocola_os_bitacora.txt) renglones)" bash -c "[ \$(grep -c 'una portada no se bajo (503)' '$d/rocola_os_bitacora.txt') = 1 ]" ;;
   esac
 done
 

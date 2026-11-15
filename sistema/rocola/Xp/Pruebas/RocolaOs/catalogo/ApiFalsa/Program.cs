@@ -23,6 +23,9 @@
 //   (revision cuota-hilos-y-fallos) GET /control/lento?ms=N   cada peticion a /v1 tarda N ms mas (la red lenta del bar)
 //   (revision cuota-hilos-y-fallos) GET /control/muchos       Banda Interminable pasa a tener 300 discos (los 40 y 260 mas, de 1 cancion):
 //                                            su pared son 17 paginas, para hojear deprisa
+//   (revision cuota-hilos-y-fallos, 2a pasada) GET /control/miente?total=N   en search, los discos dicen «total» N aunque haya menos (como
+//                                            Spotify, cuyo total de search es una estimacion)
+//   (revision cuota-hilos-y-fallos, 2a pasada) GET /control/imgfalla?n=N     las siguientes N portadas (/img/) dan 503
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -47,7 +50,7 @@ internal static class ApiFalsa
     static string baseUrl, carpeta, clientId = "id-de-prueba", secreto = "secreto-de-prueba", refresco = "refresco-1";
     static readonly HashSet<string> llavesApp = new HashSet<string>(), llavesCuenta = new HashSet<string>();
     static int n429, seg429 = 30, n5xx, nLlave; static bool cuota429, fecha429;
-    static int lento; static bool muchos; static readonly List<Disco> extraInter = new List<Disco>();   // (revision cuota-hilos-y-fallos)
+    static int lento, miente, nImg; static bool muchos; static readonly List<Disco> extraInter = new List<Disco>();   // (revision cuota-hilos-y-fallos)
     static readonly object cerrojo = new object();
 
     static int Main(string[] a)
@@ -152,8 +155,15 @@ internal static class ApiFalsa
                 else if (ruta == "/control/5xx") n5xx = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/lento") lento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/muchos") muchos = true;
+                else if (ruta == "/control/miente") miente = int.Parse(q["total"] ?? "1000", CultureInfo.InvariantCulture);
+                else if (ruta == "/control/imgfalla") nImg = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
             }
             Contesta(c, 200, "{}", ctype, null, extra); return;
+        }
+        if (ruta.StartsWith("/img/", StringComparison.Ordinal))
+        {
+            bool falla; lock (cerrojo) { falla = nImg > 0; if (falla) nImg--; }
+            if (falla) { Apunta(c, ruta, "img", 503); Contesta(c, 503, "{}", ctype, null, extra); return; }
         }
         if (ruta.StartsWith("/img/", StringComparison.Ordinal)) { binario = Portada(Path.GetFileNameWithoutExtension(ruta)); ctype = "image/jpeg"; cuerpo = null; Apunta(c, ruta, "img", 200); Contesta(c, 200, null, ctype, binario, extra); return; }
         if (ruta == "/api/token" && c.Request.HttpMethod == "POST")
@@ -221,7 +231,7 @@ internal static class ApiFalsa
             {
                 w.WriteStartObject();
                 if (tipos.Contains("track")) { w.WritePropertyName("tracks"); Pagina(w, canciones.FindAll(x => deArtista != null ? x.Art.Nombre.ToLowerInvariant() == deArtista : (x.Nombre + " " + x.Art.Nombre).ToLowerInvariant().Contains(t)), limite, desde, CancionEntera); }
-                if (tipos.Contains("album")) { w.WritePropertyName("albums"); Pagina(w, discos.FindAll(x => (x.Nombre + " " + x.Art.Nombre).ToLowerInvariant().Contains(t)), limite, desde, (ww, d) => DiscoSimple(ww, d)); }
+                if (tipos.Contains("album")) { w.WritePropertyName("albums"); int mt; lock (cerrojo) mt = miente; Pagina(w, discos.FindAll(x => (x.Nombre + " " + x.Art.Nombre).ToLowerInvariant().Contains(t)), limite, desde, (ww, d) => DiscoSimple(ww, d), mt); }
                 if (tipos.Contains("artist")) { w.WritePropertyName("artists"); Pagina(w, deArtista != null ? new List<Artista>() : arts, limite, desde, ArtistaEntero); }
                 w.WriteEndObject();
             });
@@ -280,11 +290,11 @@ internal static class ApiFalsa
             return Encoding.UTF8.GetString(m.ToArray());
         }
     }
-    static void Pagina<T>(Utf8JsonWriter w, List<T> todo, int limite, int desde, Action<Utf8JsonWriter, T> uno)
+    static void Pagina<T>(Utf8JsonWriter w, List<T> todo, int limite, int desde, Action<Utf8JsonWriter, T> uno, int totalFalso = 0)
     {
         w.WriteStartObject();
         w.WriteString("href", baseUrl + "/v1/pagina");
-        w.WriteNumber("limit", limite); w.WriteNumber("offset", desde); w.WriteNumber("total", todo.Count);
+        w.WriteNumber("limit", limite); w.WriteNumber("offset", desde); w.WriteNumber("total", Math.Max(todo.Count, totalFalso));
         if (desde + limite < todo.Count) w.WriteString("next", baseUrl + "/v1/siguiente"); else w.WriteNull("next");
         w.WriteNull("previous");
         w.WritePropertyName("items"); w.WriteStartArray();

@@ -62,6 +62,9 @@ namespace Rocola
     internal sealed class RocolaOsSpotifyCatalogoPagina
     {
         internal int Offset, Total;
+        // (revision cuota-hilos-y-fallos, 2a pasada) cuantos trajo «items» de verdad, contando los null: menos de los pedidos = ahi se acaba
+        // la lista, diga lo que diga «total» (el de search es una estimacion de Spotify y puede quedarse muy por encima)
+        internal int Crudos;
         internal List<RocolaOsSpotifyCatalogoDisco> Discos = new List<RocolaOsSpotifyCatalogoDisco>();
         internal List<RocolaOsSpotifyCatalogoCancion> Canciones = new List<RocolaOsSpotifyCatalogoCancion>();
     }
@@ -425,6 +428,7 @@ namespace Rocola
                 if (pag.TryGetProperty("items", out items) && items.ValueKind == JsonValueKind.Array)
                     foreach (JsonElement x in items.EnumerateArray())
                     {
+                        pg.Crudos++;
                         if (x.ValueKind != JsonValueKind.Object) continue;   // (Spotify da huecos null)
                         if (p.Que == ParedCanciones) { RocolaOsSpotifyCatalogoCancion t = LeeCancion(x, null); if (t != null) pg.Canciones.Add(t); }
                         else { RocolaOsSpotifyCatalogoDisco y = LeeDisco(x, null); if (y != null) pg.Discos.Add(y); }
