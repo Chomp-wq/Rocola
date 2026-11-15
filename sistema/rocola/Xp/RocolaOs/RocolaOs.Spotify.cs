@@ -75,6 +75,10 @@ namespace Rocola
         internal bool Rematada;                    // (el hilo de Spotify ya la remato: pausa, credito, bitacora)
         internal bool Reintentada;                 // (play se mando otra vez a los 4 s)
         internal long UltimoEscrito = -1, UltimoEscritoMs;   // (el hilo de Spotify: cuando crecio el anillo por ultima vez sonando esta)
+        // (revision) lo que Soloist tocaba cuando se le mando play, y si desde entonces toco OTRA cosa (un celular, lo de antes que aun no
+        // paraba): lo que llego al anillo en ese rato no es de esta y no se oye (la fuente empieza donde iba el anillo al empezar esta)
+        internal string ItemAlPedir = "";
+        internal bool Contaminada;
         internal RocolaOsSpotifyPeticion(string uri, string titulo, int duracionMs) { Uri = uri; Titulo = titulo ?? ""; DuracionMs = duracionMs; }
     }
 
@@ -235,19 +239,25 @@ namespace Rocola
         }
 
         // ---------- la conexion (I2) ----------
+        private static string wsAddrRaro;
         private static string LeePuerto()
         {
             try
             {
                 string d = CarpetaSoloist;
                 string p = File.ReadAllText(Path.Combine(d, "ws.port")).Trim();
-                string ad = "127.0.0.1";
-                try { string x = File.ReadAllText(Path.Combine(d, "ws.addr")).Trim(); if (x.Length > 0) ad = x; } catch { }
                 int n;
                 if (!int.TryParse(p, NumberStyles.None, CultureInfo.InvariantCulture, out n) || n <= 0 || n > 65535) return null;
-                // solo en esta maquina (la API no tiene ninguna proteccion: Soloist la abre en 127.0.0.1)
-                if (ad == "0.0.0.0" || ad == "::" || ad == "localhost") ad = "127.0.0.1";
-                return ad + ":" + n.ToString(CultureInfo.InvariantCulture);
+                // SIEMPRE ws://127.0.0.1:PUERTO (I2; el vigilante abre Soloist con -w 127.0.0.1:0, y la API no tiene ninguna proteccion: solo en
+                // esta maquina). ws.addr no se usa para conectar (revision: la documentacion no dice si trae solo la direccion o tambien el
+                // puerto, y con «127.0.0.1:PUERTO» la uri quedaba mal y no se conectaba nunca); si dice otra cosa, se apunta una vez.
+                try
+                {
+                    string x = File.ReadAllText(Path.Combine(d, "ws.addr")).Trim();
+                    if (x.Length > 0 && x != "127.0.0.1" && !x.StartsWith("127.0.0.1:", StringComparison.Ordinal) && x != wsAddrRaro) { wsAddrRaro = x; Apunta("ws.addr dice «" + (x.Length > 64 ? x.Substring(0, 64) : x) + "»: se conecta igual a 127.0.0.1"); }
+                }
+                catch { }
+                return "127.0.0.1:" + n.ToString(CultureInfo.InvariantCulture);
             }
             catch { return null; }
         }
@@ -562,9 +572,14 @@ namespace Rocola
             foreach (RocolaOsSpotifyPeticion p in vivas)
             {
                 int f = Volatile.Read(ref p.Fase);
+                // (revision) mandada y Soloist tocando OTRA cosa: lo que entre al anillo en ese rato no es de esta
+                if (f == RocolaOsSpotifyPeticion.Mandada && st.ItemUri != p.Uri && (st.Status == "playing" || st.Status == "buffering")) p.Contaminada = true;
                 if (f == RocolaOsSpotifyPeticion.Mandada && st.ItemUri == p.Uri && (st.Status == "playing" || st.Status == "buffering"))
                 {
                     p.UltimoEscrito = -1; p.UltimoEscritoMs = ahora;
+                    // si en la espera Soloist toco otra cosa, esta empieza donde va el anillo AHORA (lo de antes no se oye); si no, desde el play
+                    // (nada de esta se pierde). Antes de pasarla a «Suena»: la fuente lee la fase y luego el ancla.
+                    if (p.Contaminada) Interlocked.Exchange(ref p.EscritoAlPedir, Anillo.Escrito);
                     Volatile.Write(ref p.Fase, RocolaOsSpotifyPeticion.Suena);
                     if (st.ItemDuracionMs > 0) Volatile.Write(ref p.DuracionMs, st.ItemDuracionMs);
                     Apunta("suena " + p.Uri + " (" + p.Titulo + ")");
@@ -609,6 +624,8 @@ namespace Rocola
                     if (!st.Activa) { ultimaActivacionMs = 0; Activa(ahora, "para tocar"); }
                     ArreglaOpciones(ahora, true);
                     Interlocked.Exchange(ref p.EscritoAlPedir, Anillo.Escrito);
+                    p.ItemAlPedir = st.ItemUri ?? "";
+                    p.Contaminada = st.ItemUri != p.Uri && (st.Status == "playing" || st.Status == "buffering");
                     pausaNuestra = false;
                     if (Manda("{\"type\":\"command\",\"command\":\"play\",\"uri\":" + Json(p.Uri) + "}"))
                     {
@@ -666,17 +683,32 @@ namespace Rocola
             RocolaOsSpotifyEstado st = Estado;
             if (!st.Ws || !st.Sesion || !(st.Status == "playing" || st.Status == "buffering")) return;
             bool permitido = false;
+            RocolaOsSpotifyPeticion esperando = null;
             foreach (RocolaOsSpotifyPeticion p in vivas)
             {
                 int f = Volatile.Read(ref p.Fase);
                 if (Volatile.Read(ref p.Motivo) != 0 || f == RocolaOsSpotifyPeticion.Acabada) continue;
                 if (f == RocolaOsSpotifyPeticion.Nueva) permitido = true;   // (va a mandar play enseguida)
-                else if (f == RocolaOsSpotifyPeticion.Mandada && (st.ItemUri == p.Uri || ahora - Volatile.Read(ref p.MandadaMs) < 8000)) permitido = true;
+                // mandada: la suya, o lo que ya tocaba Soloist cuando se le mando play (aun no cambia: hasta 8 s). Antes valia CUALQUIER cosa
+                // durante 8 s (revision: lo que pusiera un celular en ese rato sonaba como el principio de la pedida)
+                else if (f == RocolaOsSpotifyPeticion.Mandada && (st.ItemUri == p.Uri || (st.ItemUri == p.ItemAlPedir && ahora - Volatile.Read(ref p.MandadaMs) < 8000))) permitido = true;
+                else if (f == RocolaOsSpotifyPeticion.Mandada && ReferenceEquals(p, Actual)) esperando = p;
                 else if (f == RocolaOsSpotifyPeticion.Suena && st.ItemUri == p.Uri) permitido = true;
             }
-            if (permitido || ahora - ultimaPausaNoPedidaMs < 1000 || ahora - ultimaPausaNuestraMs < 2000) return;
+            if (permitido || ahora - ultimaPausaNoPedidaMs < 1000) return;
+            if (esperando == null && ahora - ultimaPausaNuestraMs < 2000) return;
             ultimaPausaNoPedidaMs = ahora;
             Interlocked.Increment(ref NoPedidas);
+            if (esperando != null && !esperando.Reintentada && st.Ws)
+            {   // la pedida espera su turno en Soloist y alguien puso otra cosa: en vez de pausar, se le pide otra vez la suya (una vez; lo de
+                // en medio no se oye: la fuente no lee nada hasta que Soloist dice que toca la suya)
+                esperando.Reintentada = true; esperando.Contaminada = true;
+                Interlocked.Exchange(ref esperando.EscritoAlPedir, Anillo.Escrito);
+                Apunta("NO PEDIDO: mientras se esperaba " + esperando.Uri + ", Soloist toco «" + st.ItemUri + "» (" + st.ItemNombre + ") sin que la rocola lo pidiera: no suena ni se cobra; play otra vez a la pedida");
+                pausaNuestra = false;
+                Manda("{\"type\":\"command\",\"command\":\"play\",\"uri\":" + Json(esperando.Uri) + "}");
+                return;
+            }
             Apunta("NO PEDIDO: Soloist tocaba «" + st.ItemUri + "» (" + st.ItemNombre + ") sin que la rocola lo pidiera (un celular, autoplay o la cola de Spotify): pausa, no suena ni se cobra");
             pausaNuestra = true;
             Manda(Orden("pause"));

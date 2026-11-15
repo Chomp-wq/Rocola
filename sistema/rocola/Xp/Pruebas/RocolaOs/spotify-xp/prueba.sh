@@ -7,7 +7,7 @@
 # Soloist de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): apagado dos mezcla celular fallos apagon portada pulso vigilante
+#   escenas (de fabrica todas): apagado dos mezcla celular carrera fallos apagon portada pulso vigilante
 #   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
 #   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
 #   «vigilante» (sin el, no se corre): rocola-xp lo abre y el abre el Soloist falso por soloist-envoltorio.sh (SOLOIST_BIN)
@@ -19,7 +19,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado dos mezcla celular fallos apagon portada pulso vigilante}"
+partes="${*:-apagado dos mezcla celular carrera fallos apagon portada pulso vigilante}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -195,6 +195,24 @@ if [[ " $partes " == *" celular "* ]]; then
   si "celular: el estado: devueltas=2, no_pedidas>=2, sesion=0" bash -c "[ '$(estado $o devueltas)' = 2 ] && [ '$(estado $o no_pedidas)' -ge 2 ] && [ '$(estado $o sesion)' = 0 ]"
 fi
 
+# ---------------------------------------------------------------- carrera: un celular pone algo mientras la pedida aun no empieza (revision)
+# Soloist tarda 3 s en empezar la pedida (SOLOIST_FALSO_LENTO) y a 1 s del play un celular pone otra (660 Hz): no se tiene que oir nada de
+# ella, la pedida se vuelve a pedir y suena ENTERA, sin devolver ni cobrar de mas.
+if [[ " $partes " == *" carrera "* ]]; then
+  echo "== carrera (R3: lo que pone un celular mientras la pedida espera no suena)"
+  d=$(datos carrera); T0=$(date +%s.%N)
+  abre carrera "$d" "7:67" "11:pide spotify:track:f440d008aa|$P|8000;28:copia" 29 TERM \
+    ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=3 SOLOIST_FALSO_CELULAR_TRAS_PLAY="1:spotify:track:f660d030zz"
+  o="$W/carrera"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$f" | head -20
+  si "carrera: sale con 0" test "$(cat $o/salio)" = 0
+  si "carrera: el celular puso la suya en la espera (el falso lo dice)" contiene "$o/falso.txt" "celular (tras el play) spotify:track:f660d030zz"
+  si "carrera: lo del celular no se oye (660 Hz: $(oye "$f" 660) s)" entre "$(oye "$f" 660)" 0 0.1
+  si "carrera: y se apunta como NO PEDIDO, con play otra vez a la pedida" contiene "$b" "NO PEDIDO: mientras se esperaba spotify:track:f440d008aa"
+  si "carrera: la pedida suena entera (8 s: $(oye "$f" 440) s)" entre "$(oye "$f" 440)" 7.7 8.3
+  si "carrera: una cobrada, ninguna devuelta" bash -c "[ '$(estado $o cobradas)' = 1 ] && [ '$(estado $o devueltas)' = 0 ] && ! grep -q DEVUELTA '$b'"
+fi
+
 # ---------------------------------------------------------------- fallos: no empieza, se corta el sonido, se cae Soloist
 if [[ " $partes " == *" fallos "* ]]; then
   echo "== fallos (R4 y R9: el credito vuelve y la rocola sigue)"
@@ -267,6 +285,14 @@ if [[ " $partes " == *" pulso "* ]]; then
   si "pulso: en su orden" entre "$(primero "$f" 550)" "$(ultimo "$f" 440)" 1000
   si "pulso: el autoplay no se oye ($(oye "$f" 990) s)" entre "$(oye "$f" 990)" 0 0.15
   si "pulso: 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
+  # (revision) la carrera por rocola-pulso: la pedida espera sin consumir y salta los vaciados (el LEEME de rocola-pulso, paso 4)
+  d=$(datos pulso-carrera); T0=$(date +%s.%N)
+  abre pulso-carrera "$d" "7:67" "11:pide spotify:track:f440d008aa|$P|8000;28:copia" 29 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_PULSO="$PULSO" \
+    SOLOIST_FALSO_LENTO=3 SOLOIST_FALSO_CELULAR_TRAS_PLAY="1:spotify:track:f660d030zz"
+  o="$W/pulso-carrera"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  si "pulso-carrera: lo del celular no se oye (660 Hz: $(oye "$f" 660) s)" entre "$(oye "$f" 660)" 0 0.1
+  si "pulso-carrera: la pedida suena entera (8 s: $(oye "$f" 440) s)" entre "$(oye "$f" 440)" 7.7 8.3
+  si "pulso-carrera: una cobrada, ninguna devuelta" bash -c "[ '$(estado $o cobradas)' = 1 ] && ! grep -q DEVUELTA '$b'"
   fi
 fi
 

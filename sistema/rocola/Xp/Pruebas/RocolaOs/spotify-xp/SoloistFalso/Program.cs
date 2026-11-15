@@ -12,6 +12,10 @@
 //     El ritmo lo marca el lector (I1: writable = objetivo - pendientes; sin lector, nada).
 //   - al acabar una cancion pasa sola a otra (autoplay: spotify:track:f990d030autoplay, de 990 Hz), como haria Spotify: la rocola la tiene que
 //     pausar. Con SOLOIST_FALSO_FIN=parar, se para en vez de seguir.
+//   - con SOLOIST_FALSO_LENTO=SEG, «play» con uri tarda SEG segundos en empezar (la red lenta) y hasta entonces sigue lo de antes; lo
+//     ultimo que se pide gana (otro play o un celular en medio cancelan el de antes, como en Spotify)
+//   - con SOLOIST_FALSO_CELULAR_TRAS_PLAY=SEG:URI, SEG segundos despues del PRIMER play con uri, un celular pone URI (la carrera: alguien pone
+//     algo mientras la pedida de la rocola aun no empieza)
 //   - un guion de eventos (SOLOIST_FALSO_GUION="SEG:evento[:arg];..."; los segundos desde que arranca):
 //       celular:URI   alguien pone URI desde un celular (suena sin que la rocola la pida)
 //       inactiva      deja de ser la bocina activa (otro aparato se la lleva)
@@ -48,6 +52,8 @@ static unsafe class SoloistFalso
     static string repeat = "off";
     static string status = "idle";
     static string item = "";           // la uri que suena
+    static int genPlay;                // (SOLOIST_FALSO_LENTO: cada play o celular nuevo cancela el play lento de antes)
+    static int carreraHecha;           // (SOLOIST_FALSO_CELULAR_TRAS_PLAY: una vez)
     static int volumen = 100;
     static long posCuadros;            // dentro de la cancion
     static long durCuadros;
@@ -293,10 +299,34 @@ static unsafe class SoloistFalso
                 {
                     bool act; lock (cerrojo) act = activa;
                     if (!act) { lock (cerrojo) activa = true; Manda("{\"type\":\"device_changed\",\"is_active\":true,\"device_name\":\"" + nombre + "\"}"); }
-                    Pon(uri, true);
-                    Manda(TrackChanged());
-                    if (!uri.Substring(14).StartsWith("nx")) Manda("{\"type\":\"playback_changed\",\"status\":\"playing\"}");
-                    else lock (cerrojo) status = "buffering";
+                    int g = Interlocked.Increment(ref genPlay);
+                    double lento = 0;
+                    double.TryParse(Environment.GetEnvironmentVariable("SOLOIST_FALSO_LENTO") ?? "", NumberStyles.Float, CultureInfo.InvariantCulture, out lento);
+                    Action empieza = () =>
+                    {
+                        if (Volatile.Read(ref genPlay) != g) { Apunta("soloist", "play " + uri + " cancelado (se pidio otra cosa)"); return; }
+                        Pon(uri, true);
+                        Manda(TrackChanged());
+                        if (!uri.Substring(14).StartsWith("nx")) Manda("{\"type\":\"playback_changed\",\"status\":\"playing\"}");
+                        else lock (cerrojo) status = "buffering";
+                    };
+                    if (lento > 0) new Thread(() => { Thread.Sleep((int)(lento * 1000)); empieza(); }) { IsBackground = true }.Start();
+                    else empieza();
+                    string carrera = Environment.GetEnvironmentVariable("SOLOIST_FALSO_CELULAR_TRAS_PLAY");
+                    if (!string.IsNullOrEmpty(carrera) && Interlocked.Exchange(ref carreraHecha, 1) == 0)
+                    {
+                        string[] cx = carrera.Split(':', 2);
+                        double cs = double.Parse(cx[0], CultureInfo.InvariantCulture);
+                        new Thread(() =>
+                        {
+                            Thread.Sleep((int)(cs * 1000));
+                            Apunta("guion", "celular (tras el play) " + cx[1]);
+                            Interlocked.Increment(ref genPlay);
+                            lock (cerrojo) activa = true;
+                            Pon(cx[1], true);
+                            Manda(TrackChanged()); Manda("{\"type\":\"playback_changed\",\"status\":\"playing\"}");
+                        }) { IsBackground = true }.Start();
+                    }
                 }
                 else { lock (cerrojo) { if (item.Length > 0) status = "playing"; } Manda("{\"type\":\"playback_changed\",\"status\":\"playing\"}"); }
                 return;
@@ -345,6 +375,7 @@ static unsafe class SoloistFalso
             switch (que)
             {
                 case "celular":
+                    Interlocked.Increment(ref genPlay);
                     lock (cerrojo) activa = true;
                     Pon(arg, true);
                     Manda(TrackChanged()); Manda("{\"type\":\"playback_changed\",\"status\":\"playing\"}");

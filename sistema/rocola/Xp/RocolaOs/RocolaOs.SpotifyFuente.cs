@@ -16,7 +16,7 @@
 //   1. al abrirse no hace nada (XP la puede abrir antes de tiempo; aqui no se pide nada a Soloist)
 //   2. la primera lectura: tira lo viejo del anillo, crea su peticion y la deja marcada (RocolaOsSpotify.Pide); el hilo de Spotify manda
 //      activate (si hace falta), shuffle y repeat apagados y play con su uri, y apunta donde iba el anillo (EscritoAlPedir)
-//   3. desde EscritoAlPedir, lo que llega es suyo: se copia; lo que falta, silencio
+//   3. cuando Soloist dice que toca la suya (fase «Suena»), desde EscritoAlPedir lo que llega es suyo: se copia; lo que falta, silencio
 //   4. acaba al llegar a su frontera o a su duracion (R4); o, sin sonar en 15 s, con el credito devuelto
 //   5. al acabar devuelve lo ultimo (o 0: fin de la cancion para XP) y deja la peticion «acabada»: el hilo de Spotify la remata (pause para
 //      que Soloist no siga solo, el credito si toca y la bitacora). A XP nunca le lanza un error: si falla, el credito se devuelve por el
@@ -90,7 +90,11 @@ namespace Rocola
                 }
                 int pedidos = d.Length / 2;
                 int n = 0;
-                long ep = Interlocked.Read(ref p.EscritoAlPedir);
+                // NADA SE OYE HASTA QUE SOLOIST DICE QUE TOCA ESTA (fase «Suena», la pone el hilo de Spotify): lo que llegue antes al anillo se
+                // queda ahi (sin perderse) y, si en ese rato Soloist toco otra cosa, el hilo de Spotify mueve el ancla y eso no se oye (revision:
+                // antes se oia todo lo que llegaba desde el play, tambien lo que pusiera un celular en la espera). La fase se lee ANTES que el ancla.
+                int fasePedida = Volatile.Read(ref p.Fase);
+                long ep = fasePedida >= RocolaOsSpotifyPeticion.Suena ? Interlocked.Read(ref p.EscritoAlPedir) : -1;
                 long frontera = Interlocked.Read(ref p.Frontera);
                 bool porDuracion = false;
                 if (ep >= 0 && a != null)
@@ -99,7 +103,7 @@ namespace Rocola
                     // donde acaba: su frontera (Soloist paso a otra) o su duracion desde que empezo, lo primero
                     long hasta = frontera;
                     int durMs = Volatile.Read(ref p.DuracionMs);
-                    if (durMs > 0 && Volatile.Read(ref p.Fase) >= RocolaOsSpotifyPeticion.Suena)
+                    if (durMs > 0)
                     {
                         long porDur = inicioCancion + (long)Math.Round(durMs / 1000.0 * FrecuenciaAnillo(a));
                         if (porDur < hasta) { hasta = porDur; porDuracion = true; }
@@ -120,6 +124,7 @@ namespace Rocola
                 }
                 else if (Volatile.Read(ref p.Motivo) != 0 && frontera != long.MaxValue)
                     return Acaba(d, 0, Volatile.Read(ref p.Motivo));   // (se acabo antes de mandar play: la rocola se cierra, sin sesion...)
+                else if (a != null && fasePedida == RocolaOsSpotifyPeticion.Mandada) a.SaltaVaciado();   // (esperando: sin consumir, pero el vaciado si se salta)
                 // sin sonar en 15 s desde que se pidio: se acaba y el credito vuelve (R4); y la seguridad de 30 s sin nada
                 if (Interlocked.Read(ref cuadrosSonido) == 0 && ahora - inicioMs > NoEmpiezaMs) return Acaba(d, n, RocolaOsSpotifyPeticion.NoEmpezo);
                 if (ahora - ultimoSonidoMs > SeguridadMs) return Acaba(d, n, RocolaOsSpotifyPeticion.SinSonido);

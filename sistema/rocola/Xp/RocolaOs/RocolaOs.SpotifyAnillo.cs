@@ -266,6 +266,19 @@ namespace Rocola
             Mapa m = actual; if (m == null) return;
             if (desde > Volatile.Read(ref L(m.Base, OLeido))) Volatile.Write(ref L(m.Base, OLeido), Math.Min(desde, Volatile.Read(ref L(m.Base, OEscrito))));
         }
+        // EL SALTO DE UN VACIADO SIN CONSUMIR (revision; el LEEME de rocola-pulso, «Lo que el LECTOR tiene que hacer», paso 4: el escritor mide su
+        // sitio con «leido» tal cual, y lo nuevo espera en su cola hasta que el lector salta): si hubo un vaciado nuevo, leido = max(leido,
+        // vaciado_hasta). Lo llama la fuente mientras espera a que Soloist toque la suya. Hilo del sonido.
+        internal void SaltaVaciado()
+        {
+            Mapa m = actual; if (m == null) return;
+            byte* b = m.Base;
+            uint gv = Volatile.Read(ref U(b, OGenVaciado));
+            if (genVaciadoSabido && gv == genVaciadoVisto) return;
+            long vh = Volatile.Read(ref L(b, OVaciadoHasta));
+            if (vh > Volatile.Read(ref L(b, OLeido))) Volatile.Write(ref L(b, OLeido), vh);
+            genVaciadoVisto = gv; genVaciadoSabido = true;
+        }
         // TOMA hasta destino.Length/2 cuadros (float L,R intercalados), sin pasar de «hasta» (el cuadro absoluto donde acaba la cancion;
         // long.MaxValue: sin limite). Devuelve los CUADROS copiados (puede ser 0). Nunca espera. Hilo del sonido.
         // Con «paraEnVaciado», un vaciado nuevo (Soloist empezo otra cosa a media cancion: un celular, un salto) no se lee: se tira lo
