@@ -701,6 +701,8 @@ namespace Rocola
                 sb.Append("devueltas=").Append(Interlocked.Read(ref Devueltas).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("no_pedidas=").Append(Interlocked.Read(ref NoPedidas).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("soloist=").Append(st.Status).Append('\n');
+                FaseVigilante = LeeFaseVigilante();
+                sb.Append("vigilante=").Append(FaseVigilante).Append('\n');
                 sb.Append("anillo=").Append(Anillo != null && Anillo.Abierto ? 1 : 0).Append('\n');
                 sb.Append("error=").Append((UltimoError ?? "").Replace('\n', ' ')).Append('\n');
                 string t = sb.ToString();
@@ -713,12 +715,32 @@ namespace Rocola
             }
             catch { }
         }
+        // LA FASE DEL VIGILANTE (I3: fase= de /run/rocola-soloist/estado: sin_llave, sin_programa, bajando, arrancando, corriendo, caducado,
+        // esperando o parado; «-» si no esta). En el hilo de Spotify, con el estado (como mucho cada segundo): un archivo chico en memoria.
+        internal static volatile string FaseVigilante = "-";
+        private static string LeeFaseVigilante()
+        {
+            try
+            {
+                foreach (string l in File.ReadLines(RocolaOs.Run("rocola-soloist/estado")))
+                {
+                    if (!l.StartsWith("fase=", StringComparison.Ordinal)) continue;
+                    string v = l.Substring(5).Trim();
+                    if (v.Length == 0 || v.Length > 20) return "-";
+                    foreach (char c in v) if (!((c >= 'a' && c <= 'z') || c == '_')) return "-";
+                    return v;
+                }
+            }
+            catch { }
+            return "-";
+        }
         // los renglones de /run/rocola-vivo.txt (Vivo; en el hilo de la pantalla)
         internal static void Vivo(StringBuilder sb)
         {
             RocolaOsSpotifyEstado st = Estado;
             sb.Append("spotify=ws ").Append(st.Ws ? 1 : 0).Append(" sesion ").Append(st.Sesion ? 1 : 0).Append(" activa ").Append(st.Activa ? 1 : 0)
               .Append(" soloist ").Append(st.Status.Length > 0 ? st.Status : "-")
+              .Append(" vigilante ").Append(FaseVigilante)
               .Append(" en_cola ").Append(Volatile.Read(ref EnCola).ToString(CultureInfo.InvariantCulture))
               .Append(" cobradas ").Append(Interlocked.Read(ref Cobradas).ToString(CultureInfo.InvariantCulture))
               .Append(" devueltas ").Append(Interlocked.Read(ref Devueltas).ToString(CultureInfo.InvariantCulture))
