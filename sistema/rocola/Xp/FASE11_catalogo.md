@@ -102,6 +102,8 @@ hace el vigilante del grupo «soloist» (ver «Para los otros grupos»).
 | g48 | `Form1.Vistas.cs` 2295 (Track.ToString) | «NN Título» en la lista del disco |
 | g49 | `Form1.Biblioteca.cs` 2926 (EnterAlbum) | Entrar a un disco sin sus canciones las pide |
 | g50 | `PreviewsIndexadosGpu.cs` 160 (IndexedSave) | La previa de 32 px de Spotify no va al disco |
+| g51 | `Form1.Biblioteca.cs` 669 (RecalculaLetras: `letterBar.Counts = cuenta;`) | La letra ♫ con su número de canciones y su rayita (de la revisión, §11) |
+| g52 | `PantallaVivaGpu.cs` 317 (AlbumElegidoEnPared: `return albumView.Page[i];`) | Un disco de Spotify sin canciones que se queda elegido las pide (de la revisión, §11) |
 
 Con el núcleo juntado (sus g13, g20, g23 y g24), `ganchos.py`: TODO BIEN (24 ganchos en 11 archivos; los 109 archivos de `Codigo/`
 vuelven byte a byte a fc7b667 devolviendo los ganchos). `diff-xp.py --sin-ganchos` en los 109 archivos: 5 095 líneas quitadas, 4 828
@@ -220,3 +222,59 @@ Capturas para el dueño (fuera de pantalla, 1024×768, con la API falsa y datos 
 `buscador-solo-spotify`, `buscador-pedidas`, `buscador-xp-y-spotify`, `buscador-disco`, `disco-de-spotify`, `pared-letra-spotify`,
 `buscador-artista`, `pared-discos-del-artista`, `pared-cuenta`, `disco-lista-propia`, `buscador-spotify-no-listo`,
 `buscador-sonando-spotify` y `suena-spotify` (lo que suena con una de Spotify).
+
+## 11. Revisión (xp-intacto-y-aspecto)
+
+Revisión independiente del 15-11-2026 (sin el modo, XP exacta; con el modo, todo lo de Spotify en los elementos y el dibujo de XP; el pedir
+por I6; nada de Spotify en la biblioteca de XP). Se leyó el diff entero de la rama contra fase11-andamio, cada gancho en su sitio de
+`Codigo/` y lo de XP que toca lo de Spotify (la barra de letras, la ficha y el letrero de la portada elegida, la tarjeta del buscador,
+ChooseSearchResult, AddSong, CurrentList, NavigateToAlbum, EnterAlbum, las miniaturas y las previas), y se miraron todas las capturas.
+
+**Lo que estaba bien (comprobado, sin cambios):**
+- Sin el modo cada gancho devuelve lo de XP tal cual: g40/g44-g47 miran el modo antes de nada; g41/g42/g48/g49 solo actúan con rutas o
+  carpetas de Spotify («spotify:track:», «/::SPOTIFY::/»), que XP nunca tiene; g43/g50 solo con la carpeta de las portadas en `/run`, que
+  sin el modo no existe. El modo se decide UNA vez por sesión (`RocolaOs.Encendida`): no hay apagado en vivo que deje lo de Spotify a
+  medias en las pantallas de XP.
+- Elegir un resultado de Spotify sale antes de `ApuntaBusqueda` (los atajos «Buscaste:» no guardan nada de Spotify). Los avisos son textos
+  y colores de XP («Espera un momento y vuelve a intentarlo», Form1.cs 1948); los de pedir, los de AddSong/ChooseSearchResult (I6 del
+  núcleo). La ♫ se dibuja como ★ (un carácter de la barra; WGL4) y la cabecera dice SPOTIFY como VIDEOS o LO MAS SONADO.
+- Nada de Spotify entra en la biblioteca de XP: después de buscar, pedir y sonar (escena «suena»), en los datos solo
+  `rocola_spotify.txt` (la bitácora del núcleo) y la llave nombran algo de Spotify (comprobación nueva de la prueba).
+
+**Lo encontrado y arreglado (commit c47c732):**
+1. (menor) La letra ♫ salía sin su número de canciones ni su rayita, que XP pone debajo de cada letra (y de ★): se veía distinta a las
+   demás. Gancho **g51** (`Form1.Biblioteca.cs` 669, RecalculaLetras: `letterBar.Counts = RocolaOsSpotifyCatalogoCuentas(cuenta)`): con el
+   modo, la ♫ cuenta las canciones que se saben de sus discos; sin el modo, el mismo diccionario de XP sin tocar. Cuando cambian (llega un
+   disco, la cuenta, un reciente) se cambia el diccionario entero como hace XP (`RocolaOsSpotifyCatalogoPonCuenta`).
+2. (menor, a la vista) Los discos de Spotify que llegan sin canciones (los de un artista, las listas propias) salían en la pared con
+   «0 canciones» en el letrero de la portada elegida y en la ficha de XP, y la ficha decía «Entrar al disco» sin canciones (captura
+   `pared-discos-del-artista` de antes). Gancho **g52** (`PantallaVivaGpu.cs` 317, AlbumElegidoEnPared: `return
+   RocolaOsSpotifyCatalogoElegido(albumView.Page[i])`): un disco de Spotify sin canciones que se queda elegido 0,6 s las pide (UNA
+   petición por disco y sesión: alguien lo está mirando; nada de fondo); al llegar solo se llena (la letra no se reacomoda) y la ficha y el
+   letrero se rehacen con lo que XP ya vigila (generoVer, duracionesVer). Ahora dice «10 canciones» y las tres primeras (captura nueva).
+   Cuesta, como mucho, una petición más por disco mirado; la escena «artista» lo cuenta (búsquedas + 1 del artista + 1 del disco elegido).
+
+**Queda (para lo visual o para la junta; no arreglado):**
+- La tarjeta ARTISTA de Spotify en el buscador dice «1 disco» (XP cuenta el disco de su `AlbumRef`, que aquí es el del artista, y aún no se
+  saben sus discos). Arreglarlo pide otro gancho en la tarjeta (BuscadorPortadasGpu.cs, DatosCarta) o una tarjeta nueva: para la
+  presentación.
+- Las portadas de los resultados de Spotify se bajan al crearse cada resultado (hasta 13 por búsqueda), no solo las que se ven; no gastan
+  la cuota de la API (son del servidor de imágenes), van una a la vez y a `/run`.
+- Sin `usuario=` en `rocola_spotify_api.txt`, las listas que el dueño sigue y no son suyas también salen en la letra y al abrirlas dan 404
+  («Espera un momento...»). Para el A4: poner `usuario=` (el id de la cuenta) o filtrarlas por el dueño con `/me` (una petición más).
+
+**Comprobaciones repetidas (con el programa de c47c732):**
+
+| Comprobación | Resultado |
+|---|---|
+| `dotnet build -c Release --no-incremental` | 0 errores, 13 avisos (los de la base) |
+| `dotnet publish` NativeAOT | sale con 0, 0 avisos IL/AOT |
+| `prueba.sh` en JIT (10 escenas) | **56 de 56** BIEN (una más que antes: nada de Spotify en los datos; la de «artista» cuenta la petición de g52) |
+| `prueba.sh` en NativeAOT (10 escenas) | **56 de 56** BIEN |
+| `ganchos.py` | TODO BIEN: 26 ganchos en 12 archivos; `Codigo/` vuelve byte a byte a fc7b667 |
+| Nivel 0 (pasos previo, código, ganchos, escenas, aot; escenas arranque, moneda, buscador y captura alternadas con la referencia; NativeAOT arranque y buscador) | **11 BIEN**, 0 MAL; diff-xp.py --sin-ganchos 5 095 / 4 828 / 229 (las de la base; 24 ganchos devueltos en 10 archivos). Sale con 0 |
+| Nivel 1 (`NIVEL=1`, `ROCOLA_OS=1`, spotify apagado; las mismas escenas y las de NativeAOT) | **8 BIEN**, 0 MAL. Sale con 0 |
+
+Las escenas son las que pueden mover g51 (la barra de letras: arranque, moneda, captura) y g52 (la pared con la tarjeta: arranque, moneda,
+buscador); sin el modo los dos devuelven lo de XP sin hacer nada más. Las capturas de `/root/rocola-trabajo/fase11/catalogo/capturas` se
+rehicieron con este programa (la ♫ con su número; `pared-discos-del-artista` con «10 canciones»).
