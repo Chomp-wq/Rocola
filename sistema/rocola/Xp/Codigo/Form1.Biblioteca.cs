@@ -666,7 +666,7 @@ namespace Rocola
             }
             Dictionary<char, Color> tinte = new Dictionary<char, Color>();
             foreach (KeyValuePair<char, string> kv in letterTag) tinte[kv.Key] = ColorDeEtiqueta(kv.Value);
-            letterBar.Counts = cuenta;
+            letterBar.Counts = RocolaOsSpotifyCatalogoCuentas(cuenta);   // ROCOLA OS g51: (XP) letterBar.Counts = cuenta; — la letra de Spotify lleva su numero de canciones y su rayita como las demas letras (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, el mismo diccionario de XP)
             letterBar.Tints = tinte;
             // LAS LETRAS VACIAS NI SE DIBUJAN. Antes salian las 29 casillas siempre y las que no tenian nada
             // se pintaban apagadas: ocupaban su sitio para no decir nada. Ahora la barra solo lleva las que

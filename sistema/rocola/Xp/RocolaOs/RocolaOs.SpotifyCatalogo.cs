@@ -53,6 +53,9 @@ namespace Rocola
         private string rocolaOsSpEscrito;            // (y tal cual se escribio: para la cuenta de XP)
         private bool rocolaOsSpCuentaPedida;
         private int rocolaOsSpAbriendo;              // el ultimo «abrir» pedido (si llega otro antes, el viejo no abre nada)
+        private Album rocolaOsSpMirado;              // (g52) el disco de Spotify elegido en la pared, desde cuando, y los ya pedidos asi
+        private int rocolaOsSpMiradoDesde;
+        private HashSet<Album> rocolaOsSpPrevistos;
 
         // ---------- si va ----------
         // EL MODO SPOTIFY ENCENDIDO (la funcion «spotify» del nucleo, I3): sin ROCOLA_OS o con spotify=0, no (y no se crea nada)
@@ -273,6 +276,67 @@ namespace Rocola
             return a;
         }
 
+        // g51 (Form1.Biblioteca.cs, RecalculaLetras: «letterBar.Counts = cuenta;»): EL NUMERO DE LA LETRA DE SPOTIFY, como el de cada letra de
+        // XP (las canciones que hay detras; con el, su rayita). Sin el modo, o sin canciones sabidas, el mismo diccionario de XP sin tocar.
+        private Dictionary<char, int> RocolaOsSpotifyCatalogoCuentas(Dictionary<char, int> cuenta)
+        {
+            if (cuenta == null || !RocolaOsSpotifyCatalogoVa) return cuenta;
+            int n = RocolaOsSpotifyCatalogoCanciones();
+            if (n > 0) cuenta[RocolaOsSpotifyMarca] = n;
+            return cuenta;
+        }
+        private int RocolaOsSpotifyCatalogoCanciones()
+        {
+            int n = 0;
+            if (rocolaOsSpLetra != null) foreach (Album a in rocolaOsSpLetra) if (a != null && a.Tracks != null) n += a.Tracks.Count;
+            return n;
+        }
+        // lo mismo sin rehacer toda la barra (cuando cambian las canciones de la letra y no si la letra esta): XP cambia el diccionario entero
+        // (la barra lo compara por identidad), asi que aqui tambien
+        private void RocolaOsSpotifyCatalogoPonCuenta()
+        {
+            if (letterBar == null || libBuilding) return;
+            Dictionary<char, int> antes = letterBar.Counts;
+            int n = RocolaOsSpotifyCatalogoCanciones(), ya = 0;
+            if (antes != null) antes.TryGetValue(RocolaOsSpotifyMarca, out ya);
+            if (n == ya) return;
+            Dictionary<char, int> c = antes != null ? new Dictionary<char, int>(antes) : new Dictionary<char, int>();
+            if (n > 0) c[RocolaOsSpotifyMarca] = n; else c.Remove(RocolaOsSpotifyMarca);
+            letterBar.Counts = c;
+            letterBar.Invalidate();
+        }
+
+        // g52 (PantallaVivaGpu.cs, AlbumElegidoEnPared: «return albumView.Page[i];», en cada cuadro): UN DISCO DE SPOTIFY QUE AUN NO TIENE SUS
+        // CANCIONES (los de un artista, tus listas) y se queda elegido en la pared 0,6 s: se piden (una peticion, una vez por disco y sesion:
+        // alguien lo esta mirando), para que la ficha y el letrero de XP digan las que trae y no «0 canciones». Devuelve el mismo disco.
+        private Album RocolaOsSpotifyCatalogoElegido(Album a)
+        {
+            if (!RocolaOsEsSpotify(a) || a.Tracks.Count > 0 || !RocolaOsSpotifyCatalogoVa) return a;
+            int ahora = Environment.TickCount;
+            if (!ReferenceEquals(a, rocolaOsSpMirado)) { rocolaOsSpMirado = a; rocolaOsSpMiradoDesde = ahora; return a; }
+            if (unchecked(ahora - rocolaOsSpMiradoDesde) < 600) return a;
+            if (rocolaOsSpPrevistos == null) rocolaOsSpPrevistos = new HashSet<Album>();
+            RocolaOsSpotifyCatalogoDisco d;
+            if (!rocolaOsSpPrevistos.Add(a) || !rocolaOsSpDeDisco.TryGetValue(a, out d) || d.Canciones != null) return a;
+            Action<object, string> listo = delegate (object r, string error)
+            {
+                RocolaOs.Encarga("spotify_catalogo:previsto", delegate { RocolaOsSpotifyCatalogoLlegoPrevisto(a, r as RocolaOsSpotifyCatalogoDisco); });
+            };
+            if (d.Tipo == "playlist") RocolaOsSpotifyCatalogoApi.AbreLista(d.Id, listo);
+            else if (d.Tipo == "album") RocolaOsSpotifyCatalogoApi.AbreDisco(d.Id, listo);
+            return a;
+        }
+        // llegaron: solo se llenan (la letra no se reacomoda: quien mira no pierde su sitio); la ficha y el letrero se rehacen con lo que XP ya
+        // vigila (generoVer, duracionesVer). Si no llegaron, nada (al entrar, g49 lo vuelve a pedir y XP dice lo suyo).
+        private void RocolaOsSpotifyCatalogoLlegoPrevisto(Album a, RocolaOsSpotifyCatalogoDisco d)
+        {
+            if (d == null || d.Canciones == null || a.Tracks.Count > 0) return;
+            rocolaOsSpDeDisco[a] = d;
+            RocolaOsSpotifyCatalogoLlena(a, d);
+            generoVer++; duracionesVer++;
+            RocolaOsSpotifyCatalogoPonCuenta();
+        }
+
         // ================================================================= pedir (I6) =================================================
 
         private void RocolaOsSpotifyCatalogoPide(Track t, Album disco)
@@ -336,6 +400,7 @@ namespace Rocola
             }
             rocolaOsSpDeDisco[a] = d;
             RocolaOsSpotifyCatalogoLlena(a, d);
+            RocolaOsSpotifyCatalogoPonCuenta();
             if (d.Tipo == "album") RocolaOsSpotifyCatalogoReciente(a);
             if (yo != rocolaOsSpAbriendo) return;
             if (desdeBuscador) { if (searchOpen) RocolaOsSpotifyCatalogoEntraDesdeBuscador(a); return; }
@@ -424,6 +489,7 @@ namespace Rocola
                 if (elegido != null) { int i = l.IndexOf(elegido); if (i >= 0) { selAlbumIndex = i; page = PageSize > 0 ? i / PageSize : 0; } }
                 if (!panelSongs.Visible) RefreshAlbums();
             }
+            RocolaOsSpotifyCatalogoPonCuenta();
         }
 
         // ================================================================= de Spotify a XP ============================================

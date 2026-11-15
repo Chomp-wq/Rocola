@@ -159,7 +159,7 @@ for e in $escenas; do
     abre $e "$d" "$BASE,$(escribe 9.5 imaginario),$(derechas 14 14),16.5:37,17:40,17.4:40,17.8:40,18.2:40,18.6:40,19.5:13" 25 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 19.2 buscador-artista),$(cap 22 pared-discos-del-artista)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     si "artista: sale con 0" test "$(cat $o/salio)" = 0
-    si "artista: las busquedas y UNA de los discos del artista (/v1/artists/art03/albums)" bash -c "[ \$(grep -c 'GET /v1/artists/art03/albums app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 1)) ]"
+    si "artista: las busquedas, UNA de los discos del artista (/v1/artists/art03/albums) y UNA del disco que se queda elegido en la pared (g52: /v1/albums/dis006)" bash -c "[ \$(grep -c 'GET /v1/artists/art03/albums app 200' '$a') = 1 ] && [ \$(grep -c 'GET /v1/albums/dis006 app 200' '$a') = 1 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 2)) ]"
     si "artista: nada pedido (solo se abrio)" test "$(pedidos $o)" = 0 ;;
   fallos)
     # 401 (llave vencida): otra llave y otra vez; 503: otra vez al segundo; 429: nada mas hasta su Retry-After. La API falsa cambia de
@@ -203,7 +203,8 @@ for e in $escenas; do
     si "suena: una pedida, y Soloist la toca ($(plays $o))" bash -c "[ $(pedidos $o) = 1 ] && [ \"\$(plays $o)\" = 'spotify:track:can0000 ' ]"
     si "suena: la pedida va con la portada que bajo el catalogo (una sola por disco: dis000.jpg)" bash -c "cobradas $o | grep -q 'COBRADA spotify:track:can0000 .*; con portada' && [ -f '$o/run/rocola-xp/spotify/portadas/dis000.jpg' ] && [ ! -e '$o/run/rocola-xp/spotify/portadas/can0000.jpg' ]"
     si "suena: el nucleo dice que suena (y no que acabo)" bash -c "grep -qF 'suena spotify:track:can0000' '$d/rocola_spotify.txt' && ! grep -qF 'acabo spotify:track:can0000' '$d/rocola_spotify.txt'"
-    si "suena: por la tarjeta salio sonido (sonado.raw de mas de 1 s)" test "$(cat "$o/sonado.raw" 2>/dev/null | wc -c)" -gt 352800; rm -f "$o/sonado.raw" ;;
+    si "suena: por la tarjeta salio sonido (sonado.raw de mas de 1 s)" test "$(cat "$o/sonado.raw" 2>/dev/null | wc -c)" -gt 352800; rm -f "$o/sonado.raw"
+    si "suena: nada de Spotify en los datos de XP (solo en rocola_spotify.txt, la bitacora del nucleo, y la llave)" bash -c "! grep -rlE 'spotify:|can0000|dis000|Inventados' '$d' | grep -vE '/(rocola_spotify\.txt|rocola_spotify_api\.txt)$' | grep -q ." ;;
   sinsesion)
     # SOLOIST SIN SESION (I6 dice que no esta listo: el vigilante sale al momento y no hay Soloist): no se pide ni se cobra; el aviso de XP
     apifalsa $e; d=$(datos $e encendido)
