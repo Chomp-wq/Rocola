@@ -31,3 +31,5 @@
    - Sin el modo, sin la llave de la API o con 429: nada de esto sale (XP tal cual), el aviso de XP si algo no llega.
    - Pruebas con la API falsa: abrir, hojear, regresar en todos los niveles, la cuota (peticiones contadas por escena), 429 a media
      pared, apagado = XP tal cual.
+5. **El modo noche también con Spotify** (pregunta del dueño del 15-11-2026): comprobar con una escena que una canción de Spotify (la
+   fuente de `RocolaOs.SpotifyFuente.cs` por `ArmaCadena`) baja al `noche_pct` de noche y con «Probar», con su rampa, igual que una de XP.
