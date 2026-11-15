@@ -108,7 +108,7 @@ namespace Rocola
             if (asistenteLogroTick != 0)
             {
                 arriba = "¡LO LOGRASTE!";
-                if (m == RocolaOsMisionArtista) { titulo = "¡Ya sabes ver sus discos!"; texto = "El ROJO siempre te regresa. Si me necesitas otra vez: ROJO + ABAJO."; }
+                if (m == RocolaOsMisionArtista) { titulo = "¡Ya viste sus discos!"; texto = "El ROJO siempre te regresa. Si me necesitas otra vez: ROJO + ABAJO."; }
                 else if (RocolaOsAsPidioSpotify) { titulo = "¡Tu canción está en la cola!"; texto = "Es de Spotify y suena como las tuyas. Si me necesitas otra vez: ROJO + ABAJO."; }
                 else { titulo = "¡Tu canción está en la cola!"; texto = "Ya va en camino. Si me necesitas otra vez: ROJO + ABAJO."; }
                 teclas = "";

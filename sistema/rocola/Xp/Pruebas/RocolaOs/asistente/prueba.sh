@@ -8,11 +8,11 @@
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/asistente/prueba; se rehace)
 #   CAPTURAS: si se pone, las capturas (PNG) van ahi
-# escenas: menu pide letra artista tarjetas mas xp sinllave ayuda1024 (todas, de fabrica)
+# escenas: menu pide letra sinletra artista tarjetas mas xp sinllave ayuda1024 (todas, de fabrica)
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-menu pide letra artista tarjetas mas xp sinllave ayuda1024}"
+escenas="${*:-menu pide letra sinletra artista tarjetas mas xp sinllave ayuda1024}"
 T0=/root/rocola-trabajo/fase11/asistente
 API=${API:-$T0/api-falsa}
 W=${W:-$T0/prueba}
@@ -133,8 +133,19 @@ for e in $escenas; do
     si "letra: sale con 0" test "$(cat $o/salio)" = 0
     si "letra: la guia 2 empezo" contiene "$(bit $d)" "guia de Spotify 5 (La letra ♫ de Spotify)"
     p=$(pasos $d); echo "   pasos: $p"
-    si "letra: los pasos en orden (la letra, un disco, la moneda, la cancion)" test "$p" = "Ve a la letra ♫|Elige un disco o una lista|Mete una moneda|Elige tu canción"
+    si "letra: los pasos en orden (la letra, un disco, la moneda, la cancion)" test "$p" = "Ve a la letra ♫|Elige un disco o lista|Mete una moneda|Elige tu canción"
     si "letra: una pedida (COBRADA: $(cobradas $d)) y lo logro" bash -c "[ $(cobradas $d) = 1 ] && grep -q 'guia de Spotify 5: lo logro (pidio una de Spotify)' '$(bit $d)'" ;;
+  sinletra)
+    # (revision) GUIA 2 SIN LA LETRA ♫ (el modo y la llave de la API, sin la cuenta: no hay letra ♫): «Aun no hay letra ♫» manda al buscador
+    # con ROJO+ARRIBA y sigue como la guia 1 (con su numero de paso, no «SIGAMOS»): «inventad», una cancion de Spotify, la moneda, VERDE
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$(guia 6 1),12:27+38,$(escribe 13 inventad),$(derechas 16 14),20.5:67,22.5:13" 26 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 11.6 guia2-sin-letra),$(cap 15.5 guia2-sin-letra-escribe),$(cap 20 guia2-sin-letra-moneda),$(cap 22.2 guia2-sin-letra-pidela),$(cap 23.5 guia2-sin-letra-logro)"
+    espera $e; o="$W/$e"
+    si "sinletra: sale con 0" test "$(cat $o/salio)" = 0
+    p=$(pasos $d); echo "   pasos: $p"
+    si "sinletra: «Aun no hay letra ♫», el buscador, la moneda y «Pidela con VERDE»" bash -c "echo '$p' | grep -q '^Aún no hay letra ♫|Escribe el nombre|.*Mete una moneda|Pídela con VERDE$'"
+    si "sinletra: una pedida (COBRADA: $(cobradas $d)) y lo logro" bash -c "[ $(cobradas $d) = 1 ] && grep -q 'guia de Spotify 5: lo logro (pidio una de Spotify)' '$(bit $d)'" ;;
   artista)
     # GUIA 3, «Los discos de un artista»: el buscador, «interminable», la tarjeta de Banda Interminable (solo en Spotify), su pared («Canciones
     # de» en la 1a casilla; luego sus discos), entrar a un disco, REGRESAR a la pared, REGRESAR al buscador: lo logra
