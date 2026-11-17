@@ -162,7 +162,8 @@ namespace Rocola
         }
 
         internal double PreganAhoraDb { get { return pre; } }      // la preganancia que lleva ahora (dB)
-        internal double PreganMetaDb { get { Sincroniza(); return preMeta; } }
+        // Solo lectura: Sincroniza es del hilo del sonido (preMeta es un double: en XP de 32 bits escribirlo desde dos hilos podria partirlo).
+        internal double PreganMetaDb { get { return preMeta; } }
         internal double BandaAhoraDb(int b) { return act[b]; }
 
         internal void Sigue(EcualizadorDueno previa) { if (previa != null && !object.ReferenceEquals(previa, this)) anterior = previa; }
