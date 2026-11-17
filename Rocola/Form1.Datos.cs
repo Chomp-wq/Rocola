@@ -524,7 +524,7 @@ namespace Rocola
             try
             {
                 if (!File.Exists(ConfigFile)) return;
-                bool vioEspectro = false;
+                bool vioEspectro = false, vioNoche22 = false;
                 foreach (string line in File.ReadAllLines(ConfigFile))
                 {
                     string s = line.Trim();
@@ -647,6 +647,8 @@ namespace Rocola
                     else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
                     else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
                     else if (s.StartsWith("noche_pct=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) nochePct = Math.Max(NochePctMin, Math.Min(NochePctMax, v)); }
+                    else if (s.StartsWith("noche_desde_22=")) vioNoche22 = s.Substring(15).Trim() == "1";   // la marca del paso de las 23 a las 22 h (17-11-2026): una sola vez
+                    else if (s.StartsWith("noche_graves=")) { int v; if (int.TryParse(s.Substring(13).Trim(), out v)) nocheGraves = Math.Max(0, Math.Min(NocheGravesMax, v)); }   // N1: cuanto grave se quita de noche (0 = apagado)
                     else if (s.StartsWith("noche")) { }   // noche_db=, noche_compensa=: de la version de antes, se ignoran
                     else if (s.StartsWith("saltar_silencios=")) saltaSilencios = s.Substring(17).Trim() != "0";   // saltar los silencios largos (SinSilencios.cs)
                     else if (s.StartsWith("turno=")) turnoOn = s.Substring(6).Trim() != "0";   // el letrero de cuando suena tu cancion
@@ -709,6 +711,9 @@ namespace Rocola
                         if (d.Length > 0 && !extraMusicDirs.Contains(d)) extraMusicDirs.Add(d);
                     }
                 }
+                // La hora de fabrica del modo noche pasa de las 23 a las 22 h (17-11-2026). Las rocolas que guardaron 23 -el valor de fabrica que
+                // se escribia siempre- pasan a 22 UNA sola vez (la marca noche_desde_22=1 se guarda siempre); un 23 puesto despues, a mano, se respeta.
+                if (!vioNoche22 && nocheDesde == 23) nocheDesde = 22;
             }
             catch { }
             if (!sbrAllowed) sbrOn = false;   // la maquina no cumple los requisitos del NIVEL 2: apagado si o si
@@ -817,6 +822,8 @@ namespace Rocola
             sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
             sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
             sb.Append("noche_pct=").Append(nochePct).Append("\r\n");
+            sb.Append("noche_desde_22=1\r\n");   // ya paso de 23 a 22 h (se lee en LoadConfigPrefs)
+            sb.Append("noche_graves=").Append(nocheGraves).Append("\r\n");   // N1: de noche, menos grave hacia afuera
             sb.Append("letra_lejos=").Append(letraLejos ? "1" : "0").Append("\r\n");
             sb.Append("guia_rojo=").Append(guiaRojo ? "1" : "0").Append("\r\n");
             sb.Append("asistente_animado=").Append(asistenteAnimado ? "1" : "0").Append("\r\n");

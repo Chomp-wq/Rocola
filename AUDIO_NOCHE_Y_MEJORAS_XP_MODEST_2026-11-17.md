@@ -62,9 +62,34 @@ Los MP3 de verdad y el MP3 metido en un WAV (formato 0x55, que el lector sí toc
 Pasan también `aperturaaudio`, `medidas`, `mp3mezclado`, `mp3ligero`, `wavdirecto` y las demás de la apertura. No se probó con un M4A
 real ni en Windows (el descompresor ACM no existe en Linux).
 
-## 3. Propuestas que necesitan tu decisión (no se hizo nada)
+## 3. El modo noche, a las 22 h y en una hora (pedido del dueño del mismo día)
 
-- **N1. «De noche, menos grave hacia afuera».** Lo que más sale del local y atraviesa paredes es el grave, no el volumen general. La
+«N1 me interesa, y haz que el modo noche empiece desde las 10, pero que vaya bajando extremadamente lento el volumen hasta llegar al
+objetivo, para que así los clientes no lo noten, que se vaya bajando tan lento que tarde una hora en llegar al objetivo.»
+
+- **Empieza a las 22 h** (`noche_desde=` 22 de fábrica). Las rocolas que tenían guardado el 23 de antes pasan a 22 una sola vez (marca
+  `noche_desde_22=1`); otra hora puesta a mano se respeta.
+- **La bajada tarda una hora** y va **pareja en dB**: el mismo número de dB por minuto (al 80 %, −0,54 dB a los 10 min, −1,07 a los 20 y
+  −3,22 a los 60), que es como el oído percibe el volumen.
+  - **Ya no sale el aviso en pantalla** al empezar.
+  - A las 7 sube en 20 s, como antes.
+  - «Probar» sigue siendo inmediato (1,5 s).
+  - Mover el deslizador o el interruptor va en 20 s, para que el dueño oiga su ajuste.
+  - Una rocola que se prende ya de noche arranca en el nivel de la noche.
+- **N1, de noche menos grave hacia afuera** (`noche_graves=`, 4 dB de fábrica, de 0 = apagado a 6): el escalón de graves de 120 Hz (el
+  filtro de «Graves del local», `SalaLocal.cs`) baja esos dB con el mismo avance de la hora (la mitad a la media hora), con decimales y
+  sin escalones.
+  - Medido con 4 dB: 60 Hz baja 3,76 dB; 1 kHz, 0,00 dB.
+  - De día, la etapa sale bit a bit como antes.
+  - Vale con el modo billar y con «Escuchar sin mejoras» (como el volumen de la noche).
+  - Mando «Graves de noche» en Ctrl+F3 → Sonido, debajo del modo noche, en gris con el modo apagado. La tarjeta queda justa (el mando
+    acaba a 8 px del borde): **conviene verla en pantalla**.
+- Si el equipo se detiene más de 5 s entre vueltas, la bajada se pausa ese rato, en vez de dar un salto.
+- Baterías `noche` (secciones nuevas 7 y 8), `sala`, `ajustes` y otras 20 de la cadena y la ventana, en verde.
+
+## 4. Propuestas que necesitan tu decisión (no se hizo nada)
+
+- ~~N1~~ hecho (sección 3). **N1. «De noche, menos grave hacia afuera».** Lo que más sale del local y atraviesa paredes es el grave, no el volumen general. La
   propuesta:
   - de noche, además del porcentaje, el escalón de graves de 120 Hz (el mismo de «Graves del local») bajaría unos dB (por ejemplo 4),
     con la misma rampa de 20 s;

@@ -2,11 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using NAudio.Wave;
 
 // EL MODO NOCHE, DE VUELTA (decision del dueno del 7-11-2026: «nos aventaron piedras por tener musica a las 12 A.M»).
 //
-// De noche_desde= a noche_hasta= (23 a 7 de fabrica) la rocola suena al noche_pct= % (de 70 a 90, 80 de fabrica) de lo que se oye;
-// «Probar» en Ctrl+F3 -> Sonido lo pone 15 s al momento. (Del 24-10 al 6-11-2026 esta bateria vigilaba que se hubiera retirado.)
+// De noche_desde= a noche_hasta= (22 a 7 de fabrica desde el 17-11-2026; antes 23 a 7) la rocola suena al noche_pct= % (de 70 a 90, 80 de
+// fabrica) de lo que se oye; «Probar» en Ctrl+F3 -> Sonido lo pone 15 s al momento. (Del 24-10 al 6-11-2026 esta bateria vigilaba que se
+// hubiera retirado.)
+//
+// 17-11-2026 (el dueno: «que empiece desde las 10, pero que vaya bajando extremadamente lento el volumen [...] que tarde una hora en
+// llegar al objetivo» y N1 «de noche, menos grave hacia afuera»): empieza a las 22 h (las rocolas con noche_desde=23 guardado pasan a 22
+// UNA vez, con la marca noche_desde_22=1); la bajada de la noche tarda 60 minutos, PAREJA EN dB y sin aviso en pantalla; la subida de
+// la manana, el deslizador y «Probar» siguen con sus rampas rapidas; y de noche el estante de 120 Hz del local baja noche_graves= dB
+// (0 a 6, 4 de fabrica) con el mismo avance (SalaLocal.GravesNocheDb: 0 de dia y la etapa sale bit a bit como antes).
 //
 // LO QUE ESTA BATERIA VIGILA:
 //
@@ -16,8 +24,23 @@ using System.Reflection;
 //  4) EL VOLUMEN SALE POR DOS SITIOS: la cadena de cada cancion (la que se arma, la preparada y el ajuste en vivo) y los videos, en
 //     particular la rama del video YA MEDIDO, que se salta la ganancia general.
 //  5) DE DIA NO CAMBIA NADA: con el modo sin actuar, el factor es exactamente 1.
-//  6) LA CONFIGURACION: noche=, noche_desde=, noche_hasta=, noche_pct= se leen y se guardan; noche_db= y noche_compensa= (de antes)
-//     se ignoran sin error.
+//  6) LA CONFIGURACION: noche=, noche_desde=, noche_hasta=, noche_pct=, noche_graves= se leen y se guardan; noche_db= y noche_compensa= (de antes)
+//     se ignoran sin error; el 23 guardado pasa a 22 una vez (noche_desde_22=).
+//  7) LA BAJADA DE UNA HORA, PAREJA EN dB, y el arranque ya de noche.
+//  8) LA SUBIDA DE LA MANANA (20 s), «PROBAR» RAPIDO, EL GRAVE DE NOCHE (N1) y SalaLocal bit a bit de dia.
+class FuenteN : ISampleProvider
+{
+    readonly float[] x; int pos; readonly WaveFormat wf;
+    public FuenteN(float[] datos, int fs, int ch) { x = datos; wf = WaveFormat.CreateIeeeFloatWaveFormat(fs, ch); }
+    public WaveFormat WaveFormat { get { return wf; } }
+    public int Read(float[] b, int o, int n)
+    {
+        int k = Math.Min(n, x.Length - pos);
+        if (k <= 0) return 0;
+        Array.Copy(x, pos, b, o, k); pos += k; return k;
+    }
+}
+
 class Noche
 {
     const BindingFlags T = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
@@ -32,6 +55,7 @@ class Noche
         MethodInfo mEs = TF.GetMethod("EsDeNoche", T), mDb = TF.GetMethod("NocheDb", T), mRampa = TF.GetMethod("AvanzaRampa", T);
         Check(fOn != null && fDesde != null && fHasta != null && fPct != null && mEs != null && mDb != null && mRampa != null, "el modo noche esta (campos, hora, dB y rampa)");
         if (fallos > 0) return fallos;
+        Check((int)fDesde.GetValue(null) == 22 && (int)fHasta.GetValue(null) == 7, "de fabrica empieza a las 22 h y acaba a las 7");
 
         Console.WriteLine("\n  1) EL CRUCE DE LA MEDIANOCHE\n");
         fDesde.SetValue(null, 23); fHasta.SetValue(null, 7);
@@ -56,7 +80,7 @@ class Noche
         float lin80 = (float)Math.Pow(10, db(80) / 20); fPct.SetValue(null, 80);
         float x = 1f; int pasos = 0;
         while (x != lin80 && pasos < 10000) { x = rampa(x, lin80, 16, 20000); pasos++; }
-        Check(pasos * 16 >= 4000 && pasos * 16 <= 20000, "al 80 % llega en " + (pasos * 16 / 1000.0).ToString("0.0") + " s (poco a poco, sin escalon)");
+        Check(pasos * 16 >= 4000 && pasos * 16 <= 20000, "la rampa de 20 s (subida de la manana, deslizador): al 80 % llega en " + (pasos * 16 / 1000.0).ToString("0.0") + " s (poco a poco, sin escalon)");
         Check(rampa(0.9f, lin80, 1000, 20000) == rampa(rampa(0.9f, lin80, 500, 20000), lin80, 500, 20000) || Math.Abs(rampa(0.9f, lin80, 1000, 20000) - rampa(rampa(0.9f, lin80, 500, 20000), lin80, 500, 20000)) < 1e-6f,
               "un segundo de golpe = dos medios segundos (cuenta milisegundos, no vueltas)");
         Check(rampa(0.9f, lin80, 0, 20000) == 0.9f && rampa(lin80, lin80, 500, 20000) == lin80, "sin tiempo no se mueve; en la meta se queda");
@@ -118,6 +142,26 @@ class Noche
             try { TF.GetMethod("LoadConfigPrefs", T).Invoke(f, null); } catch { leyo = false; }
             Check(leyo && !(bool)fOn.GetValue(null) && (int)fDesde.GetValue(null) == 22 && (int)fHasta.GetValue(null) == 6 && (int)fPct.GetValue(null) == 75,
                   "se leen noche=, noche_desde=, noche_hasta= y noche_pct= (noche_db= y noche_compensa= se ignoran sin error)");
+            // El 23 guardado (el de fabrica de antes) pasa a 22 UNA vez; con la marca, o con otro valor, se respeta.
+            FieldInfo fGrav = TF.GetField("nocheGraves", T);
+            Action<string> carga = txt => { File.WriteAllText(Path.Combine(dir, "rocola_config.txt"), txt); TF.GetMethod("LoadConfigPrefs", T).Invoke(f, null); };
+            carga("noche=1\r\nnoche_desde=23\r\nnoche_hasta=7\r\n");
+            Check((int)fDesde.GetValue(null) == 22, "un noche_desde=23 sin la marca pasa a 22 (la rocola que guardo el valor de fabrica de antes)");
+            carga("noche_desde=23\r\nnoche_desde_22=1\r\n");
+            Check((int)fDesde.GetValue(null) == 23, "con la marca noche_desde_22=1, un 23 puesto a mano se respeta (la marca despues de la clave)");
+            carga("noche_desde_22=1\r\nnoche_desde=23\r\n");
+            Check((int)fDesde.GetValue(null) == 23, "(la marca antes de la clave, igual)");
+            carga("noche_desde=21\r\n");
+            Check((int)fDesde.GetValue(null) == 21, "un 21 sin marca tambien se respeta (solo el 23 se movia)");
+            carga("noche_desde=0\r\n");
+            Check((int)fDesde.GetValue(null) == 0, "y un 0");
+            carga("noche_graves=9\r\n");
+            Check((int)fGrav.GetValue(null) == 6, "noche_graves=9 se acota a 6");
+            carga("noche_graves=2\r\n");
+            Check((int)fGrav.GetValue(null) == 2, "noche_graves=2 se lee");
+            carga("noche_graves=0\r\n");
+            Check((int)fGrav.GetValue(null) == 0, "noche_graves=0 (apagado) se lee");
+            fDesde.SetValue(null, 22); fHasta.SetValue(null, 6);
             File.WriteAllText(Path.Combine(dir, "rocola_config.txt"), "noche_pct=40\r\n");
             TF.GetMethod("LoadConfigPrefs", T).Invoke(f, null);
             Check((int)fPct.GetValue(null) == 70, "noche_pct=40 se acota a 70");
@@ -127,6 +171,121 @@ class Noche
             string nuevo = File.ReadAllText(Path.Combine(dir, "rocola_config.txt"));
             Check(nuevo.Contains("noche=1\r\n") && nuevo.Contains("noche_desde=22\r\n") && nuevo.Contains("noche_hasta=6\r\n") && nuevo.Contains("noche_pct=85\r\n")
                   && !nuevo.Contains("noche_db=") && !nuevo.Contains("noche_compensa="), "se guardan las cuatro (y las de antes ya no)");
+            Check(nuevo.Contains("noche_desde_22=1\r\n") && nuevo.Contains("noche_graves=0\r\n"), "y se guardan la marca noche_desde_22=1 y noche_graves=");
+
+            Console.WriteLine("\n  7) LA BAJADA DE UNA HORA, PAREJA EN dB\n");
+            Type TSala = TF.GetNestedType("SalaLocal", T);
+            FieldInfo fGN = TSala.GetField("GravesNocheDb", T), fUlt = TF.GetField("nocheUltMs", T), fMira = TF.GetField("nocheMirada", T);
+            MethodInfo mFacAv = TF.GetMethod("FactorDeAvance", T), mAvAv = TF.GetMethod("AvanzaAvance", T);
+            Check(fGN != null && fGrav != null && fUlt != null && mFacAv != null && mAvAv != null, "estan el avance de la noche, su factor y el grave de noche");
+            fPct.SetValue(null, 80); fGrav.SetValue(null, 4);
+            double dbN = db(80); fPct.SetValue(null, 80);
+            Func<float, double> aDb = v => 20.0 * Math.Log10(v);
+            // Un reloj de mentira: cada vuelta del temporizador pasan 'ms' milisegundos (AvanzaModoNoche mide contra nocheUltMs; el tope es 5000).
+            Action<int> vuelta = ms => { fUlt.SetValue(f, Environment.TickCount - ms); fMira.SetValue(f, 0); av.Invoke(f, null); };
+            Func<float> factor = () => (float)mFac.Invoke(f, null);
+            Func<float> grave = () => (float)fGN.GetValue(null);
+            // Dia: arranca sin rampa, en 1.
+            fDesde.SetValue(null, 3); fHasta.SetValue(null, 3); fOn.SetValue(null, true); fArr.SetValue(f, false); fHastaP.SetValue(f, 0);
+            vuelta(4000);
+            Check(factor() == 1f && grave() == 0f, "de dia: el volumen es 1 y el grave de noche 0");
+            // Empieza la noche (para el rango 0 a 24 siempre es de noche) con la rocola encendida: baja en 60 minutos.
+            fDesde.SetValue(null, 0); fHasta.SetValue(null, 24);
+            bool fallo = false;
+            double d10 = 0, d20 = 0, d59 = 0, d60 = 0, g30 = 0, g60 = 0; bool bajaSiempre = true; float previo = 1f; int k; bool dormido = true;
+            for (k = 1; k <= 900; k++)
+            {
+                try { vuelta(4000); } catch (Exception e) { fallo = true; Console.WriteLine("    " + (e.InnerException ?? e).Message); break; }
+                float v = factor(); if (v > previo) bajaSiempre = false; previo = v;
+                if (k == 100) { vuelta(6000); dormido = factor() == v; }   // un salto de reloj de mas de 5 s no cuenta (dt > 5000 -> 0)
+                if (k == 150) d10 = aDb(v); if (k == 300) d20 = aDb(v); if (k == 450) g30 = grave(); if (k == 885) d59 = aDb(v); if (k == 900) { d60 = aDb(v); g60 = grave(); }
+            }
+            Check(!fallo, "la bajada corre sin aviso ni fallo (el aviso de cuando empieza ya no sale)");
+            Console.WriteLine("        a 10 min " + d10.ToString("0.000") + " dB, a 20 min " + d20.ToString("0.000") + " dB, a 59 min " + d59.ToString("0.000") + " dB, a 60 min " + d60.ToString("0.000") + " dB (objetivo " + dbN.ToString("0.000") + ")");
+            Check(bajaSiempre, "el volumen solo baja, vuelta a vuelta (sin escalon)");
+            Check(dormido, "el tope se conserva: una vuelta de mas de 5 s no mueve nada (equipo dormido)");
+            Check(d59 > dbN + 0.05 && d59 < 0, "a los 59 minutos todavia no llega al objetivo (le faltan " + (d59 - dbN).ToString("0.000") + " dB)");
+            Check(Math.Abs(d60 - dbN) < 0.002, "a los 60 minutos llega al objetivo (" + d60.ToString("0.000") + " dB)");
+            Check(Math.Abs(d10 - dbN / 6.0) < 0.01 && Math.Abs(d20 - dbN / 3.0) < 0.01, "PAREJO EN dB: a 10 y 20 min lleva 1/6 y 2/6 de los dB (" + d10.ToString("0.000") + ", " + d20.ToString("0.000") + ")");
+            float fMitad = (float)mFacAv.Invoke(null, new object[] { 0.5 });
+            Check(Math.Abs(aDb(fMitad) - dbN / 2.0) < 0.001, "a la mitad del tiempo, la mitad de los dB");
+            Check(Math.Abs((float)mVid.Invoke(f, null) - 0.80f) < 1e-3f, "los videos, al final, al 80 % de su perilla (coherentes con la bajada)");
+            Check(Math.Abs(g30 - 2.0) < 0.02 && Math.Abs(g60 - 4.0) < 0.01, "el grave de noche: la mitad (" + g30.ToString("0.00") + " dB) a mitad de la bajada y todo (" + g60.ToString("0.00") + " dB) al final");
+            double avTodo = (double)mAvAv.Invoke(null, new object[] { 0.0, true, 3600000 }), avCasi = (double)mAvAv.Invoke(null, new object[] { 0.0, true, 3599000 });
+            Check(avTodo == 1.0 && avCasi < 1.0, "AvanzaAvance: 3 600 000 ms hacia la noche = el avance completo; 3 599 000, no");
+            // Videos a mitad de la bajada: entre 1 y 0,80.
+            fArr.SetValue(f, false); fOn.SetValue(null, true); vuelta(4000);   // arranca ya de noche: al momento, en el nivel de la noche
+            Check(Math.Abs(factor() - lin80) < 1e-6f && Math.Abs(grave() - 4f) < 0.01f, "si la rocola se ENCIENDE ya de noche, arranca en el nivel de la noche al momento (volumen y grave)");
+
+            Console.WriteLine("\n  8) LA SUBIDA DE LA MANANA, «PROBAR» Y EL GRAVE DE NOCHE\n");
+            // Se acaba la noche con la bajada completa: sube en 20 s.
+            fDesde.SetValue(null, 3); fHasta.SetValue(null, 3);   // rango vacio: ya es de dia
+            TF.GetField("nocheAvisada", T).SetValue(f, false);    // (el aviso de «se acabo» necesita la ventana viva: aqui no hay; se salta)
+            bool sube = true; int pasosSube = 0;
+            for (k = 0; k < 12; k++)
+            {
+                try { vuelta(2000); } catch (Exception e) { sube = false; Console.WriteLine("    " + (e.InnerException ?? e).Message); break; }
+                pasosSube++; if (factor() == 1f) break;
+            }
+            Check(sube && factor() == 1f && pasosSube * 2 <= 22 && pasosSube * 2 >= 8, "la subida de la manana sigue en unos 20 s (llego en " + (pasosSube * 2) + " s)");
+            Check(grave() == 0f, "y el grave de noche vuelve a 0");
+            // «Probar»: rapido, con el grave tambien, y vuelve solo.
+            mProb.Invoke(f, null);
+            int pasosP = 0; for (k = 0; k < 12; k++) { vuelta(500); pasosP++; if (Math.Abs(factor() - lin80) < 1e-6f && Math.Abs(grave() - 4f) < 0.01f) break; }
+            Check(pasosP * 0.5 <= 3.0, "«Probar» baja el volumen y el grave en " + (pasosP * 0.5) + " s (rampa rapida de 1,5 s)");
+            fHastaP.SetValue(f, (Environment.TickCount - 10) | 1);   // la prueba acabo
+            int pasosV = 0; for (k = 0; k < 12; k++) { vuelta(500); pasosV++; if (factor() == 1f && grave() == 0f) break; }
+            Check(factor() == 1f && grave() == 0f && pasosV * 0.5 <= 4.0, "acabada la prueba, de dia, vuelve a 1 y a 0 dB de grave rapido (" + (pasosV * 0.5) + " s)");
+            // El avance del grave: a la mitad, la mitad.
+            MethodInfo mGN = TF.GetMethod("GravesNocheDe", T);
+            Check((float)mGN.Invoke(null, new object[] { 0f }) == 0f && Math.Abs((float)mGN.Invoke(null, new object[] { 0.5f }) - 2f) < 1e-6f && Math.Abs((float)mGN.Invoke(null, new object[] { 1f }) - 4f) < 1e-6f,
+                  "el grave de noche: 0 de dia, la mitad a mitad de la rampa, el valor completo al final (4 dB)");
+            fGrav.SetValue(null, 0);
+            Check((float)mGN.Invoke(null, new object[] { 1f }) == 0f, "noche_graves=0: apagado del todo");
+            fGrav.SetValue(null, 4); fGN.SetValue(null, 0f);
+
+            // SalaLocal: de dia (0) bit a bit; de noche, el grave baja y el medio casi no.
+            int fs = 44100;
+            Func<float[], int, float[]> pasa = (xs, ch) =>
+            {
+                ISampleProvider s = (ISampleProvider)Activator.CreateInstance(TSala, T, null, new object[] { new FuenteN(xs, fs, ch), null, 0.26f, false, false, 0, 0, 0 }, null);
+                List<float> r = new List<float>(); float[] b = new float[4096]; int n;
+                while ((n = s.Read(b, 0, b.Length)) > 0) for (int i = 0; i < n; i++) r.Add(b[i]);
+                return r.ToArray();
+            };
+            Func<double, float[]> tono = hz => { float[] xt = new float[fs * 2 * 2]; for (int i = 0; i < fs * 2; i++) { float v = (float)(0.25 * Math.Sin(2 * Math.PI * hz * i / fs)); xt[2 * i] = v; xt[2 * i + 1] = v; } return xt; };
+            Func<float[], double> ef = y => { double s = 0; int a = fs, b = y.Length / 2; for (int i = a; i < b; i++) s += (double)y[2 * i] * y[2 * i]; return Math.Sqrt(s / (b - a)); };
+            Random rnd = new Random(7); float[] ruido = new float[fs * 2]; for (int i = 0; i < ruido.Length; i++) ruido[i] = (float)(0.3 * (rnd.NextDouble() * 2 - 1));
+            fGN.SetValue(null, 0f);
+            float[] ry = pasa(ruido, 2); bool igual = ry.Length == ruido.Length; for (int i = 0; igual && i < ruido.Length; i++) if (ry[i] != ruido[i]) igual = false;
+            Check(igual, "con el grave de noche en 0 (de dia), una senal pasa por SalaLocal IDENTICA, bit a bit");
+            float[] t60 = tono(60), t1k = tono(1000);
+            double g60d = 20 * Math.Log10(ef(pasa(t60, 2)) / ef(t60)), g1kd = 20 * Math.Log10(ef(pasa(t1k, 2)) / ef(t1k));
+            Check(Math.Abs(g60d) < 1e-9 && Math.Abs(g1kd) < 1e-9, "de dia: 60 Hz y 1 kHz salen sin cambio (" + g60d.ToString("0.0000") + " y " + g1kd.ToString("0.0000") + " dB)");
+            fGN.SetValue(null, 4f);
+            g60d = 20 * Math.Log10(ef(pasa(t60, 2)) / ef(t60)); g1kd = 20 * Math.Log10(ef(pasa(t1k, 2)) / ef(t1k));
+            Console.WriteLine("        con 4 dB menos de grave: 60 Hz " + g60d.ToString("0.00") + " dB, 1 kHz " + g1kd.ToString("0.00") + " dB");
+            Check(g60d < -3.0 && g60d > -4.5, "de noche una senal de 60 Hz baja cerca de 4 dB");
+            Check(Math.Abs(g1kd) < 0.3, "y una de 1 kHz casi no cambia");
+            // Se SUMA al grave del local: el mismo filtro (mismo objetivo = mismos bits).
+            Func<int, float, float[]> conGraves = (gl, gn) =>
+            {
+                fGN.SetValue(null, gn);
+                ISampleProvider s = (ISampleProvider)Activator.CreateInstance(TSala, T, null, new object[] { new FuenteN(ruido, fs, 2), null, 0.26f, false, false, 0, gl, 0 }, null);
+                List<float> r = new List<float>(); float[] b = new float[4096]; int n;
+                while ((n = s.Read(b, 0, b.Length)) > 0) for (int i = 0; i < n; i++) r.Add(b[i]);
+                return r.ToArray();
+            };
+            float[] a1 = conGraves(0, 4f), a2 = conGraves(-4, 0f);
+            bool mismo = a1.Length == a2.Length; for (int i = 0; mismo && i < a1.Length; i++) if (a1[i] != a2[i]) mismo = false;
+            Check(mismo, "se SUMA al grave del local: graves 0 + noche 4 dB = graves -4 dB (mismos bits)");
+            float[] b1 = conGraves(5, 3f), b2 = conGraves(2, 0f);
+            mismo = b1.Length == b2.Length; for (int i = 0; mismo && i < b1.Length; i++) if (b1[i] != b2[i]) mismo = false;
+            Check(mismo, "con graves del local (+5) y noche (3 dB): el mismo filtro que +2 dB");
+            fGN.SetValue(null, 0f);
+            // La etapa esta SIEMPRE en la cadena (no depende de ningun ajuste del local): el grave de noche funciona con todo de fabrica.
+            MethodInfo mArma = TF.GetMethod("ArmaCadena", T);
+            Check(mArma != null && Codigo.Llama(Codigo.Llamadas(mArma), "SalaLocal..ctor"), "SalaLocal se arma SIEMPRE en la cadena (no depende de ningun ajuste del local)");
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
 
