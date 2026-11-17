@@ -576,6 +576,7 @@ namespace Rocola
             }
             public LectorMedida(string ruta)
             {
+                NoEsMp3.Rechaza(ruta);   // un M4A/OGG/FLAC/WMA/WAV con nombre .mp3 no se mide (seria medir basura); ver NoEsMp3.cs
                 try
                 {
                     if (ruta != null && ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
@@ -1456,6 +1457,10 @@ namespace Rocola
         // sanos y, en el peor caso, hace lo mismo que antes: saltar.
         private IAudioSource OpenAudio(string path)
         {
+            // LOS «MP3» QUE NO LO SON (17-11-2026): un M4A/OGG/FLAC/WMA/WAV con nombre .mp3 se rechaza por su cabecera, ANTES de abrir nada y sin
+            // pasar por BuildCleanMp3 (sus cuadros falsos sonaban a ruido). AudioStartFailed devuelve el credito, la marca danada y la anota en
+            // rocola_incompatibles.txt. Los MP3 de verdad (y el MP3 dentro de un WAV) pasan igual que antes. Ver NoEsMp3.cs.
+            NoEsMp3.Rechaza(path);
             string original = RutaOriginalDe(path);
             FuenteMedida inicio = CapturaFuente(original);
             try { return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, ComoEstereo(new FileAudioSource(path))))); }   // sin el hueco del codificador ni los silencios largos
