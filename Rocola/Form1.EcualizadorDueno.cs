@@ -15,6 +15,9 @@
 //   EqDuenoFijoRespuesta(hz)                     LO QUE YA HACE LA ROCOLA en el modo puesto, aproximado (para dibujar de fondo)
 //   EqDuenoModoBillar                            ¿el modo puesto es el billar?
 using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
 
 namespace Rocola
 {
@@ -124,6 +127,104 @@ namespace Rocola
             int i = 0; while (i < cen.Length - 2 && f > cen[i + 1]) i++;
             double t = Math.Log(f / cen[i]) / Math.Log(cen[i + 1] / cen[i]);
             return db[i] + (db[i + 1] - db[i]) * t;
+        }
+
+        // ---- EL DIBUJO DE LA CURVA (hoja Ecualizador de Ctrl+F3 -> Sonido -> Ajustes del sonido) ----
+        // 120 frecuencias de 20 Hz a 20 kHz repartidas en logaritmo: con ellas se calculan las tres lineas una sola vez cada vez que algo cambia.
+        internal static readonly double[] EqCurvaHz = EqCurvaPuntos(120);
+        private static double[] EqCurvaPuntos(int n)
+        {
+            double[] r = new double[n];
+            double a = Math.Log(EcualizadorDueno.CurvaMinHz), b = Math.Log(EcualizadorDueno.CurvaMaxHz);
+            for (int i = 0; i < n; i++) r[i] = Math.Exp(a + (b - a) * i / (n - 1));
+            return r;
+        }
+
+        // Un Control propio pintado con GDI+ (como el deslizador y las tarjetas de la ventana): de 20 Hz a 20 kHz en escala logaritmica y de
+        // -15 a +15 dB. Gris tenue: lo que ya hace la rocola; de color: tu curva (con la preganancia); blanco tenue: la suma de las dos.
+        private sealed class CurvaEqView : Control
+        {
+            public Color Acento = Color.FromArgb(120, 200, 255);
+            private double[] fijo, dueno, suma;
+            public CurvaEqView()
+            {
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+                BackColor = Color.Transparent; TabStop = false;
+            }
+            // Las tres lineas ya calculadas (en EqCurvaHz); se copian y se repinta.
+            public void Pon(double[] f, double[] d, double[] s)
+            {
+                fijo = f == null ? null : (double[])f.Clone(); dueno = d == null ? null : (double[])d.Clone(); suma = s == null ? null : (double[])s.Clone();
+                Invalidate();
+            }
+            private const double DbMax = 15.0;
+            private float X(Rectangle r, double hz)
+            {
+                double a = Math.Log(EcualizadorDueno.CurvaMinHz), b = Math.Log(EcualizadorDueno.CurvaMaxHz);
+                return (float)(r.Left + r.Width * (Math.Log(hz) - a) / (b - a));
+            }
+            private static float Y(Rectangle r, double db)
+            {
+                if (db > DbMax) db = DbMax; else if (db < -DbMax) db = -DbMax;
+                return (float)(r.Top + r.Height * (DbMax - db) / (2.0 * DbMax));
+            }
+            private void Linea(Graphics g, Rectangle r, double[] y, Color c, float ancho)
+            {
+                if (y == null || y.Length != EqCurvaHz.Length) return;
+                PointF[] pts = new PointF[y.Length];
+                for (int i = 0; i < y.Length; i++) pts[i] = new PointF(X(r, EqCurvaHz[i]), Y(r, y[i]));
+                using (Pen p = new Pen(c, ancho)) { p.LineJoin = LineJoin.Round; g.DrawLines(p, pts); }
+            }
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                Rectangle all = new Rectangle(0, 0, Width - 1, Height - 1);
+                using (SolidBrush fondo = new SolidBrush(Color.FromArgb(14, 18, 38))) g.FillRectangle(fondo, all);
+                using (Pen borde = new Pen(Color.FromArgb(46, 58, 104))) g.DrawRectangle(borde, all);
+                Font f = Font ?? SystemFonts.DefaultFont;
+                int pie = f.Height + 8;   // la leyenda va abajo
+                Rectangle r = new Rectangle(30, 6, Width - 30 - 8, Height - pie - 6 - 14);   // a la izquierda los dB, abajo las frecuencias
+                if (r.Width < 20 || r.Height < 20) return;
+                using (SolidBrush tx = new SolidBrush(Color.FromArgb(120, 130, 160)))
+                {
+                    // la rejilla: cada 5 dB (el 0 dB, mas marcado) y 100 Hz, 1 kHz y 10 kHz
+                    for (int db = -15; db <= 15; db += 5)
+                    {
+                        float y = Y(r, db);
+                        using (Pen p = new Pen(db == 0 ? Color.FromArgb(120, 130, 170) : Color.FromArgb(40, 50, 86), 1f)) g.DrawLine(p, r.Left, y, r.Right, y);
+                        string t = db > 0 ? "+" + db : db.ToString();
+                        SizeF sz = g.MeasureString(t, f);
+                        g.DrawString(t, f, tx, r.Left - sz.Width - 1, y - sz.Height / 2f);
+                    }
+                    double[] marcas = { 100.0, 1000.0, 10000.0 }; string[] nom = { "100", "1k", "10k" };
+                    for (int i = 0; i < marcas.Length; i++)
+                    {
+                        float x = X(r, marcas[i]);
+                        using (Pen p = new Pen(Color.FromArgb(60, 72, 118), 1f)) g.DrawLine(p, x, r.Top, x, r.Bottom);
+                        SizeF sz = g.MeasureString(nom[i], f);
+                        g.DrawString(nom[i], f, tx, x - sz.Width / 2f, r.Bottom + 1);
+                    }
+                }
+                g.SetClip(r);
+                // Tres colores que no se confunden: lo de la rocola en azul, tu curva en el acento y la suma (lo que de verdad suena) en
+                // blanco, encima de todo.
+                Linea(g, r, fijo, Color.FromArgb(110, 165, 255), 1.5f);
+                Linea(g, r, dueno, Acento, 2.25f);
+                Linea(g, r, suma, Color.FromArgb(235, 240, 255), 1.5f);
+                g.ResetClip();
+                // la leyenda: tres rayitas con su nombre
+                string[] ley = { "lo que ya hace", "tu curva", "la suma" };
+                Color[] col = { Color.FromArgb(110, 165, 255), Acento, Color.FromArgb(235, 240, 255) };
+                float lx = 8, ly = Height - pie + 4 + f.Height / 2f;
+                for (int i = 0; i < 3; i++)
+                {
+                    using (Pen p = new Pen(col[i], 2f)) g.DrawLine(p, lx, ly, lx + 14, ly);
+                    SizeF sz = g.MeasureString(ley[i], f);
+                    using (SolidBrush tb = new SolidBrush(Color.FromArgb(170, 180, 205))) g.DrawString(ley[i], f, tb, lx + 18, ly - sz.Height / 2f);
+                    lx += 18 + sz.Width + 14;
+                }
+            }
         }
 
         // ---- La configuracion: eq_dueno= y eq_dueno_billar= ----

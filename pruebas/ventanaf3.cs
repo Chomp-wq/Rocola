@@ -145,6 +145,67 @@ class VentanaF3
                                 Control vv = Boton(dlg, "Volver a los ajustes del sonido");
                                 if (vv != null) { Click(vv); Check(Boton(dlg, "Voz, golpe y retumbe...") != null, "al volver de la voz se ven otra vez los ajustes"); }
                             }
+                            // EL ECUALIZADOR DEL DUENO (17-11-2026): su boton, su hoja con diez deslizadores, lo que hacen y como se vuelve.
+                            Control abreEq = Boton(dlg, "Ecualizador...");
+                            Check(abreEq != null, "los ajustes tienen el boton de la hoja del ecualizador");
+                            if (abreEq != null)
+                            {
+                                Click(abreEq); Mira(nombre + ", Sonido > Ecualizador");
+                                int nBar = 0; Control[] barras = new Control[10];
+                                for (int i = 0; i < 10; i++) { Control[] c = dlg.Controls.Find("SonidoEqBanda" + i, true); if (c.Length == 1 && c[0].Visible) { barras[i] = c[0]; nBar++; } }
+                                Check(nBar == 10, "la hoja del ecualizador tiene sus diez deslizadores a la vista (" + nBar + ")");
+                                Check(dlg.Controls.Find("SonidoEq", true).Length == 1 && dlg.Controls.Find("SonidoEqCurva", true).Length == 1 && dlg.Controls.Find("SonidoEqCurva", true)[0].Visible, "y el dibujo de la curva");
+                                Check(Boton(dlg, "Ecualizador...") == null && Boton(dlg, "Voz, golpe y retumbe...") == null, "la hoja de los ajustes queda escondida mientras tanto");
+                                // cada deslizador y cada tarjeta de la hoja caben en su tarjeta (el barrido de arriba mira fuera de la ventana, aqui dentro de la tarjeta)
+                                bool dentro = true;
+                                foreach (Control tj in dlg.Controls.Find("SonidoEq", true)[0].Controls)
+                                    foreach (Control hijo in tj.Controls) if (hijo.Left < 0 || hijo.Top < 0 || hijo.Right > tj.Width || hijo.Bottom > tj.Height) { dentro = false; Mal("fuera de su tarjeta: " + Ruta(hijo) + " «" + Corto(hijo.Text) + "»"); }
+                                Check(dentro, "nada de la hoja del ecualizador se sale de su tarjeta");
+                                FieldInfo fLaV = form.GetField("localAuto", T); int[] eqN = (int[])form.GetField("eqDuenoNormal", T).GetValue(null), eqB = (int[])form.GetField("eqDuenoBillar", T).GetValue(null);
+                                bool billarAntes = (bool)fLaV.GetValue(null); fLaV.SetValue(null, false);
+                                Array.Clear(eqN, 0, 10); Array.Clear(eqB, 0, 10);
+                                Click(Boton(dlg, "Todo en 0"));
+                                if (barras[3] != null)
+                                {   // una flecha mueve 0,5 dB (como los demas deslizadores): sube la banda de 250 Hz en la memoria NORMAL
+                                    barras[3].Focus();
+                                    typeof(Control).GetMethod("OnKeyDown", T).Invoke(barras[3], new object[] { new KeyEventArgs(Keys.Right) });
+                                    Check(eqN[3] == 1 && eqB[3] == 0, "una flecha sube la banda 0,5 dB en la memoria normal y no toca la del billar (" + eqN[3] + ", " + eqB[3] + ")");
+                                    typeof(Control).GetMethod("OnKeyDown", T).Invoke(barras[3], new object[] { new KeyEventArgs(Keys.Right) });
+                                    typeof(Control).GetMethod("OnKeyDown", T).Invoke(barras[3], new object[] { new KeyEventArgs(Keys.Right) });
+                                    Control[] vals = dlg.Controls.Find("SonidoEqMargen", true);
+                                    Check(eqN[3] == 3 && vals.Length == 1 && vals[0].Text.StartsWith("Margen: el todo baja ") && vals[0].Text.Contains(","), "tres flechas son 1,5 dB y el margen dice cuanto baja el todo (" + (vals.Length == 1 ? Corto(vals[0].Text) : "?") + ")");
+                                    Mira(nombre + ", Sonido > Ecualizador (con una banda subida)");
+                                    string capEq = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_EQ");   // opcional: una foto de la hoja (solo con la primera letra)
+                                    if (!string.IsNullOrEmpty(capEq) && letra == null)
+                                    {
+                                        Control sub = dlg.Controls.Find("SonidoEqBanda5", true)[0];
+                                        for (int k = 0; k < 6; k++) typeof(Control).GetMethod("OnKeyDown", T).Invoke(barras[1], new object[] { new KeyEventArgs(Keys.Right) });
+                                        for (int k = 0; k < 8; k++) typeof(Control).GetMethod("OnKeyDown", T).Invoke(sub, new object[] { new KeyEventArgs(Keys.Left) });
+                                        dlg.Refresh(); Application.DoEvents();
+                                        using (Bitmap bm = new Bitmap(dlg.ClientSize.Width, dlg.ClientSize.Height)) { using (Graphics gc = Graphics.FromImage(bm)) gc.CopyFromScreen(dlg.PointToScreen(Point.Empty), Point.Empty, bm.Size); bm.Save(capEq); }
+                                        for (int k = 0; k < 6; k++) typeof(Control).GetMethod("OnKeyDown", T).Invoke(barras[1], new object[] { new KeyEventArgs(Keys.Left) });
+                                        for (int k = 0; k < 8; k++) typeof(Control).GetMethod("OnKeyDown", T).Invoke(sub, new object[] { new KeyEventArgs(Keys.Right) });
+                                    }
+                                    Control todo0 = null; foreach (Control c in dlg.Controls.Find("SonidoEqCero", true)) todo0 = c;
+                                    if (todo0 != null) { Click(todo0); Check(eqN[3] == 0 && vals[0].Text.StartsWith("Margen: nada"), "«Todo en 0» deja la memoria en uso plana"); }
+                                    // con el modo billar guardado, la hoja lee y cambia la memoria del billar
+                                    fLaV.SetValue(null, true); Control vEq = Boton(dlg, "Volver a los ajustes del sonido"); if (vEq != null) Click(vEq);
+                                    Click(Boton(dlg, "Ecualizador..."));
+                                    Control[] usa = dlg.Controls.Find("SonidoEqUsando", true);
+                                    Check(usa.Length == 1 && usa[0].Text.Contains("billar") && !usa[0].Text.Contains("apagado"), "con el modo billar puesto, al volver a abrirla dice que usa la del billar");
+                                    typeof(Control).GetMethod("OnKeyDown", T).Invoke(barras[3], new object[] { new KeyEventArgs(Keys.Left) });
+                                    Check(eqB[3] == -1 && eqN[3] == 0, "y mover una banda cambia la del billar y no la normal");
+                                }
+                                // «Dejar como de fabrica» pone las dos en 0
+                                eqN[1] = 5; eqB[8] = -7;
+                                Control fab = Boton(dlg, "Dejar como de fabrica"); if (fab == null) foreach (Control c in dlg.Controls) if (c.GetType().Name == "BotonPlano" && c.Text == "Dejar como de fabrica") fab = c;
+                                Check(fab != null, "la ventana tiene «Dejar como de fabrica»");
+                                if (fab != null) { Click(fab); bool z = true; for (int i = 0; i < 10; i++) if (eqN[i] != 0 || eqB[i] != 0) z = false; Check(z, "«Dejar como de fabrica» pone las dos memorias del ecualizador en 0"); }
+                                fLaV.SetValue(null, billarAntes);
+                                Control vEq2 = Boton(dlg, "Volver a los ajustes del sonido");
+                                Check(vEq2 != null, "la hoja del ecualizador tiene su boton de volver");
+                                if (vEq2 != null) { Click(vEq2); Check(Boton(dlg, "Ecualizador...") != null && Boton(dlg, "Voz, golpe y retumbe...") != null, "al volver del ecualizador se ven otra vez los ajustes"); }
+                            }
                             Control abreIa = Boton(dlg, "Mejoras con IA...");
                             Check(abreIa != null, "los ajustes tienen el boton de la hoja de las mejoras con IA");
                             if (abreIa != null)

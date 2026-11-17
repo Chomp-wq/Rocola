@@ -94,7 +94,7 @@ el botón dice «Quitar prueba» y la prueba sigue aunque se cierre Ctrl+F3, has
 sobrevive a un reinicio. Batería `noche` en verde.
 
 **Ecualizador del dueño** (pedido: «un ecualizador para poder ajustar yo por completo el sonido de la rocola [...] que se conecte
-perfectamente con la cadena de sonido (normal y del modo billar)»). Hecha la parte del sonido; falta la hoja de Ctrl+F3.
+perfectamente con la cadena de sonido (normal y del modo billar)»). Está en Ctrl+F3 → Sonido → Ajustes del sonido → «Ecualizador...»: 10 deslizadores, «Todo en 0», qué memoria se está usando, cuánto baja el resto (el margen) y un dibujo con lo que ya hace la rocola (azul), tu curva y la suma (blanco). «Dejar como de fábrica» pone las dos memorias en 0.
 - 10 bandas (31, 63, 125, 250, 500 Hz, 1, 2, 4, 8 y 16 kHz), de −12 a +12 dB en medios dB. Las de los extremos son estantes; las otras,
   campanas.
 - Va al final de la cadena, justo antes del limitador: actúa sobre lo que la rocola ya hizo (el local, el billar, el modo noche), así que lo

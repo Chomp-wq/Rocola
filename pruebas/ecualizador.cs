@@ -312,6 +312,16 @@ class Ecualizador
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
 
+        Console.WriteLine("\n  9) LA HOJA DE CTRL+F3 (la ventana real la recorre ventanaf3: diez deslizadores, flechas, Todo en 0, fabrica, nada encimado)\n");
+        string aj = Texto("Form1.Ajustes.cs");
+        Check(aj.Contains("\"SonidoEqAbrir\"") && aj.Contains("\"SonidoEq\"") && aj.Contains("\"SonidoEqBanda\" + i") && aj.Contains("new Deslizador[EcualizadorDueno.Bandas]"),
+              "la ventana tiene el boton Ecualizador, la hoja SonidoEq y un deslizador por banda");
+        Check(aj.Contains("EqDuenoCambiaBanda(banda,") && aj.Contains("pEq.Visible = (f3Pagina == 0 && verEq"), "mover un deslizador cambia la banda al momento y la hoja se muestra con su bool");
+        Check(aj.Contains("int[] bkEqN = (int[])eqDuenoNormal.Clone(), bkEqB = (int[])eqDuenoBillar.Clone();"), "al abrir la ventana se respaldan las dos memorias");
+        int iCatch = aj.IndexOf("Array.Copy(bkEqN, eqDuenoNormal"), iApl = iCatch < 0 ? -1 : aj.IndexOf("AplicaBocinas();", iCatch);
+        Check(iCatch > 0 && aj.Contains("Array.Copy(bkEqB, eqDuenoBillar") && iApl > iCatch && iApl - iCatch < 400, "al cancelar se devuelven las dos memorias ANTES de AplicaBocinas");
+        Check(aj.Contains("EqDuenoCero(false); EqDuenoCero(true); refrescaEq();"), "«Dejar como de fabrica» pone las dos memorias en 0");
+
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos");
         return fallos;
     }

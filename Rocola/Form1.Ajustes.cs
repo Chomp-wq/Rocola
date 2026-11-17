@@ -665,7 +665,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkPreEco = quitaPreEco; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar; bool bkNoche = nocheOn; int bkNocheG = nocheGraves; int bkNocheP = nochePct;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkPreEco = quitaPreEco; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar; bool bkNoche = nocheOn; int bkNocheG = nocheGraves; int bkNocheP = nochePct; int[] bkEqN = (int[])eqDuenoNormal.Clone(), bkEqB = (int[])eqDuenoBillar.Clone();   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -1114,7 +1114,7 @@ namespace Rocola
                     pintaAfi();
                     // LAS MEJORAS CON IA (13-10-2026: I1, I2 e I3). Su propia hoja, como la del local: aqui ya no cabe nada. El
                     // boton comparte el renglon con el del local (cada uno con la mitad; los dos textos miden menos de 170 px).
-                    BotonPlano bIa = new BotonPlano(); bIa.SetBounds(16, 214, 424, 30); bIa.Font = fBot;
+                    BotonPlano bIa = new BotonPlano(); bIa.SetBounds(16, 196, 424, 30); bIa.Font = fBot;
                     bIa.Text = "Mejoras con IA..."; bIa.Name = "SonidoIaAbrir";
                     bIa.AccessibleName = "Mejoras con IA"; bIa.AccessibleRole = AccessibleRole.PushButton;
                     tMas.Controls.Add(bIa);
@@ -1163,7 +1163,7 @@ namespace Rocola
 
                     // LO QUE SUENA AHORA (13-10-2026: S4 y S5, LoQueSuena.cs; S1, S2 y S3, ArreglosGrabacion.cs y GraveMono.cs).
                     // Su propia hoja, como las del local y la IA; el boton va en el renglon del subtitulo, que tenia sitio.
-                    BotonPlano bAhora = new BotonPlano(); bAhora.SetBounds(16, 156, 424, 30); bAhora.Font = fBot; tMas.Controls.Add(bAhora);
+                    BotonPlano bAhora = new BotonPlano(); bAhora.SetBounds(16, 144, 424, 30); bAhora.Font = fBot; tMas.Controls.Add(bAhora);
                     bAhora.Text = "Lo que suena ahora..."; bAhora.Name = "SonidoAhoraAbrir";
                     bAhora.AccessibleName = "Lo que suena ahora"; bAhora.AccessibleRole = AccessibleRole.PushButton;
                     Panel pAhora = new Panel(); pAhora.SetBounds(16, 100, 928, 398); pAhora.BackColor = dlg.BackColor;
@@ -1244,14 +1244,20 @@ namespace Rocola
                     // ---------------- MAS AJUSTES DEL SONIDO (27-10-2026) ----------------
                     // Los botones de las hojas, uno debajo de otro, cada uno con lo que trae.
                     notaLocal(tMas, 72, 18, "Subgrave, estereo, claridad, partes suaves, balance, tono.");
-                    BotonPlano bVoz = new BotonPlano(); bVoz.SetBounds(16, 98, 424, 30); bVoz.Font = fBot;
+                    BotonPlano bVoz = new BotonPlano(); bVoz.SetBounds(16, 92, 424, 30); bVoz.Font = fBot;
                     bVoz.Text = "Voz, golpe y retumbe..."; bVoz.Name = "SonidoVozAbrir";
                     bVoz.AccessibleName = "Voz, golpe y retumbe"; bVoz.AccessibleRole = AccessibleRole.PushButton;
                     tMas.Controls.Add(bVoz);
-                    notaLocal(tMas, 130, 18, "Que el bombo no hunda la voz, el retumbe y el ataque.");
-                    notaLocal(tMas, 188, 18, "Escuchar sin mejoras y los arreglos de la grabacion.");
-                    notaLocal(tMas, 246, 18, "A la medida, quitar el siseo y el DSEE por genero.");
-                    Label lMasModo = notaLocal(tMas, 276, 64, "");
+                    notaLocal(tMas, 124, 18, "Que el bombo no hunda la voz, el retumbe y el ataque.");
+                    notaLocal(tMas, 176, 18, "Escuchar sin mejoras y los arreglos de la grabacion.");
+                    notaLocal(tMas, 228, 18, "A la medida, quitar el siseo y el DSEE por genero.");
+                    // EL ECUALIZADOR DEL DUENO (17-11-2026; EcualizadorDueno.cs): su boton, debajo de los demas.
+                    BotonPlano bEq = new BotonPlano(); bEq.SetBounds(16, 248, 424, 30); bEq.Font = fBot;
+                    bEq.Text = "Ecualizador..."; bEq.Name = "SonidoEqAbrir";
+                    bEq.AccessibleName = "Ecualizador"; bEq.AccessibleRole = AccessibleRole.PushButton;
+                    tMas.Controls.Add(bEq);
+                    notaLocal(tMas, 280, 18, "Tu curva encima de todo, normal y del billar.");
+                    Label lMasModo = notaLocal(tMas, 304, 40, "");
                     lMasModo.Name = "SonidoAjustesModo";
                     BotonPlano bVolverAju = new BotonPlano(); bVolverAju.SetBounds(16, 346, 424, 34); bVolverAju.Font = fBot;
                     bVolverAju.Text = "Volver a las canciones"; bVolverAju.Name = "SonidoAjustesVolver"; tMas.Controls.Add(bVolverAju);
@@ -1288,6 +1294,73 @@ namespace Rocola
                     BotonPlano bVolverVoz = new BotonPlano(); bVolverVoz.SetBounds(16, 346, 424, 34); bVolverVoz.Font = fBot;
                     bVolverVoz.Text = "Volver a los ajustes del sonido"; bVolverVoz.Name = "SonidoVozVolver"; tVozB.Controls.Add(bVolverVoz);
                     bool verVoz = false;
+                    // ---------------- EL ECUALIZADOR DEL DUENO (17-11-2026; EcualizadorDueno.cs, Form1.EcualizadorDueno.cs) ----------------
+                    // Su propia hoja, como la de voz y golpe. Diez deslizadores (31 Hz a 16 kHz, de -12 a +12 dB a pasos de medio dB; el valor del
+                    // deslizador es el medio dB mas 24) que cambian la curva de la memoria EN USO (la del billar si el modo billar guardado esta
+                    // encendido, si no la normal) y se oyen al momento. A la derecha, lo que se esta usando y un dibujo de la curva.
+                    Panel pEq = new Panel(); pEq.SetBounds(16, 100, 928, 398); pEq.BackColor = dlg.BackColor;
+                    pEq.Name = "SonidoEq"; pEq.Visible = false;
+                    Tarjeta tEq = new Tarjeta(); tEq.SetBounds(0, 0, 456, 398); tEq.Titulo = "ECUALIZADOR"; tEq.Acento = cBri;
+                    Tarjeta tEqC = new Tarjeta(); tEqC.SetBounds(472, 0, 456, 398); tEqC.Titulo = "LA CURVA"; tEqC.Acento = cCal;
+                    pEq.Controls.Add(tEq); pEq.Controls.Add(tEqC);
+                    string[] eqNom = { "31 Hz", "63 Hz", "125 Hz", "250 Hz", "500 Hz", "1 kHz", "2 kHz", "4 kHz", "8 kHz", "16 kHz" };
+                    Deslizador[] eqBar = new Deslizador[EcualizadorDueno.Bandas];
+                    Label[] eqVal = new Label[EcualizadorDueno.Bandas];
+                    Func<double, string> eqTxt = delegate (double d)
+                    {
+                        string t = d == 0.0 ? "0" : d.ToString("+0.0;-0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',');
+                        if (t.EndsWith(",0")) t = t.Substring(0, t.Length - 2);
+                        return t + " dB";
+                    };
+                    Label lEqUsa = new Label(); lEqUsa.SetBounds(16, 40, 424, 20); lEqUsa.BackColor = Color.Transparent;
+                    lEqUsa.ForeColor = cTexto; lEqUsa.Font = fNom; lEqUsa.Name = "SonidoEqUsando"; tEqC.Controls.Add(lEqUsa);
+                    notaLocal(tEqC, 62, 32, "Cada una se guarda aparte y cambia sola al prender o\napagar el modo billar.");
+                    CurvaEqView eqCurva = new CurvaEqView(); eqCurva.SetBounds(16, 98, 424, 168); eqCurva.Font = fDes; eqCurva.Acento = cBri;
+                    eqCurva.Name = "SonidoEqCurva"; tEqC.Controls.Add(eqCurva);
+                    Label lEqMargen = notaLocal(tEqC, 270, 32, ""); lEqMargen.ForeColor = cVol; lEqMargen.Name = "SonidoEqMargen";
+                    notaLocal(tEqC, 304, 32, "Subir una banda baja todo lo demas lo mismo: se oye como\nbajar las demas. Para mas volumen, el volumen de siempre.");
+                    BotonPlano bVolverEq = new BotonPlano(); bVolverEq.SetBounds(16, 346, 424, 34); bVolverEq.Font = fBot;
+                    bVolverEq.Text = "Volver a los ajustes del sonido"; bVolverEq.Name = "SonidoEqVolver"; tEqC.Controls.Add(bVolverEq);
+                    bool eqModoVisto = false;
+                    // Lee la memoria en uso y lo pone todo como esta: deslizadores, valores, el letrero, el margen y el dibujo.
+                    Action refrescaEq = delegate
+                    {
+                        bool bil = EqDuenoModoBillar; eqModoVisto = bil;
+                        for (int i = 0; i < EcualizadorDueno.Bandas; i++)
+                        {
+                            double d = EqDuenoDb(bil, i);
+                            eqBar[i].Value = (int)Math.Round(d * 2.0) + 24;
+                            eqVal[i].Text = eqTxt(d);
+                        }
+                        lEqUsa.Text = bil ? "Usando: la del modo billar" : "Usando: la normal (modo billar apagado)";
+                        double pg = EqDuenoPreganDb(bil);
+                        lEqMargen.Text = pg > -0.05 ? "Margen: nada (no subiste ninguna banda)"
+                            : "Margen: el todo baja " + (-pg).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') + " dB para que\nlo que subes no se raspe";
+                        double[] fj = EqDuenoFijoRespuesta(EqCurvaHz), du = EqDuenoRespuesta(bil, EqCurvaHz), su = new double[EqCurvaHz.Length];
+                        for (int i = 0; i < du.Length; i++) { du[i] += pg; su[i] = fj[i] + du[i]; }
+                        eqCurva.Pon(fj, du, su);
+                    };
+                    for (int i = 0; i < EcualizadorDueno.Bandas; i++)
+                    {
+                        int banda = i, y = 40 + i * 30;
+                        Label n = new Label(); n.SetBounds(16, y + 2, 64, 20); n.BackColor = Color.Transparent; n.ForeColor = cTexto; n.Font = fNom; n.Text = eqNom[i];
+                        Deslizador s = new Deslizador(); s.SetBounds(84, y, 270, 22); s.Minimum = 0; s.Maximum = 48; s.Acento = cBri;
+                        s.Name = "SonidoEqBanda" + i; s.AccessibleName = "Banda " + eqNom[i]; s.AccessibleRole = AccessibleRole.Slider;
+                        Label v = new Label(); v.SetBounds(362, y + 2, 78, 20); v.BackColor = Color.Transparent; v.ForeColor = cBri; v.Font = fVal;
+                        v.TextAlign = ContentAlignment.TopRight;
+                        eqBar[i] = s; eqVal[i] = v;
+                        s.Scroll += delegate
+                        {
+                            EqDuenoCambiaBanda(banda, (eqBar[banda].Value - 24) * 0.5);   // se oye al momento; no guarda (se guarda al soltar, como lo demas)
+                            changed = true;
+                            refrescaEq();
+                        };
+                        tEq.Controls.Add(n); tEq.Controls.Add(s); tEq.Controls.Add(v);
+                    }
+                    BotonPlano bEqCero = new BotonPlano(); bEqCero.SetBounds(16, 346, 424, 34); bEqCero.Font = fBot;
+                    bEqCero.Text = "Todo en 0"; bEqCero.Name = "SonidoEqCero"; tEq.Controls.Add(bEqCero);
+                    bEqCero.Click += delegate { EqDuenoCero(EqDuenoModoBillar); changed = true; refrescaEq(); };
+                    bool verEq = false;
 
                     // ---------------- TU BIBLIOTECA ----------------
                     Label lCal = new Label(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;
@@ -1587,6 +1660,7 @@ namespace Rocola
                         bomboSinHundir = false; retumbeDinamico = false; ataqueClaro = false; asperezaDinamica = false;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs): apagados
                         swBom.Checked = false; swRet.Checked = false; swAta.Checked = false; swAsp.Checked = false;   // (y sus mandos, en su hoja)
                         swAfi.Checked = false;   // la afinacion del local, sin usar (lo medido se guarda)
+                        EqDuenoCero(false); EqDuenoCero(true); refrescaEq();   // el ecualizador del dueno, plano en sus dos memorias
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }
@@ -1624,7 +1698,7 @@ namespace Rocola
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (Control cc in dlg.Controls)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pTono && cc != pIa && cc != pAhora && cc != pAju && cc != pVoz && cc != pAfi)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pTono && cc != pIa && cc != pAhora && cc != pAju && cc != pVoz && cc != pEq && cc != pAfi)
                                 cc.Visible = (f3Pagina == 0);
                         // La hoja del local va en el sitio de las dos tarjetas de arriba: o una, o las otras.
                         pLoc.Visible = (f3Pagina == 0 && verLocal && !verTono && !verAfi);
@@ -1633,9 +1707,10 @@ namespace Rocola
                         pIa.Visible = (f3Pagina == 0 && verIa && !verLocal);
                         pAhora.Visible = (f3Pagina == 0 && verAhora && !verLocal && !verIa);
                         // La hoja de los ajustes del sonido (27-10-2026) va debajo de las suyas: al volver de una, se vuelve a ella.
-                        pVoz.Visible = (f3Pagina == 0 && verVoz && !verLocal && !verIa && !verAhora);
-                        pAju.Visible = (f3Pagina == 0 && verAju && !verLocal && !verIa && !verAhora && !verVoz);
-                        tVol.Visible = tBil.Visible = (f3Pagina == 0 && !verAju && !verLocal && !verIa && !verAhora && !verVoz);
+                        pVoz.Visible = (f3Pagina == 0 && verVoz && !verLocal && !verIa && !verAhora && !verEq);
+                        pEq.Visible = (f3Pagina == 0 && verEq && !verLocal && !verIa && !verAhora && !verVoz);
+                        pAju.Visible = (f3Pagina == 0 && verAju && !verLocal && !verIa && !verAhora && !verVoz && !verEq);
+                        tVol.Visible = tBil.Visible = (f3Pagina == 0 && !verAju && !verLocal && !verIa && !verAhora && !verVoz && !verEq);
                         pImg.Visible = (f3Pagina == 1);
                         pDet.Visible = (f3Pagina == 2);
                         pCol.Visible = (f3Pagina == 3);
@@ -1676,9 +1751,11 @@ namespace Rocola
                     bVolverAhora.Click += delegate { verAhora = false; pintaPag(); };
                     bVolver.Click += delegate { verLocal = false; verTono = false; verAfi = false; pintaPag(); };
                     bAju.Click += delegate { verAju = true; updateLabels(); pintaPag(); };
-                    bVolverAju.Click += delegate { verAju = false; verLocal = false; verTono = false; verAfi = false; verIa = false; verAhora = false; verVoz = false; updateLabels(); pintaPag(); };
+                    bVolverAju.Click += delegate { verAju = false; verLocal = false; verTono = false; verAfi = false; verIa = false; verAhora = false; verVoz = false; verEq = false; updateLabels(); pintaPag(); };
                     bVoz.Click += delegate { verVoz = true; pintaPag(); };
                     bVolverVoz.Click += delegate { verVoz = false; pintaPag(); };
+                    bEq.Click += delegate { verEq = true; refrescaEq(); pintaPag(); };
+                    bVolverEq.Click += delegate { verEq = false; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
                     bPagC.Click += delegate { f3Pagina = 3; pintaPag(); };
@@ -1694,6 +1771,7 @@ namespace Rocola
                     dlg.Controls.Add(pIa); pIa.BringToFront();
                     dlg.Controls.Add(pAhora); pAhora.BringToFront();
                     dlg.Controls.Add(pVoz); pVoz.BringToFront();
+                    dlg.Controls.Add(pEq); pEq.BringToFront();
                     dlg.Controls.Add(pAfi); pAfi.BringToFront();
                     dlg.Controls.Add(pAju); pAju.BringToFront();
                     pintaPag();
@@ -1710,7 +1788,7 @@ namespace Rocola
                     RefrescaRequisitos();
                     // A2: lo tocado se guarda en cuanto se deja quieto medio segundo, no solo al cerrar.
                     EmpiezaGuardadoAlMomento();
-                    tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string g = BandaGrande(); lAfiGrande.Text = g.Length > 0 ? "Suena: " + g : afiAviso; } GuardaAlMomento(); };
+                    tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verEq && EqDuenoModoBillar != eqModoVisto) refrescaEq(); if (verAfi) { string g = BandaGrande(); lAfiGrande.Text = g.Length > 0 ? "Suena: " + g : afiAviso; } GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);
@@ -1723,7 +1801,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; quitaPreEco = bkPreEco; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; nocheOn = bkNoche; nochePct = bkNocheP; nocheGraves = bkNocheG; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; quitaPreEco = bkPreEco; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; nocheOn = bkNoche; nochePct = bkNocheP; nocheGraves = bkNocheG; Array.Copy(bkEqN, eqDuenoNormal, eqDuenoNormal.Length); Array.Copy(bkEqB, eqDuenoBillar, eqDuenoBillar.Length); sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
