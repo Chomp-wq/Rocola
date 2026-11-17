@@ -684,6 +684,8 @@ namespace Rocola
                     else if (s.StartsWith("balance=")) balanceDb = BalanceDb(s.Substring(8));                       // dB que se baja un canal (-6..6)
                     else if (s.StartsWith("graves_local=")) gravesLocalDb = TonoLocalDb(s.Substring(13), gravesLocalDb);   // graves del local en dB (-6..6; 0 de fabrica)
                     else if (s.StartsWith("agudos_local=")) agudosLocalDb = TonoLocalDb(s.Substring(13), agudosLocalDb);   // agudos del local en dB (-6..6; 0 de fabrica)
+                    else if (s.StartsWith("eq_dueno_billar=")) EqDuenoLee(s.Substring(16), eqDuenoBillar);   // ecualizador del dueno, modo billar (EcualizadorDueno.cs)
+                    else if (s.StartsWith("eq_dueno=")) EqDuenoLee(s.Substring(9), eqDuenoNormal);           // ecualizador del dueno, sonido normal: 10 dB separados por ;
                     else if (s.StartsWith("local_auto=")) localAuto = s.Substring(11).Trim() == "1";   // el modo automatico del local (LocalAuto.cs)
                     else if (s.StartsWith("afinado_local=")) LeeAfinado(s.Substring(14));                          // afinar el local con el celular (AfinarLocal.cs)
                     else if (s.StartsWith("afinado_ponderacion=")) afinadoPonderacion = PonderacionDe(s.Substring(20));
@@ -874,6 +876,8 @@ namespace Rocola
             sb.Append("balance=").Append(balanceDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("graves_local=").Append(gravesLocalDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("agudos_local=").Append(agudosLocalDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+            sb.Append("eq_dueno=").Append(EqDuenoTexto(eqDuenoNormal)).Append("\r\n");
+            sb.Append("eq_dueno_billar=").Append(EqDuenoTexto(eqDuenoBillar)).Append("\r\n");
             sb.Append("presencia_sala=").Append(presenciaSala ? "1" : "0").Append("\r\n");
             sb.Append("local_auto=").Append(LocalAutoAGuardar ? "1" : "0").Append("\r\n");   // durante «Comparar a ciegas», el de antes (CompararCiegas.cs)
             sb.Append("afinado_local=").Append(TextoAfinado()).Append("\r\n");

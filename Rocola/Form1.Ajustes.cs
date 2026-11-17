@@ -1493,7 +1493,7 @@ namespace Rocola
                         // ---------- EL MODO NOCHE ----------
                         int sNoche = SegundosPruebaNoche;
                         vNoche.Text = barNoche.Value + " %";
-                        bNoche.Text = sNoche > 0 ? ("Probando " + sNoche + " s") : "Probar";
+                        bNoche.Text = sNoche > 0 ? "Quitar prueba" : "Probar";   // hasta otro toque (o 30 min)
                         // La barra en gris con el modo apagado, salvo para probar (se puede oir antes de encenderlo).
                         vNoche.ForeColor = swNoche.Checked ? cVol : cApagado;
                         vGraN.Text = barGraN.Value == 0 ? "apagado" : ("\u2212" + barGraN.Value + " dB");   // N1: graves de noche
@@ -1547,7 +1547,7 @@ namespace Rocola
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     swSil.CheckedChanged += apply;
                     swNoche.CheckedChanged += apply; barNoche.Scroll += apply; barGraN.Scroll += apply;
-                    bNoche.Click += delegate { PruebaNoche(); updateLabels(); };   // 15 s al nivel de la noche, al momento (Form1.Sonido.cs)
+                    bNoche.Click += delegate { PruebaNoche(); updateLabels(); };   // el nivel de la noche al momento, hasta otro toque (Form1.Sonido.cs)
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     swCla.CheckedChanged += apply; swSua.CheckedChanged += apply; barBal.Scroll += apply;
                     barGra.Scroll += apply; barAgu.Scroll += apply; swPre.CheckedChanged += apply; swAutoL.CheckedChanged += apply;

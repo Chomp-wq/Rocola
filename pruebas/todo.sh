@@ -44,6 +44,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ
 FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs $RAIZ/Rocola/Zumbido.cs $RAIZ/Rocola/PreEco.cs $RAIZ/Rocola/Eses.cs"
 # Voz, golpe y retumbe (27-10-2026): que el bombo no hunda la voz, el retumbe dinamico y el ataque mas claro.
 FUENTES="$FUENTES $RAIZ/Rocola/EtapaPorCuadros.cs $RAIZ/Rocola/BomboSinHundir.cs $RAIZ/Rocola/RetumbeDinamico.cs $RAIZ/Rocola/AtaqueClaro.cs $RAIZ/Rocola/VozGolpeYRetumbe.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/EcualizadorDueno.cs $RAIZ/Rocola/Form1.EcualizadorDueno.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/SalidaPropia.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
 FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs $RAIZ/Rocola/CadenaBillar.cs $RAIZ/Rocola/AfinarLocal.cs $RAIZ/Rocola/VolumenParejo.cs $RAIZ/Rocola/AsperezaDinamica.cs $RAIZ/Rocola/BitacoraBillar.cs $RAIZ/Rocola/CompararCiegas.cs"
@@ -274,6 +275,9 @@ CPU="$CPU eses"
 # pasa de su media, con el presupuesto del EQ automatico y la claridad) y el ataque mas claro (menos cola, mas ataque con sitio bajo el techo): apagadas,
 # bit a bit; lo que hacen, tiempos, sin chasquidos, disco continuo, lecturas partidas, coste y enchufe en la cadena. Tonos y ruido sinteticos en Mono.
 CPU="$CPU bombosinhundir retumbedinamico ataqueclaro"
+# ecualizador: el ecualizador del dueno (17-11-2026; EcualizadorDueno.cs, Form1.EcualizadorDueno.cs): todo en 0 pasa tal cual, +6 dB en 63 Hz con su
+# preganancia, -6 dB en 1 kHz, los cambios en vivo sin escalon, el disco continuo, los estantes de 31 Hz y 16 kHz, la configuracion y la curva fija del billar.
+CPU="$CPU ecualizador"
 # 'salidapropia': T5 (25-10-2026), la salida de sonido con su propio hilo (SalidaPropia.cs) con un Windows imitado: suena todo en orden, el
 # reloj, la pantalla parada 3 s sin quedarse sin musica, pausa y parada, los fallos (del aparato, de Windows y de la musica), la parada en
 # el hilo de la pantalla, nada de .NET 2.0 SP2 en todo el ejecutable, y que Form1 la usa y sabe volver a la de siempre.

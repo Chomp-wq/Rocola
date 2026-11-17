@@ -87,7 +87,27 @@ objetivo, para que así los clientes no lo noten, que se vaya bajando tan lento 
 - Si el equipo se detiene más de 5 s entre vueltas, la bajada se pausa ese rato, en vez de dar un salto.
 - Baterías `noche` (secciones nuevas 7 y 8), `sala`, `ajustes` y otras 20 de la cadena y la ventana, en verde.
 
-## 4. Propuestas que necesitan tu decisión (no se hizo nada)
+## 4. «Probar» se queda hasta otro toque, y el ecualizador del dueño (parte del sonido)
+
+**«Probar»** (pedido: «Que se quede hasta que lo vuelva a pulsar»): un toque pone al momento (1,5 s) el nivel de la noche con su grave;
+el botón dice «Quitar prueba» y la prueba sigue aunque se cierre Ctrl+F3, hasta otro toque. Por seguridad se quita sola a los 30 min y no
+sobrevive a un reinicio. Batería `noche` en verde.
+
+**Ecualizador del dueño** (pedido: «un ecualizador para poder ajustar yo por completo el sonido de la rocola [...] que se conecte
+perfectamente con la cadena de sonido (normal y del modo billar)»). Hecha la parte del sonido; falta la hoja de Ctrl+F3.
+- 10 bandas (31, 63, 125, 250, 500 Hz, 1, 2, 4, 8 y 16 kHz), de −12 a +12 dB en medios dB. Las de los extremos son estantes; las otras,
+  campanas.
+- Va al final de la cadena, justo antes del limitador: actúa sobre lo que la rocola ya hizo (el local, el billar, el modo noche), así que lo
+  que mueve el dueño se suma a lo automático, no lo pisa.
+- **Dos memorias**: una para el sonido normal y otra para el modo billar (`eq_dueno=`, `eq_dueno_billar=`). Al prender o apagar el modo
+  billar cambia sola de curva, con rampa. «Escuchar sin mejoras» y la comparación a ciegas no la quitan.
+- **Preganancia automática**: si se sube una banda, todo baja lo mismo para que el limitador no apriete más; por eso subir una banda se oye
+  como «bajar las demás».
+- Cambios en vivo con rampa (12 dB en 50 ms), sin chasquido; en un disco continuo sigue sin escalón.
+- Todo en 0 (de fábrica): la cadena sale bit a bit como antes (comparada contra el ejecutable anterior: 16 de 16 iguales).
+- Batería nueva `ecualizador` y 16 de la cadena en verde. Nada oído ni probado en el A4.
+
+## 5. Propuestas que necesitan tu decisión (no se hizo nada)
 
 - ~~N1~~ hecho (sección 3). **N1. «De noche, menos grave hacia afuera».** Lo que más sale del local y atraviesa paredes es el grave, no el volumen general. La
   propuesta:

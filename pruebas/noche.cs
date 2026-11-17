@@ -7,7 +7,7 @@ using NAudio.Wave;
 // EL MODO NOCHE, DE VUELTA (decision del dueno del 7-11-2026: «nos aventaron piedras por tener musica a las 12 A.M»).
 //
 // De noche_desde= a noche_hasta= (22 a 7 de fabrica desde el 17-11-2026; antes 23 a 7) la rocola suena al noche_pct= % (de 70 a 90, 80 de
-// fabrica) de lo que se oye; «Probar» en Ctrl+F3 -> Sonido lo pone 15 s al momento. (Del 24-10 al 6-11-2026 esta bateria vigilaba que se
+// fabrica) de lo que se oye; «Probar» en Ctrl+F3 -> Sonido lo pone al momento hasta otro toque (antes 15 s). (Del 24-10 al 6-11-2026 esta bateria vigilaba que se
 // hubiera retirado.)
 //
 // 17-11-2026 (el dueno: «que empiece desde las 10, pero que vaya bajando extremadamente lento el volumen [...] que tarde una hora en
@@ -127,6 +127,15 @@ class Noche
             Check(Math.Abs((float)mFac.Invoke(f, null) - lin80) < 1e-6f, "«Probar», antes de la primera vuelta del reloj: ya en el nivel de la noche");
             fArr.SetValue(f, true); fFac.SetValue(f, lin80);
             Check(Math.Abs((float)mVid.Invoke(f, null) - 0.80f) < 1e-4f, "los videos, al 80 % de su perilla");
+            // Interruptor (17-11-2026, «que se quede hasta que lo vuelva a pulsar»): se queda mucho mas que los 15 s de antes, y otro toque la quita.
+            int quedan = unchecked((int)fHastaP.GetValue(f) - Environment.TickCount);
+            Check(quedan > 25 * 60 * 1000, "«Probar» se queda hasta otro toque (con tope de seguridad de 30 min): quedan " + quedan / 60000 + " min");
+            mProb.Invoke(f, null);
+            fArr.SetValue(f, false);
+            Check((float)mFac.Invoke(f, null) == 1f, "otro toque la quita: de dia y sin el modo, otra vez exactamente 1");
+            mProb.Invoke(f, null);
+            Check(Math.Abs((float)mFac.Invoke(f, null) - lin80) < 1e-6f, "y un tercer toque la vuelve a poner");
+            fArr.SetValue(f, true); fFac.SetValue(f, lin80);
             fHastaP.SetValue(f, (Environment.TickCount - 10) | 1);   // la prueba ya acabo
             TF.GetField("nocheUltMs", T).SetValue(f, Environment.TickCount - 2000);
             bool ok = true; try { av.Invoke(f, null); } catch (Exception e) { ok = false; Console.WriteLine("    " + (e.InnerException ?? e).Message); }

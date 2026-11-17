@@ -137,6 +137,8 @@
     <Compile Include="PreEco.cs" />
     <Compile Include="Eses.cs" />
     <Compile Include="EtapaPorCuadros.cs" />
+    <Compile Include="EcualizadorDueno.cs" />
+    <Compile Include="Form1.EcualizadorDueno.cs" />
     <Compile Include="BomboSinHundir.cs" />
     <Compile Include="RetumbeDinamico.cs" />
     <Compile Include="AtaqueClaro.cs" />

@@ -89,7 +89,7 @@ namespace Rocola
         private static int nocheHasta = BusinessDayStartHour;      // "noche_hasta=" (las 7: cuando empieza el dia del negocio)
         private static int nochePct = 80;                          // "noche_pct=": de 70 a 90 (lo que se oye)
         internal const int NochePctMin = 70, NochePctMax = 90;
-        private const int NocheRampaMs = 20000, NochePruebaRampaMs = 1500, NochePruebaMs = 15000;
+        private const int NocheRampaMs = 20000, NochePruebaRampaMs = 1500, NochePruebaMs = 30 * 60 * 1000;   // la prueba se queda hasta otro toque; si se olvida, 30 min
         internal const int NocheBajadaMs = 3600000;                // la bajada de la noche: una hora
         private static int nocheGraves = 4;                        // "noche_graves=": dB de grave que se quitan de noche (0 a 6; 0 = apagado)
         internal const int NocheGravesMax = 6;
@@ -135,8 +135,15 @@ namespace Rocola
         // Cuanto hay que bajar AHORA (el valor de la rampa). Antes de la primera vuelta del reloj, el destino (un video que empezara en ese
         // hueco saldria mudo con el campo aun en cero).
         private float FactorNoche() { return nocheArrancada ? nocheFactor : MetaNoche(); }
-        // «Probar» (Ctrl+F3 -> Sonido): 15 s al nivel de la noche, al momento; luego vuelve solo (de dia) o se queda (si ya es de noche).
-        internal void PruebaNoche() { nochePruebaHasta = (Environment.TickCount + NochePruebaMs) | 1; nochePruebaRapida = true; }
+        // «Probar» (Ctrl+F3 -> Sonido): el nivel de la noche (y su grave) al momento, HASTA OTRO TOQUE (decision del dueno del 17-11-2026:
+        // «Que se quede hasta que lo vuelva a pulsar»; antes, 15 s). Sigue aunque se cierre la ventana, para oirlo por el local; si se
+        // olvida, se quita solo a los 30 min, y no sobrevive a un reinicio. Al quitarla vuelve rapido (de dia) o se queda (si ya es de noche).
+        internal void PruebaNoche()
+        {
+            if (ProbandoNoche) nochePruebaHasta = (Environment.TickCount - 1) | 1;   // ya estaba: se quita (AvanzaModoNoche la da por acabada y vuelve rapido)
+            else nochePruebaHasta = (Environment.TickCount + NochePruebaMs) | 1;
+            nochePruebaRapida = true;
+        }
         internal int SegundosPruebaNoche { get { return ProbandoNoche ? Math.Max(1, unchecked(nochePruebaHasta - Environment.TickCount) / 1000 + 1) : 0; } }
 
         // Un paso de la rampa, por MILISEGUNDOS DE RELOJ (no por vueltas: el medidor de Ctrl+F3 llama al tick a mano).
@@ -1429,12 +1436,16 @@ namespace Rocola
             // ni una muestra; encendido, mientras nada pase del techo, tampoco.
             c.Hundir = new BomboSinHundir(c.Bajo, loc.Bombo);
             c.Hundir.Cebado = audioTailDelay;
+            // EL ECUALIZADOR DEL DUENO (EcualizadorDueno.cs, 17-11-2026): diez bandas a mano, la curva del modo puesto (normal o billar), con preganancia
+            // para no raspar el limitador. Con todo en 0 no toca ni una muestra. «Escuchar sin mejoras» no lo quita (es la correccion de las bocinas).
+            c.EqDueno = new EcualizadorDueno(c.Hundir, EqDuenoPuesto());
+            c.EqDueno.Cebado = audioTailDelay;
             // LIMITADOR DE PICO REAL: techo con margen para el error de estimacion entre
             // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits
             // con su dither de un bit.
             // EN EL BILLAR, lo que le llega al limitador se mide para el volumen parejo (VolumenParejo.cs). Pasa tal cual.
-            NAudio.Wave.ISampleProvider alLimitador = c.Hundir;
-            if (localAuto) { c.Margen = new MideMargen(c.Hundir, TechoPicoReal, saltadoSeg < 0.5, ParejoAplicado(t), SegundosDe(t.Path)); alLimitador = c.Margen; }
+            NAudio.Wave.ISampleProvider alLimitador = c.EqDueno;
+            if (localAuto) { c.Margen = new MideMargen(c.EqDueno, TechoPicoReal, saltadoSeg < 0.5, ParejoAplicado(t), SegundosDe(t.Path)); alLimitador = c.Margen; }
             LimitadorPicoReal lim = new LimitadorPicoReal(alLimitador, TechoPicoReal, 3.0, localAuto);   // en el billar, respira menos (PicoReal.cs)
             lim.Cebado = audioTailDelay;   // disco continuo: el cebado de delante no entra en el limitador heredado (PicoReal.cs)
             audioTailDelay += lim.DelayFrames; c.Limitador = lim;
