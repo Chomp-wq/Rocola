@@ -10,7 +10,9 @@
 //   EqDuenoDb(billar, banda)                     una banda en dB
 //   EqDuenoCambiaBanda(banda, db)                cambia una banda del modo puesto y se oye al momento (la que suena y la preparada)
 //   EqDuenoCero(billar)                          pone en 0 todas las bandas de un modo
-//   EqDuenoPreganDb(billar)                      la preganancia que resulta (dB, 0 o negativa)
+//   EqDuenoPreganDb(billar)                      el margen DE LA QUE SUENA (dB, 0 o negativa; sin su huella, el maximo)
+//   EqDuenoPreganMaxDb(billar)                   lo maximo que sube la curva, con el signo cambiado (la preganancia sin huella)
+//   EqDuenoSinCambia / EqDuenoSinTermina         «Escuchar sin el ecualizador» (15 s, no se guarda; EqDuenoSinPuesto, EqDuenoSinSegundos)
 //   EqDuenoRespuesta(billar, hz)                 la curva del dueno (dB, sin preganancia) en esas frecuencias
 //   EqDuenoFijoRespuesta(hz)                     LO QUE YA HACE LA ROCOLA en el modo puesto, aproximado (para dibujar de fondo)
 //   EqDuenoModoBillar                            ¿el modo puesto es el billar?
@@ -32,13 +34,36 @@ namespace Rocola
         private int[] EqDuenoArreglo(bool billar) { return billar ? eqDuenoBillar : eqDuenoNormal; }
 
         internal int[] EqDuenoMedios(bool billar) { return (int[])EqDuenoArreglo(billar).Clone(); }
-        internal int[] EqDuenoPuesto() { return EqDuenoMedios(EqDuenoModoBillar); }
+        // Con «Escuchar sin el ecualizador» puesto, lo que se pide a la cadena es todo en 0 (las memorias no se tocan).
+        internal int[] EqDuenoPuesto() { return EqDuenoSinPuesto ? new int[EcualizadorDueno.Bandas] : EqDuenoMedios(EqDuenoModoBillar); }
         internal double EqDuenoDb(bool billar, int banda) { return banda < 0 || banda >= EcualizadorDueno.Bandas ? 0.0 : EqDuenoArreglo(billar)[banda] * 0.5; }
+
+        // ---- ESCUCHAR SIN EL ECUALIZADOR (E1, 17-11-2026): una herramienta de la hoja, no se guarda ----
+        // Hasta cuando esta quitado (Environment.TickCount, distinto de 0 siempre); 0 = no. La comparacion es con signo, como ProbandoNoche.
+        private int eqDuenoSinHasta;
+        internal const int EqDuenoSinMs = 15000;
+        internal bool EqDuenoSinPuesto { get { int h = eqDuenoSinHasta; return h != 0 && unchecked(Environment.TickCount - h) < 0; } }
+        internal int EqDuenoSinSegundos { get { int h = eqDuenoSinHasta; return EqDuenoSinPuesto ? Math.Max(1, unchecked(h - Environment.TickCount) / 1000 + 1) : 0; } }
+        // Un toque lo quita (con la rampa normal, en la que suena y en la preparada); otro lo vuelve a poner.
+        internal void EqDuenoSinCambia()
+        {
+            if (EqDuenoSinPuesto) { EqDuenoSinTermina(); return; }
+            eqDuenoSinHasta = unchecked(Environment.TickCount + EqDuenoSinMs) | 1;
+            AplicaEqDueno();
+        }
+        // Lo vuelve a poner (si estaba quitado o se le acabo el tiempo): no hace nada si no lo habia quitado.
+        internal void EqDuenoSinTermina()
+        {
+            if (eqDuenoSinHasta == 0) return;
+            eqDuenoSinHasta = 0;
+            AplicaEqDueno();
+        }
 
         // Cambia una banda del modo puesto (dB, a medio dB) y la lleva ya a la cancion que suena y a la preparada.
         internal void EqDuenoCambiaBanda(int banda, double db)
         {
             if (banda < 0 || banda >= EcualizadorDueno.Bandas || double.IsNaN(db) || double.IsInfinity(db)) return;
+            eqDuenoSinHasta = 0;   // mover un deslizador vuelve a poner el ecualizador (AplicaEqDueno lleva la curva)
             EqDuenoArreglo(EqDuenoModoBillar)[banda] = EcualizadorDueno.Acota((int)Math.Round(db * 2.0, MidpointRounding.AwayFromZero));
             AplicaEqDueno();
         }
@@ -48,6 +73,7 @@ namespace Rocola
         {
             int[] a = EqDuenoArreglo(billar);
             for (int i = 0; i < a.Length; i++) a[i] = 0;
+            eqDuenoSinHasta = 0;
             AplicaEqDueno();
         }
 
@@ -58,7 +84,34 @@ namespace Rocola
             return frecuenciaSalida > 0 ? frecuenciaSalida : 44100;
         }
 
-        internal double EqDuenoPreganDb(bool billar) { return EcualizadorDueno.PreganDb(EqDuenoArreglo(billar), EqDuenoTasa()); }
+        // El margen de la cancion que suena (con su huella de tono; si no la tiene o no suena nada, el maximo) y el maximo de la curva.
+        internal double EqDuenoPreganDb(bool billar)
+        {
+            float[] pesos = null;
+            try { CadenaCancion c = cadenaSonando; if (c != null) pesos = c.EqDuenoPesos; } catch { }
+            return EcualizadorDueno.PreganCancionDb(EqDuenoArreglo(billar), EqDuenoTasa(), pesos);
+        }
+        internal double EqDuenoPreganMaxDb(bool billar) { return EcualizadorDueno.PreganDb(EqDuenoArreglo(billar), EqDuenoTasa()); }
+        // ¿La que suena tiene su huella de tono (y por eso su margen propio)?
+        internal bool EqDuenoSuenaConHuella { get { try { CadenaCancion c = cadenaSonando; return c != null && c.EqDuenoPesos != null; } catch { return false; } } }
+
+        // Los pesos de amplitud de la huella de tono de una cancion (8 bandas, EqCentros): la huella aprendida (dB de potencia por banda,
+        // relativos a su cuerpo, solo si es de la version original) mas lo que el EQ automatico le corrige (corr, dB por banda; puede ser null).
+        // null si no hay huella buena: la preganancia es entonces el maximo de siempre. Corre donde se arma la cadena.
+        private float[] EqDuenoPesosDe(string path, float[] corr)
+        {
+            float[] h;
+            if (path == null || eqCache == null || !eqCache.TryGetValue(path, out h) || h == null || h.Length < EqLen || h[EqFingerprint] != EqVersionOriginal) return null;
+            float[] p = new float[8];
+            for (int b = 0; b < 8; b++)
+            {
+                double l = h[b] + (corr != null && corr.Length > b ? corr[b] : 0f);
+                double a = Math.Pow(10.0, l / 20.0);
+                if (double.IsNaN(a) || double.IsInfinity(a) || a > 1e9) return null;
+                p[b] = (float)a;
+            }
+            return p;
+        }
         internal double[] EqDuenoRespuesta(bool billar, double[] hz) { return EcualizadorDueno.Respuesta(EqDuenoArreglo(billar), EqDuenoTasa(), hz); }
 
         // Lleva el ecualizador a lo que suena y a la siguiente ya preparada (la etapa lo toma con su rampa de 50 ms por 12 dB).

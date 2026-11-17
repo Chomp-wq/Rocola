@@ -45,6 +45,7 @@ namespace Rocola
             internal AsperezaDinamica Aspereza;  // los agudos asperos dinamicos (AsperezaDinamica.cs)
             internal BomboSinHundir Hundir;      // que el bombo no hunda la voz (BomboSinHundir.cs)
             internal EcualizadorDueno EqDueno;   // el ecualizador del dueno (EcualizadorDueno.cs): justo antes del limitador
+            internal float[] EqDuenoPesos;       // la huella de tono de la cancion (8 amplitudes) para su margen, o null (EqDuenoPesosDe)
             internal MideMargen Margen;          // en el billar: lo que le llega al limitador, para el volumen parejo (VolumenParejo.cs)
             internal QuitaSiseo Siseo;           // el quitasiseo, si esta encendido (Siseo.cs)
             internal ArreglaGrabacion Arreglo;   // el canal mudo y la continua (ArreglosGrabacion.cs)

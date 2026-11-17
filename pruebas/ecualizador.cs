@@ -18,6 +18,9 @@ using NAudio.Wave;
 //  6) LOS ESTANTES: 31 Hz sube lo de 20 Hz y 16 kHz lo de 18 kHz; una banda por encima de 0,45 de la frecuencia no se pone.
 //  7) LA CONFIGURACION: eq_dueno= y eq_dueno_billar= se leen, se acotan (-12 a 12, a medio dB) y se guardan; lo que falta o viene mal es 0.
 //  8) LA CURVA DE LO QUE YA HACE LA ROCOLA en el billar: el subgrave a 40 Hz (25 Hz muy abajo) y 1 kHz cerca de 0.
+// 10) EL MARGEN SEGUN LA CANCION (E3): PreganCancionDb con la huella de tono de la cancion; todo en 0 = 0; sin huella = el maximo; mucho grave =
+//     casi el maximo; sin graves = mucho menos; solo bajar = 0; la etapa baja lo que dice; en un disco continuo la preganancia va a 2 dB/s
+//     sin escalon y, si el dueno mueve un mando, rapido.
 class FuenteQ : ISampleProvider
 {
     readonly float[] x; int pos; readonly WaveFormat wf;
@@ -41,6 +44,10 @@ class Ecualizador
     static Type TE;
     static object Nueva(ISampleProvider s, int[] m) { return Activator.CreateInstance(TE, T, null, new object[] { s, m }, null); }
     static void Ajusta(object e, int[] m) { TE.GetMethod("Ajusta", T).Invoke(e, new object[] { m }); }
+    static object Nueva3(ISampleProvider s, int[] m, float[] pesos) { return Activator.CreateInstance(TE, T, null, new object[] { s, m, pesos }, null); }
+    static double PreganC(int[] m, int fs, float[] pesos) { return (double)TE.GetMethod("PreganCancionDb", T).Invoke(null, new object[] { m, fs, pesos }); }
+    // Pesos de amplitud como los arma ArmaCadena: 10^(dB/20) por banda de la huella (EqCentros).
+    static float[] Pesos(params double[] l) { float[] p = new float[8]; for (int i = 0; i < 8; i++) p[i] = (float)Math.Pow(10.0, (i < l.Length ? l[i] : 0.0) / 20.0); return p; }
     static double Pregan(int[] m, int fs) { return (double)TE.GetMethod("PreganDb", T).Invoke(null, new object[] { m, fs }); }
     static double[] Resp(int[] m, int fs, double[] hz) { return (double[])TE.GetMethod("Respuesta", T).Invoke(null, new object[] { m, fs, hz }); }
     static int[] Medios(params double[] db) { int[] m = new int[10]; for (int i = 0; i < db.Length && i < 10; i++) m[i] = (int)Math.Round(db[i] * 2.0); return m; }
@@ -68,6 +75,14 @@ class Ecualizador
     {
         float[] x = Tono(hz, 0.1, fs, 2, 3.0, 0.0);
         object e = Nueva(new FuenteQ(x, fs, 2), m);
+        float[] y = Lee((ISampleProvider)e, x.Length, 4096);
+        int d = (int)(x.Length * 0.75) / 2 * 2;
+        return 20.0 * Math.Log10(Rms(y, d, y.Length, 2, 0) / Rms(x, d, x.Length, 2, 0));
+    }
+    static double CambioDb2(int[] m, float[] pesos, double hz, int fs)
+    {
+        float[] x = Tono(hz, 0.1, fs, 2, 3.0, 0.0);
+        object e = Nueva3(new FuenteQ(x, fs, 2), m, pesos);
         float[] y = Lee((ISampleProvider)e, x.Length, 4096);
         int d = (int)(x.Length * 0.75) / 2 * 2;
         return 20.0 * Math.Log10(Rms(y, d, y.Length, 2, 0) / Rms(x, d, x.Length, 2, 0));
@@ -117,7 +132,7 @@ class Ecualizador
             igual = true; for (int i = 0; i < c.Length; i++) if (c[i] != orig[fs * 4 + i]) { igual = false; break; }
             Check(igual && Math.Abs((double)TE.GetMethod("get_PreganAhoraDb", T).Invoke(e, null)) < 1e-12, "puesto y quitado en vivo: pasados 2 s vuelve a pasar tal cual (bit a bit) y sin preganancia");
             string son = Texto("Form1.Sonido.cs");
-            int iH = son.IndexOf("c.Hundir = new BomboSinHundir"), iE = son.IndexOf("c.EqDueno = new EcualizadorDueno(c.Hundir, EqDuenoPuesto())"), iL = son.IndexOf("new LimitadorPicoReal(alLimitador");
+            int iH = son.IndexOf("c.Hundir = new BomboSinHundir"), iE = son.IndexOf("c.EqDueno = new EcualizadorDueno(c.Hundir, EqDuenoPuesto(), c.EqDuenoPesos)"), iL = son.IndexOf("new LimitadorPicoReal(alLimitador");
             Check(iH > 0 && iE > iH && iL > iE && son.Contains("alLimitador = c.EqDueno;") && son.Contains("new MideMargen(c.EqDueno,"),
                   "en la cadena: justo despues del bombo y antes de medir el margen y del limitador");
             Check(!son.Substring(iE, Math.Max(0, iL - iE)).Contains("sinMejoras"), "«Escuchar sin mejoras» no lo toca al armar la cadena");
@@ -210,6 +225,7 @@ class Ecualizador
             // La nueva pide OTRA curva: hereda la ganancia de las bandas y llega con su rampa, sin escalon.
             object d = Nueva(new FuenteQ(p2, fs, 2), new int[10]);
             TE.GetMethod("Sigue", T).Invoke(d, new object[] { a });
+            Ajusta(d, new int[10]);   // el dueno movio un mando: la preganancia heredada vuelve a la rampa rapida (sin tocar, iria a 2 dB por segundo)
             float[] yd = Lee((ISampleProvider)d, p2.Length, 1024);
             float[] j2 = new float[ya.Length + yd.Length]; Array.Copy(ya, j2, ya.Length); Array.Copy(yd, 0, j2, ya.Length, yd.Length);
             double pasoOtra = PasoMax(j2, ya.Length - 40, ya.Length + 2500, 2, 0);
@@ -321,6 +337,84 @@ class Ecualizador
         int iCatch = aj.IndexOf("Array.Copy(bkEqN, eqDuenoNormal"), iApl = iCatch < 0 ? -1 : aj.IndexOf("AplicaBocinas();", iCatch);
         Check(iCatch > 0 && aj.Contains("Array.Copy(bkEqB, eqDuenoBillar") && iApl > iCatch && iApl - iCatch < 400, "al cancelar se devuelven las dos memorias ANTES de AplicaBocinas");
         Check(aj.Contains("EqDuenoCero(false); EqDuenoCero(true); refrescaEq();"), "«Dejar como de fabrica» pone las dos memorias en 0");
+
+        Console.WriteLine("\n  10) EL MARGEN SEGUN LA CANCION (E3)\n");
+        {
+            float[] mucho = Pesos(6, 0, 0, 0, 0, -3, -6, -12), poco = Pesos(-20, -6, 0, 0, 0, -3, -6, -12);
+            // Ojo: con +6 dB en 63 Hz la curva da +6 en 63 Hz pero solo +4,15 en la banda de 50 Hz de la huella y +0,64 en la de 158 Hz (las ocho bandas de
+            // la huella estan lejos unas de otras), asi que ni una cancion de pura banda de 50 Hz pasa del 77 % del maximo: «casi todo grave» es eso.
+            float[] casiTodoGrave = Pesos(30, -10, -30, -30, -30, -30, -30, -30);
+            int[] m63 = Medios(0, 6);
+            double max = -Pregan(m63, fs);
+            double pm = PreganC(m63, fs, mucho), pp = PreganC(m63, fs, poco);
+            Console.WriteLine("    maximo de la curva (+6 dB en 63 Hz): " + max.ToString("0.000") + " dB");
+            Console.WriteLine("    cancion de mucho grave: margen " + (-pm).ToString("0.000") + " dB (" + (-pm / max * 100.0).ToString("0.0") + " % del maximo)");
+            Console.WriteLine("    cancion sin graves:     margen " + (-pp).ToString("0.000") + " dB (" + (-pp / max * 100.0).ToString("0.0") + " % del maximo)");
+            double pt = PreganC(m63, fs, casiTodoGrave);
+            Console.WriteLine("    cancion casi toda de graves (50 Hz +30 dB sobre el resto): margen " + (-pt).ToString("0.000") + " dB (" + (-pt / max * 100.0).ToString("0.0") + " % del maximo)");
+            Check(PreganC(new int[10], fs, mucho) == 0.0 && PreganC(new int[10], fs, null) == 0.0, "todo en 0: el margen es 0 con huella y sin ella");
+            Check(PreganC(m63, fs, null) == Pregan(m63, fs) && PreganC(m63, fs, new float[8]) == Pregan(m63, fs) && PreganC(m63, fs, new float[] { float.NaN, 1, 1, 1, 1, 1, 1, 1 }) == Pregan(m63, fs),
+                  "sin huella (null, suma 0 o no finita) es lo maximo de siempre (PreganDb)");
+            Check(-pt >= 0.75 * max && -pt <= max + 1e-9, "una cancion casi toda de graves baja casi lo maximo (al menos el 75 %)");
+            Check(-pm > -pp + 0.5 && -pm < max, "la de mucho grave baja mas que la que no tiene graves (y menos que el maximo)");
+            Check(-pp < 0.5 * max && pp <= 0.0 && -pp <= max + 1e-9 && -pp >= 0.25 * max - 1e-9, "una cancion sin graves baja mucho menos (menos del 50 % del maximo, nunca mas que el maximo ni positivo; con su 25 % de seguridad)");
+            Check(PreganC(Medios(-6, -3, 0, -12, 0, -6), fs, mucho) == 0.0 && PreganC(Medios(-12, -12, -12, -12, -12, -12, -12, -12, -12, -12), fs, poco) == 0.0, "solo bajar bandas: 0");
+            // cualquier huella: nunca positivo ni mayor que el maximo
+            bool acota = true; Random r10 = new Random(5);
+            for (int k = 0; k < 400; k++)
+            {
+                double[] l = new double[8]; for (int i = 0; i < 8; i++) l[i] = r10.NextDouble() * 80.0 - 60.0;
+                int[] mm = new int[10]; for (int i = 0; i < 10; i++) mm[i] = r10.Next(-24, 25);
+                double mx = -Pregan(mm, fs), v = PreganC(mm, fs, Pesos(l));
+                if (v > 0.0 || -v > mx + 1e-9 || double.IsNaN(v)) { acota = false; break; }
+            }
+            Check(acota, "400 huellas y curvas al azar: el margen nunca es positivo ni pasa del maximo");
+            // la etapa baja lo que dice PreganCancionDb: el tono de 1 kHz (donde la curva casi no sube)
+            double c1k = CambioDb2(m63, mucho, 1000, fs), e1k = pm + Resp(m63, fs, new double[] { 1000.0 })[0];
+            double c1kP = CambioDb2(m63, poco, 1000, fs), e1kP = pp + Resp(m63, fs, new double[] { 1000.0 })[0];
+            Console.WriteLine("    tono de 1 kHz: mucho grave " + c1k.ToString("0.000") + " dB (esperado " + e1k.ToString("0.000") + "); sin graves " + c1kP.ToString("0.000") + " dB (esperado " + e1kP.ToString("0.000") + ")");
+            Check(Math.Abs(c1k - e1k) < 0.05 && Math.Abs(c1kP - e1kP) < 0.05, "la etapa con pesos baja el tono de 1 kHz lo que dice PreganCancionDb (a 0,05 dB)");
+            Check(Math.Abs(CambioDb(m63, 1000, fs) - CambioDb2(m63, null, 1000, fs)) < 1e-9, "el constructor de dos argumentos equivale a pesos null");
+            // todo en 0 con pesos: bit a bit
+            float[] x0 = new float[fs * 2 * 2]; for (int i = 0; i < x0.Length; i++) x0[i] = (float)(az.NextDouble() * 1.6 - 0.8);
+            float[] y0 = Lee((ISampleProvider)Nueva3(new FuenteQ(x0, fs, 2), new int[10], mucho), x0.Length, 1000);
+            bool igual0 = y0.Length == x0.Length; for (int i = 0; igual0 && i < x0.Length; i++) if (y0[i] != x0[i]) igual0 = false;
+            Check(igual0, "todo en 0 con huella: la salida es la entrada bit a bit");
+
+            // DISCO CONTINUO con pesos distintos: sin escalon en el empalme y la preganancia va a 2 dB por segundo
+            float[] largo = Tono(1000.0, 0.4, fs, 2, 8.0, 0.0);
+            float[] p1 = new float[fs * 2 * 2], p2 = new float[fs * 5 * 2]; Array.Copy(largo, 0, p1, 0, p1.Length); Array.Copy(largo, p1.Length, p2, 0, p2.Length);
+            object a = Nueva3(new FuenteQ(p1, fs, 2), m63, casiTodoGrave);
+            float[] ya = Lee((ISampleProvider)a, p1.Length, 1024);
+            object b = Nueva3(new FuenteQ(p2, fs, 2), m63, poco);
+            TE.GetMethod("Sigue", T).Invoke(b, new object[] { a });
+            double paA = (double)TE.GetMethod("get_PreganAhoraDb", T).Invoke(a, null), metaB = (double)TE.GetMethod("get_PreganMetaDb", T).Invoke(b, null);
+            float[] yb1 = Lee((ISampleProvider)b, fs * 2, 777);   // 1 s (estereo)
+            double p1s = (double)TE.GetMethod("get_PreganAhoraDb", T).Invoke(b, null);
+            Console.WriteLine("    empalme: la de antes termina en " + paA.ToString("0.000") + " dB, la nueva pide " + metaB.ToString("0.000") + " dB; a 1 s de la nueva va en " + p1s.ToString("0.000") + " dB");
+            Check(Math.Abs(metaB - pp) < 1e-9 && metaB - paA > 2.5, "la nueva pide otra preganancia (mas de 2,5 dB de diferencia)");
+            Check(Math.Abs((p1s - paA) - 2.0) < 0.02, "a 1 s del empalme la preganancia heredada se movio 2 dB (" + (p1s - paA).ToString("0.000") + "): 2 dB por segundo");
+            float[] resto = Lee((ISampleProvider)b, p2.Length, 777);
+            float[] junto = new float[ya.Length + yb1.Length + resto.Length]; Array.Copy(ya, junto, ya.Length); Array.Copy(yb1, 0, junto, ya.Length, yb1.Length); Array.Copy(resto, 0, junto, ya.Length + yb1.Length, resto.Length);
+            double natural = Pico(junto, 0, junto.Length) * 2.0 * Math.PI * 1000.0 / fs;
+            double pasoE = PasoMax(junto, ya.Length - 60, ya.Length + 60, 2, 0), pasoTodo = PasoMax(junto, 0, junto.Length, 2, 0);
+            Console.WriteLine("    paso en el empalme " + pasoE.ToString("0.000000") + ", paso mayor de todo el trozo " + pasoTodo.ToString("0.000000") + " (natural del tono " + natural.ToString("0.000000") + ")");
+            Check(pasoE <= natural * 1.1 + 1e-7 && pasoTodo <= natural * 1.1 + 1e-7, "disco continuo con pesos distintos: sin escalon en el empalme ni despues");
+            double pf = (double)TE.GetMethod("get_PreganAhoraDb", T).Invoke(b, null);
+            Check(Math.Abs(pf - metaB) < 1e-9, "y pasados los segundos llega a la preganancia de la nueva (" + pf.ToString("0.000") + ")");
+            // sin heredar la nueva parte de su margen; y si el dueno mueve un mando a media rampa, vuelve a la rampa rapida
+            object c = Nueva3(new FuenteQ(p2, fs, 2), m63, poco);
+            TE.GetMethod("Sigue", T).Invoke(c, new object[] { a });
+            Lee((ISampleProvider)c, fs / 2 * 2, 777);   // 0,5 s: va despacio
+            double pmed = (double)TE.GetMethod("get_PreganAhoraDb", T).Invoke(c, null);
+            Ajusta(c, m63);   // el dueno toca un mando (la misma curva)
+            Lee((ISampleProvider)c, fs / 5 * 2, 777);     // 0,2 s
+            double pdesp = (double)TE.GetMethod("get_PreganAhoraDb", T).Invoke(c, null);
+            Console.WriteLine("    mover un mando a media rampa: antes " + pmed.ToString("0.000") + " dB, 0,2 s despues " + pdesp.ToString("0.000") + " dB (meta " + pp.ToString("0.000") + ")");
+            Check(Math.Abs(pmed - paA) < 1.1 && Math.Abs(pdesp - pp) < 1e-9, "al mover un mando la preganancia salta a la rampa rapida y llega a su meta en menos de 0,2 s");
+            string eqs = Texto("EcualizadorDueno.cs");
+            Check(eqs.Contains("RampaPreLentaDbSeg = 2.0"), "la rampa lenta es de 2 dB por segundo (RampaPreLentaDbSeg)");
+        }
 
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos");
         return fallos;

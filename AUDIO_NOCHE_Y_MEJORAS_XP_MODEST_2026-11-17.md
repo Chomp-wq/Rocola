@@ -107,6 +107,16 @@ perfectamente con la cadena de sonido (normal y del modo billar)»). Está en Ct
 - Todo en 0 (de fábrica): la cadena sale bit a bit como antes (comparada contra el ejecutable anterior: 16 de 16 iguales).
 - Batería nueva `ecualizador` y 16 de la cadena en verde. Nada oído ni probado en el A4.
 
+### E1 y E3 (elegidas por el dueño)
+
+- **E1, «Sin ecualizador»**: botón junto a «Todo en 0». Quita tu curva 15 s para comparar (dice «Ponerlo (N s)»); vuelve con otro
+  toque, al mover algo, al salir de la hoja o al cerrar Ctrl+F3. No toca lo guardado.
+- **E3, el margen según la canción**: con el tono medido de cada canción (y su EQ automático) se calcula cuánto sube de verdad con tu
+  curva y se baja eso, más un 25 % hacia lo máximo por seguridad; el limitador sigue detrás. Con +6 dB en 63 Hz: una canción con
+  graves fuertes baja 2,6 dB, una sin graves 1,6 dB, una casi toda de graves 4,6 dB (antes, todas 6 dB). Sin tono medido, lo máximo
+  como antes. En el disco continuo el cambio entre pistas va a 2 dB por segundo. Pruebas con huellas inventadas; nada oído.
+  Si en el bar se oyen los bombos aplastados con el bajo subido, se puede subir ese 25 %.
+
 ## 5. Propuestas que necesitan tu decisión (no se hizo nada)
 
 - ~~N1~~ hecho (sección 3). **N1. «De noche, menos grave hacia afuera».** Lo que más sale del local y atraviesa paredes es el grave, no el volumen general. La

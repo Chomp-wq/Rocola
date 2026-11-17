@@ -20,6 +20,14 @@
 // logaritmicos de 20 Hz a 20 kHz (PreganDb). Solo si ese maximo es mayor que 0 dB; si todo esta en 0 o solo baja, la preganancia es 0 dB
 // y no se aplica. Tambien va con su rampa (misma velocidad) y entre cuadros se interpola muestra a muestra. La ventana la ensena (PreganDb).
 //
+// EL MARGEN SEGUN LA CANCION (E3, 17-11-2026). Lo maximo que sube la curva solo llega entero a una cancion que trae mucho de esa banda: una
+// cancion sin graves no sube nada con +6 dB en 63 Hz y bajarla 6 dB seria bajarle el volumen en balde. Con la huella de tono de la cancion
+// (los dB por banda del EQ automatico, EqCentros, mas lo que ese EQ le corrige) se calcula cuanto sube DE VERDAD (PreganCancionDb): la suma
+// de las amplitudes de sus ocho bandas pasadas por la curva, contra la suma sin pasar, en dB, con un 25 % de seguridad hacia el maximo; lo que
+// sobre lo frena el limitador de pico real que va detras. Sin huella (pesos null), el maximo de siempre. En un disco continuo, la preganancia
+// heredada va a la de la cancion nueva a 2 dB por segundo (RampaPreLentaDbSeg) y no se oye un salto de volumen al cambiar de pista; en cuanto
+// el dueno mueve un mando vuelve a la rampa rapida.
+//
 // DISCO CONTINUO (Sigue, como GraveMono y SalaLocal): la pista que entra sin pausa hereda la memoria de los filtros, las ganancias de las
 // bandas, la preganancia y las colas de la anterior (Hereda); si lo que pide la nueva es otra cosa, la rampa lo lleva sin escalon. El
 // cebado de delante pasa tal cual (EtapaPorCuadros). Cuesta lo de cinco multiplicaciones por banda activa y canal; con todo en cero, nada.
@@ -35,6 +43,8 @@ namespace Rocola
         internal const int MediosMax = 24;                  // +-12 dB en pasos de medio dB
         internal const double Q = 1.41, QEstante = 0.7071;  // campana de una octava; los estantes como los del local (SalaLocal.TonoQ)
         internal const double RampaDb = 12.0, RampaSeg = 0.05, ColaSeg = 0.35;
+        internal const double RampaPreLentaDbSeg = 2.0;      // la preganancia heredada de la pista anterior de un disco continuo: dB por segundo
+        internal const double SeguridadPre = 0.25;           // de lo que falta hasta el maximo, cuanto se baja de mas
         internal const int Bloque = 32;                     // cuadros entre recalculos de coeficientes
         internal const int PuntosCurva = 200;
         internal const double CurvaMinHz = 20.0, CurvaMaxHz = 20000.0;
@@ -122,6 +132,34 @@ namespace Rocola
             return max > 0.0 ? -max : 0.0;
         }
 
+        // La preganancia de ESTA cancion, en dB (0 o negativa). 'pesos' son las ocho amplitudes de su huella de tono (una por banda de
+        // Form1.EqCentros, ya con la correccion del EQ automatico); null (o algo que no sirve) = sin huella: el maximo de siempre (PreganDb).
+        internal static double PreganCancionDb(int[] medios, int tasa, float[] pesos)
+        {
+            double pm = PreganDb(medios, tasa);
+            if (pesos == null || pesos.Length < 8) return pm;
+            double suma = 0.0;
+            for (int b = 0; b < 8; b++)
+            {
+                float a = pesos[b];
+                if (float.IsNaN(a) || float.IsInfinity(a) || a < 0f) return pm;
+                suma += a;
+            }
+            if (!(suma > 0.0)) return pm;
+            double max = -pm;
+            if (!(max > 0.0)) return 0.0;
+            float[] cen = Form1.EqCentros;
+            double[] hz = new double[8];
+            for (int b = 0; b < 8; b++) hz[b] = cen[b];
+            double[] g = Respuesta(medios, tasa, hz);
+            double con = 0.0;
+            for (int b = 0; b < 8; b++) con += pesos[b] * Math.Pow(10.0, g[b] / 20.0);
+            double sube = 20.0 * Math.Log10(con / suma);
+            if (double.IsNaN(sube) || sube < 0.0) sube = 0.0; else if (sube > max) sube = max;
+            double s = sube + SeguridadPre * (max - sube);
+            return -s;
+        }
+
         // ---- La etapa ----
 
         private readonly int[] obj = new int[Bandas];                 // lo pedido (medios de dB); lo escribe la ventana
@@ -140,16 +178,21 @@ namespace Rocola
         private readonly bool[] dcPrimero = new bool[Bandas];         // la memoria de esta banda parte del estado asentado (nacio con ganancia)
         private readonly double paso1, colaCuadros;                   // dB por cuadro; cuadros de cola
         private volatile EcualizadorDueno anterior;
+        private readonly float[] pesos;                               // la huella de la cancion (8 amplitudes) o null
+        private bool lenta;                                           // la preganancia va despacio (disco continuo) hasta que el dueno mueva un mando
 
-        internal EcualizadorDueno(ISampleProvider s, int[] medios) : base(s)
+        internal EcualizadorDueno(ISampleProvider s, int[] medios) : this(s, medios, null) { }
+
+        internal EcualizadorDueno(ISampleProvider s, int[] medios, float[] pesos) : base(s)
         {
+            this.pesos = pesos == null ? null : (float[])pesos.Clone();
             for (int b = 0; b < Bandas; b++) { coPara[b] = double.NaN; valida[b] = vale && Vale(b, tasa); }
             paso1 = RampaDb / (RampaSeg * Math.Max(1, tasa));
             colaCuadros = ColaSeg * Math.Max(1, tasa);
             if (!vale) return;
             // Arranca donde piden los mandos, sin rampa: lo de la primera muestra ya es lo que se pidio.
             for (int b = 0; b < Bandas; b++) { obj[b] = (medios != null && b < medios.Length && valida[b]) ? Acota(medios[b]) : 0; act[b] = obj[b] * 0.5; dcPrimero[b] = obj[b] != 0; }
-            preMeta = pre = PreganDb(obj, tasa);
+            preMeta = pre = PreganCancionDb(obj, tasa, this.pesos);
             visto = version;
         }
 
@@ -174,6 +217,7 @@ namespace Rocola
             Array.Copy(a.act, act, Bandas); Array.Copy(a.cola, cola, Bandas); Array.Copy(a.co, co, co.Length); Array.Copy(a.coPara, coPara, Bandas);
             Array.Copy(a.st, st, st.Length); Array.Copy(a.prim, prim, prim.Length);
             pre = a.pre;
+            lenta = true;   // hasta que se mueva un mando (Sincroniza), la preganancia va a la de esta cancion despacio
             return true;
         }
 
@@ -183,9 +227,10 @@ namespace Rocola
             int v = version;
             if (v == visto) return;
             visto = v;
+            lenta = false;   // el dueno movio un mando: la rampa rapida de siempre
             int[] copia = new int[Bandas];
             for (int b = 0; b < Bandas; b++) copia[b] = obj[b];
-            preMeta = PreganDb(copia, tasa);
+            preMeta = PreganCancionDb(copia, tasa, pesos);
         }
 
         protected override bool Quieta()
@@ -221,7 +266,11 @@ namespace Rocola
                     }
                 }
                 double p0 = pre, p1 = pre;
-                if (pre != preMeta) { double d = preMeta - pre; if (d > paso) p1 = pre + paso; else if (d < -paso) p1 = pre - paso; else p1 = preMeta; pre = p1; }
+                if (pre != preMeta)
+                {
+                    double pp = lenta ? RampaPreLentaDbSeg / Math.Max(1, tasa) * m : paso;   // despacio en un disco continuo
+                    double d = preMeta - pre; if (d > pp) p1 = pre + pp; else if (d < -pp) p1 = pre - pp; else p1 = preMeta; pre = p1;
+                }
                 bool usaPre = p0 != 0.0 || p1 != 0.0;
                 double g = usaPre ? Math.Pow(10.0, p0 / 20.0) : 1.0, dg = usaPre ? (Math.Pow(10.0, p1 / 20.0) - g) / m : 0.0;
                 // ---- las muestras ----

@@ -1438,7 +1438,9 @@ namespace Rocola
             c.Hundir.Cebado = audioTailDelay;
             // EL ECUALIZADOR DEL DUENO (EcualizadorDueno.cs, 17-11-2026): diez bandas a mano, la curva del modo puesto (normal o billar), con preganancia
             // para no raspar el limitador. Con todo en 0 no toca ni una muestra. «Escuchar sin mejoras» no lo quita (es la correccion de las bocinas).
-            c.EqDueno = new EcualizadorDueno(c.Hundir, EqDuenoPuesto());
+            // El margen sale de lo que de verdad sube ESTA cancion con la curva: su huella de tono mas lo que le corrige el EQ automatico (E3).
+            c.EqDuenoPesos = EqDuenoPesosDe(t.Path, tap.EqDb);
+            c.EqDueno = new EcualizadorDueno(c.Hundir, EqDuenoPuesto(), c.EqDuenoPesos);
             c.EqDueno.Cebado = audioTailDelay;
             // LIMITADOR DE PICO REAL: techo con margen para el error de estimacion entre
             // muestras (ver PicoReal.cs). Detras solo quedan el fundido (que solo baja) y el paso a 16 bits

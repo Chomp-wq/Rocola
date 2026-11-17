@@ -173,7 +173,7 @@ class VentanaF3
                                     typeof(Control).GetMethod("OnKeyDown", T).Invoke(barras[3], new object[] { new KeyEventArgs(Keys.Right) });
                                     typeof(Control).GetMethod("OnKeyDown", T).Invoke(barras[3], new object[] { new KeyEventArgs(Keys.Right) });
                                     Control[] vals = dlg.Controls.Find("SonidoEqMargen", true);
-                                    Check(eqN[3] == 3 && vals.Length == 1 && vals[0].Text.StartsWith("Margen: el todo baja ") && vals[0].Text.Contains(","), "tres flechas son 1,5 dB y el margen dice cuanto baja el todo (" + (vals.Length == 1 ? Corto(vals[0].Text) : "?") + ")");
+                                    Check(eqN[3] == 3 && vals.Length == 1 && vals[0].Text.StartsWith("Todo baja ") && vals[0].Text.Contains(","), "tres flechas son 1,5 dB y el margen dice cuanto baja el todo (" + (vals.Length == 1 ? Corto(vals[0].Text) : "?") + ")");
                                     Mira(nombre + ", Sonido > Ecualizador (con una banda subida)");
                                     string capEq = Environment.GetEnvironmentVariable("ROCOLA_CAPTURA_EQ");   // opcional: una foto de la hoja (solo con la primera letra)
                                     if (!string.IsNullOrEmpty(capEq) && letra == null)
@@ -188,6 +188,33 @@ class VentanaF3
                                     }
                                     Control todo0 = null; foreach (Control c in dlg.Controls.Find("SonidoEqCero", true)) todo0 = c;
                                     if (todo0 != null) { Click(todo0); Check(eqN[3] == 0 && vals[0].Text.StartsWith("Margen: nada"), "«Todo en 0» deja la memoria en uso plana"); }
+                                    // E1: ESCUCHAR SIN EL ECUALIZADOR (17-11-2026): un toque lo quita sin tocar las memorias, otro lo pone, y todo lo demas lo pone solo
+                                    Control sinEq = null; foreach (Control c in dlg.Controls.Find("SonidoEqSin", true)) sinEq = c;
+                                    Check(sinEq != null && sinEq.Visible && todo0 != null && sinEq.Text == "Sin ecualizador" && sinEq.AccessibleName == "Escuchar sin el ecualizador"
+                                          && sinEq.Bounds.Width == 204 && sinEq.Bounds.Height == 34 && todo0.Bounds.Width == 204 && sinEq.Left >= todo0.Right, "la hoja tiene «Todo en 0» y «Sin ecualizador» lado a lado");
+                                    if (sinEq != null)
+                                    {
+                                        FieldInfo fSin = form.GetField("eqDuenoSinHasta", T); MethodInfo puestoM = form.GetMethod("EqDuenoPuesto", T);
+                                        Func<bool> ceros = delegate { foreach (int v in (int[])puestoM.Invoke(f, null)) if (v != 0) return false; return true; };
+                                        eqN[3] = 6;
+                                        Click(sinEq);
+                                        Check((int)fSin.GetValue(f) != 0 && ceros() && eqN[3] == 6 && sinEq.Text.StartsWith("Ponerlo (") && sinEq.Text.EndsWith(" s)"), "un toque lo quita: pide ceros a la cadena, no toca las memorias y el boton dice «" + sinEq.Text + "»");
+                                        Mira(nombre + ", Sonido > Ecualizador (quitado)");
+                                        Control usaS = dlg.Controls.Find("SonidoEqUsando", true)[0];
+                                        Console.WriteLine("    «" + usaS.Text + "»");
+                                        Click(sinEq);
+                                        Check((int)fSin.GetValue(f) == 0 && !ceros() && ((int[])puestoM.Invoke(f, null))[3] == 6 && sinEq.Text == "Sin ecualizador", "otro toque lo vuelve a poner");
+                                        Click(sinEq); typeof(Control).GetMethod("OnKeyDown", T).Invoke(barras[3], new object[] { new KeyEventArgs(Keys.Right) });
+                                        Check((int)fSin.GetValue(f) == 0 && eqN[3] == 7 && sinEq.Text == "Sin ecualizador", "mover un deslizador lo vuelve a poner");
+                                        Click(sinEq); Click(Boton(dlg, "Todo en 0"));
+                                        Check((int)fSin.GetValue(f) == 0 && eqN[3] == 0, "«Todo en 0» lo vuelve a poner");
+                                        Click(sinEq); fSin.SetValue(f, unchecked(Environment.TickCount - 5) | 1);   // se le acabo el tiempo
+                                        Check(!(bool)form.GetProperty("EqDuenoSinPuesto", T).GetValue(f, null) && (int)form.GetProperty("EqDuenoSinSegundos", T).GetValue(f, null) == 0, "a los 15 s ya no cuenta como quitado");
+                                        eqN[3] = 4; fSin.SetValue(f, 0); Click(sinEq);
+                                        Control vSin = Boton(dlg, "Volver a los ajustes del sonido"); if (vSin != null) Click(vSin);
+                                        Check((int)fSin.GetValue(f) == 0 && eqN[3] == 4 && ceros() == false, "al volver de la hoja lo vuelve a poner");
+                                        Click(Boton(dlg, "Ecualizador...")); eqN[3] = 0;
+                                    }
                                     // con el modo billar guardado, la hoja lee y cambia la memoria del billar
                                     fLaV.SetValue(null, true); Control vEq = Boton(dlg, "Volver a los ajustes del sonido"); if (vEq != null) Click(vEq);
                                     Click(Boton(dlg, "Ecualizador..."));

@@ -1318,24 +1318,32 @@ namespace Rocola
                     CurvaEqView eqCurva = new CurvaEqView(); eqCurva.SetBounds(16, 98, 424, 168); eqCurva.Font = fDes; eqCurva.Acento = cBri;
                     eqCurva.Name = "SonidoEqCurva"; tEqC.Controls.Add(eqCurva);
                     Label lEqMargen = notaLocal(tEqC, 270, 32, ""); lEqMargen.ForeColor = cVol; lEqMargen.Name = "SonidoEqMargen";
-                    notaLocal(tEqC, 304, 32, "Subir una banda baja todo lo demas lo mismo: se oye como\nbajar las demas. Para mas volumen, el volumen de siempre.");
+                    notaLocal(tEqC, 304, 32, "Subir una banda baja un poco todo lo demas, segun cuanto\ntrae de esa banda la cancion: asi no se raspa.");
                     BotonPlano bVolverEq = new BotonPlano(); bVolverEq.SetBounds(16, 346, 424, 34); bVolverEq.Font = fBot;
                     bVolverEq.Text = "Volver a los ajustes del sonido"; bVolverEq.Name = "SonidoEqVolver"; tEqC.Controls.Add(bVolverEq);
                     bool eqModoVisto = false;
+                    object eqCadenaVista = null;   // la cadena que sonaba la ultima vez que se pinto la hoja (su margen cambia con cada cancion)
+                    BotonPlano bEqSin = new BotonPlano();   // «Escuchar sin el ecualizador» (E1); se coloca junto a «Todo en 0»
+                    Func<double, string> eqComa = delegate (double d) { return d.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ','); };
                     // Lee la memoria en uso y lo pone todo como esta: deslizadores, valores, el letrero, el margen y el dibujo.
                     Action refrescaEq = delegate
                     {
-                        bool bil = EqDuenoModoBillar; eqModoVisto = bil;
+                        bool bil = EqDuenoModoBillar; eqModoVisto = bil; eqCadenaVista = cadenaSonando;
                         for (int i = 0; i < EcualizadorDueno.Bandas; i++)
                         {
                             double d = EqDuenoDb(bil, i);
                             eqBar[i].Value = (int)Math.Round(d * 2.0) + 24;
                             eqVal[i].Text = eqTxt(d);
                         }
-                        lEqUsa.Text = bil ? "Usando: la del modo billar" : "Usando: la normal (modo billar apagado)";
-                        double pg = EqDuenoPreganDb(bil);
-                        lEqMargen.Text = pg > -0.05 ? "Margen: nada (no subiste ninguna banda)"
-                            : "Margen: el todo baja " + (-pg).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') + " dB para que\nlo que subes no se raspe";
+                        string usa = bil ? "Usando: la del modo billar" : "Usando: la normal (modo billar apagado)";
+                        if (EqDuenoSinPuesto && TextRenderer.MeasureText(usa + " - quitado para comparar", lEqUsa.Font).Width <= 416) usa += " - quitado para comparar";
+                        lEqUsa.Text = usa;
+                        bEqSin.Text = EqDuenoSinPuesto ? "Ponerlo (" + EqDuenoSinSegundos + " s)" : "Sin ecualizador";
+                        double pg = EqDuenoPreganDb(bil), pgMax = EqDuenoPreganMaxDb(bil);
+                        // el margen de la que suena: lo que baja todo con la huella de tono de ESTA cancion (E3), y lo maximo de tu curva
+                        lEqMargen.Text = (pg > -0.05 && pgMax > -0.05) ? "Margen: nada (no subiste ninguna banda)"
+                            : (EqDuenoSuenaConHuella ? "Con la que suena todo baja " + eqComa(-pg) + " dB\n(lo maximo de tu curva: " + eqComa(-pgMax) + " dB)"
+                                                     : "Todo baja " + eqComa(-pg) + " dB (la que suena aun no\ntiene su tono medido)");
                         double[] fj = EqDuenoFijoRespuesta(EqCurvaHz), du = EqDuenoRespuesta(bil, EqCurvaHz), su = new double[EqCurvaHz.Length];
                         for (int i = 0; i < du.Length; i++) { du[i] += pg; su[i] = fj[i] + du[i]; }
                         eqCurva.Pon(fj, du, su);
@@ -1357,9 +1365,13 @@ namespace Rocola
                         };
                         tEq.Controls.Add(n); tEq.Controls.Add(s); tEq.Controls.Add(v);
                     }
-                    BotonPlano bEqCero = new BotonPlano(); bEqCero.SetBounds(16, 346, 424, 34); bEqCero.Font = fBot;
+                    BotonPlano bEqCero = new BotonPlano(); bEqCero.SetBounds(16, 346, 204, 34); bEqCero.Font = fBot;
                     bEqCero.Text = "Todo en 0"; bEqCero.Name = "SonidoEqCero"; tEq.Controls.Add(bEqCero);
                     bEqCero.Click += delegate { EqDuenoCero(EqDuenoModoBillar); changed = true; refrescaEq(); };
+                    // E1: quita el ecualizador 15 s para oir la diferencia (no toca las memorias ni se guarda); otro toque, o mover algo, lo vuelve a poner.
+                    bEqSin.SetBounds(236, 346, 204, 34); bEqSin.Font = fBot; bEqSin.Text = "Sin ecualizador";
+                    bEqSin.Name = "SonidoEqSin"; bEqSin.AccessibleName = "Escuchar sin el ecualizador"; tEq.Controls.Add(bEqSin);
+                    bEqSin.Click += delegate { EqDuenoSinCambia(); refrescaEq(); };
                     bool verEq = false;
 
                     // ---------------- TU BIBLIOTECA ----------------
@@ -1692,6 +1704,7 @@ namespace Rocola
                     Action pintaPag = delegate
                     {
                         if (f3Pagina < 0 || f3Pagina > 5) f3Pagina = 0;
+                        if (!(f3Pagina == 0 && verEq)) EqDuenoSinTermina();   // fuera de la hoja del ecualizador nunca queda quitado
                         // Se ensena o se esconde TODO lo que hay en la ventana menos el marco (titulo,
                         // pestanas y el boton de Listo, que se ven en las tres) y las paginas propias.
                         // Se hace asi y no con una lista de nombres a proposito: una lista se olvida de una
@@ -1755,7 +1768,7 @@ namespace Rocola
                     bVoz.Click += delegate { verVoz = true; pintaPag(); };
                     bVolverVoz.Click += delegate { verVoz = false; pintaPag(); };
                     bEq.Click += delegate { verEq = true; refrescaEq(); pintaPag(); };
-                    bVolverEq.Click += delegate { verEq = false; pintaPag(); };
+                    bVolverEq.Click += delegate { verEq = false; EqDuenoSinTermina(); pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
                     bPagC.Click += delegate { f3Pagina = 3; pintaPag(); };
@@ -1788,12 +1801,13 @@ namespace Rocola
                     RefrescaRequisitos();
                     // A2: lo tocado se guarda en cuanto se deja quieto medio segundo, no solo al cerrar.
                     EmpiezaGuardadoAlMomento();
-                    tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verEq && EqDuenoModoBillar != eqModoVisto) refrescaEq(); if (verAfi) { string g = BandaGrande(); lAfiGrande.Text = g.Length > 0 ? "Suena: " + g : afiAviso; } GuardaAlMomento(); };
+                    tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (eqDuenoSinHasta != 0 && !EqDuenoSinPuesto) EqDuenoSinTermina(); if (verEq && (EqDuenoModoBillar != eqModoVisto || !object.ReferenceEquals(cadenaSonando, eqCadenaVista) || eqDuenoSinHasta != 0 || bEqSin.Text != "Sin ecualizador")) refrescaEq(); if (verAfi) { string g = BandaGrande(); lAfiGrande.Text = g.Length > 0 ? "Suena: " + g : afiAviso; } GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.ShowDialog(this);
                     tTrain.Stop(); tTrain.Dispose();
                     OlvidaRequisitos();
+                    EqDuenoSinTermina();   // «Escuchar sin el ecualizador» tampoco: con la ventana cerrada nunca queda quitado
                     if (sinMejoras) PonSinMejoras(false);   // "Escuchar sin mejoras" no sobrevive a la ventana
                     if (ciegoActivo) TerminaCiego("Ventana cerrada: comparacion cortada. ");   // ni la comparacion a ciegas
                     ParaPruebaBocinas();   // la prueba de bocinas no sigue sonando con la ventana cerrada
@@ -1802,7 +1816,7 @@ namespace Rocola
                 f3CambioGraf = false;
             }
             catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; quitaPreEco = bkPreEco; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; nocheOn = bkNoche; nochePct = bkNocheP; nocheGraves = bkNocheG; Array.Copy(bkEqN, eqDuenoNormal, eqDuenoNormal.Length); Array.Copy(bkEqB, eqDuenoBillar, eqDuenoBillar.Length); sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
-            finally { try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
+            finally { try { EqDuenoSinTermina(); } catch { } try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
         // =================== ASISTENTE DE CONFIGURACION DE BOTONES ===================
