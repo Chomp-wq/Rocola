@@ -919,7 +919,7 @@ namespace Rocola
                     Interruptor swCla = interLocal(140, "Claridad para el local", cBri, claridadLocal);
                     Label nCla = notaLocal(tLoc, 166, 18, "Menos retumbe (300 Hz) y la voz mas presente (3 kHz).");
                     Interruptor swSua = interLocal(190, "Que las partes suaves se oigan", cVol, partesSuaves);
-                    Label nSua = notaLocal(tLoc, 216, 18, "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual.");
+                    notaLocal(tLoc, 216, 18, "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual.");
                     Label nBal = new Label(); nBal.SetBounds(16, 244, 250, 18); nBal.BackColor = Color.Transparent;
                     nBal.ForeColor = cTexto; nBal.Font = fNom; nBal.Text = "Balance"; tLoc.Controls.Add(nBal);
                     Label vBal = new Label(); vBal.SetBounds(16 + 424 - 170, 242, 170, 20); vBal.BackColor = Color.Transparent;
@@ -964,7 +964,7 @@ namespace Rocola
                     Interruptor swPre = new Interruptor(); swPre.SetBounds(16, 40, 424, 26); swPre.ForeColor = cTexto; swPre.Font = fNom;
                     swPre.Text = "Presencia en sala ruidosa"; swPre.Acento = cVol; swPre.Checked = presenciaSala; swPre.Name = "SonidoPresencia";
                     tPre.Controls.Add(swPre);
-                    Label nPreNota = notaLocal(tPre, 70, 96, "Aprieta un poco lo que pasa del volumen de siempre y se lo\ndevuelve a todo: la voz que baja en la estrofa y las intros se\nquedan mas cerca de lo fuerte (unos 3 dB), y el volumen\ntotal no cambia. Suave: 2 a 1, ataque 15 ms, suelta 250 ms.");
+                    notaLocal(tPre, 70, 96, "Aprieta un poco lo que pasa del volumen de siempre y se lo\ndevuelve a todo: la voz que baja en la estrofa y las intros se\nquedan mas cerca de lo fuerte (unos 3 dB), y el volumen\ntotal no cambia. Suave: 2 a 1, ataque 15 ms, suelta 250 ms.");
                     notaLocal(tPre, 176, 64, "No toca el volumen de Windows ni el de la salida. Nunca\nsube la cancion mas alla del techo del limitador. Apagado\nde fabrica; se oye al instante en la cancion que suena.");
                     // EL MODO BILLAR (23-10-2026, LocalAuto.cs; desde el 27-10-2026 lleva la cadena entera, CadenaBillar.cs): ajusta por ti el
                     // sonido de cada cancion para las bocinas del billar. Va en la pagina de Sonido, con el boton de los ajustes al lado; con el
@@ -979,14 +979,14 @@ namespace Rocola
                     Label lBil = notaLocal(tBil, 72, 80, "");
                     lBil.Name = "SonidoBillarTexto";
                     // Solo para este local (25-10-2026): se dice para que esta hecho.
-                    Label lHecho = notaLocal(tPre, 248, 92, "Con el modo billar encendido (pagina de Sonido) esto lo decide\nel modo, hecho para tu billar: presencia en el tercio de\ncanciones que mas varia de tu biblioteca. Un disco seguido\ndecide igual en todas.");
+                    Label lHecho = notaLocal(tPre, 248, 92, "El modo billar ya no pone nada que suba o baje el volumen\nsolo: la presencia va con su interruptor (apagada de\nfabrica). Las eses, los graves y los agudos si los decide\nel modo (en gris).");
                     lHecho.Name = "SonidoLocalHecho";
                     string motivoAuto = "el modo billar apagado (pagina de Sonido)";
                     Func<bool> sinAuto = delegate { return !localAuto; };
                     Necesita(swSub, sinAuto, motivoAuto, nSub); Necesita(swEst, sinAuto, motivoAuto, nEst);
-                    Necesita(swCla, sinAuto, motivoAuto, nCla); Necesita(swSua, sinAuto, motivoAuto, nSua);
+                    Necesita(swCla, sinAuto, motivoAuto, nCla);   // (las partes suaves y la presencia ya no las decide el modo: 18-11-2026)
                     Necesita(barGra, sinAuto, motivoAuto, nGraNota); Necesita(barAgu, sinAuto, motivoAuto, nAguNota);
-                    Necesita(swPre, sinAuto, motivoAuto, nPreNota); Necesita(swEses, sinAuto, motivoAuto, nEses);
+                    Necesita(swEses, sinAuto, motivoAuto, nEses);
                     BotonPlano bVolverTono = new BotonPlano(); bVolverTono.SetBounds(16, 346, 424, 34); bVolverTono.Font = fBot;
                     bVolverTono.Text = "Volver al local y sus bocinas"; bVolverTono.Name = "SonidoTonoVolver"; tPre.Controls.Add(bVolverTono);
                     bool verTono = false;
@@ -1277,20 +1277,20 @@ namespace Rocola
                     };
                     Interruptor swRet = interVoz(40, "Retumbe dinamico", cGra, retumbeDinamico);
                     swRet.Name = "SonidoRetumbe";
-                    Label nRet = notaLocal(tVoz, 66, 32, "Cuando el grave medio (260 Hz) se pasa de lo normal en la\ncancion, lo baja en ese instante y lo suelta despues.");
+                    notaLocal(tVoz, 66, 32, "Cuando el grave medio (260 Hz) se pasa de lo normal en la\ncancion, lo baja en ese instante y lo suelta despues.");
                     Interruptor swAta = interVoz(110, "Ataque mas claro", cBri, ataqueClaro);
                     swAta.Name = "SonidoAtaque";
-                    Label nAta = notaLocal(tVoz, 136, 32, "Menos cola detras de cada golpe: el ritmo se entiende mejor\nen un local que rebota. Sin subir el volumen.");
+                    notaLocal(tVoz, 136, 32, "Menos cola detras de cada golpe: el ritmo se entiende mejor\nen un local que rebota. Sin subir el volumen.");
                     Interruptor swBom = interVoz(180, "Que el bombo no hunda la voz", cCal, bomboSinHundir);
                     swBom.Name = "SonidoBombo";
                     Label nBom = notaLocal(tVoz, 206, 32, "Si el bombo pasaria del techo, baja solo el bajo y no toda la\ncancion: la voz no se hunde con cada golpe.");
                     // AGUDOS ASPEROS DINAMICOS (quinta tanda, AsperezaDinamica.cs): el cuarto de la hoja.
                     Interruptor swAsp = interVoz(250, "Agudos asperos dinamicos", cBri, asperezaDinamica);
                     swAsp.Name = "SonidoAspereza";
-                    Label nAsp = notaLocal(tVoz, 276, 32, "Si unos platillos o trompetas \"gritan\" (2 a 4 kHz), baja esa\nfranja hasta 3 dB solo en ese instante. La voz no se toca.");
+                    notaLocal(tVoz, 276, 32, "Si unos platillos o trompetas \"gritan\" (2 a 4 kHz), baja esa\nfranja hasta 3 dB solo en ese instante. La voz no se toca.");
                     notaLocal(tVoz, 332, 48, "Apagados de fabrica. Se oyen al instante en la cancion\nque suena.");
-                    Necesita(swRet, sinAuto, motivoAuto, nRet); Necesita(swAta, sinAuto, motivoAuto, nAta); Necesita(swBom, sinAuto, motivoAuto, nBom); Necesita(swAsp, sinAuto, motivoAuto, nAsp);
-                    notaLocal(tVozB, 40, 128, "Con el modo billar encendido, el retumbe, el ataque y los\nagudos asperos van siempre. El bombo no: con cada cancion\nsubida hasta su limite, el limitador casi no actua, y la\netapa le quitaba bajo a la cancion sin ayudar a la voz. Las\n\"s\" se suavizan siempre (Tono y presencia).");
+                    Necesita(swBom, sinAuto, motivoAuto, nBom);   // el retumbe, el ataque y los asperos ya no los decide el modo (18-11-2026)
+                    notaLocal(tVozB, 40, 128, "El modo billar ya no pone nada que suba o baje el volumen\nsolo: estas etapas van con su interruptor (apagadas de\nfabrica), tambien con el modo encendido. El bombo tampoco\nva. Las \"s\" se suavizan siempre (Tono y presencia).");
                     BotonPlano bVolverVoz = new BotonPlano(); bVolverVoz.SetBounds(16, 346, 424, 34); bVolverVoz.Font = fBot;
                     bVolverVoz.Text = "Volver a los ajustes del sonido"; bVolverVoz.Name = "SonidoVozVolver"; tVozB.Controls.Add(bVolverVoz);
                     bool verVoz = false;
@@ -1520,7 +1520,7 @@ namespace Rocola
                         }
                         for (int k = 4; k <= 6; k++) { des[k].ForeColor = billar ? Interruptor.ColorNecesita : cTenue; if (au[k] != null) au[k].Enabled = !billar; }
                         lBil.Text = billar
-                            ? "Encendido: ajusta sola cada cancion a tus bocinas (EQ, grave,\nvoz, presencia, eses, retumbe...). Lo que decide, en gris.\n" + TextoBitacoraTarjeta()
+                            ? "Encendido: ajusta sola cada cancion a tus bocinas (EQ, grave,\nvoz, eses, bajo...). Sin nada que mueva el volumen solo.\n" + TextoBitacoraTarjeta()
                             : "Apagado: el sonido sale como lo dejes en \"Ajustes del\nsonido\". Encendido, la rocola ajusta sola cada cancion a\nlas bocinas del billar (" + NombreLocal + ").";
                         lMasModo.Text = billar
                             ? "El modo billar esta encendido: lo que decide va en gris y\ndice por que. Lo guardado se conserva y vuelve al apagarlo."

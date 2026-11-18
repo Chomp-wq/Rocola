@@ -241,6 +241,9 @@ CPU="$CPU localauto"
 # 'cadenabillar': la cadena del modo billar (27-10-2026; CadenaBillar.cs): el EQ del billar banda por banda, EqCorrFor con una huella
 # (encendido y apagado), lo que el modo decide del realce, el DSEE, los arreglos y el bajo, el codigo y la ventana.
 CPU="$CPU cadenabillar"
+# 'billarparejo': el modo billar ya no mueve el volumen solo (18-11-2026): con el modo encendido y los interruptores de fabrica, un tono de -30 a -6 dBFS
+# y vuelta sale de la cadena entera sin presencia, partes suaves, retumbe, ataque ni asperos, y con la misma ganancia antes del limitador.
+CPU="$CPU billarparejo"
 # 'presenciagrave': P1, D1 y D2 (30-10-2026; AUDIO_PROPUESTAS_MODEST_2026-10-29.md): la presencia del billar sin el grave en el detector
 # (menos vaiven de la voz, sin el billar bit a bit, en vivo sin chasquido), su comparacion a ciegas, lo que hizo cada etapa en la
 # bitacora y Recoger_sonido_XP.cmd.

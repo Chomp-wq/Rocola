@@ -121,8 +121,9 @@ class CadenaBillarPrueba
         Check(bil.Contains("private bool DseeEfectivo { get { return sbrOn && !localAuto; } }"), "lo efectivo: el interruptor guardado manda con el modo apagado");
         Check(aj.Contains("\"SonidoAjustesAbrir\"") && aj.Contains("tBil.Controls.Add(swAutoL)") && aj.Contains("pAju.Controls.Add(tCal)") && aj.Contains("tBil.Controls.Add(bPruI)"),
               "la ventana: el modo billar, su boton de ajustes al lado y la prueba de bocinas en la pagina; la calidad en la hoja de ajustes");
-        Check(aj.Contains("Necesita(swEses, sinAuto") && aj.Contains("Necesita(swSis, sinAuto") && aj.Contains("Necesita(swMudo, sinAuto") && aj.Contains("Necesita(swRet, sinAuto") && aj.Contains("Necesita(swBom, sinAuto")
+        Check(aj.Contains("Necesita(swEses, sinAuto") && aj.Contains("Necesita(swSis, sinAuto") && aj.Contains("Necesita(swMudo, sinAuto") && aj.Contains("Necesita(swBom, sinAuto")
               && aj.Contains("NecesitaMotivo(swSbr,") && aj.Contains("bar[6].Enabled = !localAuto;"), "lo que decide el modo, en gris en las hojas diciendo por que");
+        Check(!aj.Contains("Necesita(swRet, sinAuto") && !aj.Contains("Necesita(swAta, sinAuto") && !aj.Contains("Necesita(swAsp, sinAuto") && !aj.Contains("Necesita(swPre, sinAuto") && !aj.Contains("Necesita(swSua, sinAuto"), "18-11-2026: retumbe, ataque, asperos, presencia y partes suaves ya no van en gris por el modo billar");
         Check(aj.Contains("bomboSinHundir = swBom.Checked; retumbeDinamico = swRet.Checked; ataqueClaro = swAta.Checked;") && aj.Contains("bomboSinHundir = bkBom;"), "voz, golpe y retumbe: por fin con su mando (y Cancelar lo devuelve)");
 
         Console.WriteLine("\n  5) SEGUNDA TANDA: PRESENCIA, SUBGRAVE A 40 Hz Y AFINAR EL LOCAL\n");
