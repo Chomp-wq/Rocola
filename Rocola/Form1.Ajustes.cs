@@ -1137,15 +1137,11 @@ namespace Rocola
                     swSis.Name = "SonidoIaSiseo";
                     Label nSis = notaLocal(tIa, 136, 32, "Aprende el ruido fijo de cada cancion y lo baja hasta 6 dB\nen los agudos. Se nota desde la siguiente cancion.");
                     Necesita(swSis, sinAuto, motivoAuto, nSis);
-                    Interruptor swGen = interIa(180, "Modelos del DSEE por genero", cBri, dseePorGenero);
-                    swGen.Name = "SonidoIaGenero";
-                    Label lGenNota = notaLocal(tIa, 206, 32, "Cada cancion usa el modelo de su genero, si se entreno.\nSolo con el DSEE encendido; desde la siguiente cancion.");
-                    // A1: sin el DSEE encendido no hace nada. Gris, y la nota de abajo dice que le falta.
-                    NecesitaMotivo(swGen, delegate { return localAuto ? "Necesita: " + motivoAuto : (sbrOn && sbrAllowed ? null : "Necesita: el DSEE encendido (Ajustes del sonido)"); }, lGenNota);
+                    // I3 «Modelos del DSEE por genero» se quito el 18-11-2026 (el dueno, al limpiar Ctrl+F3): dsee_genero= se ignora.
                     notaLocal(tIa, 332, 48, "Apagados de fabrica: escuchalos en el local antes\nde dejarlos encendidos.");
                     Label lEqIa = notaLocal(tMod, 40, 48, "");
                     Label lDsIa = notaLocal(tMod, 104, 64, "");
-                    notaLocal(tMod, 184, 64, "En la carpeta IAS. Se entrenan en otra PC con lo que junta\nla rocola (carpeta ia: entrenar_dsee.bat; los de genero, con\ninstalar_dsee_genero.bat). Se buscan al abrir esta hoja.");
+                    notaLocal(tMod, 184, 64, "En la carpeta IAS. Se entrenan en otra PC con lo que junta\nla rocola (carpeta ia: entrenar_dsee.bat). Se buscan al abrir\nesta hoja.");
                     BotonPlano bVolverIa = new BotonPlano(); bVolverIa.SetBounds(16, 346, 424, 34); bVolverIa.Font = fBot;
                     bVolverIa.Text = "Volver a los ajustes del sonido"; bVolverIa.Name = "SonidoIaVolver"; tMod.Controls.Add(bVolverIa);
                     Action pintaIa = delegate
@@ -1153,9 +1149,7 @@ namespace Rocola
                         lEqIa.Text = EqNet.Loaded
                             ? "IA del EQ: cargada. \"A la medida\" la usa para el bajo\ny el brillo de cada cancion."
                             : "IA del EQ: sin modelo (IAS\\rocola_eq_ia.bin). Sin ella,\n\"a la medida\" no cambia nada: todo como siempre.";
-                        int nGen = ModelosPorGenero();
                         lDsIa.Text = (NeuralEnv.Loaded ? "DSEE: modelo general cargado." : "DSEE: sin modelo; usa la curva clasica.")
-                            + "\nPor genero: " + (nGen == 0 ? "ninguno todavia (IAS\\rocola_ia_genero_*)." : nGen + (nGen == 1 ? " modelo." : " modelos."))
                             + (sbrAllowed ? "" : "\nEl DSEE no esta disponible en este equipo.");
                     };
                     pintaIa();
@@ -1186,11 +1180,9 @@ namespace Rocola
                     bGusta.Name = "SonidoCiegoGusta"; tAhora.Controls.Add(bGusta);
                     Label lCiego = notaLocal(tAhora, 296, 48, "");
                     lCiego.Name = "SonidoCiegoTexto";
-                    // P1 (30-10-2026): la presencia del billar sin el grave en el detector, contra la de antes (CompararCiegas.cs).
-                    BotonPlano bCiegoPre = new BotonPlano(); bCiegoPre.SetBounds(16, 350, 208, 30); bCiegoPre.Font = fBot; bCiegoPre.Text = "Presencia nueva o antes";
-                    bCiegoPre.Name = "SonidoCiegoPresencia"; tAhora.Controls.Add(bCiegoPre);
+                    // «Presencia nueva o antes» se quito el 18-11-2026: el modo billar ya no pone la presencia (CompararCiegas.cs la conserva sin boton).
                     Label nVer = notaLocal(tAhora, 350, 32, "Se mira cada medio segundo. Los\nvideos no pasan por la cadena.");
-                    nVer.SetBounds(232, 350, 208, 32);
+                    nVer.SetBounds(16, 350, 424, 32);
                     Func<int, string, Color, bool, Interruptor> interArr = delegate (int y, string texto, Color ac, bool on)
                     {
                         Interruptor sw = new Interruptor(); sw.SetBounds(16, y, 424, 26); sw.ForeColor = cTexto; sw.Font = fNom;
@@ -1231,13 +1223,11 @@ namespace Rocola
                         lCiego.Text = TextoCiego(); lCiego.ForeColor = ciegoActivo ? Color.FromArgb(255, 214, 120) : cTenue;
                         bCiego.Text = ciegoActivo && ciegoQue == CiegoBillar ? "Parar" : "Billar o fabrica"; bCiego.Invalidate();
                         bCiegoAfi.Text = ciegoActivo && ciegoQue == CiegoAfinacion ? "Parar" : "Con o sin afinar"; bCiegoAfi.Invalidate();
-                        bCiegoPre.Text = ciegoActivo && ciegoQue == CiegoPresencia ? "Parar" : "Presencia nueva o antes"; bCiegoPre.Invalidate();
                         bGusta.Enabled = ciegoActivo;
                     };
                     bSinMej.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); PonSinMejoras(!sinMejoras); pintaAhora(); };
                     bCiego.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(CiegoBillar); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
                     bCiegoAfi.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(CiegoAfinacion); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
-                    bCiegoPre.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(CiegoPresencia); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
                     bGusta.Click += delegate { VotaCiego(); pintaAhora(); };
                     pintaAhora();
 
@@ -1621,7 +1611,7 @@ namespace Rocola
                         localAuto = swAutoL.Checked;
                         AplicaBocinas();   // las bocinas del billar: al instante, en la que suena y en la siguiente
                         bool medAntes = aLaMedida;
-                        aLaMedida = swMed.Checked; quitaSiseo = swSis.Checked; dseePorGenero = swGen.Checked;
+                        aLaMedida = swMed.Checked; quitaSiseo = swSis.Checked;
                         if (aLaMedida != medAntes || localAuto != loAntes) AplicaALaMedida();   // (el modo billar tambien mide a la medida)   // I1: el bajo de la que suena y de la siguiente, ya con la vara nueva
                         changed = true;
                         updateLabels();
@@ -1636,7 +1626,7 @@ namespace Rocola
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     swCla.CheckedChanged += apply; swSua.CheckedChanged += apply; barBal.Scroll += apply;
                     barGra.Scroll += apply; barAgu.Scroll += apply; swPre.CheckedChanged += apply; swAutoL.CheckedChanged += apply;
-                    swMed.CheckedChanged += apply; swSis.CheckedChanged += apply; swGen.CheckedChanged += apply;
+                    swMed.CheckedChanged += apply; swSis.CheckedChanged += apply;
                     swMudo.CheckedChanged += apply; swDc.CheckedChanged += apply; swAuto.CheckedChanged += apply; swZum.CheckedChanged += apply; swEses.CheckedChanged += apply;
                     swBom.CheckedChanged += apply; swRet.CheckedChanged += apply; swAta.CheckedChanged += apply; swAsp.CheckedChanged += apply;
                     NecesitaMotivo(swSbr, delegate { return !sbrAllowed ? lSbrNo : (localAuto ? "Necesita: " + motivoAuto : null); }, lSbr);
@@ -1665,7 +1655,7 @@ namespace Rocola
                         barGra.Value = SalaLocal.TonoMax; barAgu.Value = SalaLocal.TonoMax;   // graves y agudos del local, en 0 dB
                         swPre.Checked = false;                               // y la presencia en sala ruidosa, apagada
                         swAutoL.Checked = false;                             // y el modo automatico del local, apagado
-                        swMed.Checked = false; swSis.Checked = false; swGen.Checked = false;   // las mejoras con IA, apagadas
+                        swMed.Checked = false; swSis.Checked = false;   // las mejoras con IA, apagadas
                         swMudo.Checked = true; swDc.Checked = true; swAuto.Checked = false;   // S1 y S2 encendidos; S3, apagado
                         swZum.Checked = true;   // T6, encendido (solo actua con el defecto)
                         swEses.Checked = false;   // T9, apagado

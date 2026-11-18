@@ -239,9 +239,9 @@ class VentanaF3
                             {
                                 Click(abreIa); Mira(nombre + ", Sonido > Mejoras con IA");
                                 int sw = 0;
-                                foreach (string nomSw in new string[] { "SonidoIaMedida", "SonidoIaSiseo", "SonidoIaGenero" })
+                                foreach (string nomSw in new string[] { "SonidoIaMedida", "SonidoIaSiseo" })
                                 { Control[] c = dlg.Controls.Find(nomSw, true); if (c.Length == 1 && c[0].Visible) sw++; }
-                                Check(sw == 3, "la hoja de las mejoras con IA tiene sus tres interruptores a la vista (" + sw + ")");
+                                Check(sw == 2 && dlg.Controls.Find("SonidoIaGenero", true).Length == 0, "la hoja de las mejoras con IA tiene sus dos interruptores a la vista y ya no el del DSEE por genero (" + sw + ")");
                                 Control vuelveIa = Boton(dlg, "Volver a los ajustes del sonido");
                                 Check(vuelveIa != null, "la hoja de las mejoras con IA tiene su boton de volver");
                                 if (vuelveIa != null) { Click(vuelveIa); Check(Boton(dlg, "Mejoras con IA...") != null, "al volver de la IA se ven otra vez los ajustes"); }

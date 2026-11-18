@@ -117,6 +117,16 @@ perfectamente con la cadena de sonido (normal y del modo billar)»). Está en Ct
   como antes. En el disco continuo el cambio entre pistas va a 2 dB por segundo. Pruebas con huellas inventadas; nada oído.
   Si en el bar se oyen los bombos aplastados con el bajo subido, se puede subir ese 25 %.
 
+## 4 bis. El modo billar sin brincos y la limpieza de Ctrl+F3 (18-11-2026)
+
+- Con «Roundabout» el volumen daba brincos con el modo billar. El modo **ya no pone** las cinco etapas que suben o bajan el volumen
+  solas: presencia, partes suaves, retumbe dinámico, ataque más claro y agudos ásperos. Van con su interruptor (apagados de fábrica) y ya
+  no salen en gris. Se queda lo que no mueve el volumen: corte del bajo profundo, estéreo estrecho si hace falta, claridad, EQ del
+  billar, realce, bajo, volumen parejo, limitador que respira y eses. Batería nueva `billarparejo`: con el modo billar, un tono que pasa
+  de -30 a -6 dBFS sale con la misma ganancia (3,76 dB en los tres tramos). Con el modo apagado, bit a bit como antes.
+- Se revisaron los 161 mandos de Ctrl+F3: ninguno estaba muerto. Por elección del dueño se quitaron el botón «Presencia nueva o
+  antes» (ya no tenía uso) y el interruptor «Modelos del DSEE por género» (`dsee_genero=` se ignora).
+
 ## 5. Propuestas que necesitan tu decisión (no se hizo nada)
 
 - ~~N1~~ hecho (sección 3). **N1. «De noche, menos grave hacia afuera».** Lo que más sale del local y atraviesa paredes es el grave, no el volumen general. La

@@ -694,7 +694,7 @@ namespace Rocola
                     else if (s.StartsWith("presencia_sala=")) presenciaSala = s.Substring(15).Trim() == "1";   // interruptor: presencia en sala ruidosa (compresor suave)
                     else if (s.StartsWith("a_la_medida=")) aLaMedida = s.Substring(12).Trim() == "1";              // I1: bajo y brillo a la medida de cada cancion
                     else if (s.StartsWith("quita_siseo=")) quitaSiseo = s.Substring(12).Trim() == "1";             // I2: quitar el siseo de las grabaciones viejas
-                    else if (s.StartsWith("dsee_genero=")) dseePorGenero = s.Substring(12).Trim() == "1";          // I3: el modelo del DSEE del genero de la cancion
+                    else if (s.StartsWith("dsee_genero=")) { }   // I3 quitado de Ctrl+F3 el 18-11-2026: la clave se ignora
                     // subir_db= ("Subir TODO"): retirado el 25-10-2026, se ignora (el nivelado ya sube cada cancion hasta su limite)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
@@ -885,7 +885,6 @@ namespace Rocola
             sb.Append("afinado_usar=").Append(AfinadoUsarAGuardar ? "1" : "0").Append("\r\n");   // (y el de antes durante «Con o sin afinar»)
             sb.Append("a_la_medida=").Append(aLaMedida ? "1" : "0").Append("\r\n");
             sb.Append("quita_siseo=").Append(quitaSiseo ? "1" : "0").Append("\r\n");
-            sb.Append("dsee_genero=").Append(dseePorGenero ? "1" : "0").Append("\r\n");
             sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
             sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");
