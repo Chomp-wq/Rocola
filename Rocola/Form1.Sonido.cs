@@ -47,10 +47,10 @@ namespace Rocola
         // nada y si le metes mas, se emborrona. Sale de la huella tonal que la rocola YA le mide a cada cancion
         // (no hace falta medir nada nuevo). 1 = la perilla tal cual, que es lo que hacia antes con todas.
         private float bassSongFactor = 1f;
-        private float BassBaseNow() { return bassAuto || localAuto ? bassAutoBase : bassAmount; }   // el modo billar lo pone en automatico (CadenaBillar.cs)
+        private float BassBaseNow() { return bassAuto ? bassAutoBase : bassAmount; }   // 18-11-2026: el bajo va como lo dejo el dueno, tambien con el modo billar
         private float BassAmountNow() { return Clampf(BassBaseNow() * bassSongFactor * BajoMedido, 0f, 1f); }   // BajoMedido: 1 salvo en el billar afinado (AfinarLocal.cs)
         // Lo mismo para una cancion que aun no suena (la siguiente, preparada para entrar sin pausa).
-        private float BassAmountPara(float factor, float autoBase) { return Clampf((bassAuto || localAuto ? autoBase : bassAmount) * factor * BajoMedido, 0f, 1f); }
+        private float BassAmountPara(float factor, float autoBase) { return Clampf((bassAuto ? autoBase : bassAmount) * factor * BajoMedido, 0f, 1f); }
         // LO PROPIO DE ESTA RAMA PARA EL RELEVO SIN PAUSA (Form1.SinPausa.cs): sin IA en vivo, el reconstructor lo
         // decide el interruptor para todas las canciones, y el colchon de WaveOut es fijo.
         private bool DseeDe(CadenaCancion c) { return DseeEfectivo; }

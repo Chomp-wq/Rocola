@@ -100,7 +100,17 @@ class CadenaBillarPrueba
         MethodInfo bajo = TF.GetMethod("BassBaseNow", T);
         PonStatic("localAuto", false); float bOff = (float)bajo.Invoke(f, null);
         PonStatic("localAuto", true); float bOn = (float)bajo.Invoke(f, null);
-        Check(bOff == 0.9f && bOn == 0.3f, "bajo psicoacustico: en el billar, en automatico; apagado, la barra");
+        Check(bOff == 0.9f && bOn == 0.9f, "18-11-2026 bajo psicoacustico: con Auto apagado manda la barra, con el modo billar apagado o encendido");
+        Pon(f, "bassAuto", true);
+        PonStatic("localAuto", false); float bAOff = (float)bajo.Invoke(f, null);
+        PonStatic("localAuto", true); float bAOn = (float)bajo.Invoke(f, null);
+        Check(bAOff == 0.3f && bAOn == 0.3f, "con Auto encendido (de fabrica), la base automatica, tambien con el modo billar");
+        MethodInfo bajoPara = TF.GetMethod("BassAmountPara", T, null, new Type[] { typeof(float), typeof(float) }, null);
+        Pon(f, "bassAuto", false);
+        PonStatic("localAuto", true); float bpMan = (float)bajoPara.Invoke(f, new object[] { 1f, 0.3f });
+        Pon(f, "bassAuto", true); float bpAut = (float)bajoPara.Invoke(f, new object[] { 1f, 0.3f });
+        Check(bpMan > bpAut + 0.3f, "BassAmountPara en el billar: la barra si Auto esta apagado (" + bpMan + "), la base si esta encendido (" + bpAut + ")");
+        Pon(f, "bassAuto", false);
         Pon(f, "excAmount", 1f);
         cache["cancion.mp3"] = c; dur["cancion.mp3"] = 200f;
         MethodInfo exc = TF.GetMethod("ExciteAmountFor", T);
@@ -121,8 +131,11 @@ class CadenaBillarPrueba
         Check(bil.Contains("private bool DseeEfectivo { get { return sbrOn && !localAuto; } }"), "lo efectivo: el interruptor guardado manda con el modo apagado");
         Check(aj.Contains("\"SonidoAjustesAbrir\"") && aj.Contains("tBil.Controls.Add(swAutoL)") && aj.Contains("pAju.Controls.Add(tCal)") && aj.Contains("tBil.Controls.Add(bPruI)"),
               "la ventana: el modo billar, su boton de ajustes al lado y la prueba de bocinas en la pagina; la calidad en la hoja de ajustes");
-        Check(aj.Contains("Necesita(swEses, sinAuto") && aj.Contains("Necesita(swSis, sinAuto") && aj.Contains("Necesita(swMudo, sinAuto") && aj.Contains("Necesita(swBom, sinAuto")
+        Check(aj.Contains("Necesita(swSis, sinAuto") && aj.Contains("Necesita(swMudo, sinAuto") && aj.Contains("Necesita(swBom, sinAuto")
               && aj.Contains("NecesitaMotivo(swSbr,") && aj.Contains("bar[6].Enabled = !localAuto;"), "lo que decide el modo, en gris en las hojas diciendo por que");
+        Check(!aj.Contains("Necesita(swEses, sinAuto") && !aj.Contains("Necesita(swCla, sinAuto") && aj.Contains("bar[5].Enabled = !au[5].Checked;") && !aj.Contains("bar[5].Enabled = !au[5].Checked && !localAuto;"),
+              "18-11-2026: la claridad, las eses y el bajo ya no van en gris por el modo billar");
+        Check(son.Contains("return bassAuto ? bassAutoBase : bassAmount;") && !son.Contains("bassAuto || localAuto"), "el bajo no se fuerza en el billar (BassBaseNow, BassAmountPara)");
         Check(!aj.Contains("Necesita(swRet, sinAuto") && !aj.Contains("Necesita(swAta, sinAuto") && !aj.Contains("Necesita(swAsp, sinAuto") && !aj.Contains("Necesita(swPre, sinAuto") && !aj.Contains("Necesita(swSua, sinAuto"), "18-11-2026: retumbe, ataque, asperos, presencia y partes suaves ya no van en gris por el modo billar");
         Check(aj.Contains("bomboSinHundir = swBom.Checked; retumbeDinamico = swRet.Checked; ataqueClaro = swAta.Checked;") && aj.Contains("bomboSinHundir = bkBom;"), "voz, golpe y retumbe: por fin con su mando (y Cancelar lo devuelve)");
 

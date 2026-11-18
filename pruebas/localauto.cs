@@ -47,20 +47,20 @@ class LocalAutoPrueba
         Check(TF.GetField("tipoLocal", T) == null && TF.GetField("NombresTipoLocal", T) == null && TF.GetMethod("TipoLocalDe", T) == null && TF.GetField("LraSalaLu", T) == null,
               "ya no hay tipos de local: ni el campo, ni los nombres, ni la lectura, ni el corte de la sala buena");
         object b0 = Auto(0, 8f), b1 = Auto(0, alto + 1f), b2 = Auto(0, muy + 1f), bx = Auto(0, -1f);
-        Check(B(b0, "Subgrave") && B(b0, "Estrecho") && B(b0, "EstrechoSoloSiHaceFalta") && B(b0, "Claridad") && I(b0, "Graves") == 0 && I(b0, "Agudos") == 0,
-              "billar: sin subgrave, estereo estrecho solo si hace falta y claridad, graves y agudos en 0, en cualquier cancion");
+        Check(B(b0, "Subgrave") && B(b0, "Estrecho") && B(b0, "EstrechoSoloSiHaceFalta") && !B(b0, "Claridad") && I(b0, "Graves") == 0 && I(b0, "Agudos") == 0,
+              "billar: sin subgrave, estereo estrecho solo si hace falta, graves y agudos en 0 y SIN claridad (18-11-2026: va con su interruptor), en cualquier cancion");
         Check(!B(b0, "Bombo") && !B(b0, "Retumbe") && !B(b0, "Ataque") && !B(b0, "Aspereza") && !B(bx, "Bombo") && !B(bx, "Retumbe") && !B(bx, "Ataque") && !B(bx, "Aspereza")
               && !B(b2, "Bombo") && !B(b2, "Retumbe") && !B(b2, "Ataque") && !B(b2, "Aspereza"),
               "18-11-2026: el modo billar ya no pone el retumbe, el ataque, los agudos asperos ni el bombo, en ninguna cancion (con mucho rango, poco o sin medir)");
-        Check(B(b0, "Eses") && B(bx, "Eses") && B(b2, "Eses"), "cadena del billar: las eses, siempre");
+        Check(!B(b0, "Eses") && !B(bx, "Eses") && !B(b2, "Eses") && !B(b1, "Eses"), "18-11-2026: el modo billar ya no pone las eses (van con su interruptor), en ninguna cancion");
         MethodInfo auto4 = TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(float), typeof(float), typeof(float), typeof(float) }, null);
         Check(auto4 != null, "esta la variante con la falta de cuerpo");
         if (auto4 != null)
         {
             float flacaDb = (float)TF.GetField("CuerpoFlacaDb", T).GetValue(null);
             object fl = auto4.Invoke(null, new object[] { 8f, -1f, 10f, flacaDb + 0.5f }), nf = auto4.Invoke(null, new object[] { 8f, -1f, 10f, flacaDb - 0.5f }), sx = auto4.Invoke(null, new object[] { 8f, -1f, 10f, float.NaN });
-            Check(!B(fl, "Claridad") && B(fl, "Cuerpo") && !B(fl, "Suaves"), "cancion flaca: sin la claridad (que corta a 300 Hz) y con cuerpo del EQ");
-            Check(B(nf, "Claridad") && !B(nf, "Cuerpo") && B(sx, "Claridad") && !B(sx, "Cuerpo"), "con cuerpo de sobra, o sin saberlo, la claridad como siempre");
+            Check(!B(fl, "Claridad") && B(fl, "Cuerpo") && !B(fl, "Suaves") && !B(fl, "Eses"), "cancion flaca: con cuerpo del EQ (y sin claridad, que ya no pone el modo)");
+            Check(!B(nf, "Claridad") && !B(nf, "Cuerpo") && !B(sx, "Claridad") && !B(sx, "Cuerpo"), "con cuerpo de sobra, o sin saberlo, sin cuerpo del EQ (y la claridad tampoco la pone el modo)");
         }
         Check(!B(b0, "Suaves") && !B(b1, "Suaves") && !B(b2, "Suaves") && !B(bx, "Suaves"), "18-11-2026: las partes suaves ya no las pone el modo (ni con poco rango, ni con mucho, ni con muchisimo, ni sin medir)");
         Check(!B(b0, "Presencia") && !B(b1, "Presencia") && !B(b2, "Presencia") && !B(bx, "Presencia"), "18-11-2026: la presencia ya no la pone el modo, ni siquiera con " + muy + " dB de P99 - sonoridad");
@@ -127,13 +127,19 @@ class LocalAutoPrueba
         PonStatic("localAuto", true);
         object a1 = localDe.Invoke(f, new object[] { cDin }), a2 = localDe.Invoke(f, new object[] { cComp }), a3 = localDe.Invoke(f, new object[] { cVieja });
         // Los interruptores del dueno estan a como los dejo la parte 2: partes suaves y presencia ENCENDIDOS; retumbe apagado, ataque apagado.
-        Check(B(a1, "Suaves") && B(a1, "Presencia") && B(a1, "Claridad") && B(a1, "Subgrave"), "billar con partes suaves y presencia puestas A MANO: la dinamica las lleva (son los interruptores del dueno)");
-        Check(B(a2, "Suaves") && B(a2, "Presencia") && B(a2, "Claridad"), "billar, la comprimida: igual (el modo ya no mira el rango)");
+        Check(B(a1, "Suaves") && B(a1, "Presencia") && !B(a1, "Claridad") && !B(a1, "Eses") && B(a1, "Subgrave"), "billar con partes suaves y presencia puestas A MANO: la dinamica las lleva (son los interruptores del dueno)");
+        Check(B(a2, "Suaves") && B(a2, "Presencia") && !B(a2, "Claridad"), "billar, la comprimida: igual (el modo ya no mira el rango)");
+        PonStatic("claridadLocal", true); PonStatic("suavizaEses", true);
+        object a4 = localDe.Invoke(f, new object[] { cDin });
+        Check(B(a4, "Claridad") && B(a4, "Eses") && B(a4, "Subgrave"), "18-11-2026: con el modo billar, si el dueno enciende la claridad y las eses a mano, LocalDe las da (interruptores del dueno)");
+        PonStatic("claridadLocal", false); PonStatic("suavizaEses", false);
+        object a5 = localDe.Invoke(f, new object[] { cDin });
+        Check(!B(a5, "Claridad") && !B(a5, "Eses"), "y apagadas (de fabrica) vuelven a no ir");
         Check(B(a3, "Suaves") && B(a3, "Presencia"), "billar, la de medida vieja: igual");
         PonStatic("partesSuaves", false); PonStatic("presenciaSala", false);
         object d1 = localDe.Invoke(f, new object[] { cDin }), d2 = localDe.Invoke(f, new object[] { cComp }), d3 = localDe.Invoke(f, new object[] { cNueva });
-        Check(!B(d1, "Suaves") && !B(d1, "Presencia") && !B(d2, "Suaves") && !B(d2, "Presencia") && !B(d3, "Suaves") && !B(d3, "Presencia") && B(d1, "Claridad") && B(d1, "Subgrave"),
-              "18-11-2026: con el modo billar y los interruptores de fabrica no hay partes suaves ni presencia en ninguna cancion (la de 18 dB de rango, la de 8 y la sin medir), y la claridad sigue");
+        Check(!B(d1, "Suaves") && !B(d1, "Presencia") && !B(d2, "Suaves") && !B(d2, "Presencia") && !B(d3, "Suaves") && !B(d3, "Presencia") && !B(d1, "Claridad") && !B(d1, "Eses") && B(d1, "Subgrave"),
+              "18-11-2026: con el modo billar y los interruptores de fabrica no hay partes suaves ni presencia en ninguna cancion (la de 18 dB de rango, la de 8 y la sin medir), ni claridad ni eses");
         PonStatic("retumbeDinamico", true); PonStatic("ataqueClaro", true); PonStatic("asperezaDinamica", true);
         object d4 = localDe.Invoke(f, new object[] { cDin });
         Check(B(d4, "Retumbe") && B(d4, "Ataque") && B(d4, "Aspereza") && !B(d4, "Bombo"), "con el modo billar, si el dueno enciende retumbe, ataque y asperos a mano, LocalDe los da (el bombo, no)");
@@ -214,8 +220,11 @@ class LocalAutoPrueba
         Check(aj.Contains("SonidoLocalAuto") && aj.Contains("SonidoLocalHecho") && !aj.Contains("SonidoLocalTipo") && aj.Contains("bkLoA = localAuto") && aj.Contains("localAuto = bkLoA;") && aj.Contains("swAutoL.Checked = false;"), "la ventana: interruptor, para que local esta hecho (sin boton de tipo), Cancelar lo devuelve y «Dejar como de fabrica» lo apaga");
         string sp = Texto("Form1.SinPausa.cs");
         Check(sp.Contains("SigueA(c, cadenaSonando); HeredaLocal(c, cadenaSonando);"), "L1: el relevo sin pausa hereda lo decidido justo donde la siguiente sigue con los filtros de la anterior");
-        Check(aj.Contains("Necesita(swSub, sinAuto") && aj.Contains("Necesita(barGra, sinAuto") && aj.Contains("Necesita(barAgu, sinAuto") && aj.Contains("Necesita(swCla, sinAuto") && aj.Contains("Necesita(swEst, sinAuto") && aj.Contains("Necesita(swEses, sinAuto"),
-              "los mandos que decide el modo (subgrave, estereo, claridad, graves, agudos, eses) se ponen en gris diciendo por que");
+        Check(aj.Contains("Necesita(swSub, sinAuto") && aj.Contains("Necesita(barGra, sinAuto") && aj.Contains("Necesita(barAgu, sinAuto") && aj.Contains("Necesita(swEst, sinAuto"),
+              "los mandos que decide el modo (subgrave, estereo, graves, agudos) se ponen en gris diciendo por que");
+        Check(!aj.Contains("Necesita(swCla, sinAuto") && !aj.Contains("Necesita(swEses, sinAuto"), "18-11-2026: la claridad y las eses ya NO van en gris por el modo billar");
+        Check(dat.Contains("StartsWith(\"parejo_v2=\")") && dat.Contains("sb.Append(\"parejo_v2=\")"), "la marca parejo_v2= se lee y se guarda");
+        Check(!B(Auto(0, 8f), "Claridad") && !B(Auto(0, 8f), "Eses"), "LocalAutomatico: Claridad=false y Eses=false");
         Check(!aj.Contains("Necesita(swPre, sinAuto") && !aj.Contains("Necesita(swSua, sinAuto") && !aj.Contains("Necesita(swRet, sinAuto") && !aj.Contains("Necesita(swAta, sinAuto") && !aj.Contains("Necesita(swAsp, sinAuto"),
               "18-11-2026: la presencia, las partes suaves, el retumbe, el ataque y los asperos ya NO van en gris por el modo billar");
         Console.WriteLine("\n  " + oks + " comprobaciones bien, " + fallos + " fallos");

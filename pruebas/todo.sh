@@ -244,6 +244,9 @@ CPU="$CPU cadenabillar"
 # 'billarparejo': el modo billar ya no mueve el volumen solo (18-11-2026): con el modo encendido y los interruptores de fabrica, un tono de -30 a -6 dBFS
 # y vuelta sale de la cadena entera sin presencia, partes suaves, retumbe, ataque ni asperos, y con la misma ganancia antes del limitador.
 CPU="$CPU billarparejo"
+# 'billar18': las cuatro mejoras del modo billar del 18-11-2026: el volumen parejo desde cero (marca parejo_v2, sin borrar nada), la claridad y las eses
+# del dueno, el bajo a su mando, y lo mas que bajo el limitador en 10 s (sin segundo lector de lo que se pone a cero).
+CPU="$CPU billar18"
 # 'presenciagrave': P1, D1 y D2 (30-10-2026; AUDIO_PROPUESTAS_MODEST_2026-10-29.md): la presencia del billar sin el grave en el detector
 # (menos vaiven de la voz, sin el billar bit a bit, en vivo sin chasquido), su comparacion a ciegas, lo que hizo cada etapa en la
 # bitacora y Recoger_sonido_XP.cmd.

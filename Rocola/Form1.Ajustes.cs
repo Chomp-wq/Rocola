@@ -917,7 +917,7 @@ namespace Rocola
                     Interruptor swEst = interLocal(90, "Estereo al " + Math.Round(anchoEstereo * 100f) + " %", cCal, estereoEstrecho);
                     Label nEst = notaLocal(tLoc, 116, 18, "Con las bocinas por zonas, lo grabado a un lado se oye en todas.");
                     Interruptor swCla = interLocal(140, "Claridad para el local", cBri, claridadLocal);
-                    Label nCla = notaLocal(tLoc, 166, 18, "Menos retumbe (300 Hz) y la voz mas presente (3 kHz).");
+                    notaLocal(tLoc, 166, 18, "Menos retumbe (300 Hz) y la voz mas presente (3 kHz).");
                     Interruptor swSua = interLocal(190, "Que las partes suaves se oigan", cVol, partesSuaves);
                     notaLocal(tLoc, 216, 18, "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual.");
                     Label nBal = new Label(); nBal.SetBounds(16, 244, 250, 18); nBal.BackColor = Color.Transparent;
@@ -960,7 +960,7 @@ namespace Rocola
                     Interruptor swEses = new Interruptor(); swEses.SetBounds(16, 240, 424, 26); swEses.ForeColor = cTexto; swEses.Font = fNom;
                     swEses.Text = "Suavizar las eses"; swEses.Acento = cBri; swEses.Checked = suavizaEses; swEses.Name = "SonidoEses";
                     tTono.Controls.Add(swEses);
-                    Label nEses = notaLocal(tTono, 268, 32, "Baja solo la \"s\" chillona de la voz (5 a 9 kHz), en el instante\nen que suena. Apagado de fabrica; se oye al instante.");
+                    notaLocal(tTono, 268, 32, "Baja solo la \"s\" chillona de la voz (5 a 9 kHz), en el instante\nen que suena. Apagado de fabrica; se oye al instante.");
                     Interruptor swPre = new Interruptor(); swPre.SetBounds(16, 40, 424, 26); swPre.ForeColor = cTexto; swPre.Font = fNom;
                     swPre.Text = "Presencia en sala ruidosa"; swPre.Acento = cVol; swPre.Checked = presenciaSala; swPre.Name = "SonidoPresencia";
                     tPre.Controls.Add(swPre);
@@ -979,14 +979,13 @@ namespace Rocola
                     Label lBil = notaLocal(tBil, 72, 80, "");
                     lBil.Name = "SonidoBillarTexto";
                     // Solo para este local (25-10-2026): se dice para que esta hecho.
-                    Label lHecho = notaLocal(tPre, 248, 92, "El modo billar ya no pone nada que suba o baje el volumen\nsolo: la presencia va con su interruptor (apagada de\nfabrica). Las eses, los graves y los agudos si los decide\nel modo (en gris).");
+                    Label lHecho = notaLocal(tPre, 248, 92, "El modo billar ya no pone nada que suba o baje el volumen\nsolo: ni presencia, ni claridad, ni eses (van con su\ninterruptor, apagados de fabrica). Graves y agudos del\nlocal si los pone el modo en 0 (en gris).");
                     lHecho.Name = "SonidoLocalHecho";
                     string motivoAuto = "el modo billar apagado (pagina de Sonido)";
                     Func<bool> sinAuto = delegate { return !localAuto; };
                     Necesita(swSub, sinAuto, motivoAuto, nSub); Necesita(swEst, sinAuto, motivoAuto, nEst);
-                    Necesita(swCla, sinAuto, motivoAuto, nCla);   // (las partes suaves y la presencia ya no las decide el modo: 18-11-2026)
+                    // (las partes suaves, la presencia, la claridad y las eses ya no las decide el modo: 18-11-2026)
                     Necesita(barGra, sinAuto, motivoAuto, nGraNota); Necesita(barAgu, sinAuto, motivoAuto, nAguNota);
-                    Necesita(swEses, sinAuto, motivoAuto, nEses);
                     BotonPlano bVolverTono = new BotonPlano(); bVolverTono.SetBounds(16, 346, 424, 34); bVolverTono.Font = fBot;
                     bVolverTono.Text = "Volver al local y sus bocinas"; bVolverTono.Name = "SonidoTonoVolver"; tPre.Controls.Add(bVolverTono);
                     bool verTono = false;
@@ -1280,7 +1279,7 @@ namespace Rocola
                     notaLocal(tVoz, 276, 32, "Si unos platillos o trompetas \"gritan\" (2 a 4 kHz), baja esa\nfranja hasta 3 dB solo en ese instante. La voz no se toca.");
                     notaLocal(tVoz, 332, 48, "Apagados de fabrica. Se oyen al instante en la cancion\nque suena.");
                     Necesita(swBom, sinAuto, motivoAuto, nBom);   // el retumbe, el ataque y los asperos ya no los decide el modo (18-11-2026)
-                    notaLocal(tVozB, 40, 128, "El modo billar ya no pone nada que suba o baje el volumen\nsolo: estas etapas van con su interruptor (apagadas de\nfabrica), tambien con el modo encendido. El bombo tampoco\nva. Las \"s\" se suavizan siempre (Tono y presencia).");
+                    notaLocal(tVozB, 40, 128, "El modo billar ya no pone nada que suba o baje el volumen\nsolo: estas etapas van con su interruptor (apagadas de\nfabrica), tambien con el modo encendido. El bombo tampoco\nva. La claridad y las \"s\" tambien van con su interruptor.");
                     BotonPlano bVolverVoz = new BotonPlano(); bVolverVoz.SetBounds(16, 346, 424, 34); bVolverVoz.Font = fBot;
                     bVolverVoz.Text = "Volver a los ajustes del sonido"; bVolverVoz.Name = "SonidoVozVolver"; tVozB.Controls.Add(bVolverVoz);
                     bool verVoz = false;
@@ -1497,20 +1496,18 @@ namespace Rocola
                                     + ((nowPlaying != null && bEfe != bBase) ? ("   Esta: " + bEfe + "%.") : "");
                         val[6].Text = bar[6].Value + "%";
                         des[6].Text = "Devuelve el 'aire' que el MP3 apaga.\nSe le da mas a las canciones peor grabadas.";
-                        // EN EL MODO BILLAR estas tres las decide el modo (CadenaBillar.cs): en gris, con lo que hace y en el color del motivo.
+                        // EN EL MODO BILLAR el EQ y el realce (el bajo no, 18-11-2026) los decide el modo (CadenaBillar.cs): en gris, con lo que hace y en el color del motivo.
                         bool billar = localAuto;
                         if (billar)
                         {
                             val[4].Text = (int)Math.Round(EqFuerzaAuto() * 100f) + "%";
                             des[4].Text = "Lo decide el modo billar: en automatico y a la\nmedida de tus bocinas.";
-                            val[5].Text = (int)Math.Round(bassAutoBase * 100f) + "%";
-                            des[5].Text = "Lo decide el modo billar: en automatico, a cada\ncancion lo que le falta.";
                             val[6].Text = (int)Math.Round(RealceBillarCantidad * 100f) + "%";
                             des[6].Text = "Lo decide el modo billar: solo devuelve el aire que\nel MP3 corto (a una cancion completa, nada).";
                         }
-                        for (int k = 4; k <= 6; k++) { des[k].ForeColor = billar ? Interruptor.ColorNecesita : cTenue; if (au[k] != null) au[k].Enabled = !billar; }
+                        for (int k = 4; k <= 6; k++) { bool deModo = billar && k != 5; des[k].ForeColor = deModo ? Interruptor.ColorNecesita : cTenue; if (au[k] != null) au[k].Enabled = !deModo; }   // el bajo (5) va como lo dejes, tambien con el modo billar (18-11-2026)
                         lBil.Text = billar
-                            ? "Encendido: ajusta sola cada cancion a tus bocinas (EQ, grave,\nvoz, eses, bajo...). Sin nada que mueva el volumen solo.\n" + TextoBitacoraTarjeta()
+                            ? "Encendido: ajusta sola cada cancion a tus bocinas (EQ, grave,\nvoz...). Sin nada que mueva el volumen solo.\n" + TextoBitacoraTarjeta()
                             : "Apagado: el sonido sale como lo dejes en \"Ajustes del\nsonido\". Encendido, la rocola ajusta sola cada cancion a\nlas bocinas del billar (" + NombreLocal + ").";
                         lMasModo.Text = billar
                             ? "El modo billar esta encendido: lo que decide va en gris y\ndice por que. Lo guardado se conserva y vuelve al apagarlo."
@@ -1558,7 +1555,7 @@ namespace Rocola
                         des[0].ForeColor = des[1].ForeColor = en ? cTenue : cApagado;
                         bar[3].Enabled = !VideoAutoManda(au[3].Checked, swOn.Checked);   // en gris solo si el programa de verdad elige (si no, la barra manda)
                         bar[4].Enabled = !au[4].Checked && !localAuto;
-                        bar[5].Enabled = !au[5].Checked && !localAuto;
+                        bar[5].Enabled = !au[5].Checked;
                         bar[6].Enabled = !localAuto;
                         // ---------- EL LOCAL ----------
                         vBal.Text = TextoBalance(barBal.Value - SalaLocal.BalanceMax);

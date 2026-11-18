@@ -647,6 +647,7 @@ namespace Rocola
                     else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
                     else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
                     else if (s.StartsWith("noche_pct=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) nochePct = Math.Max(NochePctMin, Math.Min(NochePctMax, v)); }
+                    else if (s.StartsWith("parejo_v2=")) parejoV2 = s.Substring(10).Trim() == "1";   // la marca del volumen parejo desde cero (18-11-2026): una sola vez (VolumenParejo.cs)
                     else if (s.StartsWith("noche_desde_22=")) vioNoche22 = s.Substring(15).Trim() == "1";   // la marca del paso de las 23 a las 22 h (17-11-2026): una sola vez
                     else if (s.StartsWith("noche_graves=")) { int v; if (int.TryParse(s.Substring(13).Trim(), out v)) nocheGraves = Math.Max(0, Math.Min(NocheGravesMax, v)); }   // N1: cuanto grave se quita de noche (0 = apagado)
                     else if (s.StartsWith("noche")) { }   // noche_db=, noche_compensa=: de la version de antes, se ignoran
@@ -824,6 +825,7 @@ namespace Rocola
             sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
             sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
             sb.Append("noche_pct=").Append(nochePct).Append("\r\n");
+            sb.Append("parejo_v2=").Append(parejoV2 ? "1" : "0").Append("\r\n");   // el volumen parejo ya empezo de cero (CargaParejo)
             sb.Append("noche_desde_22=1\r\n");   // ya paso de 23 a 22 h (se lee en LoadConfigPrefs)
             sb.Append("noche_graves=").Append(nocheGraves).Append("\r\n");   // N1: de noche, menos grave hacia afuera
             sb.Append("letra_lejos=").Append(letraLejos ? "1" : "0").Append("\r\n");

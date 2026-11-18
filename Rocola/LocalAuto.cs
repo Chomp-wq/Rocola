@@ -73,7 +73,7 @@ namespace Rocola
             // nada que suba o baje el volumen o la envolvente en tiempo real: ni la presencia (compresor), ni las partes suaves, ni el retumbe,
             // el ataque o los agudos asperos. Esas cinco van con el interruptor del dueno (LocalDe), apagadas de fabrica. Por eso la regla de la
             // presencia por LRA ya no decide (rangoDb, lraLu y umbralLu se conservan en la firma; UmbralPresencia y el histograma siguen en pie).
-            a.Subgrave = true; a.Estrecho = true; a.EstrechoSoloSiHaceFalta = true; a.Claridad = true; a.Suaves = false;
+            a.Subgrave = true; a.Estrecho = true; a.EstrechoSoloSiHaceFalta = true; a.Claridad = false; a.Suaves = false;   // (18-11-2026: la claridad tampoco; va con su interruptor)
             a.Presencia = false;
             // Voz, golpe y retumbe (27-10-2026): el retumbe y el ataque, siempre en el billar. Cada etapa se frena sola por lo que oye (el retumbe solo
             // corta cuando el grave medio se pasa de su propia media; el ataque solo actua con la cola de un golpe, y sube solo con sitio bajo el techo):
@@ -82,12 +82,10 @@ namespace Rocola
             // LA CADENA DEL BILLAR (CadenaBillar.cs, 27-10-2026), medida con la cadena entera:
             //   - El BOMBO no va: con el nivelado al limite el limitador casi no actua (0,2 a 2 % del tiempo en masters normales) y la etapa
             //     quitaba ~1 dB de bajo sin mejorar la voz (reacciona despues del primer golpe, que el limitador ya bajo). Su interruptor sigue a mano.
-            //   - Las ESES si: la claridad (+1,5 dB a 3 kHz) acercaba la "s" a la voz hasta +1 dB; con la referencia del billar la etapa actua.
-            //   - A una cancion FLACA (le faltan 2,5 dB o mas de cuerpo frente a su objetivo) no se le pone la claridad, que le quitaria aun mas
-            //     cuerpo a 300 Hz, y el EQ del billar le devuelve cuerpo (mas cuerpo en voces).
-            a.Bombo = false; a.Eses = true;
+            //   - Las ESES y la CLARIDAD ya no (18-11-2026): van con el interruptor del dueno, como el bajo (su mando, Auto de fabrica).
+            //   - A una cancion FLACA (le faltan 2,5 dB o mas de cuerpo frente a su objetivo) el EQ del billar le devuelve cuerpo (mas cuerpo en voces).
+            a.Bombo = false; a.Eses = false;   // (18-11-2026: las eses tampoco; van con su interruptor)
             bool flaca = !float.IsNaN(flacaDb) && flacaDb >= CuerpoFlacaDb;
-            if (flaca) a.Claridad = false;
             a.Cuerpo = flaca;
             return a;
         }
@@ -253,7 +251,9 @@ namespace Rocola
                 AjusteLocal d = LocalAutomatico(t == null ? -1f : RangoDeCancion(t.Path), t == null ? -1f : LraParaDecidir(t), UmbralPresenciaAhora(out n),
                                                 t == null ? float.NaN : FaltaDeCuerpoParaDecidir(t));
                 // Las cinco etapas que mueven el volumen o la envolvente (18-11-2026) no las decide el modo: van como las dejo el dueno.
+                // Tampoco la claridad ni las eses (18-11-2026): van con su interruptor, apagados de fabrica.
                 d.Suaves = partesSuaves; d.Presencia = presenciaSala; d.Retumbe = retumbeDinamico; d.Ataque = ataqueClaro; d.Aspereza = asperezaDinamica;
+                d.Claridad = claridadLocal; d.Eses = suavizaEses;
                 return d;
             }
             AjusteLocal m = new AjusteLocal();

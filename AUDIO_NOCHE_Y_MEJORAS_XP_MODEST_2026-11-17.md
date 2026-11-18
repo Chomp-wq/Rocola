@@ -127,6 +127,14 @@ perfectamente con la cadena de sonido (normal y del modo billar)»). Está en Ct
 - Se revisaron los 161 mandos de Ctrl+F3: ninguno estaba muerto. Por elección del dueño se quitaron el botón «Presencia nueva o
   antes» (ya no tenía uso) y el interruptor «Modelos del DSEE por género» (`dsee_genero=` se ignora).
 
+- Después, cuatro mejoras más del modo billar (elegidas por el dueño):
+  - tampoco pone la claridad (−2,5 dB a 300 Hz) ni suaviza las eses: esa zona la decide su ecualizador;
+  - el bajo psicoacústico va con su barra y su «Auto» (ya no en gris; de fábrica suena igual);
+  - el volumen parejo aprendido empieza de cero una sola vez (lo viejo se aparta a `rocola_billar_nivel.antes-2026-11-18.txt`), porque
+    se había aprendido con la presencia puesta;
+  - «Lo que suena ahora» dice «El limitador baja: X dB (10 s: Y dB)», lo más que apretó en los últimos 10 s.
+  Batería nueva `billar18`; suite completa: 383 bien y `tironescambio`, que ya fallaba antes.
+
 ## 5. Propuestas que necesitan tu decisión (no se hizo nada)
 
 - ~~N1~~ hecho (sección 3). **N1. «De noche, menos grave hacia afuera».** Lo que más sale del local y atraviesa paredes es el grave, no el volumen general. La

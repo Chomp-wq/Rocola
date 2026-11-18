@@ -199,10 +199,43 @@ namespace Rocola
             });
         }
 
+        // La marca parejo_v2=1 (Form1.Datos.cs): lo aprendido ya empezo de cero con la cadena sin presencia.
+        private volatile bool parejoV2;
+        // Aparta el archivo viejo con otro nombre y devuelve el nuevo (null si no habia). Nunca pisa ni borra: si ya hay uno con ese nombre, anade .1, .2...
+        internal static string ParejoApartaViejo(string archivo)
+        {
+            if (!File.Exists(archivo)) return null;
+            string baseNom = Path.Combine(Path.GetDirectoryName(archivo), Path.GetFileNameWithoutExtension(archivo) + ".antes-2026-11-18");
+            string ext = Path.GetExtension(archivo), destino = baseNom + ext;
+            for (int i = 1; File.Exists(destino); i++) destino = baseNom + "." + i + ext;
+            File.Move(archivo, destino);
+            return destino;
+        }
+
         // Al arrancar: lo apuntado (la ultima linea de cada ruta manda). Si el archivo crecio mucho con lineas repetidas, se reescribe.
         private void CargaParejo()
         {
             string archivo = ParejoFile();
+            // 18-11-2026: lo aprendido hasta ayer se midio con la presencia puesta (subia hasta 5 dB) y ya no vale. UNA sola vez (la marca parejo_v2=1
+            // de la configuracion) el archivo viejo se aparta con otro nombre (nunca se borra) y se empieza vacio. Va ANTES de leer nada, en este mismo
+            // hilo y con el cerrojo de lo aprendido (GuardaParejo escribe con el mismo): la configuracion ya se leyo (se encola despues de LoadConfigPrefs).
+            if (!parejoV2)
+            {
+                try
+                {
+                    lock (parejoCerrojo)
+                    {
+                        string aparte = ParejoApartaViejo(archivo);
+                        parejoDb = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+                        parejoModelo = null; parejoModeloN = -1000; parejoModeloCuando = DateTime.MinValue;
+                        if (aparte != null) Diag("Volumen parejo: lo aprendido con la presencia puesta se aparto en " + Path.GetFileName(aparte) + "; empieza de cero");
+                    }
+                    parejoV2 = true;
+                    SaveConfigPrefs();   // la marca, para no repetirlo
+                }
+                catch (Exception ex) { LogError("Volumen parejo", ex); }
+                return;   // el archivo ya no esta (o no estaba): nada que leer
+            }
             Dictionary<string, float> d = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
             int lineas = 0;
             try

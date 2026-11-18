@@ -72,9 +72,13 @@ class BillarParejo
         {
             int n = sal.Read(b, 0, b.Length); if (n <= 0) break;
             for (int i = 0; i < n; i++) y.Add(b[i]);
-            int seg = Math.Min(2, Math.Max(0, (y.Count / 2 - retardo) / (Fs * SegS)));
+            int pos = Math.Max(0, y.Count / 2 - retardo);
+            int seg = Math.Min(2, pos / (Fs * SegS)), dentro = pos - seg * Fs * SegS;
             object d = toma.Invoke(lim, null);
-            if (d is float) bajada[seg] = Math.Max(bajada[seg], Math.Abs((float)d)); else if (d is double) bajada[seg] = Math.Max(bajada[seg], Math.Abs((double)d));
+            // Solo lo que bajo DENTRO de la ventana donde se mide la ganancia (de 2 a 5 s de cada tramo): sin la claridad el tono queda 1,6 dB mas alto y el
+            // limitador aprieta 0,7 dB en el tramo fuerte; su suelta se alarga hasta el tramo siguiente y no es la ganancia de ese tramo.
+            if (dentro >= 2 * Fs && dentro < 5 * Fs)
+            { if (d is float) bajada[seg] = Math.Max(bajada[seg], Math.Abs((float)d)); else if (d is double) bajada[seg] = Math.Max(bajada[seg], Math.Abs((double)d)); }
             hecho += n;
         }
         ((IDisposable)lector).Dispose();
