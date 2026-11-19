@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba de TIDAL</title>
+<style>
+:root{--fondo:#0b0d14;--tarj:#151926;--borde:#262c40;--texto:#e8ebf3;--suave:#98a0b8;--oro:#f6c445;--verde:#3ecf7a;--rojo:#ff6b6b;--azul:#5aa9ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--texto);font:16px/1.45 system-ui,"Segoe UI",sans-serif}
+main{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:26px;margin:0 0 4px}
+h2{font-size:19px;margin:0 0 10px;color:var(--oro)}
+.sub{color:var(--suave);margin:0 0 18px}
+section{background:var(--tarj);border:1px solid var(--borde);border-radius:14px;padding:16px 18px;margin:0 0 14px}
+label{display:block;color:var(--suave);font-size:14px;margin:8px 0 4px}
+input[type=text],select{width:100%;background:#0d1019;color:var(--texto);border:1px solid var(--borde);border-radius:9px;padding:9px 11px;font-size:16px}
+button{background:#232a40;color:var(--texto);border:1px solid #3a4462;border-radius:9px;padding:8px 14px;font-size:15px;cursor:pointer;margin:6px 6px 0 0}
+button:hover{border-color:var(--oro)}
+button.prim{background:var(--oro);color:#1b1500;border-color:var(--oro);font-weight:700}
+button:disabled{opacity:.45;cursor:default}
+code,.mono{font-family:ui-monospace,Consolas,monospace;font-size:14px}
+.copia{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.copia code{background:#0d1019;border:1px solid var(--borde);border-radius:7px;padding:5px 9px}
+.nota{color:var(--suave);font-size:14px;margin:8px 0 0}
+.bien{color:var(--verde)}.mal{color:var(--rojo)}.oro{color:var(--oro)}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin-top:8px}
+.kv b{color:var(--suave);font-weight:500}
+#veredicto{font-size:22px;font-weight:800;padding:12px 14px;border-radius:11px;margin-top:10px;display:none}
+#veredicto.completa{background:#0f2d1d;border:1px solid var(--verde);color:var(--verde)}
+#veredicto.muestra{background:#33151a;border:1px solid var(--rojo);color:var(--rojo)}
+#veredicto small{display:block;font-size:14px;font-weight:400;color:var(--texto);margin-top:4px}
+.res{margin-top:10px}
+.pista{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-top:1px solid var(--borde);padding:8px 0}
+.pista .t{font-weight:600}.pista .a{color:var(--suave);font-size:14px}
+.pista .botones button{margin:0 0 0 6px;padding:6px 10px;font-size:14px}
+.chequeo{font-size:14px;margin-top:4px}
+.barra{height:8px;background:#0d1019;border-radius:5px;overflow:hidden;margin-top:8px}.barra i{display:block;height:100%;background:var(--oro);width:0}
+#diag{max-height:260px;overflow:auto;background:#0d1019;border:1px solid var(--borde);border-radius:9px;padding:8px 10px;font:13px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap}
+.paso{display:inline-block;background:var(--oro);color:#1b1500;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-weight:800;margin-right:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>Prueba de TIDAL para la rocola</h1>
+<p class="sub">Contesta dos preguntas con tu cuenta: ¿TIDAL deja tocar canciones <b>completas</b> desde una app propia? y ¿en qué <b>calidad</b> llegan (FLAC, bits, kHz)? Usa el SDK oficial de TIDAL, sin cambios. El sonido sale de este navegador.</p>
+
+<section>
+  <h2><span class="paso">1</span>Tu app de TIDAL</h2>
+  <p class="nota" style="margin-top:0">En <b>developer.tidal.com</b> → Dashboard → crea una app. En su configuración pon esta <b>dirección de regreso</b> (Redirect URI) exactamente así:</p>
+  <div class="copia"><code id="redir"></code><button onclick="copiar($('redir').textContent)">Copiar</button></div>
+  <p class="nota">Si TIDAL no acepta <code>127.0.0.1</code>, prueba con <code>http://localhost:8760/</code> y abre esta página desde <a href="http://localhost:8760/" style="color:var(--azul)">http://localhost:8760/</a>.</p>
+  <label>Client ID de tu app</label>
+  <input type="text" id="cid" placeholder="pégalo aquí" autocomplete="off" spellcheck="false">
+  <label>Permisos (scopes) a pedir, separados por espacios (vacío = los que TIDAL dé por omisión)</label>
+  <input type="text" id="scopes" placeholder="por ejemplo: user.read search.read playback" autocomplete="off" spellcheck="false">
+  <button onclick="verScopes()">Ver qué permisos deja pedir TIDAL</button>
+  <div id="scopes-res" class="nota"></div>
+</section>
+
+<section>
+  <h2><span class="paso">2</span>Tu cuenta</h2>
+  <div id="cuenta" class="nota" style="margin-top:0">Sin entrar.</div>
+  <button class="prim" id="b-entrar" onclick="entrar()">Entrar con TIDAL</button>
+  <button id="b-salir" onclick="salir()">Salir</button>
+  <div class="kv" id="yo"></div>
+</section>
+
+<section>
+  <h2><span class="paso">3</span>Calidad</h2>
+  <label>Calidad que se le pide a TIDAL</label>
+  <select id="calidad" onchange="ponCalidad()">
+    <option value="HI_RES_LOSSLESS">Máxima: Hi-Res FLAC (hasta 24 bit / 192 kHz)</option>
+    <option value="LOSSLESS">FLAC 16 bit / 44,1 kHz (calidad CD)</option>
+    <option value="HIGH">Alta (AAC 320)</option>
+    <option value="LOW">Baja (AAC 96)</option>
+  </select>
+  <label>Nivelar el volumen entre canciones (TIDAL)</label>
+  <select id="nivel" onchange="ponNivel()">
+    <option value="NONE">No (la grabación tal cual)</option>
+    <option value="ALBUM">Por disco</option>
+    <option value="TRACK">Por canción</option>
+  </select>
+  <p class="nota">El navegador manda el sonido a Windows, que lo pasa a la frecuencia de tu tarjeta: llega en FLAC sin pérdida, pero no es una salida «bit a bit» a la tarjeta.</p>
+</section>
+
+<section>
+  <h2><span class="paso">4</span>Buscar y tocar</h2>
+  <input type="text" id="q" placeholder="Busca una canción o un artista y pulsa Enter" autocomplete="off" spellcheck="false">
+  <div class="res" id="res"></div>
+</section>
+
+<section>
+  <h2>Lo que suena</h2>
+  <div id="ahora" class="nota" style="margin-top:0">Nada.</div>
+  <div class="barra"><i id="barra"></i></div>
+  <button onclick="P && P.pause()">Pausa</button>
+  <button onclick="P && P.play()">Seguir</button>
+  <button onclick="mover(-10)">−10 s</button>
+  <button onclick="mover(10)">+10 s</button>
+  <button id="b-sig" onclick="siguienteSinHueco()" disabled>Encadenar la siguiente (sin hueco)</button>
+  <label>Volumen</label>
+  <input type="range" id="vol" min="0" max="100" value="100" style="width:100%" oninput="P && P.setVolumeLevel(this.value / 100)">
+  <div id="veredicto"></div>
+  <div class="kv" id="contexto"></div>
+</section>
+
+<section>
+  <h2>Diagnóstico</h2>
+  <div id="diag"></div>
+  <button onclick="guardarInforme()">Guardar informe (junto al programa)</button>
+  <button onclick="copiar(informe())">Copiar informe</button>
+  <button onclick="fetch('/api/salir', {method: 'POST'}).then(() => document.body.innerHTML = '<main><h1>Cerrado.</h1></main>')">Cerrar el programa</button>
+  <p class="nota">El informe no lleva llaves ni tokens: solo lo que ves aquí.</p>
+</section>
+</main>
+
+<script type="module">
+import "/tidal_sdk.js";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+window.$ = $;
+const { auth: A, player: P } = window.TidalSDK;
+window.P = P;
+const ORIGEN = location.origin;
+const REDIR = ORIGEN + "/";
+const lineas = [];
+let pais = "MX", resultados = [], actualIdx = -1, yo = null;
+
+// ---------- diagnostico ----------
+function anota(txt, tipo = "") {
+  const marca = tipo === "mal" ? "MAL  " : tipo === "bien" ? "BIEN " : "     ";
+  const l = new Date().toLocaleTimeString() + "  " + marca + txt;
+  lineas.push(l); if (lineas.length > 400) lineas.shift();
+  const d = $("diag"); d.textContent = lineas.join("\n"); d.scrollTop = d.scrollHeight;
+  fetch("/api/anota", {method: "POST", body: marca + txt}).catch(() => {});
+}
+function informe() {
+  return ["PRUEBA DE TIDAL PARA LA ROCOLA", new Date().toString(), "Navegador: " + navigator.userAgent, "Pagina: " + ORIGEN,
+    "Client ID puesto: " + ($("cid").value ? "si (" + $("cid").value.length + " caracteres)" : "no"),
+    "Cuenta: " + $("cuenta").textContent, "Datos: " + $("yo").innerText.replace(/\n/g, " | "),
+    "Calidad pedida: " + $("calidad").value, "Lo que suena: " + $("ahora").innerText, "Veredicto: " + $("veredicto").innerText.replace(/\n/g, " "),
+    "Contexto: " + $("contexto").innerText.replace(/\n/g, " | "), "", "--- diagnostico ---", ...lineas].join("\n");
+}
+window.informe = informe;
+window.copiar = t => navigator.clipboard.writeText(t).then(() => anota("Copiado al portapapeles."));
+window.guardarInforme = async () => {
+  const r = await (await fetch("/api/informe", {method: "POST", body: informe()})).json();
+  anota(r.ok ? "Informe guardado en " + r.archivo : "No se pudo guardar el informe: " + r.error, r.ok ? "bien" : "mal");
+};
+
+// ---------- la API de TIDAL, por el puente de la herramienta ----------
+async function token() { const c = await A.credentialsProvider.getCredentials(); return c; }
+async function api(ruta, opciones = {}) {
+  const c = await token();
+  const h = {Accept: "application/vnd.api+json", ...(opciones.headers || {})};
+  if (c.token) h.Authorization = "Bearer " + c.token;
+  const r = await fetch(ORIGEN + "/tx/openapi/v2" + ruta, {...opciones, headers: h});
+  let cuerpo = null; try { cuerpo = await r.json(); } catch (e) {}
+  if (!r.ok) {
+    const err = cuerpo && cuerpo.errors && cuerpo.errors[0];
+    const msg = "HTTP " + r.status + (err ? " " + (err.code || "") + " " + (err.detail || "") : "");
+    anota("GET " + ruta.split("?")[0] + " -> " + msg, "mal");
+    const e = new Error(msg); e.status = r.status; e.cuerpo = cuerpo; throw e;
+  }
+  return cuerpo;
+}
+function duracion(iso) { // PT3M25S -> segundos
+  const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?/.exec(iso || ""); if (!m) return 0;
+  return (+(m[1] || 0)) * 3600 + (+(m[2] || 0)) * 60 + (+(m[3] || 0));
+}
+const mmss = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+
+// ---------- 1 y 2: la app y la cuenta ----------
+$("redir").textContent = REDIR;
+$("cid").value = localStorage.getItem("tidal_cid") || "";
+$("scopes").value = localStorage.getItem("tidal_scopes") || "";
+$("calidad").value = localStorage.getItem("tidal_calidad") || "HI_RES_LOSSLESS";
+$("nivel").value = localStorage.getItem("tidal_nivel") || "NONE";
+const scopes = () => $("scopes").value.trim().split(/\s+/).filter(Boolean);
+
+async function iniciaAuth() {
+  const cid = $("cid").value.trim();
+  if (!cid) return false;
+  await A.init({clientId: cid, credentialsStorageKey: "rocola-tidal", scopes: scopes(), tidalAuthServiceBaseUri: ORIGEN + "/tx/auth/v1/"});
+  return true;
+}
+window.entrar = async () => {
+  const cid = $("cid").value.trim();
+  if (!cid) { anota("Falta el Client ID de tu app (paso 1).", "mal"); return; }
+  localStorage.setItem("tidal_cid", cid); localStorage.setItem("tidal_scopes", $("scopes").value.trim());
+  try {
+    await iniciaAuth();
+    const url = await A.initializeLogin({redirectUri: REDIR});
+    anota("Abriendo la entrada de TIDAL (login.tidal.com)...");
+    location.href = url;
+  } catch (e) { anota("No se pudo empezar la entrada: " + (e && (e.message || e.name)), "mal"); }
+};
+window.salir = () => { try { A.logout(); } catch (e) {} yo = null; $("cuenta").textContent = "Sin entrar."; $("yo").innerHTML = ""; anota("Saliste de la cuenta."); };
+
+async function verCuenta() {
+  try {
+    const c = await token();
+    if (!c.token || !c.userId) { $("cuenta").textContent = "Sin entrar."; return false; }
+    const r = await api("/users/me");
+    yo = r.data.attributes || {};
+    pais = yo.country || pais;
+    $("cuenta").innerHTML = '<span class="bien">Dentro como ' + esc(yo.username || yo.email || c.userId) + "</span>";
+    $("yo").innerHTML = "<b>País</b><span>" + esc(yo.country || "?") + "</span><b>Nivel de acceso de programador</b><span class=\"" +
+      (yo.developerAccessTier === "THIRD_PARTY" ? "oro" : "bien") + "\">" + esc(yo.developerAccessTier || "(no lo dijo)") +
+      "</span><b>Permisos dados</b><span class=\"mono\">" + esc((c.grantedScopes || []).join(" ") || "(ninguno listado)") + "</span>";
+    anota("Dentro de TIDAL. País " + (yo.country || "?") + ", nivel de acceso de programador: " + (yo.developerAccessTier || "?") + ".", "bien");
+    return true;
+  } catch (e) {
+    $("cuenta").innerHTML = '<span class="mal">No se pudo leer tu cuenta: ' + esc(e.message) + "</span>";
+    return false;
+  }
+}
+window.verScopes = async () => {
+  try {
+    if (!(await iniciaAuth())) { anota("Pon primero el Client ID.", "mal"); return; }
+    const r = await api("/scopes?filter%5BrequiredAccessTier%5D=THIRD_PARTY");
+    const lista = (r.data || []).map(s => s.attributes && s.attributes.name).filter(Boolean);
+    $("scopes-res").innerHTML = lista.length ? "TIDAL deja pedir: <code>" + esc(lista.join(" ")) + "</code> " +
+      '<button onclick="document.getElementById(\'scopes\').value=' + "'" + esc(lista.join(" ")) + "'" + '">Usar todos</button>' : "TIDAL no devolvió ninguno.";
+    anota("Permisos que deja pedir TIDAL a una app normal: " + (lista.join(" ") || "(ninguno)"), "bien");
+  } catch (e) { $("scopes-res").textContent = "No se pudo preguntar: " + e.message; }
+};
+
+// ---------- 3: el reproductor oficial ----------
+P.bootstrap({outputDevices: false, players: [{itemTypes: ["track"], player: "shaka", qualities: ["HI_RES_LOSSLESS", "LOSSLESS", "HIGH", "LOW"]}]});
+P.setEventSender({sendEvent() {}});
+P.setApiUrl(ORIGEN + "/tx/openapi/v2/");
+P.setLegacyApiUrl(ORIGEN + "/tx/api/v1");
+window.ponCalidad = () => { localStorage.setItem("tidal_calidad", $("calidad").value); P.setStreamingWifiAudioQuality($("calidad").value); anota("Calidad pedida: " + $("calidad").value); };
+window.ponNivel = () => { localStorage.setItem("tidal_nivel", $("nivel").value); P.setLoudnessNormalizationMode($("nivel").value); };
+P.setStreamingWifiAudioQuality($("calidad").value);
+P.setLoudnessNormalizationMode($("nivel").value);
+P.events.addEventListener("playback-state-change", e => { anota("Estado: " + (e.detail && e.detail.state)); pinta(); });
+P.events.addEventListener("media-product-transition", e => { anota("Empieza: pista " + (e.detail && e.detail.mediaProduct && e.detail.mediaProduct.productId)); pinta(); });
+P.events.addEventListener("ended", e => anota("Acabó (" + (e.detail && e.detail.reason) + ")."));
+P.events.addEventListener("error", e => anota("Error del reproductor: " + JSON.stringify(e.detail), "mal"));
+P.events.addEventListener("playback-quality-changed", e => anota("Calidad que llega: " + JSON.stringify(e.detail)));
+P.events.addEventListener("streaming-privileges-revoked", e => anota("TIDAL dice que tu cuenta empezó a tocar en otro aparato: " + e.detail, "mal"));
+
+// ---------- 4: buscar, revisar y tocar ----------
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") buscar($("q").value.trim()); });
+async function buscar(q) {
+  if (!q) return;
+  $("res").innerHTML = '<p class="nota">Buscando...</p>';
+  try {
+    const qs = "countryCode=" + pais + "&include=tracks&include=tracks.artists&include=tracks.albums";
+    let r;
+    try { r = await api("/searchResults?filter%5Bquery%5D=" + encodeURIComponent(q) + "&" + qs); }
+    catch (e) { r = await api("/searchResults/" + encodeURIComponent(q) + "/relationships/tracks?countryCode=" + pais + "&include=tracks"); }
+    const inc = r.included || [];
+    const porId = {}; inc.forEach(x => porId[x.type + ":" + x.id] = x);
+    const datos = r.data;
+    let ids = [];
+    if (Array.isArray(datos)) ids = datos.filter(d => d.type === "tracks").map(d => d.id);
+    else if (datos && datos.relationships && datos.relationships.tracks) ids = (datos.relationships.tracks.data || []).map(d => d.id);
+    if (!ids.length) ids = inc.filter(x => x.type === "tracks").map(x => x.id);
+    resultados = ids.slice(0, 15).map(id => {
+      const t = porId["tracks:" + id] || {id, attributes: {}};
+      const art = ((t.relationships && t.relationships.artists && t.relationships.artists.data) || []).map(a => porId["artists:" + a.id]).filter(Boolean).map(a => a.attributes.name);
+      const alb = ((t.relationships && t.relationships.albums && t.relationships.albums.data) || []).map(a => porId["albums:" + a.id]).filter(Boolean)[0];
+      return {id, titulo: (t.attributes.title || "Pista " + id) + (t.attributes.version ? " (" + t.attributes.version + ")" : ""), artistas: art.join(", "),
+              disco: alb ? alb.attributes.title : "", dur: duracion(t.attributes.duration), tags: t.attributes.mediaTags || []};
+    });
+    anota("Búsqueda «" + q + "»: " + resultados.length + " canciones.", resultados.length ? "bien" : "");
+    pintaResultados();
+  } catch (e) { $("res").innerHTML = '<p class="mal">No se pudo buscar: ' + esc(e.message) + "</p>"; }
+}
+function pintaResultados() {
+  $("res").innerHTML = resultados.map((t, i) => '<div class="pista"><div><div class="t">' + esc(t.titulo) + '</div><div class="a">' + esc(t.artistas) +
+    (t.disco ? " · " + esc(t.disco) : "") + (t.dur ? " · " + mmss(t.dur) : "") + (t.tags.length ? ' · <span class="oro">' + esc(t.tags.join(", ")) + "</span>" : "") +
+    '</div><div class="chequeo" id="chk' + i + '"></div></div><div class="botones"><button onclick="revisar(' + i + ')">Revisar</button><button class="prim" onclick="tocar(' + i + ')">Tocar</button></div></div>').join("")
+    || '<p class="nota">Sin resultados.</p>';
+}
+// Lo mismo que pide el reproductor oficial, pero solo para ver la respuesta: ¿completa o muestra? ¿qué formatos?
+window.revisar = async i => {
+  const t = resultados[i], el = $("chk" + i);
+  el.textContent = "Preguntando a TIDAL...";
+  const f = ["HEAACV1", "AACLC", "FLAC", "FLAC_HIRES"].map(x => "formats=" + x).join("&");
+  try {
+    const r = await api("/trackManifests/" + t.id + "?adaptive=false&" + f + "&manifestType=MPEG_DASH&uriScheme=DATA&usage=PLAYBACK",
+      {headers: {"x-playback-session-id": crypto.randomUUID()}});
+    const a = (r.data && r.data.attributes) || {};
+    const completa = a.trackPresentation === "FULL";
+    el.innerHTML = (completa ? '<span class="bien">COMPLETA</span>' : '<span class="mal">MUESTRA</span>' + (a.previewReason ? " (" + esc(textoMotivo(a.previewReason)) + ")" : "")) +
+      " · formatos: " + esc((a.formats || []).join(", ") || "?") + (a.drmData ? " · con DRM" : "");
+    anota("Revisión de «" + t.titulo + "»: " + (a.trackPresentation || "?") + (a.previewReason ? " " + a.previewReason : "") + ", formatos " + (a.formats || []).join(","), completa ? "bien" : "mal");
+  } catch (e) {
+    const err = e.cuerpo && e.cuerpo.errors && e.cuerpo.errors[0];
+    el.innerHTML = '<span class="mal">' + esc(err ? (err.code + ": " + textoMotivo(err.code)) : e.message) + "</span>";
+  }
+};
+function textoMotivo(m) {
+  return ({FULL_REQUIRES_HIGHER_ACCESS_TIER: "TIDAL pide un nivel de acceso de programador más alto que el de tu app",
+    FULL_REQUIRES_SUBSCRIPTION: "tu cuenta no tiene una suscripción que la incluya", FULL_REQUIRES_PURCHASE: "hay que comprarla",
+    CLIENT_NOT_ENTITLED: "tu app no tiene permiso de tocar", CONCURRENT_PLAYBACK: "tu cuenta está tocando en otro aparato",
+    GEO_RESTRICTED: "no está disponible en tu país", PREREQUISITE_MISSING: "falta algo previo (permiso o suscripción)"})[m] || m;
+}
+const producto = t => ({productId: String(t.id), productType: "track", sourceId: String(t.id), sourceType: "TRACK"});
+window.tocar = async i => {
+  const t = resultados[i]; actualIdx = i;
+  P.setStreamingWifiAudioQuality($("calidad").value);
+  anota("Tocar «" + t.titulo + "» en " + $("calidad").value + "...");
+  try { await P.load(producto(t)); await P.play(); $("b-sig").disabled = i + 1 >= resultados.length; }
+  catch (e) { anota("No se pudo tocar: " + (e && (e.errorId ? e.errorId + " " + e.errorCode : e.message || e)), "mal"); }
+  pinta();
+};
+window.siguienteSinHueco = async () => {
+  const t = resultados[actualIdx + 1]; if (!t) return;
+  try { await P.setNext(producto(t)); anota("Encadenada «" + t.titulo + "»: entra sin hueco al acabar la actual (adelanta hasta el final para oírlo)."); actualIdx++; }
+  catch (e) { anota("No se pudo encadenar: " + (e && (e.errorId || e.message)), "mal"); }
+};
+window.mover = s => { const p = P.getAssetPosition() || 0; P.seek(Math.max(0, p + s)); };
+
+// ---------- lo que suena ----------
+function pinta() {
+  const c = P.getPlaybackContext(), est = P.getPlaybackState();
+  if (!c) { $("ahora").textContent = est === "IDLE" ? "Nada." : "Estado: " + est; return; }
+  const t = resultados.find(x => String(x.id) === String(c.actualProductId));
+  $("ahora").innerHTML = "<b>" + esc(t ? t.titulo : "Pista " + c.actualProductId) + "</b> " + esc(t ? "· " + t.artistas : "") + " · " +
+    ({PLAYING: "sonando", NOT_PLAYING: "en pausa", STALLED: "cargando...", IDLE: "sin nada"}[est] || est);
+  const completa = c.actualAssetPresentation === "FULL";
+  const fmt = (c.codec ? c.codec.toUpperCase() : "?") + (c.bitDepth ? " " + c.bitDepth + " bit" : "") + (c.sampleRate ? " / " + (c.sampleRate / 1000) + " kHz" : "");
+  const v = $("veredicto"); v.style.display = "block";
+  v.className = completa ? "completa" : "muestra";
+  v.innerHTML = (completa ? "Canción COMPLETA · " + esc(fmt) : "Solo una MUESTRA de " + Math.round(c.actualDuration || 30) + " s") +
+    "<small>" + (completa ? "Calidad que llega: " + esc(c.actualAudioQuality || "?") + (c.bandwidth ? " · " + Math.round(c.bandwidth / 1000) + " kbps" : "")
+      : esc(c.previewReason ? textoMotivo(c.previewReason) + " (" + c.previewReason + ")" : "TIDAL no dijo por qué")) + "</small>";
+  $("contexto").innerHTML = [["Presentación", c.actualAssetPresentation], ["Calidad", c.actualAudioQuality], ["Formato", c.codec], ["Bits", c.bitDepth],
+    ["Frecuencia", c.sampleRate ? c.sampleRate + " Hz" : null], ["Ancho de banda", c.bandwidth ? Math.round(c.bandwidth / 1000) + " kbps" : null],
+    ["Duración", c.actualDuration ? mmss(c.actualDuration) : null], ["Motivo de muestra", c.previewReason]]
+    .filter(x => x[1] != null && x[1] !== "").map(x => "<b>" + x[0] + "</b><span>" + esc(x[1]) + "</span>").join("");
+}
+let ultimaFirma = "";
+setInterval(() => {
+  const c = P.getPlaybackContext(), pos = P.getAssetPosition() || 0;
+  if (c && c.actualDuration) $("barra").style.width = Math.min(100, pos * 100 / c.actualDuration) + "%";
+  const f = JSON.stringify([c, P.getPlaybackState()]);
+  if (f !== ultimaFirma) { ultimaFirma = f; pinta(); if (c) anota("Llega: " + c.actualAssetPresentation + " " + (c.actualAudioQuality || "") + " " + (c.codec || "") + " " + (c.bitDepth || "") + " bit " + (c.sampleRate || "") + " Hz" + (c.previewReason ? " (" + c.previewReason + ")" : "")); }
+}, 500);
+
+// ---------- al abrir: volver de la entrada de TIDAL o seguir con la guardada ----------
+(async () => {
+  anota("Página lista. Reproductor oficial de TIDAL " + (P.getPlayerVersion ? P.getPlayerVersion() : "") + ".");
+  try {
+    if (!(await iniciaAuth())) { anota("Pon el Client ID de tu app (paso 1) y pulsa «Entrar con TIDAL»."); return; }
+    P.setCredentialsProvider(A.credentialsProvider);
+    if (location.search.includes("code=")) {
+      anota("Volviendo de TIDAL: cambiando el código por la llave...");
+      await A.finalizeLogin(location.search);
+      history.replaceState(null, "", "/");
+      anota("Entrada lista.", "bien");
+    } else if (location.search.includes("error")) {
+      anota("TIDAL no dejó entrar: " + decodeURIComponent(location.search), "mal");
+      history.replaceState(null, "", "/");
+    }
+    await verCuenta();
+  } catch (e) { anota("Al abrir: " + (e && (e.message || e.name || e)), "mal"); }
+})();
+</script>
+</body>
+</html>
