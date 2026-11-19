@@ -669,6 +669,7 @@ async function guardarSoloistConfig() {
   const exe = $("s-exe").value.trim(), nombre = $("s-nombre").value.trim(), llave = $("s-llave").value.trim();
   await post("/api/soloist/config", {exe, nombre});
   if (llave) { await post("/api/soloist/llave", {llave}); $("s-llave").value = ""; }
+  yaCargueCampos = false; // que se vea la ruta ya corregida (con .exe)
   $("soloist-msg").textContent = "Ajustes guardados.";
 }
 async function detectarSoloist() {

@@ -459,17 +459,40 @@ fn detecta_soloist(exe_dir: &Path) -> Vec<String> {
     exe_candidatos(exe_dir).into_iter().filter(|p| p.is_file()).map(|p| p.display().to_string()).collect::<std::collections::BTreeSet<_>>().into_iter().collect()
 }
 
+// Lo que el dueno escribe como ruta: sin comillas («Copiar como ruta» las pone), una carpeta vale (se busca soloist.exe
+// dentro) y sin «.exe» tambien (el Explorador de Windows oculta la extension).
+fn normaliza_exe(s: &str) -> String {
+    let t = s.trim().trim_matches('"').trim();
+    if t.is_empty() { return String::new(); }
+    let suf = std::env::consts::EXE_SUFFIX;
+    let p = PathBuf::from(t);
+    if p.is_dir() {
+        let dentro = p.join(format!("soloist{suf}"));
+        if dentro.is_file() { return dentro.display().to_string(); }
+    }
+    if !p.is_file() && !suf.is_empty() && !t.to_ascii_lowercase().ends_with(suf) {
+        let con = PathBuf::from(format!("{t}{suf}"));
+        if con.is_file() { return con.display().to_string(); }
+    }
+    t.to_string()
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 struct ConfigSoloist { exe: String, nombre_aparato: String }
 
 fn carga_config_soloist(app: &App) {
     let c: ConfigSoloist = std::fs::read_to_string(app.ruta_config_soloist()).ok()
         .and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let mut exe = normaliza_exe(&c.exe);
+    if exe.is_empty() || !Path::new(&exe).is_file() {
+        if let Some(d) = detecta_soloist(&app.exe_dir).into_iter().next() { exe = d; }
+    }
     let mut s = app.soloist.lock().unwrap();
-    s.exe = c.exe;
+    s.exe = exe;
     s.nombre_aparato = if c.nombre_aparato.is_empty() { NOMBRE_APARATO_DEFECTO.to_string() } else { c.nombre_aparato };
 }
 fn guarda_config_soloist(app: &App, exe: &str, nombre: &str) {
+    let exe = &normaliza_exe(exe);
     let c = ConfigSoloist { exe: exe.to_string(), nombre_aparato: nombre.to_string() };
     let _ = std::fs::write(app.ruta_config_soloist(), serde_json::to_string_pretty(&c).unwrap_or_default());
     let mut s = app.soloist.lock().unwrap();
@@ -661,7 +684,7 @@ fn iniciar_soloist(app: &Arc<App>) -> Value {
     }
     let (exe, nombre) = { let s = app.soloist.lock().unwrap(); (s.exe.clone(), s.nombre_aparato.clone()) };
     if exe.trim().is_empty() { return json!({"ok": false, "error": "Falta la ruta a soloist.exe (seccion Soloist)."}); }
-    if !Path::new(&exe).is_file() { return json!({"ok": false, "error": format!("No encuentro el archivo: {exe}")}); }
+    if !Path::new(&exe).is_file() { return json!({"ok": false, "error": format!("No encuentro el archivo: {exe} (usa «Detectar automaticamente», o pon la ruta completa con .exe)")}); }
     let Some(llave) = llave_soloist(app) else { return json!({"ok": false, "error": "Falta la llave de la API de Soloist (seccion Soloist)."}) };
     app.soloist.lock().unwrap().arrancando = true;
     let gen = app.soloist_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
