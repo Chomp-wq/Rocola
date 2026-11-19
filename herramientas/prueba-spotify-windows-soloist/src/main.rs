@@ -111,9 +111,10 @@ struct CalidadEstado {
     uri: String,
     foto: HashMap<PathBuf, u64>, // la cache justo antes de pedir
     desde: Option<Instant>,
-    archivo: Option<PathBuf>,
-    tam: u64,
-    crecio: Option<Instant>,
+    dur_ms: u64,
+    bytes: u64,    // todo lo que crecio la cache desde la foto
+    archivos: usize,
+    mayor: u64,    // lo que crecio el archivo que mas crecio
     estado: String, // midiendo | medida | en_cache | sin_dato
     actual: Option<Medida>,
     hechas: HashMap<String, Medida>, // por uri, guardadas en calidad_medida.json
@@ -191,7 +192,8 @@ impl App {
     }
     fn datos_soloist(&self) -> PathBuf { self.datos.join("soloist_datos") }
     fn cache_soloist(&self) -> PathBuf { self.datos.join("soloist_cache") }
-    fn ruta_calidad(&self) -> PathBuf { self.datos.join("calidad_medida.json") }
+    // v2: las medidas de la primera version salian de un archivo a medias (se cerraban a los 4 s sin crecer).
+    fn ruta_calidad(&self) -> PathBuf { self.datos.join("calidad_medida_v2.json") }
 }
 
 // ---------- LA CALIDAD MEDIDA (FLAC o no) ----------
@@ -219,11 +221,11 @@ fn foto_cache(dir: &Path) -> HashMap<PathBuf, u64> {
         for e in rd.flatten() {
             let p = e.path();
             let Ok(ft) = e.file_type() else { continue };
-            if ft.is_dir() { if hondo < 6 { pila.push((p, hondo + 1)); } }
+            if ft.is_dir() { if hondo < 8 { pila.push((p, hondo + 1)); } }
             else if ft.is_file() && !es_metadato(&p) {
-                if let Some(t) = tam_real(&p) { if t >= 64 * 1024 { m.insert(p, t); } }
+                if let Some(t) = tam_real(&p) { m.insert(p, t); }
             }
-            if m.len() > 5000 { return m; }
+            if m.len() > 50_000 { return m; }
         }
     }
     m
@@ -232,60 +234,73 @@ fn guarda_calidades(app: &App, hechas: &HashMap<String, Medida>) {
     let _ = std::fs::write(app.ruta_calidad(), serde_json::to_string(hechas).unwrap_or_default());
 }
 
-// Cada segundo: busca el archivo que Soloist esta bajando para la cancion pedida y, cuando deja de crecer, da los kbps.
+fn crecimiento(foto: &HashMap<PathBuf, u64>, ahora: &HashMap<PathBuf, u64>) -> (u64, usize, u64) {
+    let (mut total, mut n, mut mayor) = (0u64, 0usize, 0u64);
+    for (f, t) in ahora {
+        let antes = foto.get(f).copied().unwrap_or(0);
+        if *t > antes { let d = *t - antes; total += d; n += 1; mayor = mayor.max(d); }
+    }
+    (total, n, mayor)
+}
+
+// Cada 2 s suma lo que crecio la cache desde que se pidio la cancion (Soloist baja a tandas, con pausas, y puede
+// guardarla en varios archivos). La calidad solo se da al TERMINAR la cancion entera: antes sale de menos.
 fn vigila_calidad(app: Arc<App>) {
     loop {
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(Duration::from_secs(2));
         let (pedida, son_uri, son_dur) = { let s = app.soloist.lock().unwrap(); (s.pedida.clone(), s.son.uri.clone(), s.son.dur_ms) };
         let Some(p) = pedida else { continue };
-        let mut diag: Option<(Instant, Result<String, String>)> = None;
-        let mut guardar: Option<HashMap<String, Medida>> = None;
+        let termino;
         {
             let mut c = app.calidad.lock().unwrap();
             if c.uri != p.uri || c.estado != "midiendo" { continue; }
-            let viva = matches!(p.estado.as_str(), "cargando" | "sonando" | "pausa");
-            let dur = if son_uri == p.uri && son_dur > 0 { son_dur } else { p.dur_ms };
-            let desde = c.desde.unwrap_or_else(Instant::now);
-            if c.archivo.is_none() {
-                let ahora = foto_cache(&app.cache_soloist());
-                let mejor = ahora.iter().filter_map(|(f, t)| {
-                    let antes = c.foto.get(f).copied().unwrap_or(0);
-                    (*t > antes).then(|| (f.clone(), *t, *t - antes))
-                }).max_by_key(|x| x.2);
-                if let Some((f, t, _)) = mejor {
-                    c.archivo = Some(f); c.tam = t; c.crecio = Some(Instant::now());
-                } else if desde.elapsed() > Duration::from_secs(20) || !viva {
-                    // No bajo nada: ya estaba en la cache de antes.
-                    let previa = c.hechas.get(&p.uri).cloned();
-                    c.estado = if previa.is_some() { "en_cache".into() } else { "sin_dato".into() };
-                    c.actual = previa;
-                }
-            } else {
-                let f = c.archivo.clone().unwrap();
-                if let Some(t) = tam_real(&f) { if t > c.tam { c.tam = t; c.crecio = Some(Instant::now()); } }
-                let kbps = if dur > 0 { (c.tam as f64 * 8.0 / (dur as f64 / 1000.0) / 1000.0).round() as u32 } else { 0 };
-                let quieto = c.crecio.map(|i| i.elapsed() > Duration::from_secs(4)).unwrap_or(false);
-                let nivel = nivel_de(kbps);
-                // Mientras baja, los kbps salen de menos; solo se dice el nivel al acabar de bajar, o si ya paso del piso
-                // de FLAC (eso ya no puede ser Vorbis).
-                let termina = (quieto && viva) || (!viva && nivel == "flac");
-                if dur > 0 && termina {
-                    let m = Medida { kbps, nivel: nivel.to_string() };
-                    c.estado = "medida".into();
-                    c.actual = Some(m.clone());
-                    c.hechas.insert(p.uri.clone(), m);
-                    guardar = Some(c.hechas.clone());
-                    diag = Some((desde, Ok(format!("{} · {} kbps ({})", texto_nivel(nivel), kbps, p.nombre))));
-                } else if !viva {
-                    c.estado = "sin_dato".into(); // se salto antes de que acabara de bajar
-                } else if nivel == "flac" {
-                    c.actual = Some(Medida { kbps, nivel: nivel.to_string() });
-                }
-            }
+            if son_uri == p.uri && son_dur > 0 { c.dur_ms = son_dur; }
+            if c.dur_ms == 0 { c.dur_ms = p.dur_ms; }
+            let ahora = foto_cache(&app.cache_soloist());
+            let (b, n, m) = crecimiento(&c.foto, &ahora);
+            c.bytes = b; c.archivos = n; c.mayor = m;
+            termino = !matches!(p.estado.as_str(), "cargando" | "sonando" | "pausa");
         }
-        if let Some(h) = guardar { guarda_calidades(&app, &h); }
-        if let Some((t0, r)) = diag { app.diag("calidad medida", t0, r); }
+        if termino { cierra_medida(&app, &p); }
     }
+}
+
+fn mb(b: u64) -> String { format!("{:.1} MB", b as f64 / 1_048_576.0) }
+fn cierra_medida(app: &Arc<App>, p: &Pedida) {
+    let diag: Option<(Instant, Result<String, String>)>;
+    let mut guardar = None;
+    {
+        let mut c = app.calidad.lock().unwrap();
+        if c.uri != p.uri || c.estado != "midiendo" { return; }
+        let ahora = foto_cache(&app.cache_soloist());
+        let (b, n, m) = crecimiento(&c.foto, &ahora);
+        c.bytes = b; c.archivos = n; c.mayor = m;
+        let dur = c.dur_ms.max(1);
+        let sono_ms = p.t0.elapsed().as_millis() as u64;
+        let desde = c.desde.unwrap_or_else(Instant::now);
+        if p.estado == "acabo" && p.empezo && b > 0 && sono_ms * 100 >= dur * 85 {
+            let kbps = (b as f64 * 8.0 / (dur as f64 / 1000.0) / 1000.0).round() as u32;
+            let nivel = nivel_de(kbps);
+            let md = Medida { kbps, nivel: nivel.to_string() };
+            c.estado = "medida".into();
+            c.actual = Some(md.clone());
+            c.hechas.insert(p.uri.clone(), md);
+            guardar = Some(c.hechas.clone());
+            diag = Some((desde, Ok(format!("{} · {} kbps ({}): {} archivo(s), {} en total, el mayor {}, {} s de cancion",
+                texto_nivel(nivel), kbps, p.nombre, n, mb(b), mb(m), dur / 1000))));
+        } else if b == 0 && p.empezo {
+            let previa = c.hechas.get(&p.uri).cloned();
+            c.estado = if previa.is_some() { "en_cache".into() } else { "sin_dato".into() };
+            c.actual = previa;
+            diag = Some((desde, Ok(format!("sin medir ({}): ya estaba en la cache, no se bajo nada", p.nombre))));
+        } else {
+            c.estado = "sin_dato".into();
+            diag = Some((desde, Ok(format!("sin medir ({}): sono {} de {} s; solo cuenta si suena entera ({} archivo(s), {})",
+                p.nombre, sono_ms / 1000, dur / 1000, n, mb(b)))));
+        }
+    }
+    if let Some(h) = guardar { guarda_calidades(app, &h); }
+    if let Some((t0, r)) = diag { app.diag("calidad medida", t0, r); }
 }
 
 const OAUTH_LISTO: &str = "<!doctype html><meta charset=utf-8><body style='font-family:sans-serif;font-size:28px;background:#111;color:#eee'><h1>Listo</h1><p>Vuelve a la herramienta de la rocola. Puedes cerrar esta pestana.</p></body>";
@@ -929,7 +944,10 @@ async fn tocar(app: &Arc<App>, v: &Value) -> Value {
         app.diag("tocar", t0, Err(m.clone()));
         return json!({"ok": false, "error": m});
     }
-    // La foto de la cache ANTES de pedir: el archivo que aparezca o crezca despues es el de esta cancion.
+    // Primero se cierra la medida de la anterior (la pagina pide la siguiente en cuanto acaba).
+    let previa = app.soloist.lock().unwrap().pedida.clone();
+    if let Some(pp) = previa { cierra_medida(app, &pp); }
+    // La foto de la cache ANTES de pedir: lo que crezca despues es de esta cancion.
     let foto = foto_cache(&app.cache_soloist());
     {
         let mut c = app.calidad.lock().unwrap();
@@ -1000,7 +1018,8 @@ fn estado_json(app: &Arc<App>) -> Value {
 fn calidad_json(app: &App) -> Value {
     let c = app.calidad.lock().unwrap();
     let (kbps, nivel) = c.actual.as_ref().map(|m| (m.kbps, m.nivel.clone())).unwrap_or((0, String::new()));
-    json!({"uri": c.uri, "estado": c.estado, "kbps": kbps, "nivel": nivel, "texto": texto_nivel(&nivel), "medidas": c.hechas.len()})
+    json!({"uri": c.uri, "estado": c.estado, "kbps": kbps, "nivel": nivel, "texto": texto_nivel(&nivel), "medidas": c.hechas.len(),
+           "bytes": c.bytes, "archivos": c.archivos})
 }
 fn resumen_calidades(app: &App) -> String {
     let c = app.calidad.lock().unwrap();

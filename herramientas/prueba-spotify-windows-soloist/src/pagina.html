@@ -345,15 +345,15 @@ function pintaPie() {
 function marcaCalidad() {
   const c = E.soloist && E.soloist.calidad;
   if (!c || !actual || c.uri !== actual.uri) return "";
-  if (c.estado === "midiendo" && c.nivel !== "flac") return '<span class="cal">midiendo calidad...</span>';
+  if (c.estado === "midiendo") return '<span class="cal">midiendo (al terminar)...</span>';
   if (!c.kbps) return "";
   if (c.nivel === "flac") return '<span class="cal flac">FLAC · ' + c.kbps + ' kbps</span>';
   return '<span class="cal vorbis">' + c.kbps + ' kbps</span>';
 }
 function textoCalidad(c) {
   if (!c || !c.estado) return "(se mide al pedir una cancion)";
-  if (c.estado === "midiendo") return c.nivel === "flac" ? sino(true, "Lossless (FLAC), bajando... " + c.kbps + " kbps hasta ahora") : "midiendo (esperando a que Soloist la baje)...";
-  if (c.estado === "sin_dato") return "sin medir (ya estaba en la cache, o se salto antes de bajarla)";
+  if (c.estado === "midiendo") return "midiendo: se sabe al terminar la cancion entera (van " + ((c.bytes || 0) / 1048576).toFixed(1) + " MB en " + (c.archivos || 0) + " archivo(s))";
+  if (c.estado === "sin_dato") return "sin medir (ya estaba en la cache, o no sono entera): mira el diagnostico";
   const t = esc(c.texto) + " · " + c.kbps + " kbps" + (c.estado === "en_cache" ? " (medida antes)" : "");
   return c.nivel === "flac" ? sino(true, t) : '<span style="color:var(--oro)">' + t + "</span>";
 }
