@@ -142,6 +142,8 @@ p.nota{color:var(--suave);margin:6px 0}
     <div class="campo"><label>Ruta a soloist.exe</label><input type="text" id="s-exe" placeholder="C:\ruta\a\soloist.exe"></div>
     <div class="campo"><label>Nombre del aparato (el que eliges desde el telefono)</label><input type="text" id="s-nombre" placeholder="Rocola (prueba Soloist)"></div>
     <div class="campo"><label>Volumen de la rocola en Soloist: <b id="s-vol-n">100</b> (se pone al arrancar y en cada cancion pedida; lo que muevas en el telefono dura hasta la siguiente)</label><input type="range" id="s-vol" min="0" max="100" step="5" value="100" style="width:100%" oninput="$('s-vol-n').textContent=this.value" onchange="ponVolumen(this.value)"></div>
+    <div class="campo"><label><input type="checkbox" id="s-verbose" onchange="ponVerbose(this.checked)"> Registro detallado de Soloist (<code>--verbose</code>): para ver si dice que formato le manda Spotify. Vale al volver a «Iniciar Soloist».</label></div>
+    <div id="s-formato" class="nota"></div>
     <div class="campo"><label>Llave de la API de Soloist (se guarda en esta carpeta; nunca se vuelve a mostrar)</label><input type="password" id="s-llave" placeholder="pegala aqui"></div>
     <div class="botones">
       <button class="oro" onclick="guardarSoloistConfig()">Guardar ajustes</button>
@@ -660,12 +662,18 @@ function pintaEstado() {
     ["Version", esc(E.version || "")],
   ].map(f => "<div>" + f[0] + "</div><div>" + f[1] + "</div>").join("");
   if (s.logged_in && /150 segundos|Arrancando/.test($("soloist-msg").textContent)) $("soloist-msg").textContent = "";
+  if (!yaCargueVerb && s.verbose != null) { $("s-verbose").checked = s.verbose; yaCargueVerb = true; }
+  $("s-formato").innerHTML = s.verbose ? ((s.formato && s.formato.length) ? "<b>Lo que dice Soloist del formato:</b><br>" + s.formato.slice(-6).map(esc).join("<br>") : "Con registro detallado: aun no dice nada del formato (pide una cancion).") : "";
   if (!yaCargueVol && s.vol_rocola != null) { $("s-vol").value = s.vol_rocola; $("s-vol-n").textContent = s.vol_rocola; yaCargueVol = true; }
   if (!yaCargueCampos && s.exe) { $("s-exe").value = s.exe; $("s-nombre").value = s.nombre_aparato || ""; yaCargueCampos = true; }
   if (E.diag_n !== diagN) cargaDiag(false);
 }
 let yaCargueCampos = false, yaCargueCid = false;
-let yaCargueVol = false;
+let yaCargueVol = false, yaCargueVerb = false;
+async function ponVerbose(on) {
+  await post("/api/soloist/verbose", {on});
+  $("soloist-msg").textContent = "Guardado. Pulsa «Detener» y luego «Iniciar Soloist» para que valga.";
+}
 async function ponVolumen(v) {
   const r = await post("/api/soloist/volumen", {v: +v});
   $("soloist-msg").textContent = r.ok ? "Volumen " + v + " puesto." : "Volumen guardado (" + v + "); se pondra al conectar Soloist.";

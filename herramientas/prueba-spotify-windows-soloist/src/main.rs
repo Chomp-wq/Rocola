@@ -124,6 +124,8 @@ struct SoloistEstado {
     exe: String,
     nombre_aparato: String,
     vol_rocola: u8,
+    verbose: bool,
+    formato: Vec<String>, // con --verbose: las ultimas lineas de Soloist que hablan del formato o la calidad
     corriendo: bool,
     arrancando: bool,
     esperando_pareo: bool,
@@ -496,6 +498,9 @@ struct ConfigSoloist {
     // queda en lo ultimo que puso el telefono (a veces 0), y la rocola no debe depender de eso.
     #[serde(default = "vol_defecto")]
     volumen: u8,
+    // --verbose de Soloist («Show all logs», no sale en su documentacion web): para ver si dice el formato que le llega.
+    #[serde(default)]
+    verbose: bool,
 }
 fn vol_defecto() -> u8 { 100 }
 
@@ -510,11 +515,12 @@ fn carga_config_soloist(app: &App) {
     s.exe = exe;
     s.nombre_aparato = if c.nombre_aparato.is_empty() { NOMBRE_APARATO_DEFECTO.to_string() } else { c.nombre_aparato };
     s.vol_rocola = if std::fs::metadata(app.ruta_config_soloist()).is_ok() { c.volumen.min(100) } else { 100 };
+    s.verbose = c.verbose;
 }
 fn guarda_config_soloist(app: &App, exe: &str, nombre: &str) {
     let exe = &normaliza_exe(exe);
-    let vol = app.soloist.lock().unwrap().vol_rocola;
-    let c = ConfigSoloist { exe: exe.to_string(), nombre_aparato: nombre.to_string(), volumen: vol };
+    let (vol, verbose) = { let s = app.soloist.lock().unwrap(); (s.vol_rocola, s.verbose) };
+    let c = ConfigSoloist { exe: exe.to_string(), nombre_aparato: nombre.to_string(), volumen: vol, verbose };
     let _ = std::fs::write(app.ruta_config_soloist(), serde_json::to_string_pretty(&c).unwrap_or_default());
     let mut s = app.soloist.lock().unwrap();
     s.exe = exe.to_string();
@@ -688,12 +694,28 @@ fn detener_soloist(app: &Arc<App>) {
     s.corriendo = false; s.conectado_ws = false; s.logged_in = false; s.is_active = false; s.pid_actual = None;
 }
 
-fn lector_lineas(mut r: impl std::io::Read + Send + 'static, app: Arc<App>, prefijo: &'static str) {
+// Palabras con las que Soloist podria decir que formato o calidad le llega (con --verbose).
+const PALABRAS_FORMATO: &[&str] = &["bitrate", "kbps", "flac", "vorbis", "ogg", "codec", "format", "quality", "lossless", "aac", "mp3", "sample rate", "44100", "file_id", "audio file"];
+fn lector_lineas(mut r: impl std::io::Read + Send + 'static, app: Arc<App>, prefijo: &'static str, verbose: bool) {
     std::thread::spawn(move || {
         let br = BufReader::new(&mut r);
         for linea in br.lines().map_while(Result::ok) {
             let t = limpia(&linea);
-            if !t.trim().is_empty() { app.diag(prefijo, Instant::now(), Ok(t)); }
+            if t.trim().is_empty() { continue; }
+            if !verbose { app.diag(prefijo, Instant::now(), Ok(t)); continue; }
+            // Con --verbose sale muchisimo: al diagnostico solo lo del formato y los avisos.
+            let m = t.to_lowercase();
+            if PALABRAS_FORMATO.iter().any(|p| m.contains(p)) {
+                {
+                    let mut s = app.soloist.lock().unwrap();
+                    s.formato.push(t.clone());
+                    let n = s.formato.len();
+                    if n > 12 { s.formato.drain(0..n - 12); }
+                }
+                app.diag("soloist (formato)", Instant::now(), Ok(t));
+            } else if ["error", "warn", "expire", "fail", "logged in", "became active", "playing", "paused"].iter().any(|p| m.contains(p)) {
+                app.diag(prefijo, Instant::now(), Ok(t));
+            }
         }
     });
 }
@@ -717,12 +739,13 @@ fn iniciar_soloist(app: &Arc<App>) -> Value {
     let _ = std::fs::remove_file(datos_dir.join("ws.addr"));
     let _ = std::fs::remove_file(datos_dir.join("ws.port"));
     let t0 = Instant::now();
-    let vol_ini = app.soloist.lock().unwrap().vol_rocola.to_string();
+    let (vol_ini, verbose) = { let s = app.soloist.lock().unwrap(); (s.vol_rocola.to_string(), s.verbose) };
     let hijo = Command::new(&exe)
         .args(["--device-name", &nombre, "--api-key", &llave, "--ws", "127.0.0.1:0", "--data-dir"])
         .arg(&datos_dir)
         .args(["--cache-dir"]).arg(&cache_dir)
         .args(["--initial-volume", &vol_ini])
+        .args(if verbose { &["--verbose"][..] } else { &[][..] })
         .args(["--cache-size", "1024"]) // sin tope crece sin limite; 1 GB alcanza para ~40 canciones en FLAC
         .stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn();
@@ -736,8 +759,8 @@ fn iniciar_soloist(app: &Arc<App>) -> Value {
         }
     };
     let pid = hijo.id();
-    if let Some(o) = hijo.stdout.take() { lector_lineas(o, app.clone(), "soloist"); }
-    if let Some(e) = hijo.stderr.take() { lector_lineas(e, app.clone(), "soloist"); }
+    if let Some(o) = hijo.stdout.take() { lector_lineas(o, app.clone(), "soloist", verbose); }
+    if let Some(e) = hijo.stderr.take() { lector_lineas(e, app.clone(), "soloist", verbose); }
     *app.soloist_child.lock().unwrap() = Some(hijo);
     {
         let mut s = app.soloist.lock().unwrap();
@@ -865,8 +888,8 @@ fn reemparejar(app: &Arc<App>) -> Value {
             Ok(h) => h,
             Err(e) => { a.soloist.lock().unwrap().esperando_pareo = false; a.diag("volver a emparejar", t0, Err(e.to_string())); return; }
         };
-        if let Some(o) = hijo.stdout.take() { lector_lineas(o, a.clone(), "soloist (--pair)"); }
-        if let Some(e) = hijo.stderr.take() { lector_lineas(e, a.clone(), "soloist (--pair)"); }
+        if let Some(o) = hijo.stdout.take() { lector_lineas(o, a.clone(), "soloist (--pair)", false); }
+        if let Some(e) = hijo.stderr.take() { lector_lineas(e, a.clone(), "soloist (--pair)", false); }
         let salida = loop {
             match hijo.try_wait() {
                 Ok(Some(s)) => break Some(s),
@@ -963,7 +986,7 @@ fn estado_json(app: &Arc<App>) -> Value {
         "soloist": {
             "exe": s.exe, "nombre_aparato": s.nombre_aparato, "tiene_llave": tiene_llave_soloist(app),
             "corriendo": s.corriendo, "arrancando": s.arrancando, "esperando_pareo": s.esperando_pareo,
-            "conectado_ws": s.conectado_ws, "logged_in": s.logged_in, "is_active": s.is_active, "volumen": s.volumen, "vol_rocola": s.vol_rocola,
+            "conectado_ws": s.conectado_ws, "logged_in": s.logged_in, "is_active": s.is_active, "volumen": s.volumen, "vol_rocola": s.vol_rocola, "verbose": s.verbose, "formato": s.formato,
             "ultimo_error": s.ultimo_error,
             "son": {"uri": s.son.uri, "nombre": s.son.nombre, "artista": s.son.artista, "img": s.son.img,
                      "dur_ms": s.son.dur_ms, "estado": s.son.estado, "aviso": s.son.aviso, "pos_ms": pos.max(0.0) as u64},
@@ -999,6 +1022,7 @@ fn informe_texto(app: &Arc<App>) -> String {
         e["web"]["conectado"], e["soloist"]["corriendo"], e["soloist"]["conectado_ws"], e["soloist"]["logged_in"]));
     if !e["web"]["me"].is_null() { t.push_str(&format!("/v1/me: HTTP {}, pais {}, producto {}\r\n", e["web"]["me"]["estado"], e["web"]["me"]["pais"], e["web"]["me"]["producto"])); }
     t.push_str(&format!("Calidad medida en la cache de Soloist: {}\r\n", resumen_calidades(app)));
+    for l in app.soloist.lock().unwrap().formato.iter() { t.push_str(&format!("Soloist (formato): {l}\r\n")); }
     t.push_str(&format!("Ruta de soloist.exe: {}\r\nUltimo error de Soloist: {}\r\nUltimo error de tu cuenta: {}\r\n\r\nDIAGNOSTICO (hora, cuanto tardo, resultado):\r\n",
         e["soloist"]["exe"].as_str().unwrap_or(""), limpia(e["soloist"]["ultimo_error"].as_str().unwrap_or("")), limpia(e["web"]["error"].as_str().unwrap_or(""))));
     for d in app.diag.lock().unwrap().iter() {
@@ -1069,6 +1093,12 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
             if envia_comando(app, json!({"type": "command", "command": "set_volume", "volume": vol})) { json!({"ok": true}) } else { json!({"ok": false, "error": "Soloist no esta conectado."}) }
         }
         (true, "/api/soloist/vaciar_cache") => vaciar_cache_soloist(app),
+        (true, "/api/soloist/verbose") => {
+            let on = v["on"].as_bool().unwrap_or(false);
+            let (exe, nombre) = { let mut s = app.soloist.lock().unwrap(); s.verbose = on; (s.exe.clone(), s.nombre_aparato.clone()) };
+            guarda_config_soloist(app, &exe, &nombre);
+            json!({"ok": true})
+        }
         (true, "/api/tocar") => tocar(app, &v).await,
         (true, "/api/parar") => parar(app),
         (true, "/api/guardar_informe") => {
