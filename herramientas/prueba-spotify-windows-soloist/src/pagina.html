@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo de la Rocola con Spotify (Soloist)</title>
+<style>
+:root{--fondo:#0b0d14;--panel:#151926;--panel2:#1d2233;--texto:#f1f3fa;--suave:#9aa3bd;--oro:#ffc233;--verde:#35d07f;--rojo:#ff5d5d;--azul:#4da3ff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--fondo);color:var(--texto);font-family:"Segoe UI",Arial,sans-serif;font-size:18px}
+body{display:flex;flex-direction:column;overflow:hidden}
+button{white-space:nowrap;font:inherit;color:var(--texto);background:var(--panel2);border:2px solid #343c57;border-radius:10px;padding:8px 16px;cursor:pointer}
+button:hover{border-color:var(--azul)}
+button.oro{background:var(--oro);color:#222;border-color:var(--oro);font-weight:700}
+button.peligro{border-color:var(--rojo);color:#ffb0b0}
+input[type=text],input[type=password]{font:inherit;font-size:18px;width:100%;padding:8px 12px;border-radius:10px;border:2px solid #343c57;background:#0f1320;color:var(--texto)}
+input[type=text]:focus,input[type=password]:focus{outline:none;border-color:var(--oro)}
+#tab-rocola input[type=text]{font-size:26px;padding:10px 16px;border-radius:12px}
+header{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--panel);border-bottom:2px solid #262d45;flex:none}
+header h1{font-size:19px;margin:0;flex:1;white-space:nowrap}
+.pestana{background:transparent;border-color:transparent;font-size:18px;padding:6px 10px}
+header button{font-size:16px;padding:6px 10px}
+.pestana.act{background:var(--panel2);border-color:var(--oro)}
+#creditos{font-size:28px;font-weight:800;color:var(--oro);min-width:96px;text-align:center;background:#000;border:2px solid #5b4a15;border-radius:10px;padding:0 12px;font-variant-numeric:tabular-nums}
+#creditos small{font-size:14px;font-weight:400;color:var(--suave);display:block;line-height:1;margin-top:2px}
+#creditos.golpe{animation:golpe .5s}
+@keyframes golpe{0%{transform:scale(1.25);background:#3a2f08}100%{transform:scale(1)}}
+#tab-rocola{flex:1;display:flex;flex-direction:column;min-height:0}
+#tab-pruebas{flex:1;overflow:auto;padding:16px 24px;display:none}
+#letras{display:flex;gap:3px;justify-content:center;padding:6px 8px;flex:none;flex-wrap:wrap}
+#letras span{min-width:30px;text-align:center;padding:2px 6px;border-radius:6px;color:#4b5370;font-weight:700;cursor:default}
+#letras span.tiene{color:var(--suave);cursor:pointer}
+#letras span.act{background:var(--oro);color:#222}
+#cab{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:2px 20px;flex:none;min-height:34px}
+#cab .tit{font-size:22px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cab .pag{color:var(--oro);font-size:20px;white-space:nowrap;font-weight:700}
+#escenario{flex:1;min-height:0;position:relative;overflow:hidden;padding:4px 16px}
+.pared{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:0 auto;width:min(100%,calc((100vh - 400px) * 2));}
+.celda{aspect-ratio:1/1;border-radius:8px;overflow:hidden;background:var(--panel);position:relative;cursor:pointer;border:3px solid transparent;transition:transform .12s}
+.celda img{width:100%;height:100%;object-fit:cover;display:block}
+.celda .sinfoto{display:flex;align-items:center;justify-content:center;height:100%;font-size:14px;padding:6px;text-align:center;color:var(--suave)}
+.celda.sel{border-color:var(--oro);transform:scale(1.07);z-index:2;box-shadow:0 0 22px 4px rgba(255,194,51,.55)}
+.celda.vacia{background:transparent;cursor:default}
+.celda .marca{position:absolute;right:4px;top:4px;background:#1db954;color:#000;font-size:12px;font-weight:800;border-radius:4px;padding:0 5px}
+.disco{display:flex;gap:28px;height:100%;padding:6px 20px}
+.disco .izq{flex:none;width:min(36%,calc(100vh - 420px));min-width:200px}
+.disco .izq img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;display:block;box-shadow:0 6px 28px #000}
+.disco .izq h2{margin:12px 0 2px;font-size:26px}
+.disco .izq div{color:var(--suave);font-size:20px}
+.pistas{flex:1;overflow:auto;border-radius:10px;background:var(--panel);padding:6px}
+.pista{display:flex;gap:12px;align-items:center;padding:6px 12px;border-radius:8px;font-size:21px;cursor:pointer;border:2px solid transparent}
+.pista .n{width:34px;color:var(--suave);text-align:right;flex:none}
+.pista .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pista .a{color:var(--suave);font-size:17px;max-width:30%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pista .d{color:var(--suave);width:56px;text-align:right;flex:none}
+.pista.sel{background:#2a2410;border-color:var(--oro)}
+.busca{height:100%;display:flex;flex-direction:column;gap:8px;padding:4px 16px}
+.busca .res{flex:1;overflow:auto}
+.busca h3{margin:10px 0 6px;color:var(--oro);font-size:19px;grid-column:1/-1}
+.tarjetas{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.tarj{background:var(--panel);border-radius:10px;overflow:hidden;cursor:pointer;border:3px solid transparent;display:flex;flex-direction:column}
+.tarj img,.tarj .sinfoto{width:100%;aspect-ratio:1/1;object-fit:cover;background:#222}
+.tarj.artista img{border-radius:50%;width:70%;margin:8px auto 0}
+.tarj .tx{padding:6px 8px;font-size:16px;line-height:1.2}
+.tarj .tx b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:17px}
+.tarj .tx span{color:var(--suave);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;font-size:14px}
+.tarj.sel{border-color:var(--oro);box-shadow:0 0 16px 2px rgba(255,194,51,.5)}
+#aviso{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);max-width:90%;padding:12px 24px;border-radius:12px;font-size:22px;font-weight:600;display:none;z-index:10;box-shadow:0 4px 20px #000;text-align:center}
+#aviso.bien{background:#103a25;border:2px solid var(--verde)}
+#aviso.mal{background:#43161a;border:2px solid var(--rojo)}
+#aviso.info{background:#16283f;border:2px solid var(--azul)}
+#falta{display:none;margin:30px auto;max-width:760px;text-align:center;font-size:26px;padding:24px;background:var(--panel);border:2px solid var(--rojo);border-radius:14px}
+#pie{flex:none;background:var(--panel);border-top:2px solid #262d45;padding:8px 16px 4px}
+#pie .fila{display:flex;gap:18px;align-items:stretch}
+#son{flex:1;display:flex;gap:14px;min-width:0}
+#son img,#son .nofoto{width:96px;height:96px;border-radius:8px;object-fit:cover;background:#222;flex:none}
+#son .dat{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px}
+#son .nom{font-size:24px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#son .art{color:var(--suave);font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.barra{height:12px;background:#262d45;border-radius:6px;overflow:hidden;margin-top:4px}
+.barra i{display:block;height:100%;width:0;background:var(--oro)}
+#tiempos{display:flex;justify-content:space-between;color:var(--suave);font-size:15px}
+#cola{width:32%;flex:none;overflow:hidden}
+#cola h4{margin:0 0 4px;color:var(--oro);font-size:16px}
+#cola .it{display:flex;gap:8px;align-items:center;font-size:16px;margin-bottom:3px;white-space:nowrap;overflow:hidden}
+#cola .it img{width:30px;height:30px;border-radius:4px;flex:none}
+#ayuda{color:var(--suave);font-size:15px;text-align:center;padding:4px 0 2px;border-top:1px solid #262d45;margin-top:4px}
+#ayuda b{color:var(--oro)}
+.tarjeta{background:var(--panel);border-radius:14px;padding:16px 22px;margin-bottom:18px;max-width:1100px}
+.tarjeta h2{margin:0 0 10px;font-size:24px;color:var(--oro)}
+.kv{display:grid;grid-template-columns:270px 1fr;gap:6px 14px;font-size:19px}
+.kv div:nth-child(odd){color:var(--suave)}
+.bien{color:var(--verde)} .mal{color:var(--rojo)}
+.botones{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;align-items:center}
+.campo{margin:10px 0;max-width:620px}
+.campo label{display:block;color:var(--suave);font-size:15px;margin-bottom:4px}
+table{border-collapse:collapse;width:100%;font-size:16px}
+td,th{padding:4px 8px;text-align:left;border-bottom:1px solid #262d45;vertical-align:top}
+p.nota{color:var(--suave);margin:6px 0}
+@media (max-width:900px){.tarjetas{grid-template-columns:repeat(3,1fr)}#cola{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#9835; Rocola + Spotify (Soloist)</h1>
+  <button class="pestana act" id="p-rocola" onclick="pestana('rocola')">Rocola</button>
+  <button class="pestana" id="p-pruebas" onclick="pestana('pruebas')">Pruebas</button>
+  <button onclick="regresar()" title="Esc o Retroceso">&#8592; Regresar</button>
+  <button onclick="abreBuscador()" title="Tecla B">Buscar (B)</button>
+  <button class="oro" onclick="moneda()" title="Tecla 5">Moneda (5)</button>
+  <div id="creditos">0<small>CREDITOS</small></div>
+</header>
+
+<section id="tab-rocola">
+  <div id="letras"></div>
+  <div id="cab"><div class="tit" id="cab-tit"></div><div class="pag" id="cab-pag"></div></div>
+  <div id="escenario">
+    <div id="falta"></div>
+    <div id="vista"></div>
+    <div id="aviso"></div>
+  </div>
+  <div id="pie">
+    <div class="fila">
+      <div id="son"><div class="nofoto"></div><div class="dat"><div class="nom">Nada suena</div><div class="art">Inserta una moneda (5) y pide una cancion.</div></div></div>
+      <div id="cola"></div>
+    </div>
+    <div id="ayuda"><b>&#8592;&#8593;&#8595;&#8594;</b> mover &nbsp; <b>Enter</b> PONER &nbsp; <b>Esc / Retroceso</b> REGRESAR &nbsp; <b>RePag / AvPag</b> pagina &nbsp; <b>Shift+&#8592;/&#8594;</b> letra &nbsp; <b>5</b> moneda &nbsp; <b>B</b> buscador</div>
+  </div>
+</section>
+
+<section id="tab-pruebas">
+  <div class="tarjeta">
+    <h2>Soloist (lo que toca la musica)</h2>
+    <p class="nota">Soloist es el reproductor oficial de Spotify (Spotify Connect, sin pantalla). Esta herramienta NO lo
+      reparte: descargalo tu mismo de <b>developer.spotify.com/documentation/soloist</b> (build de Windows x86_64,
+      descomprime el zip) y genera tu llave en <b>developer.spotify.com/dashboard/soloist</b> (necesita Premium). La
+      llave se guarda en texto plano en la carpeta <code>datos_spotify_soloist</code>: borrala si prestas esta PC.</p>
+    <div class="kv" id="estado-soloist"></div>
+    <div class="campo"><label>Ruta a soloist.exe</label><input type="text" id="s-exe" placeholder="C:\ruta\a\soloist.exe"></div>
+    <div class="campo"><label>Nombre del aparato (el que eliges desde el telefono)</label><input type="text" id="s-nombre" placeholder="Rocola (prueba Soloist)"></div>
+    <div class="campo"><label>Llave de la API de Soloist (se guarda en esta carpeta; nunca se vuelve a mostrar)</label><input type="password" id="s-llave" placeholder="pegala aqui"></div>
+    <div class="botones">
+      <button class="oro" onclick="guardarSoloistConfig()">Guardar ajustes</button>
+      <button onclick="detectarSoloist()">Detectar automaticamente</button>
+      <button class="oro" onclick="iniciarSoloist()">Iniciar Soloist</button>
+      <button onclick="detenerSoloist()">Detener</button>
+      <button onclick="reemparejar()">Volver a emparejar (elegir cuenta)</button>
+      <button class="peligro" onclick="olvidarSoloist()">Olvidar este aparato</button>
+    </div>
+    <p class="nota" id="soloist-msg"></p>
+    <p class="nota">Una vez arrancado, abre Spotify en tu telefono o tu escritorio (misma red), toca el icono de
+      aparatos y elige el nombre de arriba. Eso empareja tu cuenta; esta pagina no pide tu contraseña de Spotify.</p>
+  </div>
+  <div class="tarjeta">
+    <h2>Tu cuenta (para buscar y ver tu biblioteca)</h2>
+    <p class="nota">Esto es solo para que el buscador y la pared puedan leer tus discos, listas y canciones de
+      Spotify. Es una entrada aparte de la de Soloist: se abre el navegador, inicias sesion y aceptas los permisos.</p>
+    <div class="kv" id="estado-web"></div>
+    <div class="botones">
+      <button class="oro" onclick="entrarOauth()">Entrar con el navegador</button>
+      <button class="peligro" onclick="olvidarWeb()">Olvidar esta cuenta</button>
+    </div>
+    <p class="nota" id="entrar-msg"></p>
+  </div>
+  <div class="tarjeta">
+    <h2>Diagnostico</h2>
+    <p class="nota">Cada cosa que se intenta, con su hora, cuanto tardo y si salio bien o mal. El informe NI la pagina
+      muestran llaves ni tokens.</p>
+    <div class="botones">
+      <button class="oro" onclick="guardarInforme()">Guardar informe</button>
+      <button onclick="cargaDiag(true)">Actualizar</button>
+      <button class="peligro" onclick="cerrar()">Cerrar la herramienta</button>
+    </div>
+    <p class="nota" id="informe-msg"></p>
+    <table><thead><tr><th>Hora</th><th>Cosa</th><th>ms</th><th></th><th>Detalle</th></tr></thead><tbody id="diag"></tbody></table>
+  </div>
+</section>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const COLS = 6, FILAS = 3, POR_PAG = COLS * FILAS;
+const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").concat(["#", "SPOTIFY"]);
+
+async function get(ruta) {
+  try { const r = await fetch(ruta, {headers: {"X-Prueba": "1"}}); return await r.json(); }
+  catch (e) { return {ok: false, error: "La herramienta no contesta (se cerro?)"}; }
+}
+async function post(ruta, cuerpo) {
+  try { const r = await fetch(ruta, {method: "POST", headers: {"X-Prueba": "1", "Content-Type": "application/json"}, body: JSON.stringify(cuerpo || {})}); return await r.json(); }
+  catch (e) { return {ok: false, error: "La herramienta no contesta (se cerro?)"}; }
+}
+// La API de Spotify (con memoria en la herramienta); si contesta 429 espera lo que diga y avisa.
+async function sp(ruta) {
+  for (let i = 0; i < 4; i++) {
+    const r = await get("/api/spotify?ruta=" + encodeURIComponent(ruta));
+    if (r.estado === 429) {
+      const s = r.espera_s || 5;
+      aviso("Spotify pide esperar " + s + " segundos (demasiadas peticiones). Se reintenta solo.", "mal", (s + 1) * 1000);
+      await sleep((s + 1) * 1000);
+      continue;
+    }
+    return r;
+  }
+  return {ok: false, error: "Spotify sigue pidiendo esperar."};
+}
+
+// ---------- utilidades ----------
+function mmss(ms) { const s = Math.max(0, Math.round(ms / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+function sinAcentos(t) { return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+function letraDe(t) { const c = sinAcentos(t).trim().replace(/^[^A-Za-z0-9]+/, "").charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : "#"; }
+// La portada mas chica que sirva para una casilla (160 puntos o mas); si no hay, la mas grande.
+function imgChica(ims) {
+  if (!ims || !ims.length) return "";
+  let mej = null;
+  for (const i of ims) if ((i.width || 0) >= 160 && (!mej || i.width < mej.width)) mej = i;
+  return (mej || ims[0]).url;
+}
+const imgGrande = ims => (ims && ims.length ? ims[0].url : "");
+const nombres = a => (a || []).map(x => x.name).join(", ");
+
+let toastT = 0;
+function aviso(t, tipo, ms) {
+  const a = $("aviso"); a.textContent = t; a.className = tipo || "info"; a.style.display = "block";
+  clearTimeout(toastT); toastT = setTimeout(() => { a.style.display = "none"; }, ms || 4500);
+}
+
+// ---------- estado general ----------
+// E = la ultima /api/estado: E.web (tu cuenta, para buscar) y E.soloist (lo que toca).
+let E = {web: {}, soloist: {son: {}}}, tRec = 0;
+let creditos = 0, cola = [], actual = null, arrancando = false, precargado = "";
+let biblio = null;   // las cosas de la pared principal
+let cargandoBiblio = false;
+let pila = [];        // las vistas, la de arriba es la que se ve
+let pestanaAct = "rocola";
+
+function pestana(p) {
+  pestanaAct = p;
+  $("tab-rocola").style.display = p === "rocola" ? "flex" : "none";
+  $("tab-pruebas").style.display = p === "pruebas" ? "block" : "none";
+  $("p-rocola").classList.toggle("act", p === "rocola");
+  $("p-pruebas").classList.toggle("act", p === "pruebas");
+  if (p === "pruebas") { pintaEstado(); cargaDiag(true); }
+  else render();
+}
+
+// ---------- creditos ----------
+function pintaCreditos() { $("creditos").firstChild.nodeValue = creditos; }
+function moneda() {
+  creditos++; pintaCreditos();
+  const c = $("creditos"); c.classList.remove("golpe"); void c.offsetWidth; c.classList.add("golpe");
+}
+
+// ---------- pedir canciones ----------
+function pedir(t) {
+  if (!E.soloist || !E.soloist.logged_in) { aviso("Falta emparejar Soloist con una cuenta (pestana Pruebas, seccion Soloist).", "mal"); return; }
+  if (creditos < 1) { aviso("Inserta una moneda (tecla 5)", "mal"); return; }
+  if (cola.length >= 30) { aviso("La cola esta llena.", "mal"); return; }
+  creditos--; pintaCreditos();
+  cola.push(t);
+  aviso("Pedida: " + t.nombre + " (" + t.artista + ")", "bien", 2500);
+  pintaPie();
+  if (!actual && !arrancando) siguiente();
+}
+async function siguiente() {
+  if (arrancando) return;
+  arrancando = true;
+  try {
+    while (cola.length) {
+      const t = cola.shift();
+      actual = {uri: t.uri, id: t.id, nombre: t.nombre, artista: t.artista, img: t.img, dur: t.dur, iniciada: false};
+      pintaPie();
+      const r = await post("/api/tocar", {uri: t.uri, nombre: t.nombre, artista: t.artista, img: t.img, dur_ms: t.dur});
+      if (r.ok) { if (cola[0]) post("/api/precarga", {uri: cola[0].uri}); break; }
+      creditos++; pintaCreditos();
+      aviso("No se pudo tocar «" + t.nombre + "»: " + (r.error || "error") + " Se devolvio tu credito.", "mal", 7000);
+      actual = null;
+    }
+  } finally { arrancando = false; pintaPie(); }
+}
+
+// El reloj de la rocola: mira como va Soloist y pasa a la siguiente cuando acaba.
+async function vigila() {
+  const e = await get("/api/estado");
+  if (e && e.soloist) { E = e; tRec = Date.now(); }
+  if (pestanaAct === "pruebas") pintaEstado();
+  pintaFalta();
+  if (E.web && E.web.conectado && !biblio && !cargandoBiblio) cargaBiblio();
+  if (actual && !arrancando) {
+    const s = (E.soloist && E.soloist.son) || {};
+    if (s.uri === actual.uri) {
+      if (s.estado === "sonando" || s.estado === "pausa") actual.iniciada = true;
+      if (s.estado === "detenida" && actual.iniciada) { actual = null; await siguiente(); }
+      else if (s.estado === "error") {
+        creditos++; pintaCreditos();
+        aviso("No se pudo tocar «" + actual.nombre + "»: " + (s.aviso || "error") + " Se devolvio tu credito.", "mal", 7000);
+        actual = null; await siguiente();
+      }
+    }
+  }
+  pintaPie();
+}
+function posActual() { const s = (E.soloist && E.soloist.son) || {}; return s.pos_ms || 0; }
+function pintaPie() {
+  const son = $("son");
+  if (actual) {
+    const s = (E.soloist && E.soloist.son) || {}, dur = (s.uri === actual.uri && s.dur_ms) || actual.dur || 0;
+    const est = s.uri === actual.uri ? s.estado : "cargando";
+    const txt = est === "cargando" ? "Cargando..." : est === "pausa" ? "En pausa" : actual.artista;
+    son.innerHTML = (actual.img ? '<img src="' + esc(actual.img) + '">' : '<div class="nofoto"></div>') +
+      '<div class="dat"><div class="nom">' + esc(actual.nombre) + '</div><div class="art">' + esc(txt) + '</div>' +
+      '<div class="barra"><i id="barra-i"></i></div><div id="tiempos"><span id="t-pos">0:00</span><span>' + (dur ? mmss(dur) : "") + '</span></div></div>';
+    pintaAvance();
+  } else {
+    son.innerHTML = '<div class="nofoto"></div><div class="dat"><div class="nom">Nada suena</div><div class="art">Inserta una moneda (5) y pide una cancion.</div></div>';
+  }
+  $("cola").innerHTML = '<h4>SIGUIENTES (' + cola.length + ')</h4>' + cola.slice(0, 4).map(t =>
+    '<div class="it">' + (t.img ? '<img src="' + esc(t.img) + '">' : '') + '<span>' + esc(t.nombre) + ' &middot; ' + esc(t.artista) + '</span></div>').join("") +
+    (cola.length > 4 ? '<div class="it">y ' + (cola.length - 4) + ' mas...</div>' : "");
+}
+function pintaAvance() {
+  const i = $("barra-i"); if (!i || !actual) return;
+  const s = (E.soloist && E.soloist.son) || {}, dur = (s.uri === actual.uri && s.dur_ms) || actual.dur || 0, pos = s.uri === actual.uri ? posActual() : 0;
+  i.style.width = dur ? Math.min(100, pos * 100 / dur) + "%" : "0";
+  const t = $("t-pos"); if (t) t.textContent = mmss(pos);
+}
+setInterval(pintaAvance, 250);
+
+// ---------- cargar la biblioteca (la pared) ----------
+function itemAlbum(a) { return {tipo: "album", id: a.id, nombre: a.name, artista: (a.artists && a.artists[0] && a.artists[0].name) || "", img: imgChica(a.images), grande: imgGrande(a.images)}; }
+function itemLista(p) { return {tipo: "lista", id: p.id, nombre: p.name, artista: (p.owner && p.owner.display_name) || "Spotify", img: imgChica(p.images), grande: imgGrande(p.images), letra: "SPOTIFY"}; }
+function ordena(items) {
+  for (const i of items) if (!i.letra) i.letra = letraDe(i.artista || i.nombre);
+  const ix = l => LETRAS.indexOf(l);
+  items.sort((a, b) => ix(a.letra) - ix(b.letra) || sinAcentos(a.artista + " " + a.nombre).toLowerCase().localeCompare(sinAcentos(b.artista + " " + b.nombre).toLowerCase()));
+  return items;
+}
+async function cargaBiblio() {
+  cargandoBiblio = true;
+  $("vista").innerHTML = '<div style="text-align:center;font-size:28px;margin-top:60px">Cargando tus discos de Spotify...</div>';
+  const items = [], vistos = new Set(); let problema = "";
+  const mete = i => { if (i.id && !vistos.has(i.tipo + i.id)) { vistos.add(i.tipo + i.id); items.push(i); } };
+  for (let o = 0; o < 500; o += 50) {
+    const r = await sp("/v1/me/albums?limit=50&offset=" + o);
+    if (!r.ok) { problema = r.error || "no se pudieron leer tus discos"; break; }
+    const its = r.datos.items || [];
+    its.forEach(x => x.album && mete(itemAlbum(x.album)));
+    if (its.length < 50 || o + 50 >= (r.datos.total || 0)) break;
+  }
+  for (let o = 0; o < 100; o += 50) {
+    const r = await sp("/v1/me/playlists?limit=50&offset=" + o);
+    if (!r.ok) { problema = problema || r.error || "no se pudieron leer tus listas"; break; }
+    const its = r.datos.items || [];
+    its.forEach(x => x && x.id && mete(itemLista(x)));
+    if (its.length < 50 || o + 50 >= (r.datos.total || 0)) break;
+  }
+  let nota = "";
+  if (!items.length) {
+    for (const q of ["cumbia", "rock en espanol", "banda"]) {
+      const r = await sp("/v1/search?q=" + encodeURIComponent(q) + "&type=album&limit=10");
+      if (r.ok) ((r.datos.albums || {}).items || []).forEach(a => a && mete(itemAlbum(a)));
+    }
+    nota = "Tu cuenta no tiene discos ni listas guardados" + (problema ? " (" + problema + ")" : "") + ": se muestran discos de ejemplo (cumbia, rock en espanol, banda).";
+  }
+  biblio = ordena(items); cargandoBiblio = false;
+  if (!pila.length) pila = [{tipo: "pared", items: biblio, sel: 0, conLetras: true, titulo: ""}];
+  else pila[0].items = biblio;
+  render();
+  if (nota) aviso(nota, "info", 12000);
+  else if (problema) aviso("Aviso: " + problema, "mal", 8000);
+}
+
+// ---------- las vistas ----------
+const vista = () => pila[pila.length - 1];
+function pintaFalta() {
+  const f = $("falta");
+  if (E.web && E.web.conectado) { f.style.display = "none"; return; }
+  f.style.display = "block";
+  f.innerHTML = "Falta entrar con tu cuenta de Spotify para buscar y ver tu biblioteca.<br><span style='font-size:20px;color:var(--suave)'>Ve a la pestana <b>Pruebas</b>, seccion <b>Tu cuenta</b>, y entra con el navegador. (Para que SUENE algo, ademas hace falta emparejar Soloist en la seccion Soloist.)</span>";
+  if (!pila.length) { $("vista").innerHTML = ""; $("cab-tit").textContent = ""; $("cab-pag").textContent = ""; }
+}
+function render() {
+  if (pestanaAct !== "rocola") return;
+  const v = vista(); if (!v) { $("letras").innerHTML = ""; return; }
+  if (v.tipo === "pared") pintaPared(v);
+  else if (v.tipo === "disco") pintaDisco(v);
+  else if (v.tipo === "busca") pintaBusca(v);
+}
+
+// La pared: 18 portadas (6x3).
+function pintaPared(v) {
+  const n = v.items.length, pag = Math.floor(v.sel / POR_PAG), total = Math.max(1, Math.ceil(n / POR_PAG));
+  const it = v.items[v.sel];
+  if (v.conLetras) {
+    const tiene = new Set(v.items.map(i => i.letra)), act = it ? it.letra : "";
+    $("letras").style.display = "flex";
+    $("letras").innerHTML = LETRAS.map(l => '<span class="' + (tiene.has(l) ? "tiene " : "") + (l === act ? "act" : "") + '" data-l="' + l + '">' + l + '</span>').join("");
+    $("letras").querySelectorAll("span.tiene").forEach(s => s.onclick = () => { v.sel = v.items.findIndex(i => i.letra === s.dataset.l); render(); });
+    $("cab-tit").textContent = it ? (it.artista ? it.artista + " — " : "") + it.nombre : "";
+  } else {
+    $("letras").style.display = "none";
+    $("cab-tit").textContent = v.titulo + (it ? " — " + it.nombre : "");
+  }
+  $("cab-pag").textContent = n ? "Pagina " + (pag + 1) + " de " + total : "";
+  let h = '<div class="pared">';
+  for (let k = 0; k < POR_PAG; k++) {
+    const i = pag * POR_PAG + k, x = v.items[i];
+    if (!x) { h += '<div class="celda vacia"></div>'; continue; }
+    h += '<div class="celda' + (i === v.sel ? " sel" : "") + '" data-i="' + i + '" title="' + esc(x.nombre) + '">' +
+      (x.img ? '<img src="' + esc(x.img) + '" alt="">' : '<div class="sinfoto">' + esc(x.nombre) + '</div>') +
+      (x.tipo === "lista" ? '<span class="marca">LISTA</span>' : "") + '</div>';
+  }
+  h += "</div>";
+  if (!n) h = '<div style="text-align:center;font-size:26px;margin-top:60px">No hay discos para mostrar.</div>';
+  $("vista").innerHTML = h;
+  $("vista").querySelectorAll(".celda[data-i]").forEach(c => c.onclick = () => { v.sel = +c.dataset.i; abre(v.items[v.sel]); });
+}
+function teclaPared(e, v) {
+  const n = v.items.length; if (!n) return false;
+  const pag = Math.floor(v.sel / POR_PAG), irPag = p => { p = Math.max(0, Math.min(Math.ceil(n / POR_PAG) - 1, p)); v.sel = Math.min(n - 1, p * POR_PAG + (v.sel % POR_PAG)); };
+  const k = e.key;
+  if (e.shiftKey && v.conLetras && (k === "ArrowLeft" || k === "ArrowRight")) {
+    const ls = LETRAS.filter(l => v.items.some(i => i.letra === l)), cur = ls.indexOf(v.items[v.sel].letra);
+    const nx = ls[Math.max(0, Math.min(ls.length - 1, cur + (k === "ArrowRight" ? 1 : -1)))];
+    v.sel = v.items.findIndex(i => i.letra === nx);
+  }
+  else if (k === "ArrowLeft") v.sel = Math.max(0, v.sel - 1);
+  else if (k === "ArrowRight") v.sel = Math.min(n - 1, v.sel + 1);
+  else if (k === "ArrowUp") { if (Math.floor((v.sel % POR_PAG) / COLS) === 0) { if (pag > 0) v.sel = (pag - 1) * POR_PAG + COLS * (FILAS - 1) + (v.sel % COLS); } else v.sel -= COLS; }
+  else if (k === "ArrowDown") { if (Math.floor((v.sel % POR_PAG) / COLS) === FILAS - 1) { if ((pag + 1) * POR_PAG < n) v.sel = Math.min(n - 1, (pag + 1) * POR_PAG + (v.sel % COLS)); } else v.sel = Math.min(n - 1, v.sel + COLS); }
+  else if (k === "PageUp") irPag(pag - 1);
+  else if (k === "PageDown") irPag(pag + 1);
+  else if (k === "Enter") abre(v.items[v.sel]);
+  else return false;
+  return true;
+}
+
+// Abrir un disco o una lista: su portada grande y sus canciones.
+function abre(x) {
+  if (!x) return;
+  if (x.tipo === "artista") return abreArtista(x);
+  const v = {tipo: "disco", item: x, pistas: null, sel: 0, error: ""};
+  pila.push(v); render(); cargaPistas(v);
+}
+async function cargaPistas(v) {
+  const x = v.item, pistas = [];
+  for (let o = 0; o < 200; o += 50) {
+    const ruta = x.tipo === "lista" ? "/v1/playlists/" + x.id + "/tracks?limit=50&offset=" + o : "/v1/albums/" + x.id + "/tracks?limit=50&offset=" + o;
+    const r = await sp(ruta);
+    if (!r.ok) { v.error = r.error || "no se pudo leer el disco"; break; }
+    const its = r.datos.items || [];
+    for (const y of its) {
+      const t = x.tipo === "lista" ? (y && y.track) : y;
+      if (!t || !t.id || t.is_local || t.type === "episode") continue;
+      pistas.push({id: t.id, uri: t.uri || "spotify:track:" + t.id, nombre: t.name, artista: nombres(t.artists), dur: t.duration_ms || 0,
+        img: x.tipo === "lista" ? imgChica((t.album || {}).images) : x.img});
+    }
+    if (its.length < 50 || o + 50 >= (r.datos.total || 0)) break;
+  }
+  v.pistas = pistas;
+  if (vista() === v) render();
+}
+function pintaDisco(v) {
+  const x = v.item;
+  $("letras").style.display = "none";
+  $("cab-tit").textContent = x.nombre;
+  $("cab-pag").textContent = v.pistas ? v.pistas.length + " canciones" : "";
+  let lista;
+  if (!v.pistas) lista = '<div style="padding:30px;font-size:24px;color:var(--suave)">Cargando canciones...</div>';
+  else if (!v.pistas.length) lista = '<div style="padding:30px;font-size:22px;color:var(--rojo)">' + esc(v.error || "Este disco no trae canciones que se puedan tocar.") + '</div>';
+  else lista = v.pistas.map((t, i) => '<div class="pista' + (i === v.sel ? " sel" : "") + '" data-i="' + i + '"><span class="n">' + (i + 1) + '</span><span class="t">' + esc(t.nombre) + '</span><span class="a">' + (x.tipo === "lista" ? esc(t.artista) : "") + '</span><span class="d">' + mmss(t.dur) + '</span></div>').join("");
+  $("vista").innerHTML = '<div class="disco"><div class="izq">' + (x.grande ? '<img src="' + esc(x.grande) + '" alt="">' : '') +
+    '<h2>' + esc(x.nombre) + '</h2><div>' + esc(x.artista) + (x.tipo === "lista" ? " (lista)" : "") + '</div></div><div class="pistas" id="pistas">' + lista + '</div></div>';
+  $("vista").querySelectorAll(".pista").forEach(p => p.onclick = () => { v.sel = +p.dataset.i; pedir(v.pistas[v.sel]); render(); });
+  const s = $("vista").querySelector(".pista.sel"); if (s) s.scrollIntoView({block: "nearest"});
+}
+function teclaDisco(e, v) {
+  if (!v.pistas || !v.pistas.length) return false;
+  const n = v.pistas.length, k = e.key;
+  if (k === "ArrowUp" || k === "ArrowLeft") v.sel = Math.max(0, v.sel - 1);
+  else if (k === "ArrowDown" || k === "ArrowRight") v.sel = Math.min(n - 1, v.sel + 1);
+  else if (k === "PageUp") v.sel = Math.max(0, v.sel - 8);
+  else if (k === "PageDown") v.sel = Math.min(n - 1, v.sel + 8);
+  else if (k === "Enter") { pedir(v.pistas[v.sel]); }
+  else return false;
+  return true;
+}
+
+// El buscador, sobre la pared.
+function abreBuscador() {
+  if (pestanaAct !== "rocola") pestana("rocola");
+  if (!pila.length) pila = [{tipo: "pared", items: biblio || [], sel: 0, conLetras: true, titulo: ""}];
+  if (vista().tipo === "busca") { enfocaTexto(); return; }
+  pila.push({tipo: "busca", q: "", res: null, cards: [], sel: -1, foco: "texto", error: "", buscando: false});
+  render();
+}
+function enfocaTexto() { const i = $("q"); if (i) { i.focus(); i.select(); } }
+function pintaBusca(v) {
+  $("letras").style.display = "none";
+  $("cab-tit").textContent = "Buscar en Spotify";
+  $("cab-pag").textContent = v.cards.length ? v.cards.length + " resultados" : "";
+  let h = '<div class="busca"><input type="text" id="q" placeholder="Escribe una cancion, disco o artista y pulsa Enter" autocomplete="off" spellcheck="false"><div class="res" id="res">';
+  if (v.buscando) h += '<h3>Buscando...</h3>';
+  else if (v.error) h += '<h3 style="color:var(--rojo)">' + esc(v.error) + '</h3>';
+  else if (v.res && !v.cards.length) h += '<h3>No hubo resultados.</h3>';
+  else if (v.res) {
+    let ult = "", enGrid = false;
+    const sec = {cancion: "CANCIONES (pide con Enter)", disco: "DISCOS (abre con Enter)", artista: "ARTISTAS (abre su pared)"};
+    v.cards.forEach((c, i) => {
+      if (c.k !== ult) { if (enGrid) h += "</div>"; h += '<h3>' + sec[c.k] + '</h3><div class="tarjetas">'; enGrid = true; ult = c.k; }
+      h += '<div class="tarj ' + c.k + '" data-i="' + i + '">' + (c.img ? '<img src="' + esc(c.img) + '" alt="">' : '<div class="sinfoto"></div>') +
+        '<div class="tx"><b>' + esc(c.nombre) + '</b><span>' + esc(c.sub) + '</span></div></div>';
+    });
+    if (enGrid) h += "</div>";
+  } else h += '<h3>Escribe y pulsa Enter. Con la flecha abajo pasas a los resultados.</h3>';
+  h += '</div></div>';
+  $("vista").innerHTML = h;
+  const q = $("q"); q.value = v.q;
+  q.oninput = () => { v.q = q.value; };
+  q.onfocus = () => { v.foco = "texto"; marcaBusca(v); };
+  $("vista").querySelectorAll(".tarj").forEach(c => c.onclick = () => { v.sel = +c.dataset.i; v.foco = "lista"; activaCard(v); });
+  marcaBusca(v);
+  if (v.foco === "texto") q.focus(); else q.blur();
+}
+function marcaBusca(v) {
+  $("vista").querySelectorAll(".tarj").forEach(c => c.classList.toggle("sel", v.foco === "lista" && +c.dataset.i === v.sel));
+  const s = $("vista").querySelector(".tarj.sel"); if (s) s.scrollIntoView({block: "nearest"});
+}
+async function hazBusqueda(v) {
+  const q = v.q.trim(); if (!q) return;
+  v.buscando = true; v.error = ""; render();
+  const r = await sp("/v1/search?q=" + encodeURIComponent(q) + "&type=track,album,artist&limit=10");
+  v.buscando = false;
+  if (!r.ok) { v.error = r.error || "La busqueda fallo."; v.res = null; v.cards = []; render(); return; }
+  const d = r.datos, cards = [];
+  ((d.tracks || {}).items || []).forEach(t => t && cards.push({k: "cancion", nombre: t.name, sub: nombres(t.artists) + " · " + mmss(t.duration_ms), img: imgChica((t.album || {}).images),
+    t: {id: t.id, uri: t.uri, nombre: t.name, artista: nombres(t.artists), dur: t.duration_ms || 0, img: imgChica((t.album || {}).images)}}));
+  ((d.albums || {}).items || []).forEach(a => a && cards.push({k: "disco", nombre: a.name, sub: nombres(a.artists), img: imgChica(a.images), it: itemAlbum(a)}));
+  ((d.artists || {}).items || []).forEach(a => a && cards.push({k: "artista", nombre: a.name, sub: a.followers ? a.followers.total.toLocaleString("es") + " seguidores" : "artista", img: imgChica(a.images), it: {tipo: "artista", id: a.id, nombre: a.name}}));
+  v.res = d; v.cards = cards; v.sel = cards.length ? 0 : -1; v.foco = cards.length ? "lista" : "texto";
+  render();
+}
+function activaCard(v) {
+  const c = v.cards[v.sel]; if (!c) return;
+  if (c.k === "cancion") { pedir(c.t); marcaBusca(v); }
+  else if (c.k === "disco") abre(c.it);
+  else abreArtista(c.it);
+}
+async function abreArtista(a) {
+  const v = {tipo: "pared", items: [], sel: 0, conLetras: false, titulo: a.nombre, cargando: true};
+  pila.push(v); render();
+  $("vista").innerHTML = '<div style="text-align:center;font-size:28px;margin-top:60px">Cargando los discos de ' + esc(a.nombre) + '...</div>';
+  const items = [], vistos = new Set(); let err = "";
+  for (let o = 0; o < 30; o += 10) {
+    const r = await sp("/v1/artists/" + a.id + "/albums?include_groups=album,single&limit=10&offset=" + o);
+    if (!r.ok) { err = r.error || "no se pudieron leer sus discos"; break; }
+    const its = r.datos.items || [];
+    its.forEach(x => { if (x && x.id && !vistos.has(x.id)) { vistos.add(x.id); items.push(itemAlbum(x)); } });
+    if (its.length < 10 || o + 10 >= (r.datos.total || 0)) break;
+  }
+  v.items = items; v.cargando = false;
+  if (vista() === v) { render(); if (err) aviso(err, "mal", 7000); if (!items.length && !err) aviso("Spotify no dio discos de este artista.", "info"); }
+}
+function teclaBusca(e, v) {
+  const k = e.key;
+  if (v.foco === "texto") {
+    if (k === "Enter") { hazBusqueda(v); return true; }
+    if (k === "ArrowDown" && v.cards.length) { v.foco = "lista"; if (v.sel < 0) v.sel = 0; $("q").blur(); marcaBusca(v); return true; }
+    return false; // lo demas se escribe
+  }
+  const n = v.cards.length;
+  if (k === "ArrowLeft") v.sel = Math.max(0, v.sel - 1);
+  else if (k === "ArrowRight") v.sel = Math.min(n - 1, v.sel + 1);
+  else if (k === "ArrowDown") v.sel = Math.min(n - 1, v.sel + 5);
+  else if (k === "ArrowUp") { if (v.sel < 5) { v.foco = "texto"; enfocaTexto(); marcaBusca(v); return true; } v.sel -= 5; }
+  else if (k === "Enter") { activaCard(v); return true; }
+  else return false;
+  marcaBusca(v); return true;
+}
+
+function regresar() {
+  if (pila.length > 1) { pila.pop(); render(); }
+}
+
+document.addEventListener("keydown", e => {
+  if (pestanaAct !== "rocola" || e.ctrlKey || e.altKey || e.metaKey) return;
+  const v = vista(), enTexto = e.target && e.target.tagName === "INPUT";
+  if (e.key === "Escape" || (e.key === "Backspace" && !enTexto)) { e.preventDefault(); regresar(); return; }
+  if (!enTexto) {
+    if (e.key === "5") { e.preventDefault(); moneda(); return; }
+    if (e.key === "b" || e.key === "B") { e.preventDefault(); abreBuscador(); return; }
+  }
+  if (!v) return;
+  let usada = false;
+  if (v.tipo === "pared" && !v.cargando) usada = teclaPared(e, v);
+  else if (v.tipo === "disco") usada = teclaDisco(e, v);
+  else if (v.tipo === "busca") usada = teclaBusca(e, v);
+  if (usada) { e.preventDefault(); if (v.tipo !== "busca") render(); }
+});
+
+// ---------- la pestana Pruebas ----------
+const sino = (b, si, no) => b ? '<span class="bien">' + si + '</span>' : '<span class="mal">' + no + '</span>';
+function pintaEstado() {
+  const w = E.web || {}, s = E.soloist || {}, me = w.me;
+  $("estado-web").innerHTML = [
+    ["Entrada guardada en el navegador", w.conectado ? sino(true, "SI" + (w.usuario ? " (" + esc(w.usuario) + ")" : "")) : sino(false, "", "NO: falta entrar")],
+    ["/v1/me", me ? "HTTP " + me.estado + ", pais " + esc(me.pais) + ", producto " + (me.producto === "premium" ? sino(true, "premium") : sino(false, "", esc(me.producto || "?") + " (se necesita premium para Soloist)")) : "(sin probar)"],
+    ["Ultimo error", w.error ? '<span class="mal">' + esc(w.error) + '</span>' : "ninguno"],
+  ].map(f => "<div>" + f[0] + "</div><div>" + f[1] + "</div>").join("");
+  $("entrar-msg").textContent = w.oauth_activo ? "Esperando al navegador..." : "";
+
+  $("estado-soloist").innerHTML = [
+    ["Proceso de Soloist", s.corriendo ? sino(true, "corriendo") : (s.arrancando ? "arrancando..." : sino(false, "", "detenido"))],
+    ["Conectado por WebSocket", sino(!!s.conectado_ws, "si", "no")],
+    ["Cuenta emparejada", s.esperando_pareo ? "esperando a que elijas el aparato..." : sino(!!s.logged_in, "si", "no: emparejalo desde el telefono")],
+    ["Aparato activo (recibe la musica)", sino(!!s.is_active, "si", "no")],
+    ["Volumen", (s.volumen != null ? s.volumen : "-") + ""],
+    ["Llave de Soloist guardada", sino(!!s.tiene_llave, "si", "no")],
+    ["Ultimo error", s.ultimo_error ? '<span class="mal">' + esc(s.ultimo_error) + '</span>' : "ninguno"],
+    ["Version", esc(E.version || "")],
+  ].map(f => "<div>" + f[0] + "</div><div>" + f[1] + "</div>").join("");
+  if (!yaCargueCampos && s.exe) { $("s-exe").value = s.exe; $("s-nombre").value = s.nombre_aparato || ""; yaCargueCampos = true; }
+  if (E.diag_n !== diagN) cargaDiag(false);
+}
+let yaCargueCampos = false;
+let diagN = -1;
+async function cargaDiag(forzar) {
+  const d = await get("/api/diag"); if (!Array.isArray(d)) return;
+  diagN = d.length;
+  $("diag").innerHTML = d.slice().reverse().map(x => '<tr><td>' + esc(x.hora) + '</td><td>' + esc(x.que) + '</td><td>' + x.ms + '</td><td class="' + (x.ok ? "bien" : "mal") + '">' + (x.ok ? "BIEN" : "MAL") + '</td><td>' + esc(x.msg) + '</td></tr>').join("");
+}
+async function entrarOauth() { const r = await post("/api/entrar_oauth"); $("entrar-msg").textContent = r.ok ? r.mensaje : (r.error || "No se pudo."); }
+async function olvidarWeb() {
+  if (!confirm("Olvidar tu cuenta (la entrada para buscar)? Habra que entrar otra vez con el navegador.")) return;
+  await post("/api/olvidar_web", {confirmo: true});
+  biblio = null; pila = []; render();
+  $("entrar-msg").textContent = "Cuenta olvidada.";
+}
+async function guardarSoloistConfig() {
+  const exe = $("s-exe").value.trim(), nombre = $("s-nombre").value.trim(), llave = $("s-llave").value.trim();
+  await post("/api/soloist/config", {exe, nombre});
+  if (llave) { await post("/api/soloist/llave", {llave}); $("s-llave").value = ""; }
+  $("soloist-msg").textContent = "Ajustes guardados.";
+}
+async function detectarSoloist() {
+  $("soloist-msg").textContent = "Buscando...";
+  const r = await post("/api/soloist/detectar");
+  const c = (r.candidatos || []);
+  if (c.length) { if (!$("s-exe").value.trim()) $("s-exe").value = c[0]; $("soloist-msg").textContent = "Encontrado: " + c.join("  |  "); }
+  else $("soloist-msg").textContent = "No encontre soloist.exe solo: escribe la ruta a mano.";
+}
+async function iniciarSoloist() { const r = await post("/api/soloist/iniciar"); $("soloist-msg").textContent = r.ok ? "Arrancando..." : (r.error || "No se pudo."); }
+async function detenerSoloist() { await post("/api/soloist/detener"); $("soloist-msg").textContent = "Detenido."; }
+async function reemparejar() { const r = await post("/api/soloist/reemparejar"); $("soloist-msg").textContent = r.ok ? r.mensaje : (r.error || "No se pudo."); }
+async function olvidarSoloist() {
+  if (!confirm("Olvidar este aparato de Soloist? Habra que elegirlo otra vez desde el telefono.")) return;
+  await post("/api/soloist/olvidar", {confirmo: true});
+  $("soloist-msg").textContent = "Aparato olvidado.";
+}
+async function guardarInforme() { const r = await post("/api/guardar_informe"); $("informe-msg").textContent = r.ok ? "Guardado en: " + r.archivo + " (manda ese archivo)." : (r.error || "No se pudo."); }
+async function cerrar() { if (confirm("Cerrar la herramienta?")) { await post("/api/salir"); document.body.innerHTML = "<h1 style='padding:40px'>Cerrado. Ya puedes cerrar esta pestana.</h1>"; } }
+
+pintaPie();
+vigila(); setInterval(() => { vigila(); }, 700);
+</script>
+</body>
+</html>

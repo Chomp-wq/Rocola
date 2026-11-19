@@ -1,0 +1,28 @@
+[package]
+name = "rocola-spotify-demo-soloist"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "RocolaSpotifyDemoSoloist"
+path = "src/main.rs"
+
+[dependencies]
+librespot-oauth = { version = "=0.8.0" }
+reqwest = { version = "0.12", default-features = false, features = ["native-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
+tokio-tungstenite = "0.28"
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+tiny_http = "0.12"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+env_logger = { version = "0.11", default-features = false }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "s"
