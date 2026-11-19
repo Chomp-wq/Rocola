@@ -195,6 +195,12 @@ struct App {
     urgentes: std::sync::atomic::AtomicUsize, // portadas que el navegador espera ahora: las de adelanto se apartan mientras tanto
     lat_portada_ms: std::sync::atomic::AtomicU64,    // lo que tarda en bajar una portada (media movil): con eso se decide cuantas bajar a la vez
     fondo_en_curso: std::sync::atomic::AtomicUsize,  // las de adelanto que se estan bajando ahora
+    // EL ADELANTO HONDO: las paginas 3 a 10 de cada letra, a medio ritmo y solo cuando la pagina lleva un rato quieta.
+    cola_lenta: Mutex<std::collections::VecDeque<String>>,
+    lentas_en_curso: std::sync::atomic::AtomicUsize,
+    profundo: Mutex<(usize, usize)>,                 // bajadas bien y mal del adelanto hondo
+    ultimo_uso_ms: std::sync::atomic::AtomicU64,     // la ultima vez que la pagina pidio portadas (lo hondo espera 4 s de calma)
+    portadas_bytes: std::sync::atomic::AtomicU64,    // lo que ocupan las portadas guardadas (lo hondo para antes del tope)
     cola_portadas: Mutex<std::collections::VecDeque<String>>, // lo que se baja por adelantado (lo urgente, delante)
     hay_cola: tokio::sync::Notify,
     adelanto: Mutex<(usize, usize)>,                          // bajadas bien y mal desde que la cola estaba vacia
@@ -1316,6 +1322,12 @@ fn limpia_pared(app: &Arc<App>, portadas: bool) {
             let mut v = vec![];
             for p in 0..2 { for m in &todas { v.extend(m.iter().skip(p * 18).take(18).filter(|x| !x.is_empty()).cloned()); } }
             encola_portadas(&a, v, false);
+            // Y despues, despacio y solo con la pagina quieta, las paginas 3 a 10 de cada letra (unas 3 900 portadas, ~100 MB una vez):
+            // asi, con la demo abierta un rato, las primeras diez paginas de todas las letras salen del disco.
+            let mut hondo = std::collections::VecDeque::new();
+            for p in 2..10 { for m in &todas { hondo.extend(m.iter().skip(p * 18).take(18).filter(|x| !x.is_empty()).cloned()); } }
+            *a.cola_lenta.lock().unwrap() = hondo;
+            a.hay_cola.notify_waiters();
         }
     });
 }
@@ -1474,7 +1486,9 @@ async fn baja_portada(app: &Arc<App>, mbid: &str, tam: u32) -> Result<Option<Vec
         app.lat_portada_ms.store(if antes == 0 { ms } else { (antes * 4 + ms) / 5 }, Relaxed);
     }
     let tmp = ruta.with_extension("tmp");
-    if std::fs::write(&tmp, &b).is_ok() { let _ = std::fs::rename(&tmp, &ruta); }
+    if std::fs::write(&tmp, &b).is_ok() && std::fs::rename(&tmp, &ruta).is_ok() {
+        app.portadas_bytes.fetch_add(b.len() as u64, std::sync::atomic::Ordering::Relaxed);
+    }
     Ok(Some(b))
 }
 
@@ -1494,9 +1508,8 @@ fn responde_portada(req: tiny_http::Request, res: &Result<Option<Vec<u8>>, Strin
 
 /// Una portada que no esta en el disco: la baja una sola vez aunque la pidan varias casillas a la vez o este ya en la cola de
 /// adelanto (la que llegue primero la baja; las demas esperan a esa). `req`: la casilla que la pidio (None = adelanto).
-async fn trae_portada(app: &Arc<App>, mbid: &str, tam: u32, req: Option<tiny_http::Request>) -> bool {
+async fn trae_portada(app: &Arc<App>, mbid: &str, tam: u32, req: Option<tiny_http::Request>, urgente: bool) -> bool {
     let clave = format!("{mbid}-{tam}");
-    let urgente = req.is_some();
     {
         let mut m = app.portadas_esperan.lock().unwrap();
         if let Some(v) = m.get_mut(&clave) { v.extend(req); return true; }
@@ -1509,6 +1522,19 @@ async fn trae_portada(app: &Arc<App>, mbid: &str, tam: u32, req: Option<tiny_htt
     let reqs = app.portadas_esperan.lock().unwrap().remove(&clave).unwrap_or_default();
     if !reqs.is_empty() { let _ = tokio::task::spawn_blocking(move || { for r in reqs { responde_portada(r, &res); } }).await; }
     ok
+}
+
+/// La pagina va a mostrar estas portadas: las que falten se empiezan a bajar YA, todas a la vez (el navegador solo abre 6 conexiones
+/// por puerto y con el buscador o una pared de artista son hasta 44: asi no esperan su turno). Cuentan como urgentes.
+fn portadas_ya(app: &Arc<App>, mbids: &[String]) {
+    app.ultimo_uso_ms.store(epoch_ms_ahora(), std::sync::atomic::Ordering::Relaxed);
+    for m in mbids.iter().take(60) {
+        if !catalogo::es_mbid(m) { continue; }
+        let r = ruta_portada(app, m, 250);
+        if r.exists() || r.with_extension("no").exists() { continue; }
+        let (a, m) = (app.clone(), m.clone());
+        app.rt.spawn(async move { trae_portada(&a, &m, 250, None, true).await; });
+    }
 }
 
 /// Pone portadas en la cola de adelanto: `urgente` delante (lo que se va a mirar ya), si no detras. Las que ya estan en el disco no.
@@ -1556,13 +1582,41 @@ async fn adelanta_portadas(app: Arc<App>) {
             if b + mal > 0 {
                 app.diag("portadas", Instant::now(), if mal == 0 { Ok(format!("{b} bajadas por adelantado")) } else { Err(format!("{b} bajadas por adelantado, {mal} fallaron")) });
             }
+            // Lo hondo: solo si nadie pidio portadas en 4 s, nada urgente, debajo del tope de disco, y a la mitad del ritmo del adelanto
+            // normal (3 a la vez como minimo).
+            let calma = epoch_ms_ahora().saturating_sub(app.ultimo_uso_ms.load(SeqCst)) >= 4_000;
+            let cabe = app.portadas_bytes.load(SeqCst) < TOPE_PORTADAS * 3 / 4;
+            if calma && cabe && app.urgentes.load(SeqCst) == 0 {
+                if app.lentas_en_curso.fetch_add(1, SeqCst) < (objetivo_fondo(&app) / 2).max(3) {
+                    let sig = app.cola_lenta.lock().unwrap().pop_front();
+                    if let Some(m) = sig {
+                        let r = ruta_portada(&app, &m, 250);
+                        if !r.exists() && !r.with_extension("no").exists() {
+                            let ok = trae_portada(&app, &m, 250, None, false).await;
+                            let mut pr = app.profundo.lock().unwrap();
+                            if ok { pr.0 += 1 } else { pr.1 += 1 }
+                            seguidas_mal = if ok { 0 } else { seguidas_mal + 1 };
+                        }
+                        app.lentas_en_curso.fetch_sub(1, SeqCst);
+                        if seguidas_mal >= 10 { seguidas_mal = 0; tokio::time::sleep(Duration::from_secs(60)).await; }
+                        continue;
+                    }
+                    // se acabo lo hondo: el resumen, una vez
+                    let (b, mal) = std::mem::take(&mut *app.profundo.lock().unwrap());
+                    if b + mal > 0 { app.diag("portadas", Instant::now(), Ok(format!("{b} de las paginas 3 a 10 bajadas por adelantado{}", if mal > 0 { format!(" ({mal} fallaron)") } else { String::new() }))); }
+                }
+                app.lentas_en_curso.fetch_sub(1, SeqCst);
+            }
             let espera = app.hay_cola.notified();
-            if app.cola_portadas.lock().unwrap().is_empty() { espera.await; }
+            if app.cola_portadas.lock().unwrap().is_empty() {
+                // con lo hondo pendiente se vuelve a mirar cada 2 s (por si ya hay calma); si no, se duerme hasta que haya cola
+                if app.cola_lenta.lock().unwrap().is_empty() { espera.await; } else { let _ = tokio::time::timeout(Duration::from_secs(2), espera).await; }
+            }
             continue;
         };
         let r = ruta_portada(&app, &m, 250);
         if r.exists() || r.with_extension("no").exists() { app.fondo_en_curso.fetch_sub(1, SeqCst); continue; }
-        let ok = trae_portada(&app, &m, 250, None).await;
+        let ok = trae_portada(&app, &m, 250, None, false).await;
         app.fondo_en_curso.fetch_sub(1, SeqCst);
         { let mut a = app.adelanto.lock().unwrap(); if ok { a.0 += 1 } else { a.1 += 1 } }
         seguidas_mal = if ok { 0 } else { seguidas_mal + 1 };
@@ -1572,7 +1626,7 @@ async fn adelanta_portadas(app: Arc<App>) {
 
 /// Al arrancar: si una carpeta de lo guardado (portadas 600 MB, respuestas de Spotify 200 MB) pasa de su tope, se borra lo que hace
 /// mas que no se usa hasta quedar en tres cuartos.
-fn recorta_dir(dir: PathBuf, tope: u64) {
+fn recorta_dir(dir: PathBuf, tope: u64) -> u64 {
     fn junta(d: &Path, v: &mut Vec<(SystemTime, u64, PathBuf)>, nivel: u8) {
         for f in std::fs::read_dir(d).into_iter().flatten().flatten() {
             let Ok(m) = f.metadata() else { continue };
@@ -1583,12 +1637,13 @@ fn recorta_dir(dir: PathBuf, tope: u64) {
     let mut todas = vec![];
     junta(&dir, &mut todas, 0);
     let mut total: u64 = todas.iter().map(|x| x.1).sum();
-    if total <= tope { return; }
+    if total <= tope { return total; }
     todas.sort();
     for (_, n, p) in todas {
         if total <= tope * 3 / 4 { break; }
         if std::fs::remove_file(&p).is_ok() { total -= n; }
     }
+    total
 }
 
 // Un disco del catalogo sin id de Spotify: UNA busqueda (disco + artista) y se recuerda para siempre en catalogo_ids.json, tambien
@@ -1660,13 +1715,23 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
             // pide el navegador), luego las 3 siguientes y la anterior.
             let (l, p) = (v["l"].as_str().unwrap_or(""), v["p"].as_u64().unwrap_or(0) as usize);
             if let Some(m) = app.pared_mbids.lock().unwrap().get(l).cloned() {
+                // las de la pagina que se ve: ya; las de al lado: delante de la cola
+                let estas: Vec<String> = m.iter().skip(p * 18).take(18).filter(|x| !x.is_empty()).cloned().collect();
+                portadas_ya(app, &estas);
                 let mut q = vec![];
-                for pg in [p, p + 1, p + 2, p.wrapping_sub(1), p + 3] {
+                for pg in [p + 1, p + 2, p.wrapping_sub(1), p + 3] {
                     if pg == usize::MAX { continue; }
                     q.extend(m.iter().skip(pg * 18).take(18).filter(|x| !x.is_empty()).cloned());
                 }
                 encola_portadas(app, q, true);
             }
+            json!({"ok": true})
+        }
+        (true, "/api/portadas/ya") => {
+            let lista = |k: &str| v[k].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect::<Vec<_>>()).unwrap_or_default();
+            portadas_ya(app, &lista("mbids"));
+            let despues: Vec<String> = lista("despues").into_iter().filter(|m| catalogo::es_mbid(m)).take(60).collect();
+            if !despues.is_empty() { encola_portadas(app, despues, true); }
             json!({"ok": true})
         }
         (true, "/api/catalogo/actualizar") => {
@@ -1802,7 +1867,8 @@ fn sirve_p(app: &Arc<App>, h: &tokio::runtime::Handle, req: tiny_http::Request, 
     let tam = if q.get("t").map(|t| t == "500").unwrap_or(false) { 500 } else { 250 };
     if let Ok(b) = std::fs::read(ruta_portada(app, mbid, tam)) { return responde_portada(req, &Ok(Some(b))); }
     let (a, m) = (app.clone(), mbid.to_string());
-    h.spawn(async move { trae_portada(&a, &m, tam, Some(req)).await; });
+    a.ultimo_uso_ms.store(epoch_ms_ahora(), std::sync::atomic::Ordering::Relaxed);
+    h.spawn(async move { trae_portada(&a, &m, tam, Some(req), true).await; });
 }
 
 /// Los puertos de las portadas: solo /p/MBID, y solo desde esta computadora.
@@ -1908,6 +1974,8 @@ async fn main() {
         pared_gen: std::sync::atomic::AtomicU64::new(0), portadas_esperan: Mutex::new(HashMap::new()),
         sem_portadas: tokio::sync::Semaphore::new(40), urgentes: std::sync::atomic::AtomicUsize::new(0),
         lat_portada_ms: std::sync::atomic::AtomicU64::new(0), fondo_en_curso: std::sync::atomic::AtomicUsize::new(0),
+        cola_lenta: Mutex::new(std::collections::VecDeque::new()), lentas_en_curso: std::sync::atomic::AtomicUsize::new(0),
+        profundo: Mutex::new((0, 0)), ultimo_uso_ms: std::sync::atomic::AtomicU64::new(0), portadas_bytes: std::sync::atomic::AtomicU64::new(0),
         cola_portadas: Mutex::new(std::collections::VecDeque::new()), hay_cola: tokio::sync::Notify::new(),
         adelanto: Mutex::new((0, 0)), pared_mbids: Mutex::new(HashMap::new()),
     });
@@ -1926,8 +1994,8 @@ async fn main() {
         app.web.lock().unwrap().tok = Some(TokenWeb { access_token: "prueba".into(), refresh_token: String::new(), expira: Instant::now() + Duration::from_secs(86_400) });
     }
     { let a = app.clone(); tokio::spawn(async move { actualiza_catalogo(&a).await; }); }
-    { let d = app.datos.join("portadas"); std::thread::spawn(move || recorta_dir(d, TOPE_PORTADAS)); }
-    { let d = app.datos.join("api_cache"); std::thread::spawn(move || recorta_dir(d, 200 * 1024 * 1024)); }
+    { let (d, a) = (app.datos.join("portadas"), app.clone()); std::thread::spawn(move || { let t = recorta_dir(d, TOPE_PORTADAS); a.portadas_bytes.fetch_add(t, std::sync::atomic::Ordering::SeqCst); }); }
+    { let d = app.datos.join("api_cache"); std::thread::spawn(move || { recorta_dir(d, 200 * 1024 * 1024); }); }
     for _ in 0..16 { let a = app.clone(); tokio::spawn(adelanta_portadas(a)); }
 
     let url = format!("http://127.0.0.1:{puerto}/");

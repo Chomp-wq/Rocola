@@ -521,8 +521,20 @@ function pintaPared(v) {
 // Al cambiar de pagina: las portadas del catalogo de las paginas de al lado las adelanta el servidor de la demo (sin ocupar las
 // conexiones del navegador, que son para las 18 que se ven); las de Spotify (tus discos) las pide el navegador con poca prioridad.
 let pintadaVista = null, precargadas = [];
+// Las portadas del catalogo que se van a poner (y, aparte, las de despues): la herramienta las baja todas a la vez, sin esperar el
+// turno del navegador (6 por puerto).
+function mbidsDe(imgs) { return [...new Set(imgs.filter(u => u && u.startsWith("/p/")).map(u => u.slice(3, 39)))]; }
+let ultimoAviso = "";
+function avisaPortadas(imgs, despues) {
+  const m = mbidsDe(imgs), d = mbidsDe(despues || []);
+  const clave = m.join() + "|" + d.join();
+  if ((!m.length && !d.length) || clave === ultimoAviso) return;
+  ultimoAviso = clave;
+  post("/api/portadas/ya", {mbids: m, despues: d});
+}
 function precargaVecinas(v, pag) {
   if (v.conLetras) post("/api/pared/vista", {l: v.letra, p: pag});
+  else avisaPortadas(v.items.slice(pag * POR_PAG, (pag + 1) * POR_PAG).map(x => x.img), v.items.slice((pag + 1) * POR_PAG, (pag + 2) * POR_PAG).map(x => x.img));
   const urls = [];
   for (const p of [pag + 1, pag - 1])
     for (let k = 0; k < POR_PAG; k++) { const x = v.items[p * POR_PAG + k]; if (p >= 0 && x && x.img && !x.img.startsWith("/p/")) urls.push(x.img); }
@@ -719,6 +731,7 @@ function pintaRes(v) {
   L.discos.forEach(x => cards.push({k: "ldisco", nombre: x.nombre, sub: x.artista + (x.anio ? " · " + x.anio : "") + (x.mio ? " · tuyo" : ""), img: x.img, it: x}));
   v.cards = cards.concat(v.spCards || []);
   if (v.sel >= v.cards.length) v.sel = v.cards.length - 1;
+  avisaPortadas(v.cards.map(c => c.img));
   $("cab-pag").textContent = v.cards.length ? v.cards.length + " resultados" : "";
   let h = "";
   if (v.cards.length) {
