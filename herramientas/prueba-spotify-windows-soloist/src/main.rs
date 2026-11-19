@@ -149,6 +149,7 @@ struct App {
     bloqueo: Mutex<Option<Instant>>,
     web: Mutex<WebEstado>,
     oauth_cancelar: std::sync::atomic::AtomicBool,
+    oauth_gen: std::sync::atomic::AtomicU64,
     soloist: Mutex<SoloistEstado>,
     soloist_child: Mutex<Option<Child>>,
     soloist_tx: Mutex<Option<mpsc::UnboundedSender<Value>>>,
@@ -276,10 +277,17 @@ fn vigila_calidad(app: Arc<App>) {
     }
 }
 
-fn oauth_cliente() -> OAuthClient {
-    OAuthClientBuilder::new(OAUTH_CLIENT_ID, OAUTH_REDIRECT, ALCANCE.to_vec())
-        .build()
-        .expect("el cliente de OAuth no se pudo armar")
+const OAUTH_LISTO: &str = "<!doctype html><meta charset=utf-8><body style='font-family:sans-serif;font-size:28px;background:#111;color:#eee'><h1>Listo</h1><p>Vuelve a la herramienta de la rocola. Puedes cerrar esta pestana.</p></body>";
+fn oauth_cliente(abrir: bool) -> OAuthClient {
+    let b = OAuthClientBuilder::new(OAUTH_CLIENT_ID, OAUTH_REDIRECT, ALCANCE.to_vec()).with_custom_message(OAUTH_LISTO);
+    (if abrir { b.open_in_browser() } else { b }).build().expect("el cliente de OAuth no se pudo armar")
+}
+// Si el navegador nunca contesta, el que espera tiene el puerto 8898 abierto: una visita falsa lo suelta.
+fn suelta_oauth() {
+    if let Ok(mut s) = std::net::TcpStream::connect(("127.0.0.1", OAUTH_PUERTO)) {
+        use std::io::Write;
+        let _ = s.write_all(b"GET /login?cancelar=1 HTTP/1.1\r\n\r\n");
+    }
 }
 
 // ---------- TU CUENTA: entrar, refrescar, olvidar ----------
@@ -305,7 +313,7 @@ async fn asegura_token_web(app: &Arc<App>) -> Result<String, String> {
     });
     let Some(rt) = rt else { return Err("Falta entrar: todavia no hay cuenta (pestana Pruebas, seccion Tu cuenta).".to_string()) };
     let t0 = Instant::now();
-    match oauth_cliente().refresh_token_async(&rt).await {
+    match oauth_cliente(false).refresh_token_async(&rt).await {
         Ok(tok) => { app.diag("renovar la entrada (API web)", t0, Ok("bien".into())); guarda_token_web(app, &tok); Ok(tok.access_token) }
         Err(e) => {
             app.diag("renovar la entrada (API web)", t0, Err(e.to_string()));
@@ -317,20 +325,24 @@ async fn asegura_token_web(app: &Arc<App>) -> Result<String, String> {
 }
 
 fn entrar_oauth(app: &Arc<App>) -> Value {
-    {
-        let w = app.web.lock().unwrap();
-        if w.oauth_activo { return json!({"ok": false, "error": "Ya se esta esperando al navegador."}); }
+    // Si ya habia una espera (el navegador no se abrio o se cerro), se suelta y se empieza de nuevo.
+    if app.web.lock().unwrap().oauth_activo {
+        app.oauth_cancelar.store(true, std::sync::atomic::Ordering::SeqCst);
+        suelta_oauth();
+        std::thread::sleep(Duration::from_millis(400));
     }
+    let gen = app.oauth_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     app.web.lock().unwrap().oauth_activo = true;
     app.oauth_cancelar.store(false, std::sync::atomic::Ordering::SeqCst);
     let a = app.clone();
     tokio::spawn(async move {
         let t0 = Instant::now();
-        let cli = oauth_cliente();
-        let r = cli
-            .get_access_token_async()
-            .await;
+        // La libreria espera al navegador bloqueando: va en su propio hilo (y abre el navegador ella misma).
+        let r = tokio::task::spawn_blocking(|| oauth_cliente(true).get_access_token().map_err(|e| e.to_string()))
+            .await.unwrap_or_else(|e| Err(e.to_string()));
+        if a.oauth_gen.load(std::sync::atomic::Ordering::SeqCst) != gen { return; } // ya hay otra espera mas nueva
         a.web.lock().unwrap().oauth_activo = false;
+        let r = if a.oauth_cancelar.load(std::sync::atomic::Ordering::SeqCst) { Err("cancelado".to_string()) } else { r };
         match r {
             Ok(tok) => {
                 a.diag("entrar con el navegador", t0, Ok("Spotify entrego el permiso".into()));
@@ -355,18 +367,19 @@ fn entrar_oauth(app: &Arc<App>) -> Value {
                 }
             }
             Err(e) => {
-                if !a.oauth_cancelar.load(std::sync::atomic::Ordering::SeqCst) {
+                if e != "cancelado" {
                     a.diag("entrar con el navegador", t0, Err(e.to_string()));
                     a.web.lock().unwrap().error = format!("No se pudo entrar: {}", limpia(&e.to_string()));
                 }
             }
         }
     });
-    json!({"ok": true, "mensaje": "Se abrio el navegador. Inicia sesion en Spotify y acepta los permisos."})
+    json!({"ok": true, "mensaje": "Se esta abriendo el navegador. Inicia sesion en Spotify y acepta los permisos. Si no se abre, copia la direccion «Browse to: ...» de la ventana negra y pegala en el navegador. Si se queda esperando, vuelve a pulsar el boton."})
 }
 
 fn olvidar_web(app: &Arc<App>) -> Value {
     let t0 = Instant::now();
+    if app.web.lock().unwrap().oauth_activo { app.oauth_cancelar.store(true, std::sync::atomic::Ordering::SeqCst); suelta_oauth(); }
     let r = std::fs::remove_file(app.ruta_refresh_web());
     *app.web.lock().unwrap() = WebEstado::default();
     app.api_cache.lock().unwrap().clear();
@@ -1054,7 +1067,7 @@ async fn main() {
     let app = Arc::new(App {
         exe_dir, datos, puerto, http,
         diag: Mutex::new(Vec::new()), api_cache: Mutex::new(HashMap::new()), bloqueo: Mutex::new(None),
-        web: Mutex::new(WebEstado::default()), oauth_cancelar: std::sync::atomic::AtomicBool::new(false),
+        web: Mutex::new(WebEstado::default()), oauth_cancelar: std::sync::atomic::AtomicBool::new(false), oauth_gen: std::sync::atomic::AtomicU64::new(0),
         soloist: Mutex::new(SoloistEstado::default()), soloist_child: Mutex::new(None), soloist_tx: Mutex::new(None),
         soloist_gen: std::sync::atomic::AtomicU64::new(0),
         calidad: Mutex::new(CalidadEstado::default()),
