@@ -259,7 +259,7 @@ function aviso(t, tipo, ms) {
 // ---------- estado general ----------
 // E = la ultima /api/estado: E.web (tu cuenta, para buscar) y E.soloist (lo que toca).
 let E = {web: {}, soloist: {son: {}}}, tRec = 0;
-let creditos = 0, cola = [], actual = null, arrancando = false, precargado = "";
+let creditos = 0, cola = [], actual = null, reembolsosVistos = -1; // cola y actual los da la herramienta (el estado)
 let biblio = null;   // tus discos y listas de Spotify (se mandan al servidor, que los junta con el catalogo)
 let cargandoBiblio = false;
 let letraAct = "", letrasCon = [], cargandoLetra = false, catListo = false;
@@ -291,61 +291,66 @@ function moneda() {
 }
 
 // ---------- pedir canciones ----------
-function pedir(t) {
+// La cola es de la herramienta (el servidor): ella pasa a la siguiente en cuanto Soloist avisa que acabo, aunque esta pestana este
+// oculta o el navegador tarde en mirar. Aqui solo se cobra, se pide y se ve.
+async function pedir(t) {
   if (!E.soloist || !E.soloist.logged_in) { aviso("Falta emparejar Soloist con una cuenta (pestana Pruebas, seccion Soloist).", "mal"); return; }
   if (creditos < 1) { aviso("Inserta una moneda (tecla 5)", "mal"); return; }
   if (cola.length >= 30) { aviso("La cola esta llena.", "mal"); return; }
   creditos--; pintaCreditos();
-  cola.push(t);
   aviso("Pedida: " + t.nombre + " (" + t.artista + ")", "bien", 2500);
-  pintaPie();
-  if (!actual && !arrancando) siguiente();
+  const r = await post("/api/cola/agrega", {uri: t.uri, id: t.id, nombre: t.nombre, artista: t.artista, img: t.img, dur_ms: t.dur});
+  if (!r.ok) {
+    creditos++; pintaCreditos();
+    aviso("No se pudo pedir «" + t.nombre + "»: " + (r.error || "error") + " Se devolvio tu credito.", "mal", 7000);
+  }
+  vigila(); // se ve al momento, sin esperar al siguiente turno del reloj
 }
-async function siguiente() {
-  if (arrancando) return;
-  arrancando = true;
-  try {
-    while (cola.length) {
-      const t = cola.shift();
-      actual = {uri: t.uri, id: t.id, nombre: t.nombre, artista: t.artista, img: t.img, dur: t.dur, iniciada: false};
-      pintaPie();
-      const r = await post("/api/tocar", {uri: t.uri, nombre: t.nombre, artista: t.artista, img: t.img, dur_ms: t.dur});
-      if (r.ok) break;
-      creditos++; pintaCreditos();
-      aviso("No se pudo tocar «" + t.nombre + "»: " + (r.error || "error") + " Se devolvio tu credito.", "mal", 7000);
-      actual = null;
-    }
-  } finally { arrancando = false; pintaPie(); }
+// Lo que dice la herramienta: la que suena, la cola y los creditos que se devolvieron (una cancion que no pudo sonar).
+function sincronizaRocola() {
+  const s = E.soloist || {};
+  cola = s.rocola_cola || [];
+  actual = s.actual ? {uri: s.actual.uri, nombre: s.actual.nombre, artista: s.actual.artista, img: s.actual.img, dur: s.actual.dur_ms} : null;
+  const re = s.reembolsos || 0;
+  if (reembolsosVistos < 0) reembolsosVistos = re; // al abrir la pagina no se cobra lo de antes
+  else if (re > reembolsosVistos) {
+    creditos += re - reembolsosVistos; reembolsosVistos = re; pintaCreditos();
+    aviso(s.reembolso_msg || "Se devolvio tu credito.", "mal", 7000);
+  }
 }
 
-// El reloj de la rocola: mira como va Soloist y pasa a la siguiente cuando acaba.
+// El reloj de la pagina: pone al dia lo que se ve (la que suena, la cola, los creditos devueltos). Ya no manda nada.
+let vigilando = false;
 async function vigila() {
+  if (vigilando) return; // si ya hay una consulta en camino, no se apilan otras
+  vigilando = true;
+  try { await vigila1(); } finally { vigilando = false; }
+}
+async function vigila1() {
   const e = await get("/api/estado");
-  if (e && e.soloist) { E = e; tRec = Date.now(); }
+  if (e && e.soloist) { E = e; tRec = Date.now(); sincronizaRocola(); }
   if (pestanaAct === "pruebas") pintaEstado();
   pintaFalta();
   if (E.web && E.web.conectado && !biblio && !cargandoBiblio) cargaBiblio();
   const listo = !!(E.catalogo && E.catalogo.listo);
   if (!cargandoLetra && (!pila.length ? (listo || biblio) : (listo && !catListo))) abreLetra(letraAct || "A", pila.length ? pila[0].sel : 0);
   catListo = listo;
-  // Lo pedido (E.soloist.pedida) manda: acabo = siguiente sin devolver; error = devolver el credito.
-  if (actual && !arrancando) {
-    const p = E.soloist && E.soloist.pedida;
-    if (p && p.uri === actual.uri) {
-      if (p.estado === "sonando" || p.estado === "pausa") actual.iniciada = true;
-      if (p.estado === "acabo") { actual = null; await siguiente(); }
-      else if (p.estado === "error") {
-        creditos++; pintaCreditos();
-        aviso("No se pudo tocar «" + actual.nombre + "»: " + (p.aviso || "error") + " Se devolvio tu credito.", "mal", 7000);
-        actual = null; await siguiente();
-      }
-    }
-  }
   pintaPie();
 }
-function posActual() { const s = (E.soloist && E.soloist.son) || {}; return s.pos_ms || 0; }
+// La posicion: la del ultimo estado mas lo que paso desde que llego (sin esto la barra daba saltos de 0,7 s).
+function posActual() {
+  const s = (E.soloist && E.soloist.son) || {};
+  return (s.pos_ms || 0) + (s.estado === "sonando" && tRec ? Math.max(0, Date.now() - tRec) : 0);
+}
+let pieFirma = "";
 function pintaPie() {
   const son = $("son");
+  // Solo se vuelve a armar si cambio algo de lo que se ve (cada 0,7 s se rehacian las imagenes, aunque nada hubiera cambiado).
+  const sA = (E.soloist && E.soloist.son) || {};
+  const firma = JSON.stringify([actual && actual.uri, actual ? (sA.uri === actual.uri ? sA.estado : "cargando") : "", cola.map(t => t.nombre + t.artista).slice(0, 5), cola.length,
+    actual ? marcaCalidad() : "", (E.puertos_portadas || []).join()]);
+  if (firma === pieFirma) { pintaAvance(); return; }
+  pieFirma = firma;
   if (actual) {
     const s = (E.soloist && E.soloist.son) || {}, dur = (s.uri === actual.uri && s.dur_ms) || actual.dur || 0;
     const est = s.uri === actual.uri ? s.estado : "cargando";

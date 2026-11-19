@@ -101,7 +101,19 @@ struct SonSoloist {
 // Lo que la rocola pidio y en que va (cargando | sonando | pausa | acabo | error): con esto la pagina cobra, devuelve
 // el credito o pasa a la siguiente. Lo que suena (`son`) puede ser otra cosa: el telefono o una continuacion de Spotify.
 #[derive(Clone)]
-struct Pedida { uri: String, nombre: String, dur_ms: u64, estado: String, aviso: String, t0: Instant, empezo: bool }
+struct Pedida { uri: String, nombre: String, artista: String, img: String, dur_ms: u64, estado: String, aviso: String, t0: Instant, empezo: bool, reembolsada: bool }
+// Una cancion pagada (la que pide la pagina). LA COLA ES DEL SERVIDOR: asi pasa a la siguiente en cuanto Soloist avisa que acabo
+// (sin esperar a que el navegador mire, que cada 0,7 s tarda de mas y, con la pestana oculta, Chrome lo frena a 1 s o a 1 minuto).
+#[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
+struct Pista {
+    uri: String,
+    #[serde(default)] id: String,
+    #[serde(default)] nombre: String,
+    #[serde(default)] artista: String,
+    #[serde(default)] img: String,
+    #[serde(default)] dur_ms: u64,
+}
+const COLA_MAX: usize = 30;
 
 // LA CALIDAD MEDIDA: Soloist no dice si toca FLAC o Vorbis (ni su linea de comandos ni su WebSocket). Guarda un archivo
 // cifrado por cancion en su cache; su tamano * 8 / la duracion da los kbps (lo mismo que hacen los plugins de Volumio y
@@ -139,6 +151,9 @@ struct SoloistEstado {
     ultimo_error: String,
     son: SonSoloist,
     pedida: Option<Pedida>,
+    cola: std::collections::VecDeque<Pista>, // lo que falta por sonar, en el orden en que se pidio
+    reembolsos: u64,                         // cuantas canciones pagadas no pudieron sonar: la pagina devuelve ese credito
+    reembolso_msg: String,
     ultimo_pausado: String,
     cola_prev: Vec<Value>,
     cola_sig: Vec<Value>,
@@ -273,30 +288,34 @@ fn vigila_calidad(app: Arc<App>) {
         std::thread::sleep(Duration::from_secs(2));
         let (pedida, son_uri, son_dur) = { let s = app.soloist.lock().unwrap(); (s.pedida.clone(), s.son.uri.clone(), s.son.dur_ms) };
         let Some(p) = pedida else { continue };
-        let termino;
-        {
+        let foto = {
             let mut c = app.calidad.lock().unwrap();
             if c.uri != p.uri || c.estado != "midiendo" { continue; }
             if son_uri == p.uri && son_dur > 0 { c.dur_ms = son_dur; }
             if c.dur_ms == 0 { c.dur_ms = p.dur_ms; }
-            let ahora = foto_cache(&app.cache_soloist());
-            let (b, n, m) = crecimiento(&c.foto, &ahora);
+            c.foto.clone()
+        };
+        let ahora = foto_cache(&app.cache_soloist()); // sin el candado puesto
+        let termino;
+        {
+            let mut c = app.calidad.lock().unwrap();
+            if c.uri != p.uri || c.estado != "midiendo" { continue; }
+            let (b, n, m) = crecimiento(&foto, &ahora);
             c.bytes = b; c.archivos = n; c.mayor = m;
             termino = !matches!(p.estado.as_str(), "cargando" | "sonando" | "pausa");
         }
-        if termino { cierra_medida(&app, &p); }
+        if termino { cierra_medida_con(&app, &p, &ahora); }
     }
 }
 
 fn mb(b: u64) -> String { format!("{:.1} MB", b as f64 / 1_048_576.0) }
-fn cierra_medida(app: &Arc<App>, p: &Pedida) {
+fn cierra_medida_con(app: &Arc<App>, p: &Pedida, ahora: &HashMap<PathBuf, u64>) {
     let diag: Option<(Instant, Result<String, String>)>;
     let mut guardar = None;
     {
         let mut c = app.calidad.lock().unwrap();
         if c.uri != p.uri || c.estado != "midiendo" { return; }
-        let ahora = foto_cache(&app.cache_soloist());
-        let (b, n, m) = crecimiento(&c.foto, &ahora);
+        let (b, n, m) = crecimiento(&c.foto, ahora);
         c.bytes = b; c.archivos = n; c.mayor = m;
         let dur = c.dur_ms.max(1);
         let sono_ms = p.t0.elapsed().as_millis() as u64;
@@ -779,6 +798,62 @@ fn revisa_reproduccion(app: &Arc<App>) {
     }
     if pausar { envia_comando(app, json!({"type": "command", "command": "pause"})); }
     for (q, t0, r) in diags { app.diag(q, t0, r); }
+    cuenta_reembolso(app);
+    dispara_avance(app);
+}
+
+/// Una pedida que acabo en error devuelve su credito (una sola vez): la pagina lo suma al ver subir `reembolsos`.
+fn cuenta_reembolso(app: &Arc<App>) {
+    let mut s = app.soloist.lock().unwrap();
+    let msg = match s.pedida.as_mut() {
+        Some(p) if p.estado == "error" && !p.reembolsada => {
+            p.reembolsada = true;
+            Some(format!("No se pudo tocar «{}»: {} Se devolvio tu credito.", p.nombre, if p.aviso.is_empty() { "error." } else { p.aviso.as_str() }))
+        }
+        _ => None,
+    };
+    if let Some(m) = msg { s.reembolsos += 1; s.reembolso_msg = m; }
+}
+fn reembolsa(s: &mut SoloistEstado, nombre: &str, motivo: &str) {
+    s.reembolsos += 1;
+    s.reembolso_msg = format!("No se pudo tocar «{nombre}»: {motivo} Se devolvio tu credito.");
+}
+
+// LA COLA DE LA ROCOLA (en el servidor). Cuando lo pedido acabo, fallo o no hay nada pedido y hay canciones esperando, se pasa a
+// la siguiente AL MOMENTO (en cuanto llega el aviso de Soloist), sin esperar a que el navegador lo note.
+fn dispara_avance(app: &Arc<App>) {
+    let hay = {
+        let s = app.soloist.lock().unwrap();
+        !s.cola.is_empty() && !s.pedida.as_ref().map(|p| matches!(p.estado.as_str(), "cargando" | "sonando" | "pausa")).unwrap_or(false)
+    };
+    if hay { let a = app.clone(); app.rt.spawn(async move { avanza(&a).await; }); }
+}
+async fn avanza(app: &Arc<App>) {
+    loop {
+        // Se reclama la siguiente y se deja la pedida nueva puesta en el mismo momento (con el candado): si dos avisos llegan a la
+        // vez, solo uno la reclama.
+        let (pista, previa) = {
+            let mut s = app.soloist.lock().unwrap();
+            if s.pedida.as_ref().map(|p| matches!(p.estado.as_str(), "cargando" | "sonando" | "pausa")).unwrap_or(false) { return; }
+            let Some(pista) = s.cola.pop_front() else { return };
+            let previa = s.pedida.take();
+            s.pedida = Some(Pedida {
+                uri: pista.uri.clone(), nombre: pista.nombre.clone(), artista: pista.artista.clone(), img: pista.img.clone(), dur_ms: pista.dur_ms,
+                estado: "cargando".into(), aviso: String::new(), t0: Instant::now(), empezo: false, reembolsada: false,
+            });
+            s.ultimo_pausado.clear();
+            (pista, previa)
+        };
+        match arranca_pista(app, &pista, previa).await {
+            Ok(()) => return,
+            Err(e) => {
+                app.diag("tocar", Instant::now(), Err(format!("{}: {e}", pista.nombre)));
+                let mut s = app.soloist.lock().unwrap();
+                reembolsa(&mut s, &pista.nombre, &e);
+                s.pedida = None; // y se sigue con la que sigue
+            }
+        }
+    }
 }
 
 fn revisa_tardanza(app: &Arc<App>) {
@@ -793,7 +868,7 @@ fn revisa_tardanza(app: &Arc<App>) {
             }
         }
     }
-    if let Some(t0) = diag { app.diag("tocar", t0, Err("no empezo en 20 s".into())); }
+    if let Some(t0) = diag { app.diag("tocar", t0, Err("no empezo en 20 s".into())); cuenta_reembolso(app); dispara_avance(app); }
 }
 
 fn envia_comando(app: &Arc<App>, v: Value) -> bool {
@@ -805,7 +880,16 @@ fn detener_soloist(app: &Arc<App>) {
     *app.soloist_tx.lock().unwrap() = None;
     if let Some(mut c) = app.soloist_child.lock().unwrap().take() { let _ = c.kill(); let _ = c.wait(); }
     let mut s = app.soloist.lock().unwrap();
+    vacia_cola(&mut s, "Se detuvo Soloist.");
     s.corriendo = false; s.conectado_ws = false; s.logged_in = false; s.is_active = false; s.pid_actual = None;
+}
+
+/// Lo pagado que no llego a sonar (lo que sonaba y lo que esperaba) vuelve como credito.
+fn vacia_cola(s: &mut SoloistEstado, motivo: &str) {
+    let mut n = s.cola.len() as u64;
+    s.cola.clear();
+    if let Some(p) = s.pedida.take() { if matches!(p.estado.as_str(), "cargando" | "sonando" | "pausa") { n += 1; } }
+    if n > 0 { s.reembolsos += n; s.reembolso_msg = format!("{motivo} Se devolvieron {n} credito(s)."); }
 }
 
 // Palabras con las que Soloist podria decir que formato o calidad le llega (con --verbose).
@@ -1028,48 +1112,53 @@ fn reemparejar(app: &Arc<App>) -> Value {
 }
 
 // ---------- TOCAR, PARAR, PRECARGA ----------
-async fn tocar(app: &Arc<App>, v: &Value) -> Value {
+/// La pagina pide una cancion (ya cobrada): entra a la cola y, si nada suena ni carga, empieza al momento.
+fn agrega_a_la_cola(app: &Arc<App>, v: &Value) -> Value {
     let t0 = Instant::now();
-    let uri = v["uri"].as_str().unwrap_or("").to_string();
-    if uri.is_empty() { return json!({"ok": false, "error": "uri vacia"}); }
-    let logged_in = app.soloist.lock().unwrap().logged_in;
-    if !logged_in {
-        let m = "Falta emparejar Soloist con una cuenta (pestana Pruebas, seccion Soloist).".to_string();
-        app.diag("tocar", t0, Err(m.clone()));
-        return json!({"ok": false, "error": m});
+    let pista: Pista = match serde_json::from_value(v.clone()) { Ok(p) => p, Err(_) => return json!({"ok": false, "error": "cancion no valida"}) };
+    if !pista.uri.starts_with("spotify:track:") { return json!({"ok": false, "error": "uri no valida"}); }
+    {
+        let s = app.soloist.lock().unwrap();
+        if !s.logged_in {
+            let m = "Falta emparejar Soloist con una cuenta (pestana Pruebas, seccion Soloist).".to_string();
+            drop(s);
+            app.diag("tocar", t0, Err(m.clone()));
+            return json!({"ok": false, "error": m});
+        }
+        if s.cola.len() >= COLA_MAX { return json!({"ok": false, "error": "La cola esta llena."}); }
     }
     if app.soloist_tx.lock().unwrap().is_none() {
         let m = "Soloist no esta conectado por WebSocket.".to_string();
         app.diag("tocar", t0, Err(m.clone()));
         return json!({"ok": false, "error": m});
     }
-    // Primero se cierra la medida de la anterior (la pagina pide la siguiente en cuanto acaba).
-    let previa = app.soloist.lock().unwrap().pedida.clone();
-    if let Some(pp) = previa { cierra_medida(app, &pp); }
-    // La foto de la cache ANTES de pedir: lo que crezca despues es de esta cancion.
-    let foto = foto_cache(&app.cache_soloist());
+    let n = { let mut s = app.soloist.lock().unwrap(); s.cola.push_back(pista); s.cola.len() };
+    dispara_avance(app);
+    json!({"ok": true, "n": n})
+}
+
+/// Pone a sonar `pista` (su pedida ya esta puesta). `previa`: la pedida anterior, para cerrar su medida de calidad.
+async fn arranca_pista(app: &Arc<App>, pista: &Pista, previa: Option<Pedida>) -> Result<(), String> {
+    // Lo que no baja nada sale YA (mientras se mira la cache, Soloist ya se pone activo).
+    // Siempre «play» de una sola cancion (nada en la cola de Spotify: la cola es la de la rocola, con creditos).
+    if !envia_comando(app, json!({"type": "command", "command": "activate"})) { return Err("Soloist no esta conectado por WebSocket.".into()); }
+    let vol = app.soloist.lock().unwrap().vol_rocola;
+    envia_comando(app, json!({"type": "command", "command": "set_volume", "volume": vol}));
+    // UNA sola foto de la cache: cierra la medida de la anterior y es el punto de partida de esta (lo que crezca despues es de esta
+    // cancion). Antes eran dos recorridas, una tras otra, con el candado puesto y antes de mandar «play».
+    let dir = app.cache_soloist();
+    let ahora = tokio::task::spawn_blocking(move || foto_cache(&dir)).await.unwrap_or_default();
+    if let Some(pp) = previa { cierra_medida_con(app, &pp, &ahora); }
     {
         let mut c = app.calidad.lock().unwrap();
         let hechas = std::mem::take(&mut c.hechas);
-        *c = CalidadEstado { uri: uri.clone(), foto, desde: Some(Instant::now()), estado: "midiendo".into(), hechas, ..Default::default() };
+        *c = CalidadEstado { uri: pista.uri.clone(), foto: ahora, desde: Some(Instant::now()), estado: "midiendo".into(), hechas, ..Default::default() };
     }
-    {
-        let mut s = app.soloist.lock().unwrap();
-        s.pedida = Some(Pedida {
-            uri: uri.clone(), nombre: v["nombre"].as_str().unwrap_or("").into(), dur_ms: v["dur_ms"].as_u64().unwrap_or(0),
-            estado: "cargando".into(), aviso: String::new(), t0, empezo: false,
-        });
-        s.ultimo_pausado.clear();
-    }
-    // Siempre «play» de una sola cancion (nada en la cola de Spotify: la cola es la de la rocola, con creditos).
-    envia_comando(app, json!({"type": "command", "command": "activate"}));
-    let vol = app.soloist.lock().unwrap().vol_rocola;
-    envia_comando(app, json!({"type": "command", "command": "set_volume", "volume": vol}));
-    envia_comando(app, json!({"type": "command", "command": "play", "uri": uri}));
-    json!({"ok": true})
+    if !envia_comando(app, json!({"type": "command", "command": "play", "uri": pista.uri})) { return Err("Soloist no esta conectado por WebSocket.".into()); }
+    Ok(())
 }
 fn parar(app: &Arc<App>) -> Value {
-    app.soloist.lock().unwrap().pedida = None;
+    vacia_cola(&mut app.soloist.lock().unwrap(), "Se paro la rocola.");
     envia_comando(app, json!({"type": "command", "command": "pause"}));
     json!({"ok": true})
 }
@@ -1108,6 +1197,10 @@ fn estado_json(app: &Arc<App>) -> Value {
             "son": {"uri": s.son.uri, "nombre": s.son.nombre, "artista": s.son.artista, "img": s.son.img,
                      "dur_ms": s.son.dur_ms, "estado": s.son.estado, "aviso": s.son.aviso, "pos_ms": pos.max(0.0) as u64},
             "pedida": s.pedida.as_ref().map(|p| json!({"uri": p.uri, "estado": p.estado, "aviso": p.aviso})),
+            "actual": s.pedida.as_ref().filter(|p| matches!(p.estado.as_str(), "cargando" | "sonando" | "pausa"))
+                .map(|p| json!({"uri": p.uri, "nombre": p.nombre, "artista": p.artista, "img": p.img, "dur_ms": p.dur_ms})),
+            "rocola_cola": s.cola.iter().map(|t| json!({"nombre": t.nombre, "artista": t.artista, "img": t.img})).collect::<Vec<_>>(),
+            "reembolsos": s.reembolsos, "reembolso_msg": s.reembolso_msg,
             "cola_n": s.cola_sig.len(),
             "calidad": calidad_json(app),
         },
@@ -1552,7 +1645,7 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
             guarda_config_soloist(app, &exe, &nombre);
             json!({"ok": true})
         }
-        (true, "/api/tocar") => tocar(app, &v).await,
+        (true, "/api/cola/agrega") => agrega_a_la_cola(app, &v),
         (true, "/api/parar") => parar(app),
         (true, "/api/guardar_informe") => {
             let f = app.exe_dir.join("informe_spotify_soloist.txt");
