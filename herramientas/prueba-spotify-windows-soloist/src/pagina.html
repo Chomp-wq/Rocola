@@ -350,7 +350,7 @@ function pintaPie() {
     const s = (E.soloist && E.soloist.son) || {}, dur = (s.uri === actual.uri && s.dur_ms) || actual.dur || 0;
     const est = s.uri === actual.uri ? s.estado : "cargando";
     const txt = est === "cargando" ? "Cargando..." : est === "pausa" ? "En pausa" : actual.artista;
-    son.innerHTML = (actual.img ? '<img src="' + esc(actual.img) + '">' : '<div class="nofoto"></div>') +
+    son.innerHTML = (actual.img ? '<img src="' + esc(foto(actual.img)) + '">' : '<div class="nofoto"></div>') +
       '<div class="dat"><div class="nom">' + esc(actual.nombre) + '</div><div class="art">' + esc(txt) + marcaCalidad() + '</div>' +
       '<div class="barra"><i id="barra-i"></i></div><div id="tiempos"><span id="t-pos">0:00</span><span>' + (dur ? mmss(dur) : "") + '</span></div></div>';
     pintaAvance();
@@ -358,7 +358,7 @@ function pintaPie() {
     son.innerHTML = '<div class="nofoto"></div><div class="dat"><div class="nom">Nada suena</div><div class="art">Inserta una moneda (5) y pide una cancion.</div></div>';
   }
   $("cola").innerHTML = '<h4>SIGUIENTES (' + cola.length + ')</h4>' + cola.slice(0, 4).map(t =>
-    '<div class="it">' + (t.img ? '<img src="' + esc(t.img) + '">' : '') + '<span>' + esc(t.nombre) + ' &middot; ' + esc(t.artista) + '</span></div>').join("") +
+    '<div class="it">' + (t.img ? '<img src="' + esc(foto(t.img)) + '">' : '') + '<span>' + esc(t.nombre) + ' &middot; ' + esc(t.artista) + '</span></div>').join("") +
     (cola.length > 4 ? '<div class="it">y ' + (cola.length - 4) + ' mas...</div>' : "");
 }
 // La calidad que se midio en la cache de Soloist para la que suena: FLAC en verde, Vorbis en dorado.
@@ -390,23 +390,32 @@ function itemAlbum(a) { return {tipo: "album", id: a.id, nombre: a.name, artista
 function itemLista(p) { return {tipo: "lista", id: p.id, nombre: p.name, artista: (p.owner && p.owner.display_name) || "Spotify", img: imgChica(p.images), grande: imgGrande(p.images), letra: "SPOTIFY"}; }
 async function cargaBiblio() {
   cargandoBiblio = true;
-  $("vista").innerHTML = '<div style="text-align:center;font-size:28px;margin-top:60px">Cargando tus discos de Spotify...</div>';
+  // Si la herramienta ya tiene tus discos guardados de la vez pasada, la pared ya los muestra: se renuevan sin pantalla de espera.
+  const yaGuardados = !!(E.catalogo && E.catalogo.mios);
+  if (!yaGuardados) $("vista").innerHTML = '<div style="text-align:center;font-size:28px;margin-top:60px">Cargando tus discos de Spotify...</div>';
   const items = [], vistos = new Set(); let problema = "";
   const mete = i => { if (i.id && !vistos.has(i.tipo + i.id)) { vistos.add(i.tipo + i.id); items.push(i); } };
-  for (let o = 0; o < 500; o += 50) {
-    const r = await sp("/v1/me/albums?limit=50&offset=" + o);
-    if (!r.ok) { problema = r.error || "no se pudieron leer tus discos"; break; }
-    const its = r.datos.items || [];
-    its.forEach(x => x.album && mete(itemAlbum(x.album)));
-    if (its.length < 50 || o + 50 >= (r.datos.total || 0)) break;
+  // La primera pagina dice cuantos hay; las demas se piden a la vez (de 3 en 3), no una tras otra.
+  async function todas(base, tope, ponLas) {
+    const r = await sp(base + "&offset=0");
+    if (!r.ok) return r.error || "no se pudo leer";
+    const paginas = [r];
+    const total = Math.min(tope, r.datos.total || 0), resto = [];
+    for (let o = 50; o < total; o += 50) resto.push(o);
+    for (let i = 0; i < resto.length; i += 3) {
+      const rs = await Promise.all(resto.slice(i, i + 3).map(o => sp(base + "&offset=" + o)));
+      for (const x of rs) { if (!x.ok) return x.error || "no se pudo leer"; paginas.push(x); }
+    }
+    paginas.forEach(x => (x.datos.items || []).forEach(ponLas));
+    return "";
   }
-  for (let o = 0; o < 100; o += 50) {
-    const r = await sp("/v1/me/playlists?limit=50&offset=" + o);
-    if (!r.ok) { problema = problema || r.error || "no se pudieron leer tus listas"; break; }
-    const its = r.datos.items || [];
-    its.forEach(x => x && x.id && mete(itemLista(x)));
-    if (its.length < 50 || o + 50 >= (r.datos.total || 0)) break;
-  }
+  const [e1, e2] = await Promise.all([
+    todas("/v1/me/albums?limit=50", 500, x => x && x.album && mete(itemAlbum(x.album))),
+    todas("/v1/me/playlists?limit=50", 100, x => x && x.id && mete(itemLista(x))),
+  ]);
+  // el orden de siempre: discos y luego listas
+  items.sort((a, b) => (a.tipo === "lista") - (b.tipo === "lista"));
+  if (e1) problema = "tus discos: " + e1; else if (e2) problema = "tus listas: " + e2;
   let nota = "";
   if (!items.length && !(E.catalogo && E.catalogo.listo)) {
     for (const q of ["cumbia", "rock en espanol", "banda"]) {
@@ -416,9 +425,11 @@ async function cargaBiblio() {
     nota = "Tu cuenta no tiene discos ni listas guardados" + (problema ? " (" + problema + ")" : "") + ": se muestran discos de ejemplo (cumbia, rock en espanol, banda).";
   }
   biblio = items;
-  await post("/api/pared/mios", {items: items.map(i => ({tipo: i.tipo, id: i.id, nombre: i.nombre, artista: i.artista, img: i.img, grande: i.grande}))});
+  // Si fallo la lectura, no se borra lo guardado de la vez pasada.
+  const r = problema && yaGuardados ? {cambio: false} :
+    await post("/api/pared/mios", {items: items.map(i => ({tipo: i.tipo, id: i.id, nombre: i.nombre, artista: i.artista, img: i.img, grande: i.grande}))});
   cargandoBiblio = false;
-  await abreLetra(letraAct || "A", pila.length ? pila[0].sel : 0);
+  if (r.cambio || !yaGuardados || !pila.length) await abreLetra(letraAct || "A", pila.length ? pila[0].sel : 0);
   if (nota) aviso(nota, "info", 12000);
   else if (problema) aviso("Aviso: " + problema, "mal", 8000);
 }
@@ -478,6 +489,7 @@ function pintaPared(v) {
   // Si sigue la misma pagina solo se mueve el marco: las 18 portadas no se vuelven a poner (ni a parpadear).
   const clave = v.letra + "|" + v.titulo + "|" + pag + "|" + n;
   const grid = $("vista").querySelector(".pared");
+  adelantaElegido(v);
   if (grid && v._pintada === clave && pintadaVista === v) {
     grid.querySelectorAll(".celda.sel").forEach(c => c.classList.remove("sel"));
     const c = grid.querySelector('.celda[data-i="' + v.sel + '"]'); if (c) c.classList.add("sel");
@@ -491,7 +503,7 @@ function pintaPared(v) {
     if (!x) { h += '<div class="celda vacia"></div>'; continue; }
     h += '<div class="celda' + (i === v.sel ? " sel" : "") + '" data-i="' + i + '" title="' + esc(x.artista + " — " + x.nombre) + '">' +
       '<div class="sinfoto"><b>' + esc(x.nombre) + '</b>' + esc(x.artista) + '</div>' +
-      (x.img ? '<img src="' + esc(x.img) + '" alt="" decoding="async" onerror="this.remove()">' : '') +
+      (x.img ? '<img src="' + esc(foto(x.img)) + '" alt="" decoding="async" onerror="this.remove()">' : '') +
       (x.tipo === "lista" ? '<span class="marca">LISTA</span>' : "") + '</div>';
   }
   h += "</div>";
@@ -510,6 +522,26 @@ function precargaVecinas(v, pag) {
     for (let k = 0; k < POR_PAG; k++) { const x = v.items[p * POR_PAG + k]; if (p >= 0 && x && x.img && !x.img.startsWith("/p/")) urls.push(x.img); }
   precargadas = urls.map(u => { const im = new Image(); im.decoding = "async"; try { im.fetchPriority = "low"; } catch (e) {} im.src = u; return im; });
 }
+// El disco donde se queda el cursor: a los 0,4 s su portada grande (del Cover Art Archive o de Spotify: no gasta cuota) y a los
+// 1,2 s sus canciones (UNA peticion, solo si ya se sabe su id; la herramienta deja como mucho una cada 3 s y ninguna si Spotify
+// pidio esperar). Asi, al abrirlo, sale al momento. Las listas no (cambian).
+let tAdelanto1 = 0, tAdelanto2 = 0;
+function adelantaElegido(v) {
+  clearTimeout(tAdelanto1); clearTimeout(tAdelanto2);
+  const x = v.items[v.sel]; if (!x) return;
+  tAdelanto1 = setTimeout(() => { const g = foto(grandeDe(x)); if (g && !grandesListas.has(g)) { const im = new Image(); im.onload = () => grandesListas.add(g); im.src = g; } }, 400);
+  if (tocado && (x.tipo === "album" || x.tipo === "cat") && x.id && E.web && E.web.conectado)
+    tAdelanto2 = setTimeout(() => { if (vista() === v && v.items[v.sel] === x) get("/api/spotify?adelanta=1&ruta=" + encodeURIComponent("/v1/albums/" + x.id)); }, 1200);
+}
+// Las portadas del catalogo (/p/MBID) van por los puertos de portadas de la herramienta (repartidas entre los dos).
+function foto(u) {
+  const ps = E.puertos_portadas || [];
+  if (!u || !u.startsWith("/p/") || !ps.length) return u || "";
+  return "http://127.0.0.1:" + ps[parseInt(u.charAt(3), 16) % ps.length] + u;
+}
+// Hasta que tocas algo no se adelanta ningun disco con la API (al arrancar, el cursor esta en la primera casilla por casualidad).
+let tocado = false;
+["keydown", "mousedown"].forEach(ev => document.addEventListener(ev, () => { tocado = true; }, true));
 // La portada grande de un disco del catalogo: la misma, en 500 (la del servidor de la demo, que tambien la guarda).
 const grandeDe = x => x.grande || (x.img && x.img.startsWith("/p/") ? x.img + "?t=500" : x.img || "");
 function teclaPared(e, v) {
@@ -560,6 +592,25 @@ async function abreCat(x) {
 }
 async function cargaPistas(v) {
   const x = v.item, pistas = [];
+  const pon = t => { if (t && t.id && !t.is_local && t.type !== "episode")
+    pistas.push({id: t.id, uri: t.uri || "spotify:track:" + t.id, nombre: t.name, artista: nombres(t.artists), dur: t.duration_ms || 0, img: x.img}); };
+  if (x.tipo !== "lista") {
+    const r = await sp("/v1/albums/" + x.id);
+    if (r.ok && r.datos && r.datos.tracks) {
+      const tr = r.datos.tracks, im = r.datos.images || [];
+      (tr.items || []).forEach(pon);
+      // La portada grande de Spotify (su CDN es rapido) y la chica para lo que suena, si el disco no traia.
+      if (im.length) { if (!x.grande || x.grande.startsWith("/p/")) x.grande = im[0].url; if (!x.img) { x.img = imgChica(im); pistas.forEach(p => p.img = x.img); } }
+      for (let o = 50; o < Math.min(200, tr.total || 0); o += 50) {
+        const r2 = await sp("/v1/albums/" + x.id + "/tracks?limit=50&offset=" + o);
+        if (!r2.ok) break;
+        (r2.datos.items || []).forEach(pon);
+      }
+      v.pistas = pistas;
+      if (vista() === v) render();
+      return;
+    }
+  }
   for (let o = 0; o < 200; o += 50) {
     const ruta = x.tipo === "lista" ? "/v1/playlists/" + x.id + "/tracks?limit=50&offset=" + o : "/v1/albums/" + x.id + "/tracks?limit=50&offset=" + o;
     const r = await sp(ruta);
@@ -576,8 +627,26 @@ async function cargaPistas(v) {
   v.pistas = pistas;
   if (vista() === v) render();
 }
+// Las portadas grandes ya bajadas en esta sesion (se ponen directo); las demas: primero la chica (ya esta) y la grande al llegar.
+const grandesListas = new Set();
+function portadaEnDosPasos(x) {
+  const g = foto(x.grande), c = foto(x.img);
+  if (!g || grandesListas.has(g) || !c || c === g) return g || c;
+  const im = new Image();
+  im.onload = () => { grandesListas.add(g); const el = document.getElementById("portada-disco"); if (el && el.dataset.g === g) el.src = g; };
+  im.src = g;
+  return c;
+}
 function pintaDisco(v) {
   const x = v.item;
+  const clave = (v.pistas ? v.pistas.length : -1) + "|" + v.error + "|" + (x.grande || "");
+  const caja = $("pistas");
+  if (caja && v._pintada === clave && pintadaVista === v) {
+    caja.querySelectorAll(".pista.sel").forEach(p => p.classList.remove("sel"));
+    const p = caja.querySelector('.pista[data-i="' + v.sel + '"]'); if (p) { p.classList.add("sel"); p.scrollIntoView({block: "nearest"}); }
+    return;
+  }
+  v._pintada = clave; pintadaVista = v;
   $("letras").style.display = "none";
   $("cab-tit").textContent = x.nombre;
   $("cab-pag").textContent = v.pistas ? v.pistas.length + " canciones" : "";
@@ -585,7 +654,8 @@ function pintaDisco(v) {
   if (!v.pistas) lista = '<div style="padding:30px;font-size:24px;color:var(--suave)">Cargando canciones...</div>';
   else if (!v.pistas.length) lista = '<div style="padding:30px;font-size:22px;color:var(--rojo)">' + esc(v.error || "Este disco no trae canciones que se puedan tocar.") + '</div>';
   else lista = v.pistas.map((t, i) => '<div class="pista' + (i === v.sel ? " sel" : "") + '" data-i="' + i + '"><span class="n">' + (i + 1) + '</span><span class="t">' + esc(t.nombre) + '</span><span class="a">' + (x.tipo === "lista" ? esc(t.artista) : "") + '</span><span class="d">' + mmss(t.dur) + '</span></div>').join("");
-  $("vista").innerHTML = '<div class="disco"><div class="izq">' + (x.grande ? '<img src="' + esc(x.grande) + '" alt="">' : '') +
+  const fotoD = portadaEnDosPasos(x);
+  $("vista").innerHTML = '<div class="disco"><div class="izq">' + (fotoD ? '<img id="portada-disco" data-g="' + esc(foto(x.grande)) + '" src="' + esc(fotoD) + '" alt="">' : '') +
     '<h2>' + esc(x.nombre) + '</h2><div>' + esc(x.artista) + (x.tipo === "lista" ? " (lista)" : "") + '</div></div><div class="pistas" id="pistas">' + lista + '</div></div>';
   $("vista").querySelectorAll(".pista").forEach(p => p.onclick = () => { v.sel = +p.dataset.i; pedir(v.pistas[v.sel]); render(); });
   const s = $("vista").querySelector(".pista.sel"); if (s) s.scrollIntoView({block: "nearest"});
@@ -607,36 +677,62 @@ function abreBuscador() {
   if (pestanaAct !== "rocola") pestana("rocola");
   if (!pila.length) pila = [{tipo: "pared", letra: "", items: [], sel: 0, conLetras: true, titulo: ""}];
   if (vista().tipo === "busca") { enfocaTexto(); return; }
-  pila.push({tipo: "busca", q: "", res: null, cards: [], sel: -1, foco: "texto", error: "", buscando: false});
+  pila.push({tipo: "busca", q: "", res: null, local: null, cards: [], sel: -1, foco: "texto", error: "", buscando: false});
   render();
 }
 function enfocaTexto() { const i = $("q"); if (i) { i.focus(); i.select(); } }
 function pintaBusca(v) {
   $("letras").style.display = "none";
-  $("cab-tit").textContent = "Buscar en Spotify";
+  $("cab-tit").textContent = "Buscar";
+  $("letras").style.display = "none";
+  $("vista").innerHTML = '<div class="busca"><input type="text" id="q" placeholder="Escribe un artista, disco o cancion (Enter: tambien en Spotify)" autocomplete="off" spellcheck="false"><div class="res" id="res"></div></div>';
+  const q = $("q"); q.value = v.q;
+  q.oninput = () => { v.q = q.value; v.res = null; v.error = ""; buscaLocal(v); };
+  q.onfocus = () => { v.foco = "texto"; marcaBusca(v); };
+  pintaRes(v);
+  if (v.foco === "texto") q.focus(); else q.blur();
+}
+// Solo los resultados (el cuadro de texto no se toca: no se pierde lo que se escribe ni el cursor).
+function pintaRes(v) {
+  const cards = [];
+  const L = v.local || {artistas: [], discos: []};
+  L.artistas.forEach(a => cards.push({k: "lartista", nombre: a.nombre, sub: (a.genero || "") + " · " + a.n + " discos", img: a.img, it: a}));
+  L.discos.forEach(x => cards.push({k: "ldisco", nombre: x.nombre, sub: x.artista + (x.anio ? " · " + x.anio : "") + (x.mio ? " · tuyo" : ""), img: x.img, it: x}));
+  v.cards = cards.concat(v.spCards || []);
+  if (v.sel >= v.cards.length) v.sel = v.cards.length - 1;
   $("cab-pag").textContent = v.cards.length ? v.cards.length + " resultados" : "";
-  let h = '<div class="busca"><input type="text" id="q" placeholder="Escribe una cancion, disco o artista y pulsa Enter" autocomplete="off" spellcheck="false"><div class="res" id="res">';
-  if (v.buscando) h += '<h3>Buscando...</h3>';
-  else if (v.error) h += '<h3 style="color:var(--rojo)">' + esc(v.error) + '</h3>';
-  else if (v.res && !v.cards.length) h += '<h3>No hubo resultados.</h3>';
-  else if (v.res) {
+  let h = "";
+  if (v.cards.length) {
     let ult = "", enGrid = false;
-    const sec = {cancion: "CANCIONES (pide con Enter)", disco: "DISCOS (abre con Enter)", artista: "ARTISTAS (abre su pared)"};
+    const sec = {lartista: "ARTISTAS EN LA ROCOLA (abre su pared)", ldisco: "DISCOS EN LA ROCOLA (abre con Enter)",
+      cancion: "CANCIONES DE SPOTIFY (pide con Enter)", disco: "DISCOS DE SPOTIFY (abre con Enter)", artista: "ARTISTAS DE SPOTIFY (abre su pared)"};
     v.cards.forEach((c, i) => {
       if (c.k !== ult) { if (enGrid) h += "</div>"; h += '<h3>' + sec[c.k] + '</h3><div class="tarjetas">'; enGrid = true; ult = c.k; }
-      h += '<div class="tarj ' + c.k + '" data-i="' + i + '">' + (c.img ? '<img src="' + esc(c.img) + '" alt="">' : '<div class="sinfoto"></div>') +
+      h += '<div class="tarj ' + (c.k === "lartista" ? "artista" : c.k) + '" data-i="' + i + '">' + (c.img ? '<img src="' + esc(foto(c.img)) + '" alt="" decoding="async" onerror="this.outerHTML=\'<div class=sinfoto></div>\'">' : '<div class="sinfoto"></div>') +
         '<div class="tx"><b>' + esc(c.nombre) + '</b><span>' + esc(c.sub) + '</span></div></div>';
     });
     if (enGrid) h += "</div>";
-  } else h += '<h3>Escribe y pulsa Enter. Con la flecha abajo pasas a los resultados.</h3>';
-  h += '</div></div>';
-  $("vista").innerHTML = h;
-  const q = $("q"); q.value = v.q;
-  q.oninput = () => { v.q = q.value; };
-  q.onfocus = () => { v.foco = "texto"; marcaBusca(v); };
-  $("vista").querySelectorAll(".tarj").forEach(c => c.onclick = () => { v.sel = +c.dataset.i; v.foco = "lista"; activaCard(v); });
+  }
+  if (v.buscando) h += '<h3>Buscando en Spotify...</h3>';
+  else if (v.error) h += '<h3 style="color:var(--rojo)">' + esc(v.error) + '</h3>';
+  else if (v.res && !(v.spCards || []).length) h += '<h3>Spotify no dio resultados.</h3>';
+  else if (!v.res && v.q.trim()) h += '<h3>Enter: buscar tambien canciones en Spotify. Con la flecha abajo pasas a los resultados.</h3>';
+  else if (!v.q.trim()) h += '<h3>Escribe: lo que hay en la rocola sale al momento. Enter busca tambien en Spotify.</h3>';
+  $("res").innerHTML = h;
+  $("res").querySelectorAll(".tarj").forEach(c => c.onclick = () => { v.sel = +c.dataset.i; v.foco = "lista"; activaCard(v); });
   marcaBusca(v);
-  if (v.foco === "texto") q.focus(); else q.blur();
+}
+// Mientras escribes: el buscador de la herramienta (catalogo + tus discos, en milisegundos y sin gastar cuota).
+let tLocal = 0, nLocal = 0;
+function buscaLocal(v) {
+  clearTimeout(tLocal);
+  tLocal = setTimeout(async () => {
+    const n = ++nLocal, q = v.q;
+    const r = q.trim() ? await get("/api/buscar_local?q=" + encodeURIComponent(q)) : {artistas: [], discos: []};
+    if (n !== nLocal || v.q !== q) return; // ya escribiste otra cosa
+    v.local = r.ok === false ? null : r; v.spCards = [];
+    if (vista() === v) pintaRes(v);
+  }, 120);
 }
 function marcaBusca(v) {
   $("vista").querySelectorAll(".tarj").forEach(c => c.classList.toggle("sel", v.foco === "lista" && +c.dataset.i === v.sel));
@@ -644,23 +740,35 @@ function marcaBusca(v) {
 }
 async function hazBusqueda(v) {
   const q = v.q.trim(); if (!q) return;
-  v.buscando = true; v.error = ""; render();
+  v.buscando = true; v.error = ""; pintaRes(v);
   const r = await sp("/v1/search?q=" + encodeURIComponent(q) + "&type=track,album,artist&limit=10");
   v.buscando = false;
-  if (!r.ok) { v.error = r.error || "La busqueda fallo."; v.res = null; v.cards = []; render(); return; }
+  if (v.q.trim() !== q) return; // se siguio escribiendo
+  if (!r.ok) { v.error = r.error || "La busqueda fallo."; v.res = null; v.spCards = []; pintaRes(v); return; }
   const d = r.datos, cards = [];
   ((d.tracks || {}).items || []).forEach(t => t && cards.push({k: "cancion", nombre: t.name, sub: nombres(t.artists) + " · " + mmss(t.duration_ms), img: imgChica((t.album || {}).images),
     t: {id: t.id, uri: t.uri, nombre: t.name, artista: nombres(t.artists), dur: t.duration_ms || 0, img: imgChica((t.album || {}).images)}}));
   ((d.albums || {}).items || []).forEach(a => a && cards.push({k: "disco", nombre: a.name, sub: nombres(a.artists), img: imgChica(a.images), it: itemAlbum(a)}));
   ((d.artists || {}).items || []).forEach(a => a && cards.push({k: "artista", nombre: a.name, sub: a.followers ? a.followers.total.toLocaleString("es") + " seguidores" : "artista", img: imgChica(a.images), it: {tipo: "artista", id: a.id, nombre: a.name}}));
-  v.res = d; v.cards = cards; v.sel = cards.length ? 0 : -1; v.foco = cards.length ? "lista" : "texto";
-  render();
+  // Las canciones de Spotify primero (lo que la rocola no tiene); lo de la rocola sigue arriba.
+  v.res = d; v.spCards = cards;
+  const nLoc = ((v.local || {}).artistas || []).length + ((v.local || {}).discos || []).length;
+  v.sel = cards.length ? nLoc : (nLoc ? 0 : -1); v.foco = v.sel >= 0 ? "lista" : "texto";
+  if (v.foco === "lista") $("q").blur();
+  pintaRes(v);
 }
 function activaCard(v) {
   const c = v.cards[v.sel]; if (!c) return;
   if (c.k === "cancion") { pedir(c.t); marcaBusca(v); }
-  else if (c.k === "disco") abre(c.it);
+  else if (c.k === "disco" || c.k === "ldisco") abre(c.it);
+  else if (c.k === "lartista") abreArtistaLocal(c.it.nombre);
   else abreArtista(c.it);
+}
+// La pared de un artista de la rocola: sus discos (tuyos y del catalogo) sin gastar nada de la API.
+async function abreArtistaLocal(nombre) {
+  const r = await get("/api/artista_local?n=" + encodeURIComponent(nombre));
+  const v = {tipo: "pared", items: (r && r.items) || [], sel: 0, conLetras: false, titulo: nombre};
+  pila.push(v); render();
 }
 async function abreArtista(a) {
   const v = {tipo: "pared", items: [], sel: 0, conLetras: false, titulo: a.nombre, cargando: true};

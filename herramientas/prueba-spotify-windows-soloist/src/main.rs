@@ -149,9 +149,13 @@ struct App {
     exe_dir: PathBuf,
     datos: PathBuf,
     puerto: u16,
+    puertos_portadas: Vec<u16>, // las portadas del catalogo van por otros puertos: el navegador abre 6 conexiones por puerto, y asi
+                                // las portadas lentas no dejan esperando a Spotify ni al estado
     http: reqwest::Client,
     diag: Mutex<Vec<Diag>>,
-    api_cache: Mutex<HashMap<String, Value>>,
+    api_cache: Mutex<HashMap<String, (Value, Instant)>>, // respuesta y hasta cuando vale (los discos tambien en el disco)
+    api_esperan: Mutex<HashMap<String, Vec<tokio::sync::oneshot::Sender<Value>>>>, // la misma peticion ya en camino: se espera
+    ultimo_adelanto: Mutex<Option<Instant>>,
     bloqueo: Mutex<Option<Instant>>,
     web: Mutex<WebEstado>,
     oauth_cancelar: std::sync::atomic::AtomicBool,
@@ -212,6 +216,7 @@ impl App {
     fn ruta_calidad(&self) -> PathBuf { self.datos.join("calidad_medida_v2.json") }
     fn dir_catalogo(&self) -> PathBuf { self.datos.join("catalogo") }
     fn ruta_cat_ids(&self) -> PathBuf { self.datos.join("catalogo_ids.json") }
+    fn ruta_mios(&self) -> PathBuf { self.datos.join("mis_discos.json") }
 }
 
 // ---------- LA CALIDAD MEDIDA (FLAC o no) ----------
@@ -429,13 +434,17 @@ fn olvidar_web(app: &Arc<App>) -> Value {
     let r = std::fs::remove_file(app.ruta_refresh_web());
     *app.web.lock().unwrap() = WebEstado::default();
     app.api_cache.lock().unwrap().clear();
+    app.mios.lock().unwrap().clear();
+    let _ = std::fs::remove_file(app.ruta_mios());
+    limpia_pared(app, false);
     app.diag("olvidar tu cuenta", t0, Ok(format!("listo{}", if r.is_err() { " (no habia nada guardado)" } else { "" })));
     json!({"ok": true})
 }
 
 // ---------- LA API WEB (biblioteca y buscador) ----------
 async fn pide_api(http: &reqwest::Client, ruta: &str, llave: &str) -> Result<(u16, String, Option<u64>), String> {
-    let resp = http.get(format!("https://api.spotify.com{ruta}")).bearer_auth(llave).header("Accept", "application/json")
+    let base = std::env::var("PRUEBA_API").unwrap_or_else(|_| "https://api.spotify.com".into()); // PRUEBA_API: solo para probar
+    let resp = http.get(format!("{base}{ruta}")).bearer_auth(llave).header("Accept", "application/json")
         .send().await.map_err(|e| e.to_string())?;
     let estado = resp.status().as_u16();
     let espera = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse::<u64>().ok());
@@ -443,10 +452,74 @@ async fn pide_api(http: &reqwest::Client, ruta: &str, llave: &str) -> Result<(u1
     Ok((estado, cuerpo, espera))
 }
 
-async fn api_pagina(app: &Arc<App>, ruta: &str) -> Value {
+// Cuanto vale cada respuesta: un disco no cambia (30 dias, tambien en el disco: abrirlo otra vez, aun otro dia, no gasta nada); los
+// discos de un artista, 1 dia (tambien en el disco); una busqueda, 30 min; una lista, 5 min; lo tuyo (/v1/me), 1 min.
+fn vida_api(ruta: &str) -> (Duration, bool) {
+    if ruta.starts_with("/v1/albums/") { (Duration::from_secs(30 * 86_400), true) }
+    else if ruta.starts_with("/v1/artists/") { (Duration::from_secs(86_400), true) }
+    else if ruta.starts_with("/v1/search") { (Duration::from_secs(1_800), false) }
+    else if ruta.starts_with("/v1/playlists/") { (Duration::from_secs(300), false) }
+    else { (Duration::from_secs(60), false) }
+}
+fn ruta_api_disco(app: &App, ruta: &str) -> PathBuf {
+    app.datos.join("api_cache").join(format!("{}.json", &sha256_hex(ruta.as_bytes())[..32]))
+}
+fn guarda_api_memoria(app: &App, ruta: &str, v: Value, vida: Duration) {
+    let mut m = app.api_cache.lock().unwrap();
+    if m.len() > 3_000 { let ahora = Instant::now(); m.retain(|_, x| x.1 > ahora); if m.len() > 3_000 { m.clear(); } }
+    m.insert(ruta.to_string(), (v, Instant::now() + vida));
+}
+fn api_guardada(app: &App, ruta: &str) -> Option<Value> {
+    if let Some((v, hasta)) = app.api_cache.lock().unwrap().get(ruta) { if *hasta > Instant::now() { return Some(v.clone()); } }
+    let (vida, en_disco) = vida_api(ruta);
+    if !en_disco { return None; }
+    let g: Value = serde_json::from_str(&std::fs::read_to_string(ruta_api_disco(app, ruta)).ok()?).ok()?;
+    if g["ruta"].as_str() != Some(ruta) { return None; }
+    let edad = ahora_s().saturating_sub(g["t"].as_u64()?);
+    if edad >= vida.as_secs() { return None; }
+    let v = g["v"].clone();
+    guarda_api_memoria(app, ruta, v.clone(), Duration::from_secs(vida.as_secs() - edad));
+    Some(v)
+}
+fn ahora_s() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) }
+/// Spotify manda en cada cancion y disco la lista de paises donde se puede oir (cientos de codigos): no se usa y es casi todo el peso.
+fn quita_mercados(v: &mut Value) {
+    match v {
+        Value::Object(m) => { m.remove("available_markets"); for x in m.values_mut() { quita_mercados(x); } }
+        Value::Array(a) => { for x in a { quita_mercados(x); } }
+        _ => {}
+    }
+}
+
+async fn api_pagina(app: &Arc<App>, ruta: &str) -> Value { api_pide(app, ruta, false).await }
+
+/// `adelanta`: la pagina lo pide por si se abre (el cursor se quedo en un disco). Solo si no hay que esperar a Spotify y como mucho
+/// una cada 3 s, para no gastar la cuota en discos que no se abren.
+async fn api_pide(app: &Arc<App>, ruta: &str, adelanta: bool) -> Value {
     let permitida = ["/v1/me", "/v1/albums/", "/v1/playlists/", "/v1/search", "/v1/artists/"].iter().any(|p| ruta.starts_with(p));
     if !permitida || ruta.contains("..") || ruta.contains(' ') { return json!({"ok": false, "error": "ruta no permitida"}); }
-    if let Some(v) = app.api_cache.lock().unwrap().get(ruta) { return v.clone(); }
+    if let Some(v) = api_guardada(app, ruta) { return v; }
+    if adelanta {
+        let bloqueado = app.bloqueo.lock().unwrap().map(|h| h > Instant::now()).unwrap_or(false);
+        let mut u = app.ultimo_adelanto.lock().unwrap();
+        if bloqueado || u.map(|t| t.elapsed() < Duration::from_secs(3)).unwrap_or(false) || app.api_esperan.lock().unwrap().contains_key(ruta) {
+            return json!({"ok": false, "omitido": true});
+        }
+        *u = Some(Instant::now());
+    }
+    let espera = {
+        let mut m = app.api_esperan.lock().unwrap();
+        if let Some(v) = m.get_mut(ruta) { let (tx, rx) = tokio::sync::oneshot::channel(); v.push(tx); Some(rx) }
+        else { m.insert(ruta.to_string(), vec![]); None }
+    };
+    if let Some(rx) = espera { return rx.await.unwrap_or_else(|_| json!({"ok": false, "error": "se corto la peticion"})); }
+    let v = api_red(app, ruta).await;
+    let esperan = app.api_esperan.lock().unwrap().remove(ruta).unwrap_or_default();
+    for tx in esperan { let _ = tx.send(v.clone()); }
+    v
+}
+
+async fn api_red(app: &Arc<App>, ruta: &str) -> Value {
     if let Some(h) = *app.bloqueo.lock().unwrap() {
         let falta = h.saturating_duration_since(Instant::now()).as_secs() + 1;
         if h > Instant::now() { return json!({"ok": false, "estado": 429, "espera_s": falta, "error": format!("Spotify pide esperar {falta} s")}); }
@@ -465,11 +538,19 @@ async fn api_pagina(app: &Arc<App>, ruta: &str) -> Value {
                 app.diag(&format!("GET {}", corta(ruta)), t0, Err(format!("HTTP 429: Spotify frena, esperar {e} s")));
                 return json!({"ok": false, "estado": 429, "espera_s": e, "error": format!("Spotify pide esperar {e} s")});
             }
-            let cuerpo_v: Value = serde_json::from_str(&cuerpo).unwrap_or(Value::Null);
+            let mut cuerpo_v: Value = serde_json::from_str(&cuerpo).unwrap_or(Value::Null);
             if ok {
                 app.diag(&format!("GET {}", corta(ruta)), t0, Ok(format!("HTTP {estado}")));
+                quita_mercados(&mut cuerpo_v);
                 let v = json!({"ok": true, "estado": estado, "datos": cuerpo_v});
-                app.api_cache.lock().unwrap().insert(ruta.to_string(), v.clone());
+                let (vida, en_disco) = vida_api(ruta);
+                guarda_api_memoria(app, ruta, v.clone(), vida);
+                if en_disco {
+                    let f = ruta_api_disco(app, ruta);
+                    if let Some(d) = f.parent() { let _ = std::fs::create_dir_all(d); }
+                    let tmp = f.with_extension("tmp");
+                    if std::fs::write(&tmp, json!({"ruta": ruta, "t": ahora_s(), "v": v}).to_string()).is_ok() { let _ = std::fs::rename(&tmp, &f); }
+                }
                 v
             } else {
                 let m = cuerpo_v["error"]["message"].as_str().unwrap_or("").to_string();
@@ -1031,6 +1112,7 @@ fn estado_json(app: &Arc<App>) -> Value {
             "calidad": calidad_json(app),
         },
         "diag_n": app.diag.lock().unwrap().len(),
+        "puertos_portadas": app.puertos_portadas,
         "catalogo": {
             "listo": app.catalogo.lock().unwrap().is_some(), "estado": app.cat_estado.lock().unwrap().clone(),
             "artistas": app.catalogo.lock().unwrap().as_ref().map(|c| c.artistas).unwrap_or(0),
@@ -1311,22 +1393,23 @@ async fn adelanta_portadas(app: Arc<App>) {
     }
 }
 
-/// Al arrancar: si las portadas guardadas pasan de 600 MB, se borran las que hace mas que no se usan hasta quedar en 450 MB.
-fn recorta_portadas(dir: PathBuf) {
-    let mut todas: Vec<(SystemTime, u64, PathBuf)> = vec![];
-    for sub in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-        for f in std::fs::read_dir(sub.path()).into_iter().flatten().flatten() {
-            if let Ok(m) = f.metadata() {
-                let t = m.accessed().or_else(|_| m.modified()).unwrap_or(UNIX_EPOCH);
-                todas.push((t, m.len(), f.path()));
-            }
+/// Al arrancar: si una carpeta de lo guardado (portadas 600 MB, respuestas de Spotify 200 MB) pasa de su tope, se borra lo que hace
+/// mas que no se usa hasta quedar en tres cuartos.
+fn recorta_dir(dir: PathBuf, tope: u64) {
+    fn junta(d: &Path, v: &mut Vec<(SystemTime, u64, PathBuf)>, nivel: u8) {
+        for f in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            let Ok(m) = f.metadata() else { continue };
+            if m.is_dir() { if nivel < 2 { junta(&f.path(), v, nivel + 1); } continue; }
+            v.push((m.accessed().or_else(|_| m.modified()).unwrap_or(UNIX_EPOCH), m.len(), f.path()));
         }
     }
+    let mut todas = vec![];
+    junta(&dir, &mut todas, 0);
     let mut total: u64 = todas.iter().map(|x| x.1).sum();
-    if total <= TOPE_PORTADAS { return; }
+    if total <= tope { return; }
     todas.sort();
     for (_, n, p) in todas {
-        if total <= TOPE_PORTADAS * 3 / 4 { break; }
+        if total <= tope * 3 / 4 { break; }
         if std::fs::remove_file(&p).is_ok() { total -= n; }
     }
 }
@@ -1385,9 +1468,14 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
         (true, "/api/pared/mios") => {
             let mios: Vec<catalogo::Mio> = serde_json::from_value(v["items"].clone()).unwrap_or_default();
             let n = mios.len();
-            *app.mios.lock().unwrap() = mios;
-            limpia_pared(app, true);
-            json!({"ok": true, "n": n})
+            let igual = *app.mios.lock().unwrap() == mios;
+            if !igual {
+                // Guardados (solo ids, nombres y portadas) para que al abrir la demo otra vez tus discos esten en la pared al momento.
+                let _ = std::fs::write(app.ruta_mios(), serde_json::to_string(&mios).unwrap_or_default());
+                *app.mios.lock().unwrap() = mios;
+                limpia_pared(app, true);
+            }
+            json!({"ok": true, "n": n, "cambio": !igual})
         }
         (true, "/api/cat/resolver") => resolver_cat(app, &v).await,
         (true, "/api/pared/vista") => {
@@ -1409,7 +1497,18 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
             app.rt.spawn(async move { actualiza_catalogo(&a).await; });
             json!({"ok": true})
         }
-        (false, "/api/spotify") => api_pagina(app, q.get("ruta").map(|s| s.as_str()).unwrap_or("")).await,
+        (false, "/api/spotify") => api_pide(app, q.get("ruta").map(|s| s.as_str()).unwrap_or(""), q.contains_key("adelanta")).await,
+        (false, "/api/buscar_local") => {
+            let (cat, mios, ids) = (app.catalogo.lock().unwrap().clone(), app.mios.lock().unwrap().clone(), app.cat_ids.lock().unwrap().clone());
+            let mut r = catalogo::busca(cat.as_deref(), &mios, &ids, q.get("q").map(|s| s.as_str()).unwrap_or(""));
+            r["ok"] = json!(true);
+            r["q"] = json!(q.get("q").cloned().unwrap_or_default());
+            r
+        }
+        (false, "/api/artista_local") => {
+            let (cat, mios, ids) = (app.catalogo.lock().unwrap().clone(), app.mios.lock().unwrap().clone(), app.cat_ids.lock().unwrap().clone());
+            json!({"ok": true, "items": catalogo::discos_de(cat.as_deref(), &mios, &ids, q.get("n").map(|s| s.as_str()).unwrap_or(""))})
+        }
         (true, "/api/entrar_oauth") => entrar_oauth(app),
         (true, "/api/web/client_id") => {
             let id = v["id"].as_str().unwrap_or("").trim().to_string();
@@ -1487,16 +1586,7 @@ fn atiende(app: &Arc<App>, h: &tokio::runtime::Handle, req: tiny_http::Request) 
     };
     if !host_ok { return enviar(req, 403, "text/plain; charset=utf-8", "Solo desde esta misma computadora.".into()); }
     if !post && (camino == "/" || camino == "/index.html") { return enviar(req, 200, "text/html; charset=utf-8", PAGINA.to_string()); }
-    if !post && camino.starts_with("/p/") {
-        // Una portada del catalogo (la pide un <img>, que no lleva la marca). Del disco al momento; si no esta, la baja tokio.
-        let mbid = &camino[3..];
-        if !catalogo::es_mbid(mbid) { return enviar(req, 404, "text/plain; charset=utf-8", "No existe".into()); }
-        let tam = if q.get("t").map(|t| t == "500").unwrap_or(false) { 500 } else { 250 };
-        if let Ok(b) = std::fs::read(ruta_portada(app, mbid, tam)) { return responde_portada(req, &Ok(Some(b))); }
-        let (a, m) = (app.clone(), mbid.to_string());
-        h.spawn(async move { trae_portada(&a, &m, tam, Some(req)).await; });
-        return;
-    }
+    if !post && camino.starts_with("/p/") { return sirve_p(app, h, req, camino, &q); }
     if !camino.starts_with("/api/") { return enviar(req, 404, "text/plain; charset=utf-8", "No existe".into()); }
     if !marca { return enviar(req, 403, "text/plain; charset=utf-8", "Falta la marca de la pagina.".into()); }
     let mut cuerpo = String::new();
@@ -1521,6 +1611,30 @@ fn atiende(app: &Arc<App>, h: &tokio::runtime::Handle, req: tiny_http::Request) 
     enviar(req, 200, "application/json; charset=utf-8", r.to_string());
 }
 
+// Una portada del catalogo (la pide un <img>, que no lleva la marca). Del disco al momento; si no esta, la baja tokio.
+fn sirve_p(app: &Arc<App>, h: &tokio::runtime::Handle, req: tiny_http::Request, camino: &str, q: &HashMap<String, String>) {
+    let mbid = &camino[3..];
+    if !catalogo::es_mbid(mbid) { return responde_portada(req, &Ok(None)); }
+    let tam = if q.get("t").map(|t| t == "500").unwrap_or(false) { 500 } else { 250 };
+    if let Ok(b) = std::fs::read(ruta_portada(app, mbid, tam)) { return responde_portada(req, &Ok(Some(b))); }
+    let (a, m) = (app.clone(), mbid.to_string());
+    h.spawn(async move { trae_portada(&a, &m, tam, Some(req)).await; });
+}
+
+/// Los puertos de las portadas: solo /p/MBID, y solo desde esta computadora.
+fn atiende_portadas(app: &Arc<App>, h: &tokio::runtime::Handle, req: tiny_http::Request, puerto: u16) {
+    let host = req.headers().iter().find(|x| x.field.as_str().as_str().eq_ignore_ascii_case("Host")).map(|x| x.value.as_str().to_string());
+    let ok = host.map(|v| v == format!("127.0.0.1:{puerto}") || v == format!("localhost:{puerto}")).unwrap_or(false);
+    let url = req.url().to_string();
+    let (camino, q) = url.split_once('?').unwrap_or((url.as_str(), ""));
+    if !ok || *req.method() != tiny_http::Method::Get || !camino.starts_with("/p/") {
+        let _ = req.respond(tiny_http::Response::from_string("No existe").with_status_code(404));
+        return;
+    }
+    let q = consulta(q);
+    sirve_p(app, h, req, camino, &q);
+}
+
 fn abre_navegador(url: &str) {
     if std::env::var("PRUEBA_NO_ABRIR").is_ok() { return; }
     #[cfg(windows)]
@@ -1543,11 +1657,24 @@ async fn main() {
     let mut puerto = 0;
     for p in 8744..8764u16 { if let Ok(s) = tiny_http::Server::http(("127.0.0.1", p)) { servidor = Some(s); puerto = p; break; } }
     let Some(servidor) = servidor else { println!("No encontre un puerto libre entre 8744 y 8763."); std::process::exit(1); };
+    // Dos puertos para las portadas (los mismos cada vez si estan libres, para que el navegador las recuerde entre una vez y otra).
+    let mut servidores_portadas = vec![];
+    let mut puertos_portadas: Vec<u16> = vec![];
+    for p in (8780..8800u16).chain(std::iter::repeat(0).take(4)) {
+        if servidores_portadas.len() == 2 { break; }
+        if p == puerto { continue; }
+        if let Ok(s) = tiny_http::Server::http(("127.0.0.1", p)) {
+            let real = s.server_addr().to_ip().map(|a| a.port()).unwrap_or(p);
+            puertos_portadas.push(real);
+            servidores_portadas.push(s);
+        }
+    }
 
     let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().expect("cliente http");
     let app = Arc::new(App {
-        exe_dir, datos, puerto, http,
-        diag: Mutex::new(Vec::new()), api_cache: Mutex::new(HashMap::new()), bloqueo: Mutex::new(None),
+        exe_dir, datos, puerto, http, puertos_portadas: puertos_portadas.clone(),
+        diag: Mutex::new(Vec::new()), api_cache: Mutex::new(HashMap::new()),
+        api_esperan: Mutex::new(HashMap::new()), ultimo_adelanto: Mutex::new(None), bloqueo: Mutex::new(None),
         web: Mutex::new(WebEstado::default()), oauth_cancelar: std::sync::atomic::AtomicBool::new(false), oauth_gen: std::sync::atomic::AtomicU64::new(0),
         soloist: Mutex::new(SoloistEstado::default()), soloist_child: Mutex::new(None), soloist_tx: Mutex::new(None),
         soloist_gen: std::sync::atomic::AtomicU64::new(0),
@@ -1567,8 +1694,15 @@ async fn main() {
     if let Some(m) = std::fs::read_to_string(app.ruta_cat_ids()).ok().and_then(|s| serde_json::from_str(&s).ok()) {
         *app.cat_ids.lock().unwrap() = m;
     }
+    if let Some(m) = std::fs::read_to_string(app.ruta_mios()).ok().and_then(|s| serde_json::from_str::<Vec<catalogo::Mio>>(&s).ok()) {
+        *app.mios.lock().unwrap() = m; // la pared los tiene antes de preguntarle nada a Spotify (luego se renuevan)
+    }
+    if std::env::var("PRUEBA_API").is_ok() {
+        app.web.lock().unwrap().tok = Some(TokenWeb { access_token: "prueba".into(), refresh_token: String::new(), expira: Instant::now() + Duration::from_secs(86_400) });
+    }
     { let a = app.clone(); tokio::spawn(async move { actualiza_catalogo(&a).await; }); }
-    { let d = app.datos.join("portadas"); std::thread::spawn(move || recorta_portadas(d)); }
+    { let d = app.datos.join("portadas"); std::thread::spawn(move || recorta_dir(d, TOPE_PORTADAS)); }
+    { let d = app.datos.join("api_cache"); std::thread::spawn(move || recorta_dir(d, 200 * 1024 * 1024)); }
     for _ in 0..6 { let a = app.clone(); tokio::spawn(adelanta_portadas(a)); }
 
     let url = format!("http://127.0.0.1:{puerto}/");
@@ -1582,6 +1716,13 @@ async fn main() {
 
     let servidor = Arc::new(servidor);
     let h = tokio::runtime::Handle::current();
+    for (s, p) in servidores_portadas.into_iter().zip(puertos_portadas.iter().copied()) {
+        let s = Arc::new(s);
+        for _ in 0..6 {
+            let (s, a, h) = (s.clone(), app.clone(), h.clone());
+            std::thread::spawn(move || { while let Ok(r) = s.recv() { atiende_portadas(&a, &h, r, p); } });
+        }
+    }
     for _ in 0..12 {
         let (s, a, h) = (servidor.clone(), app.clone(), h.clone());
         std::thread::spawn(move || { while let Ok(r) = s.recv() { atiende(&a, &h, r); } });

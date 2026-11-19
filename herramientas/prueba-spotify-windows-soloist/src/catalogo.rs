@@ -11,8 +11,8 @@ use serde_json::{json, Value};
 pub const URL_BASE: &str = "https://github.com/Chomp-wq/Rocola/releases/download/catalogo/";
 pub const TOPE_LETRA: usize = 9_000; // 500 paginas de 18
 
-pub struct DiscoCat { pub nombre: String, pub anio: String, pub spotify: String, pub mbid: String, pub portada: bool }
-pub struct ArtistaCat { pub nombre: String, pub genero: String, pub fama: u32, pub discos: Vec<DiscoCat> }
+pub struct DiscoCat { pub nombre: String, pub plano: String, pub anio: String, pub spotify: String, pub mbid: String, pub portada: bool }
+pub struct ArtistaCat { pub nombre: String, pub plano: String, pub genero: String, pub fama: u32, pub discos: Vec<DiscoCat> }
 pub struct Catalogo {
     pub version: String,
     pub letras: HashMap<String, Vec<ArtistaCat>>, // en el orden del archivo: del mas al menos famoso
@@ -24,7 +24,7 @@ pub struct Catalogo {
 }
 
 /// Tus discos (los guardados en tu cuenta) y tus listas, como los manda la pagina.
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct Mio {
     pub tipo: String, // album | lista
     pub id: String,
@@ -82,13 +82,13 @@ pub fn lee(gz: &[u8]) -> Result<Catalogo, String> {
                 let fama = f.get(3).and_then(|x| x.parse::<u32>().ok()).unwrap_or(0);
                 c.genero_de.entry(plano(f[1])).or_insert_with(|| f[2].to_string());
                 c.fama_de.entry(plano(f[1])).or_insert(fama);
-                c.letras.entry(letra.clone()).or_default().push(ArtistaCat { nombre: f[1].into(), genero: f[2].into(), fama, discos: vec![] });
+                c.letras.entry(letra.clone()).or_default().push(ArtistaCat { nombre: f[1].into(), plano: plano(f[1]), genero: f[2].into(), fama, discos: vec![] });
                 c.artistas += 1;
             }
             Some("D") if f.len() >= 6 => {
                 if let Some(a) = c.letras.get_mut(&letra).and_then(|v| v.last_mut()) {
                     *c.total_genero.entry(a.genero.clone()).or_default() += 1;
-                    a.discos.push(DiscoCat { nombre: f[1].into(), anio: f[2].into(), spotify: f[3].into(), mbid: f[4].into(), portada: f[5] == "1" });
+                    a.discos.push(DiscoCat { nombre: f[1].into(), plano: plano(f[1]), anio: f[2].into(), spotify: f[3].into(), mbid: f[4].into(), portada: f[5] == "1" });
                     c.discos += 1;
                 }
             }
@@ -142,6 +142,20 @@ pub fn letras_con(cat: Option<&Catalogo>, mios: &[Mio]) -> Vec<String> {
     v
 }
 
+fn casilla_mia(m: &Mio, g: &str) -> Value {
+    json!({"tipo": if m.tipo == "lista" { "lista" } else { "album" }, "id": m.id, "nombre": m.nombre, "artista": m.artista, "genero": g,
+           "img": m.img, "grande": m.grande, "mio": true})
+}
+// La portada va por el servidor de la demo (/p/MBID: la guarda en el disco la primera vez); la grande es «?t=500».
+fn casilla_cat(a: &ArtistaCat, d: &DiscoCat, id: &str) -> Value {
+    json!({"tipo": "cat", "id": id, "mbid": d.mbid, "nombre": d.nombre, "artista": a.nombre, "genero": a.genero, "anio": d.anio,
+           "img": if d.portada { format!("/p/{}", d.mbid) } else { String::new() }})
+}
+/// El id de Spotify de un disco del catalogo: el del archivo, o el ya buscado («-» = Spotify no lo tiene; "" = sin buscar).
+fn id_de(d: &DiscoCat, ids: &HashMap<String, String>) -> String {
+    if !d.spotify.is_empty() { d.spotify.clone() } else { ids.get(&d.mbid).cloned().unwrap_or_default() }
+}
+
 /// Una letra entera de la pared. `ids`: mbid -> id de disco de Spotify ya buscado («-» = Spotify no lo tiene).
 pub fn arma_letra(cat: Option<&Catalogo>, mios: &[Mio], ids: &HashMap<String, String>, letra: &str) -> Vec<Value> {
     if letra == "SPOTIFY" {
@@ -160,9 +174,8 @@ pub fn arma_letra(cat: Option<&Catalogo>, mios: &[Mio], ids: &HashMap<String, St
         let g = cat.and_then(|c| c.genero_de.get(&plano(&m.artista))).cloned().unwrap_or_else(|| "Otros".into());
         ya.insert(format!("{}|{}", plano(&m.artista), plano(&m.nombre)));
         ya.insert(m.id.clone());
-        filas.push(((rango(&g), std::cmp::Reverse(fama(&m.artista)), plano(&m.artista), 0, i), json!({
-            "tipo": "album", "id": m.id, "nombre": m.nombre, "artista": m.artista, "genero": g, "img": m.img, "grande": m.grande, "mio": true,
-        })));
+        let casilla = casilla_mia(m, &g);
+        filas.push(((rango(&g), std::cmp::Reverse(fama(&m.artista)), plano(&m.artista), 0, i), casilla));
     }
     if let Some(c) = cat {
         let mut cupo = TOPE_LETRA.saturating_sub(filas.len());
@@ -170,21 +183,83 @@ pub fn arma_letra(cat: Option<&Catalogo>, mios: &[Mio], ids: &HashMap<String, St
         'artistas: for a in c.letras.get(letra).map(|v| v.as_slice()).unwrap_or(&[]) {
             for d in &a.discos {
                 if cupo == 0 { break 'artistas; }
-                let id = if !d.spotify.is_empty() { d.spotify.clone() } else { ids.get(&d.mbid).cloned().unwrap_or_default() };
+                let id = id_de(d, ids);
                 if id == "-" { continue; } // ya se busco y Spotify no lo tiene
                 if ya.contains(&format!("{}|{}", plano(&a.nombre), plano(&d.nombre))) || (!id.is_empty() && ya.contains(&id)) { continue; }
                 pos += 1;
                 cupo -= 1;
-                // La portada va por el servidor de la demo (/p/MBID: la guarda en el disco la primera vez); la grande es «?t=500».
-                filas.push(((rango(&a.genero), std::cmp::Reverse(a.fama), plano(&a.nombre), 1, pos), json!({
-                    "tipo": "cat", "id": id, "mbid": d.mbid, "nombre": d.nombre, "artista": a.nombre, "genero": a.genero, "anio": d.anio,
-                    "img": if d.portada { format!("/p/{}", d.mbid) } else { String::new() },
-                })));
+                filas.push(((rango(&a.genero), std::cmp::Reverse(a.fama), plano(&a.nombre), 1, pos), casilla_cat(a, d, &id)));
             }
         }
     }
     filas.sort_by(|a, b| a.0.cmp(&b.0));
     filas.into_iter().map(|(_, v)| v).collect()
+}
+
+/// EL BUSCADOR AL MOMENTO (sin gastar nada de la API): artistas y discos del catalogo y tus discos y listas que tengan todas las
+/// palabras escritas (sin acentos ni mayusculas). Manda la fama, con premio al nombre igual o que empieza igual.
+pub fn busca(cat: Option<&Catalogo>, mios: &[Mio], ids: &HashMap<String, String>, q: &str) -> Value {
+    let toks: Vec<String> = q.split_whitespace().map(plano).filter(|t| !t.is_empty()).collect();
+    if toks.iter().map(|t| t.len()).sum::<usize>() < 2 { return json!({"artistas": [], "discos": []}); }
+    let junto: String = toks.concat();
+    let todas = |texto: &str| toks.iter().all(|t| texto.contains(t.as_str()));
+    let premio = |p: &str| if p == junto { 600_000u64 } else if p.starts_with(&junto) { 300_000 } else if p.starts_with(toks[0].as_str()) { 150_000 } else { 0 };
+    // tus discos y listas primero
+    let mut discos: Vec<(u64, Value)> = vec![];
+    let mut ya: HashSet<String> = HashSet::new();
+    for m in mios {
+        let (pn, pa) = (plano(&m.nombre), plano(&m.artista));
+        if !toks.iter().all(|t| pn.contains(t.as_str()) || pa.contains(t.as_str())) { continue; }
+        let g = cat.and_then(|c| c.genero_de.get(&pa)).cloned().unwrap_or_else(|| if m.tipo == "lista" { String::new() } else { "Otros".into() });
+        ya.insert(format!("{pa}|{pn}"));
+        ya.insert(m.id.clone());
+        discos.push((2_000_000 + premio(&pn), casilla_mia(m, &g)));
+    }
+    let mut artistas: Vec<(u64, &ArtistaCat)> = vec![];
+    if let Some(c) = cat {
+        for a in c.letras.values().flatten() {
+            let art_todas = todas(&a.plano);
+            if art_todas { artistas.push((a.fama as u64 + premio(&a.plano), a)); }
+            for d in &a.discos {
+                // todas las palabras entre el disco y su artista, y al menos una en el disco (si no, cualquier disco del artista)
+                if !toks.iter().all(|t| d.plano.contains(t.as_str()) || a.plano.contains(t.as_str())) { continue; }
+                let en_disco = toks.iter().any(|t| d.plano.contains(t.as_str()));
+                if !en_disco && !art_todas { continue; }
+                let id = id_de(d, ids);
+                if id == "-" || ya.contains(&format!("{}|{}", a.plano, d.plano)) || (!id.is_empty() && ya.contains(&id)) { continue; }
+                let p = a.fama as u64 + if en_disco { premio(&d.plano) + if todas(&d.plano) { 100_000 } else { 0 } } else { 0 };
+                discos.push((p, casilla_cat(a, d, &id)));
+            }
+        }
+    }
+    artistas.sort_by(|x, y| y.0.cmp(&x.0).then(x.1.nombre.cmp(&y.1.nombre)));
+    discos.sort_by(|x, y| y.0.cmp(&x.0));
+    let artistas: Vec<Value> = artistas.into_iter().take(12).map(|(_, a)| {
+        let img = a.discos.iter().find(|d| d.portada).map(|d| format!("/p/{}", d.mbid)).unwrap_or_default();
+        json!({"nombre": a.nombre, "genero": a.genero, "n": a.discos.len(), "img": img})
+    }).collect();
+    json!({"artistas": artistas, "discos": discos.into_iter().take(24).map(|x| x.1).collect::<Vec<_>>()})
+}
+
+/// La pared de un artista sin gastar nada de la API: tus discos suyos y los del catalogo (del mas al menos escuchado).
+pub fn discos_de(cat: Option<&Catalogo>, mios: &[Mio], ids: &HashMap<String, String>, nombre: &str) -> Vec<Value> {
+    let pn = plano(nombre);
+    let g = cat.and_then(|c| c.genero_de.get(&pn)).cloned().unwrap_or_else(|| "Otros".into());
+    let mut v = vec![];
+    let mut ya: HashSet<String> = HashSet::new();
+    for m in mios.iter().filter(|m| m.tipo == "album" && plano(&m.artista) == pn) {
+        ya.insert(plano(&m.nombre));
+        ya.insert(m.id.clone());
+        v.push(casilla_mia(m, &g));
+    }
+    if let Some(a) = cat.and_then(|c| c.letras.get(&letra_xp(nombre))).and_then(|l| l.iter().find(|a| a.plano == pn)) {
+        for d in &a.discos {
+            let id = id_de(d, ids);
+            if id == "-" || ya.contains(&d.plano) || (!id.is_empty() && ya.contains(&id)) { continue; }
+            v.push(casilla_cat(a, d, &id));
+        }
+    }
+    v
 }
 
 /// De los discos que dio la busqueda de Spotify, el que es: mismo nombre (o el nombre con «(Deluxe…)» detras) y el artista.
@@ -221,5 +296,26 @@ mod pruebas {
         assert!(es_mbid("8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11"));
         assert!(!es_mbid("8F6BD1E4-fbe1-4f50-aa9b-94c450ec0f11"));
         assert!(!es_mbid("../../../etc/passwd-aaaaaaaaaaaaaaaaaaaaaa"));
+    }
+    #[test]
+    fn buscador_local() {
+        let mut c = Catalogo { version: "x".into(), letras: HashMap::new(), genero_de: HashMap::new(), fama_de: HashMap::new(),
+            total_genero: HashMap::new(), artistas: 0, discos: 0 };
+        let d = |n: &str, m: &str| DiscoCat { nombre: n.into(), plano: plano(n), anio: "".into(), spotify: "".into(), mbid: m.into(), portada: true };
+        c.letras.insert("L".into(), vec![
+            ArtistaCat { nombre: "Los Tigres del Norte".into(), plano: plano("Los Tigres del Norte"), genero: "Regional".into(), fama: 900_000,
+                discos: vec![d("Jefe de jefes", "m1"), d("Contrabando y traición", "m2")] },
+            ArtistaCat { nombre: "Los Tigrillos".into(), plano: plano("Los Tigrillos"), genero: "Regional".into(), fama: 100_000,
+                discos: vec![d("Tigres de oro", "m3")] },
+        ]);
+        let mut ids = HashMap::new();
+        ids.insert("m2".to_string(), "-".to_string());
+        let r = busca(Some(&c), &[], &ids, "tigres");
+        assert_eq!(r["artistas"][0]["nombre"], "Los Tigres del Norte");
+        assert_eq!(r["artistas"].as_array().unwrap().len(), 1); // «Los Tigrillos» no tiene «tigres»
+        let nombres: Vec<&str> = r["discos"].as_array().unwrap().iter().map(|x| x["nombre"].as_str().unwrap()).collect();
+        assert_eq!(nombres, vec!["Jefe de jefes", "Tigres de oro"]); // el de Spotify «-» no sale
+        assert_eq!(busca(Some(&c), &[], &ids, "jefe tigres")["discos"][0]["nombre"], "Jefe de jefes");
+        assert_eq!(discos_de(Some(&c), &[], &ids, "los tigres del norte").len(), 1);
     }
 }
