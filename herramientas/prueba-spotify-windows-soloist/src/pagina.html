@@ -145,6 +145,7 @@ p.nota{color:var(--suave);margin:6px 0}
     <div class="campo"><label>Nombre del aparato (el que eliges desde el telefono)</label><input type="text" id="s-nombre" placeholder="Rocola (prueba Soloist)"></div>
     <div class="campo"><label>Volumen de la rocola en Soloist: <b id="s-vol-n">100</b> (se pone al arrancar y en cada cancion pedida; lo que muevas en el telefono dura hasta la siguiente)</label><input type="range" id="s-vol" min="0" max="100" step="5" value="100" style="width:100%" oninput="$('s-vol-n').textContent=this.value" onchange="ponVolumen(this.value)"></div>
     <div class="campo"><label><input type="checkbox" id="s-verbose" onchange="ponVerbose(this.checked)"> Registro detallado de Soloist (<code>--verbose</code>): para ver si dice que formato le manda Spotify. Vale al volver a «Iniciar Soloist».</label></div>
+    <div class="campo"><label>Cache de Soloist (MB): lo ya bajado suena al momento, sin esperar a la red; una cancion pesa de 10 a 40 MB. Vale al volver a «Iniciar Soloist».</label><input type="number" id="s-cache" min="256" max="51200" step="256" value="2048" style="width:160px" onchange="ponCache(this.value)"></div>
     <div id="s-formato" class="nota"></div>
     <div class="campo"><label>Llave de la API de Soloist (se guarda en esta carpeta; nunca se vuelve a mostrar)</label><input type="password" id="s-llave" placeholder="pegala aqui"></div>
     <div class="botones">
@@ -508,7 +509,7 @@ function pintaPared(v) {
     if (!x) { h += '<div class="celda vacia"></div>'; continue; }
     h += '<div class="celda' + (i === v.sel ? " sel" : "") + '" data-i="' + i + '" title="' + esc(x.artista + " — " + x.nombre) + '">' +
       '<div class="sinfoto"><b>' + esc(x.nombre) + '</b>' + esc(x.artista) + '</div>' +
-      (x.img ? '<img src="' + esc(foto(x.img)) + '" alt="" decoding="async" onerror="this.remove()">' : '') +
+      (x.img ? '<img src="' + esc(foto(x.img, i)) + '" alt="" decoding="async" onerror="this.remove()">' : '') +
       (x.tipo === "lista" ? '<span class="marca">LISTA</span>' : "") + '</div>';
   }
   h += "</div>";
@@ -528,21 +529,33 @@ function precargaVecinas(v, pag) {
   precargadas = urls.map(u => { const im = new Image(); im.decoding = "async"; try { im.fetchPriority = "low"; } catch (e) {} im.src = u; return im; });
 }
 // El disco donde se queda el cursor: a los 0,4 s su portada grande (del Cover Art Archive o de Spotify: no gasta cuota) y a los
-// 1,2 s sus canciones (UNA peticion, solo si ya se sabe su id; la herramienta deja como mucho una cada 3 s y ninguna si Spotify
-// pidio esperar). Asi, al abrirlo, sale al momento. Las listas no (cambian).
+// 1,2 s sus canciones (1 peticion si ya se sabe su id de Spotify, 2 si hay que buscarlo antes: la herramienta lo recuerda; como mucho
+// una cadena cada 3 s y ninguna si Spotify pidio esperar). Asi, al abrirlo, sale al momento. Las listas no (cambian).
 let tAdelanto1 = 0, tAdelanto2 = 0;
 function adelantaElegido(v) {
   clearTimeout(tAdelanto1); clearTimeout(tAdelanto2);
   const x = v.items[v.sel]; if (!x) return;
   tAdelanto1 = setTimeout(() => { const g = foto(grandeDe(x)); if (g && !grandesListas.has(g)) { const im = new Image(); im.onload = () => grandesListas.add(g); im.src = g; } }, 400);
-  if (tocado && (x.tipo === "album" || x.tipo === "cat") && x.id && E.web && E.web.conectado)
-    tAdelanto2 = setTimeout(() => { if (vista() === v && v.items[v.sel] === x) get("/api/spotify?adelanta=1&ruta=" + encodeURIComponent("/v1/albums/" + x.id)); }, 1200);
+  if (tocado && (x.tipo === "album" || x.tipo === "cat") && !x.sinSpotify && E.web && E.web.conectado) programaAdelanto(v, x, 1200, 0);
 }
-// Las portadas del catalogo (/p/MBID) van por los puertos de portadas de la herramienta (repartidas entre los dos).
-function foto(u) {
+function programaAdelanto(v, x, espera, intentos) {
+  tAdelanto2 = setTimeout(async () => {
+    if (vista() !== v || v.items[v.sel] !== x) return;
+    const r = await post("/api/adelanta", {id: x.id || "", mbid: x.mbid || "", nombre: x.nombre, artista: x.artista});
+    if (r.id && !x.id) x.id = r.id;          // ya se sabe: al abrirlo no hay que buscarlo
+    if (r.no_esta) x.sinSpotify = true;      // Spotify no lo tiene (al abrirlo se avisa); no se quita de la pared que se esta viendo
+    // La herramienta deja una cadena cada 3 s: si ahora no tocaba y el cursor sigue ahi, se vuelve a intentar (hasta 2 veces).
+    if (r.omitido && intentos < 2) programaAdelanto(v, x, 2200, intentos + 1);
+  }, espera);
+}
+// Las portadas del catalogo (/p/MBID) van por los puertos de portadas de la herramienta: el navegador abre 6 conexiones por puerto,
+// asi que con 3 puertos las 18 de una pagina bajan a la vez. `k` (la posicion de la casilla en su letra) reparte las 18 de cada pagina
+// exactamente 6 y 6 y 6, y es siempre la misma para la misma casilla (el navegador la recuerda). Sin `k`, por la letra del MBID.
+function foto(u, k) {
   const ps = E.puertos_portadas || [];
   if (!u || !u.startsWith("/p/") || !ps.length) return u || "";
-  return "http://127.0.0.1:" + ps[parseInt(u.charAt(3), 16) % ps.length] + u;
+  const i = k == null ? parseInt(u.charAt(3), 16) : k;
+  return "http://127.0.0.1:" + ps[i % ps.length] + u;
 }
 // Hasta que tocas algo no se adelanta ningun disco con la API (al arrancar, el cursor esta en la primera casilla por casualidad).
 let tocado = false;
@@ -580,6 +593,7 @@ function abre(x) {
 // Un disco del catalogo: si trae su id de Spotify se abre (1 peticion); si no, UNA busqueda que se recuerda para siempre.
 async function abreCat(x) {
   if (!E.web || !E.web.conectado) { aviso("Para abrir discos falta entrar con tu cuenta (pestana Pruebas, Tu cuenta).", "mal"); return; }
+  if (x.sinSpotify) { aviso("Spotify no tiene «" + x.nombre + "»: ya no se mostrara.", "mal", 6000); quitaDeLaPared(x); return; }
   if (!x.id) {
     aviso("Buscando «" + x.nombre + "» en Spotify...", "info", 3000);
     const r = await post("/api/cat/resolver", {mbid: x.mbid, nombre: x.nombre, artista: x.artista});
@@ -737,7 +751,7 @@ function buscaLocal(v) {
     if (n !== nLocal || v.q !== q) return; // ya escribiste otra cosa
     v.local = r.ok === false ? null : r; v.spCards = [];
     if (vista() === v) pintaRes(v);
-  }, 120);
+  }, 70);
 }
 function marcaBusca(v) {
   $("vista").querySelectorAll(".tarj").forEach(c => c.classList.toggle("sel", v.foco === "lista" && +c.dataset.i === v.sel));
@@ -780,12 +794,15 @@ async function abreArtista(a) {
   pila.push(v); render();
   $("vista").innerHTML = '<div style="text-align:center;font-size:28px;margin-top:60px">Cargando los discos de ' + esc(a.nombre) + '...</div>';
   const items = [], vistos = new Set(); let err = "";
-  for (let o = 0; o < 30; o += 10) {
-    const r = await sp("/v1/artists/" + a.id + "/albums?include_groups=album,single&limit=10&offset=" + o);
-    if (!r.ok) { err = r.error || "no se pudieron leer sus discos"; break; }
-    const its = r.datos.items || [];
-    its.forEach(x => { if (x && x.id && !vistos.has(x.id)) { vistos.add(x.id); items.push(itemAlbum(x)); } });
-    if (its.length < 10 || o + 10 >= (r.datos.total || 0)) break;
+  const base = "/v1/artists/" + a.id + "/albums?include_groups=album,single&limit=10&offset=";
+  const r0 = await sp(base + "0");
+  if (!r0.ok) err = r0.error || "no se pudieron leer sus discos";
+  else {
+    const paginas = [r0], total = Math.min(30, r0.datos.total || 0);
+    const resto = []; for (let o = 10; o < total; o += 10) resto.push(o);
+    const rs = await Promise.all(resto.map(o => sp(base + o)));
+    for (const x of rs) { if (!x.ok) { err = x.error || "no se pudieron leer sus discos"; break; } paginas.push(x); }
+    paginas.forEach(pg => (pg.datos.items || []).forEach(x => { if (x && x.id && !vistos.has(x.id)) { vistos.add(x.id); items.push(itemAlbum(x)); } }));
   }
   v.items = items; v.cargando = false;
   if (vista() === v) { render(); if (err) aviso(err, "mal", 7000); if (!items.length && !err) aviso("Spotify no dio discos de este artista.", "info"); }
@@ -852,7 +869,7 @@ function pintaEstado() {
     ["Version", esc(E.version || "")],
   ].map(f => "<div>" + f[0] + "</div><div>" + f[1] + "</div>").join("");
   if (s.logged_in && /150 segundos|Arrancando/.test($("soloist-msg").textContent)) $("soloist-msg").textContent = "";
-  if (!yaCargueVerb && s.verbose != null) { $("s-verbose").checked = s.verbose; yaCargueVerb = true; }
+  if (!yaCargueVerb && s.verbose != null) { $("s-verbose").checked = s.verbose; if (s.cache_mb) $("s-cache").value = s.cache_mb; yaCargueVerb = true; }
   $("s-formato").innerHTML = s.verbose ? ((s.formato && s.formato.length) ? "<b>Lo que dice Soloist del formato:</b><br>" + s.formato.slice(-6).map(esc).join("<br>") : "Con registro detallado: aun no dice nada del formato (pide una cancion).") : "";
   if (!yaCargueVol && s.vol_rocola != null) { $("s-vol").value = s.vol_rocola; $("s-vol-n").textContent = s.vol_rocola; yaCargueVol = true; }
   if (!yaCargueCampos && s.exe) { $("s-exe").value = s.exe; $("s-nombre").value = s.nombre_aparato || ""; yaCargueCampos = true; }
@@ -868,6 +885,10 @@ let yaCargueVol = false, yaCargueVerb = false;
 async function ponVerbose(on) {
   await post("/api/soloist/verbose", {on});
   $("soloist-msg").textContent = "Guardado. Pulsa «Detener» y luego «Iniciar Soloist» para que valga.";
+}
+async function ponCache(mb) {
+  const r = await post("/api/soloist/cache_mb", {mb: +mb});
+  if (r.ok) { $("s-cache").value = r.mb; $("soloist-msg").textContent = "Cache de " + r.mb + " MB guardada: vale al volver a iniciar Soloist."; }
 }
 async function ponVolumen(v) {
   const r = await post("/api/soloist/volumen", {v: +v});

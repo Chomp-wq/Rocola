@@ -140,6 +140,7 @@ struct SoloistEstado {
     nombre_aparato: String,
     vol_rocola: u8,
     verbose: bool,
+    cache_mb: u32, // tope de la cache de Soloist (lo ya bajado suena sin esperar a la red); vale al volver a iniciar
     formato: Vec<String>, // con --verbose: las ultimas lineas de Soloist que hablan del formato o la calidad
     corriendo: bool,
     arrancando: bool,
@@ -169,6 +170,7 @@ struct App {
     http: reqwest::Client,
     diag: Mutex<Vec<Diag>>,
     api_cache: Mutex<HashMap<String, (Value, Instant)>>, // respuesta y hasta cuando vale (los discos tambien en el disco)
+    renovando: tokio::sync::Mutex<()>, // una sola renovacion de la llave a la vez
     api_esperan: Mutex<HashMap<String, Vec<tokio::sync::oneshot::Sender<Value>>>>, // la misma peticion ya en camino: se espera
     ultimo_adelanto: Mutex<Option<Instant>>,
     bloqueo: Mutex<Option<Instant>>,
@@ -190,6 +192,9 @@ struct App {
     // LAS PORTADAS DEL CATALOGO: se guardan en el disco (datos/portadas) la primera vez; quien pide una que ya se esta bajando espera.
     portadas_esperan: Mutex<HashMap<String, Vec<tiny_http::Request>>>,
     sem_portadas: tokio::sync::Semaphore,
+    urgentes: std::sync::atomic::AtomicUsize, // portadas que el navegador espera ahora: las de adelanto se apartan mientras tanto
+    lat_portada_ms: std::sync::atomic::AtomicU64,    // lo que tarda en bajar una portada (media movil): con eso se decide cuantas bajar a la vez
+    fondo_en_curso: std::sync::atomic::AtomicUsize,  // las de adelanto que se estan bajando ahora
     cola_portadas: Mutex<std::collections::VecDeque<String>>, // lo que se baja por adelantado (lo urgente, delante)
     hay_cola: tokio::sync::Notify,
     adelanto: Mutex<(usize, usize)>,                          // bajadas bien y mal desde que la cola estaba vacia
@@ -209,7 +214,7 @@ impl App {
             ok,
             msg: limpia(&msg),
         };
-        println!("[{}] {} {} ({} ms) {}", d.hora, if ok { "BIEN" } else { "MAL " }, d.que, d.ms, d.msg);
+        consola(format!("[{}] {} {} ({} ms) {}", d.hora, if ok { "BIEN" } else { "MAL " }, d.que, d.ms, d.msg));
         let mut v = self.diag.lock().unwrap();
         v.push(d);
         let n = v.len();
@@ -367,13 +372,17 @@ fn guarda_token_web(app: &App, t: &librespot_oauth::OAuthToken) {
     w.error.clear();
 }
 
-async fn asegura_token_web(app: &Arc<App>) -> Result<String, String> {
-    {
-        let w = app.web.lock().unwrap();
-        if let Some(t) = &w.tok {
-            if t.expira > Instant::now() + Duration::from_secs(60) { return Ok(t.access_token.clone()); }
-        }
-    }
+fn token_vigente(app: &App, margen: Duration) -> Option<String> {
+    let w = app.web.lock().unwrap();
+    w.tok.as_ref().filter(|t| t.expira > Instant::now() + margen).map(|t| t.access_token.clone())
+}
+async fn asegura_token_web(app: &Arc<App>) -> Result<String, String> { token_web(app, Duration::from_secs(60)).await }
+/// La llave de la API web, renovandola si le quedan menos de `margen`. Si varias peticiones la piden a la vez, solo una renueva
+/// (las demas esperan y usan la nueva: antes cada una pedia la suya).
+async fn token_web(app: &Arc<App>, margen: Duration) -> Result<String, String> {
+    if let Some(l) = token_vigente(app, margen) { return Ok(l); }
+    let _uno_solo = app.renovando.lock().await;
+    if let Some(l) = token_vigente(app, margen) { return Ok(l); }
     let rt = {
         let w = app.web.lock().unwrap();
         w.tok.as_ref().map(|t| t.refresh_token.clone())
@@ -510,22 +519,44 @@ fn quita_mercados(v: &mut Value) {
     }
 }
 
-async fn api_pagina(app: &Arc<App>, ruta: &str) -> Value { api_pide(app, ruta, false).await }
+async fn api_pagina(app: &Arc<App>, ruta: &str) -> Value { api_pide(app, ruta).await }
 
-/// `adelanta`: la pagina lo pide por si se abre (el cursor se quedo en un disco). Solo si no hay que esperar a Spotify y como mucho
-/// una cada 3 s, para no gastar la cuota en discos que no se abren.
-async fn api_pide(app: &Arc<App>, ruta: &str, adelanta: bool) -> Value {
+/// El cursor se quedo en un disco y la pagina pide adelantarlo por si se abre. Para no gastar la cuota en discos que no se abren:
+/// como mucho una vez cada 3 s y nunca mientras Spotify pida esperar.
+fn permiso_adelanto(app: &App) -> bool {
+    if app.bloqueo.lock().unwrap().map(|h| h > Instant::now()).unwrap_or(false) { return false; }
+    let mut u = app.ultimo_adelanto.lock().unwrap();
+    if u.map(|t| t.elapsed() < Duration::from_secs(3)).unwrap_or(false) { return false; }
+    *u = Some(Instant::now());
+    true
+}
+/// Adelanta un disco: si no se sabe su id de Spotify lo busca (una peticion, que se recuerda) y baja sus canciones (otra), para que
+/// al abrirlo salga al momento. Un disco que Spotify no tiene queda anotado, pero NO se quita de la pagina que se esta viendo.
+async fn adelanta_disco(app: &Arc<App>, v: &Value) -> Value {
+    if !app.web.lock().unwrap().tok.is_some() { return json!({"ok": false, "omitido": true}); }
+    let mut id = v["id"].as_str().unwrap_or("").to_string();
+    if id.is_empty() {
+        let mbid = v["mbid"].as_str().unwrap_or("");
+        if let Some(g) = app.cat_ids.lock().unwrap().get(mbid).cloned() { id = g; } // ya se habia buscado: no cuesta nada
+    }
+    if id == "-" { return json!({"ok": false, "no_esta": true}); }
+    if !id.is_empty() && api_guardada(app, &format!("/v1/albums/{id}")).is_some() { return json!({"ok": true, "id": id, "ya": true}); }
+    if !permiso_adelanto(app) { return json!({"ok": false, "omitido": true}); }
+    if id.is_empty() {
+        let r = resolver_cat(app, v).await;
+        match r["id"].as_str() {
+            Some(i) => id = i.to_string(),
+            None => return json!({"ok": false, "no_esta": r["no_esta"].as_bool().unwrap_or(false)}),
+        }
+    }
+    let r = api_pide(app, &format!("/v1/albums/{id}")).await;
+    json!({"ok": r["ok"].as_bool().unwrap_or(false), "id": id})
+}
+
+async fn api_pide(app: &Arc<App>, ruta: &str) -> Value {
     let permitida = ["/v1/me", "/v1/albums/", "/v1/playlists/", "/v1/search", "/v1/artists/"].iter().any(|p| ruta.starts_with(p));
     if !permitida || ruta.contains("..") || ruta.contains(' ') { return json!({"ok": false, "error": "ruta no permitida"}); }
     if let Some(v) = api_guardada(app, ruta) { return v; }
-    if adelanta {
-        let bloqueado = app.bloqueo.lock().unwrap().map(|h| h > Instant::now()).unwrap_or(false);
-        let mut u = app.ultimo_adelanto.lock().unwrap();
-        if bloqueado || u.map(|t| t.elapsed() < Duration::from_secs(3)).unwrap_or(false) || app.api_esperan.lock().unwrap().contains_key(ruta) {
-            return json!({"ok": false, "omitido": true});
-        }
-        *u = Some(Instant::now());
-    }
     let espera = {
         let mut m = app.api_esperan.lock().unwrap();
         if let Some(v) = m.get_mut(ruta) { let (tx, rx) = tokio::sync::oneshot::channel(); v.push(tx); Some(rx) }
@@ -634,8 +665,11 @@ struct ConfigSoloist {
     // --verbose de Soloist («Show all logs», no sale en su documentacion web): para ver si dice el formato que le llega.
     #[serde(default)]
     verbose: bool,
+    #[serde(default = "cache_defecto")]
+    cache_mb: u32,
 }
 fn vol_defecto() -> u8 { 100 }
+fn cache_defecto() -> u32 { 2048 }
 
 fn carga_config_soloist(app: &App) {
     let c: ConfigSoloist = std::fs::read_to_string(app.ruta_config_soloist()).ok()
@@ -649,11 +683,12 @@ fn carga_config_soloist(app: &App) {
     s.nombre_aparato = if c.nombre_aparato.is_empty() { NOMBRE_APARATO_DEFECTO.to_string() } else { c.nombre_aparato };
     s.vol_rocola = if std::fs::metadata(app.ruta_config_soloist()).is_ok() { c.volumen.min(100) } else { 100 };
     s.verbose = c.verbose;
+    s.cache_mb = c.cache_mb.clamp(256, 51_200);
 }
 fn guarda_config_soloist(app: &App, exe: &str, nombre: &str) {
     let exe = &normaliza_exe(exe);
-    let (vol, verbose) = { let s = app.soloist.lock().unwrap(); (s.vol_rocola, s.verbose) };
-    let c = ConfigSoloist { exe: exe.to_string(), nombre_aparato: nombre.to_string(), volumen: vol, verbose };
+    let (vol, verbose, cache_mb) = { let s = app.soloist.lock().unwrap(); (s.vol_rocola, s.verbose, s.cache_mb) };
+    let c = ConfigSoloist { exe: exe.to_string(), nombre_aparato: nombre.to_string(), volumen: vol, verbose, cache_mb };
     let _ = std::fs::write(app.ruta_config_soloist(), serde_json::to_string_pretty(&c).unwrap_or_default());
     let mut s = app.soloist.lock().unwrap();
     s.exe = exe.to_string();
@@ -937,14 +972,14 @@ fn iniciar_soloist(app: &Arc<App>) -> Value {
     let _ = std::fs::remove_file(datos_dir.join("ws.addr"));
     let _ = std::fs::remove_file(datos_dir.join("ws.port"));
     let t0 = Instant::now();
-    let (vol_ini, verbose) = { let s = app.soloist.lock().unwrap(); (s.vol_rocola.to_string(), s.verbose) };
+    let (vol_ini, verbose, cache_mb) = { let s = app.soloist.lock().unwrap(); (s.vol_rocola.to_string(), s.verbose, s.cache_mb.to_string()) };
     let hijo = Command::new(&exe)
         .args(["--device-name", &nombre, "--api-key", &llave, "--ws", "127.0.0.1:0", "--data-dir"])
         .arg(&datos_dir)
         .args(["--cache-dir"]).arg(&cache_dir)
         .args(["--initial-volume", &vol_ini])
         .args(if verbose { &["--verbose"][..] } else { &[][..] })
-        .args(["--cache-size", "1024"]) // sin tope crece sin limite; 1 GB alcanza para ~40 canciones en FLAC
+        .args(["--cache-size", &cache_mb]) // sin tope crece sin limite; 1 GB son ~40 canciones en FLAC o ~100 en Vorbis. Lo ya bajado suena sin esperar a la red
         .stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn();
     let mut hijo = match hijo {
@@ -1192,7 +1227,7 @@ fn estado_json(app: &Arc<App>) -> Value {
         "soloist": {
             "exe": s.exe, "nombre_aparato": s.nombre_aparato, "tiene_llave": tiene_llave_soloist(app),
             "corriendo": s.corriendo, "arrancando": s.arrancando, "esperando_pareo": s.esperando_pareo,
-            "conectado_ws": s.conectado_ws, "logged_in": s.logged_in, "is_active": s.is_active, "volumen": s.volumen, "vol_rocola": s.vol_rocola, "verbose": s.verbose, "formato": s.formato,
+            "conectado_ws": s.conectado_ws, "logged_in": s.logged_in, "is_active": s.is_active, "volumen": s.volumen, "vol_rocola": s.vol_rocola, "verbose": s.verbose, "cache_mb": s.cache_mb, "formato": s.formato,
             "ultimo_error": s.ultimo_error,
             "son": {"uri": s.son.uri, "nombre": s.son.nombre, "artista": s.son.artista, "img": s.son.img,
                      "dur_ms": s.son.dur_ms, "estado": s.son.estado, "aviso": s.son.aviso, "pos_ms": pos.max(0.0) as u64},
@@ -1283,6 +1318,13 @@ fn limpia_pared(app: &Arc<App>, portadas: bool) {
             encola_portadas(&a, v, false);
         }
     });
+}
+
+/// Una sola letra ya no vale (un disco de su artista cambio de id o ya no se ensena): se vuelve a armar en cuanto se pida.
+fn invalida_letra(app: &App, letra: &str) {
+    app.pared_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    app.pared_cache.lock().unwrap().remove(letra);
+    app.pared_mbids.lock().unwrap().remove(letra);
 }
 
 fn sha256_hex(b: &[u8]) -> String {
@@ -1407,12 +1449,30 @@ async fn baja_portada(app: &Arc<App>, mbid: &str, tam: u32) -> Result<Option<Vec
     if no.exists() { return Ok(None); }
     let _permiso = app.sem_portadas.acquire().await.map_err(|e| e.to_string())?;
     if let Ok(b) = tokio::fs::read(&ruta).await { return Ok(Some(b)); } // otra la bajo mientras esperaba
-    let r = app.http.get(catalogo::portada(mbid, tam)).timeout(Duration::from_secs(25)).send().await.map_err(|e| e.to_string())?;
-    if let Some(d) = ruta.parent() { let _ = std::fs::create_dir_all(d); }
-    if r.status().as_u16() == 404 { let _ = std::fs::write(&no, b""); return Ok(None); }
-    if !r.status().is_success() { return Err(format!("contesto {}", r.status().as_u16())); }
-    let b = r.bytes().await.map_err(|e| e.to_string())?.to_vec();
-    if b.len() < 200 { return Err("llego vacia".into()); }
+    // Una segunda oportunidad: archive.org a veces corta o tarda de mas la primera vez.
+    let t_red = Instant::now();
+    let mut ultimo = String::new();
+    let mut hallada: Option<Vec<u8>> = None;
+    for intento in 0..2 {
+        if intento > 0 { tokio::time::sleep(Duration::from_millis(300)).await; }
+        match app.http.get(catalogo::portada(mbid, tam)).timeout(Duration::from_secs(12)).send().await {
+            Err(e) => { ultimo = e.to_string(); continue; }
+            Ok(r) => {
+                if let Some(d) = ruta.parent() { let _ = std::fs::create_dir_all(d); }
+                let st = r.status().as_u16();
+                if st == 404 { let _ = std::fs::write(&no, b""); return Ok(None); }
+                if !r.status().is_success() { ultimo = format!("contesto {st}"); if st < 500 { break; } continue; }
+                match r.bytes().await { Ok(b) if b.len() >= 200 => { hallada = Some(b.to_vec()); break; } Ok(_) => ultimo = "llego vacia".into(), Err(e) => ultimo = e.to_string() }
+            }
+        }
+    }
+    let Some(b) = hallada else { return Err(ultimo) };
+    {
+        use std::sync::atomic::Ordering::Relaxed;
+        let ms = t_red.elapsed().as_millis() as u64;
+        let antes = app.lat_portada_ms.load(Relaxed);
+        app.lat_portada_ms.store(if antes == 0 { ms } else { (antes * 4 + ms) / 5 }, Relaxed);
+    }
     let tmp = ruta.with_extension("tmp");
     if std::fs::write(&tmp, &b).is_ok() { let _ = std::fs::rename(&tmp, &ruta); }
     Ok(Some(b))
@@ -1436,12 +1496,15 @@ fn responde_portada(req: tiny_http::Request, res: &Result<Option<Vec<u8>>, Strin
 /// adelanto (la que llegue primero la baja; las demas esperan a esa). `req`: la casilla que la pidio (None = adelanto).
 async fn trae_portada(app: &Arc<App>, mbid: &str, tam: u32, req: Option<tiny_http::Request>) -> bool {
     let clave = format!("{mbid}-{tam}");
+    let urgente = req.is_some();
     {
         let mut m = app.portadas_esperan.lock().unwrap();
         if let Some(v) = m.get_mut(&clave) { v.extend(req); return true; }
         m.insert(clave.clone(), req.into_iter().collect());
     }
+    if urgente { app.urgentes.fetch_add(1, std::sync::atomic::Ordering::SeqCst); }
     let res = baja_portada(app, mbid, tam).await;
+    if urgente { app.urgentes.fetch_sub(1, std::sync::atomic::Ordering::SeqCst); }
     let ok = res.is_ok();
     let reqs = app.portadas_esperan.lock().unwrap().remove(&clave).unwrap_or_default();
     if !reqs.is_empty() { let _ = tokio::task::spawn_blocking(move || { for r in reqs { responde_portada(r, &res); } }).await; }
@@ -1463,12 +1526,32 @@ fn encola_portadas(app: &App, mbids: Vec<String>, urgente: bool) {
     app.hay_cola.notify_waiters();
 }
 
-/// Los 6 que bajan por adelantado (aparte de las 8 de las casillas que se ven, que no esperan a estos).
+/// Cuantas portadas de adelanto bajar a la vez: las que hacen falta para tener lista la pagina siguiente (18) en unos 2 s con lo que
+/// tarda la red (con 0,5 s por portada bastan 5; con 1,2 s, 11; con 2 s, 16). Sin dato todavia, como si tardara 1 s.
+fn objetivo_fondo(app: &App) -> usize {
+    let l = app.lat_portada_ms.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1000.0;
+    let l = if l <= 0.0 { 1.0 } else { l };
+    ((9.0 * l).ceil() as usize).clamp(4, 16)
+}
+
+/// Uno de los 16 que bajan por adelantado (el programa los despierta cuando hay cola; solo trabajan los que `objetivo_fondo` permite
+/// y se apartan mientras el navegador espera portadas).
 async fn adelanta_portadas(app: Arc<App>) {
+    use std::sync::atomic::Ordering::SeqCst;
     let mut seguidas_mal = 0;
     loop {
+        // Si el navegador espera portadas, se le deja toda la red: el adelanto sigue cuando termine.
+        let mut esperas = 0;
+        while app.urgentes.load(SeqCst) > 0 && esperas < 400 { tokio::time::sleep(Duration::from_millis(40)).await; esperas += 1; }
+        // Un lugar entre los que bajan a la vez.
+        if app.fondo_en_curso.fetch_add(1, SeqCst) >= objetivo_fondo(&app) {
+            app.fondo_en_curso.fetch_sub(1, SeqCst);
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            continue;
+        }
         let sig = app.cola_portadas.lock().unwrap().pop_front();
         let Some(m) = sig else {
+            app.fondo_en_curso.fetch_sub(1, SeqCst);
             let (b, mal) = std::mem::take(&mut *app.adelanto.lock().unwrap());
             if b + mal > 0 {
                 app.diag("portadas", Instant::now(), if mal == 0 { Ok(format!("{b} bajadas por adelantado")) } else { Err(format!("{b} bajadas por adelantado, {mal} fallaron")) });
@@ -1478,8 +1561,9 @@ async fn adelanta_portadas(app: Arc<App>) {
             continue;
         };
         let r = ruta_portada(&app, &m, 250);
-        if r.exists() || r.with_extension("no").exists() { continue; }
+        if r.exists() || r.with_extension("no").exists() { app.fondo_en_curso.fetch_sub(1, SeqCst); continue; }
         let ok = trae_portada(&app, &m, 250, None).await;
+        app.fondo_en_curso.fetch_sub(1, SeqCst);
         { let mut a = app.adelanto.lock().unwrap(); if ok { a.0 += 1 } else { a.1 += 1 } }
         seguidas_mal = if ok { 0 } else { seguidas_mal + 1 };
         if seguidas_mal >= 10 { seguidas_mal = 0; tokio::time::sleep(Duration::from_secs(60)).await; } // sin internet: no insistir
@@ -1527,7 +1611,7 @@ async fn resolver_cat(app: &Arc<App>, v: &Value) -> Value {
         m.clone()
     };
     let _ = std::fs::write(app.ruta_cat_ids(), serde_json::to_string(&todo).unwrap_or_default());
-    if hallado.is_none() { limpia_pared(app, false); } // ese disco ya no se ensena; con id, la casilla ya lo sabe en la pagina
+    invalida_letra(app, &catalogo::letra_xp(artista)); // ese disco ya no se ensena (o ya tiene id): solo se rehace SU letra
     match hallado {
         Some((id, grande, chica)) => json!({"ok": true, "id": id, "grande": grande, "img": chica}),
         None => json!({"ok": false, "no_esta": true, "error": "Spotify no tiene este disco."}),
@@ -1590,7 +1674,8 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
             app.rt.spawn(async move { actualiza_catalogo(&a).await; });
             json!({"ok": true})
         }
-        (false, "/api/spotify") => api_pide(app, q.get("ruta").map(|s| s.as_str()).unwrap_or(""), q.contains_key("adelanta")).await,
+        (false, "/api/spotify") => api_pide(app, q.get("ruta").map(|s| s.as_str()).unwrap_or("")).await,
+        (true, "/api/adelanta") => adelanta_disco(app, &v).await,
         (false, "/api/buscar_local") => {
             let (cat, mios, ids) = (app.catalogo.lock().unwrap().clone(), app.mios.lock().unwrap().clone(), app.cat_ids.lock().unwrap().clone());
             let mut r = catalogo::busca(cat.as_deref(), &mios, &ids, q.get("q").map(|s| s.as_str()).unwrap_or(""));
@@ -1639,6 +1724,12 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
             if envia_comando(app, json!({"type": "command", "command": "set_volume", "volume": vol})) { json!({"ok": true}) } else { json!({"ok": false, "error": "Soloist no esta conectado."}) }
         }
         (true, "/api/soloist/vaciar_cache") => vaciar_cache_soloist(app),
+        (true, "/api/soloist/cache_mb") => {
+            let mb = v["mb"].as_u64().unwrap_or(2048).clamp(256, 51_200) as u32;
+            let (exe, nombre) = { let mut s = app.soloist.lock().unwrap(); s.cache_mb = mb; (s.exe.clone(), s.nombre_aparato.clone()) };
+            guarda_config_soloist(app, &exe, &nombre);
+            json!({"ok": true, "mb": mb})
+        }
         (true, "/api/soloist/verbose") => {
             let on = v["on"].as_bool().unwrap_or(false);
             let (exe, nombre) = { let mut s = app.soloist.lock().unwrap(); s.verbose = on; (s.exe.clone(), s.nombre_aparato.clone()) };
@@ -1736,8 +1827,45 @@ fn abre_navegador(url: &str) {
     { let _ = Command::new("xdg-open").arg(url).spawn(); }
 }
 
+// LA VENTANA NEGRA SE CONGELABA SOLA: en Windows, un clic dentro de la consola (seleccion rapida) detiene al programa en su siguiente
+// println! hasta que se pulsa una tecla, y con el a cada hilo que anota algo (las peticiones, Soloist...). Dos arreglos: (1) se quita
+// la seleccion rapida de la consola; (2) las lineas van por un canal a un hilo aparte, asi que aunque la consola se trabe, solo se
+// traba ese hilo.
+static CONSOLA: std::sync::OnceLock<std::sync::mpsc::Sender<String>> = std::sync::OnceLock::new();
+fn consola(linea: String) {
+    match CONSOLA.get() { Some(tx) => { let _ = tx.send(linea); } None => println!("{linea}") }
+}
+fn inicia_consola() {
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    if CONSOLA.set(tx).is_ok() {
+        std::thread::spawn(move || {
+            use std::io::Write;
+            for l in rx { let _ = writeln!(std::io::stdout().lock(), "{l}"); }
+        });
+    }
+}
+#[cfg(windows)]
+fn sin_seleccion_rapida() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetStdHandle(n: u32) -> isize;
+        fn GetConsoleMode(h: isize, modo: *mut u32) -> i32;
+        fn SetConsoleMode(h: isize, modo: u32) -> i32;
+    }
+    // STD_INPUT_HANDLE = -10; ENABLE_QUICK_EDIT_MODE = 0x40 (se quita) y ENABLE_EXTENDED_FLAGS = 0x80 (hace falta para que valga)
+    unsafe {
+        let h = GetStdHandle(0xFFFF_FFF6);
+        let mut m = 0u32;
+        if h != 0 && h != -1 && GetConsoleMode(h, &mut m) != 0 { SetConsoleMode(h, (m & !0x0040) | 0x0080); }
+    }
+}
+#[cfg(not(windows))]
+fn sin_seleccion_rapida() {}
+
 #[tokio::main]
 async fn main() {
+    sin_seleccion_rapida();
+    inicia_consola();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())).unwrap_or_else(|| PathBuf::from("."));
     let datos = std::env::var("PRUEBA_DATOS").map(PathBuf::from).unwrap_or_else(|_| exe_dir.join("datos_spotify_soloist"));
@@ -1750,11 +1878,11 @@ async fn main() {
     let mut puerto = 0;
     for p in 8744..8764u16 { if let Ok(s) = tiny_http::Server::http(("127.0.0.1", p)) { servidor = Some(s); puerto = p; break; } }
     let Some(servidor) = servidor else { println!("No encontre un puerto libre entre 8744 y 8763."); std::process::exit(1); };
-    // Dos puertos para las portadas (los mismos cada vez si estan libres, para que el navegador las recuerde entre una vez y otra).
+    // Tres puertos para las portadas (6 conexiones cada uno: las 18 de una pagina a la vez) (los mismos cada vez si estan libres, para que el navegador las recuerde entre una vez y otra).
     let mut servidores_portadas = vec![];
     let mut puertos_portadas: Vec<u16> = vec![];
-    for p in (8780..8800u16).chain(std::iter::repeat(0).take(4)) {
-        if servidores_portadas.len() == 2 { break; }
+    for p in (8780..8800u16).chain(std::iter::repeat(0).take(6)) {
+        if servidores_portadas.len() == 3 { break; }
         if p == puerto { continue; }
         if let Ok(s) = tiny_http::Server::http(("127.0.0.1", p)) {
             let real = s.server_addr().to_ip().map(|a| a.port()).unwrap_or(p);
@@ -1763,11 +1891,14 @@ async fn main() {
         }
     }
 
-    let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().expect("cliente http");
+    // HTTP/2 (varias peticiones por una sola conexion, sin repetir el saludo TLS) y gzip con Spotify; conexiones que se quedan
+    // abiertas 5 minutos y un tope corto para conectar (un servidor que no contesta no deja esperando 15 s).
+    let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).connect_timeout(Duration::from_secs(6))
+        .pool_idle_timeout(Duration::from_secs(300)).tcp_keepalive(Duration::from_secs(30)).build().expect("cliente http");
     let app = Arc::new(App {
         exe_dir, datos, puerto, http, puertos_portadas: puertos_portadas.clone(),
         diag: Mutex::new(Vec::new()), api_cache: Mutex::new(HashMap::new()),
-        api_esperan: Mutex::new(HashMap::new()), ultimo_adelanto: Mutex::new(None), bloqueo: Mutex::new(None),
+        renovando: tokio::sync::Mutex::new(()), api_esperan: Mutex::new(HashMap::new()), ultimo_adelanto: Mutex::new(None), bloqueo: Mutex::new(None),
         web: Mutex::new(WebEstado::default()), oauth_cancelar: std::sync::atomic::AtomicBool::new(false), oauth_gen: std::sync::atomic::AtomicU64::new(0),
         soloist: Mutex::new(SoloistEstado::default()), soloist_child: Mutex::new(None), soloist_tx: Mutex::new(None),
         soloist_gen: std::sync::atomic::AtomicU64::new(0),
@@ -1775,7 +1906,8 @@ async fn main() {
         catalogo: Mutex::new(None), cat_estado: Mutex::new("sin cargar".into()), mios: Mutex::new(vec![]),
         cat_ids: Mutex::new(HashMap::new()), pared_cache: Mutex::new(HashMap::new()),
         pared_gen: std::sync::atomic::AtomicU64::new(0), portadas_esperan: Mutex::new(HashMap::new()),
-        sem_portadas: tokio::sync::Semaphore::new(8),
+        sem_portadas: tokio::sync::Semaphore::new(40), urgentes: std::sync::atomic::AtomicUsize::new(0),
+        lat_portada_ms: std::sync::atomic::AtomicU64::new(0), fondo_en_curso: std::sync::atomic::AtomicUsize::new(0),
         cola_portadas: Mutex::new(std::collections::VecDeque::new()), hay_cola: tokio::sync::Notify::new(),
         adelanto: Mutex::new((0, 0)), pared_mbids: Mutex::new(HashMap::new()),
     });
@@ -1796,7 +1928,7 @@ async fn main() {
     { let a = app.clone(); tokio::spawn(async move { actualiza_catalogo(&a).await; }); }
     { let d = app.datos.join("portadas"); std::thread::spawn(move || recorta_dir(d, TOPE_PORTADAS)); }
     { let d = app.datos.join("api_cache"); std::thread::spawn(move || recorta_dir(d, 200 * 1024 * 1024)); }
-    for _ in 0..6 { let a = app.clone(); tokio::spawn(adelanta_portadas(a)); }
+    for _ in 0..16 { let a = app.clone(); tokio::spawn(adelanta_portadas(a)); }
 
     let url = format!("http://127.0.0.1:{puerto}/");
     println!("  La pagina esta en: {url}");
@@ -1822,13 +1954,37 @@ async fn main() {
     }
     abre_navegador(&url);
 
-    // Si ya hay una entrada guardada (refresh token) o Soloist ya tiene ruta+llave, intenta solo, sin que el dueno
-    // tenga que tocar nada.
-    if app.ruta_refresh_web().exists() {
-        if let Err(e) = asegura_token_web(&app).await { app.web.lock().unwrap().error = e; }
-    }
+    // Si Soloist ya tiene ruta+llave, arranca solo, sin que el dueno tenga que tocar nada. Va ANTES que la llave de la API web: esa
+    // espera a la red (hasta 15 s si esta lenta) y Soloist tarda varios segundos en emparejarse.
     let (exe_lista, llave_lista) = { let s = app.soloist.lock().unwrap(); (!s.exe.trim().is_empty() && Path::new(&s.exe).is_file(), tiene_llave_soloist(&app)) };
     if exe_lista && llave_lista { iniciar_soloist(&app); }
+    // Con una entrada guardada (refresh token) se renueva sola, de fondo; y despues se vigila para renovarla 5 minutos antes de que
+    // caduque (si no, la peticion que la encontraba vencida esperaba la renovacion, cada hora).
+    {
+        let a = app.clone();
+        tokio::spawn(async move {
+            if a.ruta_refresh_web().exists() {
+                if let Err(e) = asegura_token_web(&a).await { a.web.lock().unwrap().error = e; }
+            }
+            loop {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                let hay = a.web.lock().unwrap().tok.is_some();
+                if hay { let _ = token_web(&a, Duration::from_secs(300)).await; }
+            }
+        });
+    }
+    // Las conexiones a Spotify y al Cover Art Archive se abren desde ya (DNS, TCP y TLS son lo mas lento de la primera peticion).
+    {
+        let a = app.clone();
+        tokio::spawn(async move {
+            let api = std::env::var("PRUEBA_API").unwrap_or_else(|_| "https://api.spotify.com".into());
+            let t0 = Instant::now();
+            let _ = a.http.get(format!("{api}/")).timeout(Duration::from_secs(8)).send().await;
+            let caa = std::env::var("PRUEBA_CAA").unwrap_or_else(|_| "https://coverartarchive.org".into());
+            let _ = a.http.get(format!("{caa}/")).timeout(Duration::from_secs(8)).send().await;
+            a.diag("conexiones", t0, Ok("abiertas de antemano (Spotify y portadas)".into()));
+        });
+    }
 
     // Mantener el programa vivo (el servidor corre en otros hilos). Ctrl+C lo cierra (comportamiento normal del SO).
     loop { tokio::time::sleep(Duration::from_secs(3600)).await; }

@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 librespot-oauth = { version = "=0.8.0" }
-reqwest = { version = "0.12", default-features = false, features = ["native-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "native-tls-alpn", "http2", "gzip"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
 tokio-tungstenite = "0.28"
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
@@ -27,4 +27,4 @@ env_logger = { version = "0.11", default-features = false }
 lto = true
 codegen-units = 1
 strip = true
-opt-level = "s"
+opt-level = 3
