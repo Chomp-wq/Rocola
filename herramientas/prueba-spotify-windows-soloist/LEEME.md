@@ -96,3 +96,12 @@ Si eso contesta con la cuenta emparejada, Soloist ya funciona con esa cuenta —
   elegido. La medida de esta demo es justo para saberlo con la cuenta del dueno. La forma de la cache no la documenta
   Spotify: si cambia en otra version de Soloist, la medida dira «sin medir».
 - Probada solo en Linux (servidor, paginas, botones, Soloist no instalado); no en Windows, no con cuenta real.
+
+## La pared de 500 paginas por letra (el catalogo)
+
+- La pared ya no depende de la API de Spotify para hojear: se arma con el catalogo abierto de la rocola (MusicBrainz, Wikidata, ListenBrainz; `sistema/catalogo`), que la demo baja sola de la publicacion «catalogo» de este repositorio (publico, sin llave) a `datos_spotify_soloist/catalogo/`. Solo baja el `.tsv.gz` si cambio la version, y antes de usarlo comprueba el tamano y el sha256.
+- En cada letra van tus discos guardados y tus listas, mas los del catalogo: primero por genero (Regional, Tropical, Bolero, Latino y Reggaeton primero, luego los generos que mas tienes, y «Otros» al final), despues por artista en orden alfabetico, tus discos antes que los del catalogo y estos del mas al menos escuchado. Son como mucho 9000 discos por letra (500 paginas de 18). La cabecera lleva la pastilla del genero y «Pagina N de M».
+- Las portadas salen del Cover Art Archive, no de Spotify. Hojear no gasta ninguna peticion de la API.
+- Abrir un disco del catalogo cuesta 1 peticion si ya se sabe su id de Spotify. Si no, la primera vez son 2: una busqueda `album:"..." artist:"..."` y luego abrirlo. El id encontrado (o «-» si Spotify no lo tiene, para no volver a ensenarlo) queda en `catalogo_ids.json`. Tocar va por Soloist y no cuenta para la cuota de la API.
+- Sin catalogo ni cuenta, la pared dice que falta. Con catalogo y sin cuenta se puede hojear, pero no abrir discos. En Pruebas, «La pared (catalogo)» muestra la version y tiene un boton para buscar uno nuevo.
+- Para probar con un archivo propio: `PRUEBA_CATALOGO=ruta\rocola_catalogo.tsv.gz`.

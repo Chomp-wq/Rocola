@@ -25,6 +25,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+mod catalogo;
+
 use futures_util::{SinkExt, StreamExt};
 use librespot_oauth::{OAuthClient, OAuthClientBuilder};
 use serde_json::{json, Value};
@@ -159,6 +161,12 @@ struct App {
     soloist_tx: Mutex<Option<mpsc::UnboundedSender<Value>>>,
     soloist_gen: std::sync::atomic::AtomicU64, // para que un "iniciar" viejo no pise al nuevo
     rt: tokio::runtime::Handle, // tokio::spawn truena desde hilos que no son del runtime (el de --pair)
+    // LA PARED DE 500 PAGINAS: el catalogo (datos abiertos), tus discos, y lo ya buscado en Spotify (mbid -> id, «-» = no esta).
+    catalogo: Mutex<Option<Arc<catalogo::Catalogo>>>,
+    cat_estado: Mutex<String>,
+    mios: Mutex<Vec<catalogo::Mio>>,
+    cat_ids: Mutex<HashMap<String, String>>,
+    pared_cache: Mutex<HashMap<String, Arc<String>>>,
     calidad: Mutex<CalidadEstado>,
 }
 
@@ -194,6 +202,8 @@ impl App {
     fn cache_soloist(&self) -> PathBuf { self.datos.join("soloist_cache") }
     // v2: las medidas de la primera version salian de un archivo a medias (se cerraban a los 4 s sin crecer).
     fn ruta_calidad(&self) -> PathBuf { self.datos.join("calidad_medida_v2.json") }
+    fn dir_catalogo(&self) -> PathBuf { self.datos.join("catalogo") }
+    fn ruta_cat_ids(&self) -> PathBuf { self.datos.join("catalogo_ids.json") }
 }
 
 // ---------- LA CALIDAD MEDIDA (FLAC o no) ----------
@@ -1013,6 +1023,12 @@ fn estado_json(app: &Arc<App>) -> Value {
             "calidad": calidad_json(app),
         },
         "diag_n": app.diag.lock().unwrap().len(),
+        "catalogo": {
+            "listo": app.catalogo.lock().unwrap().is_some(), "estado": app.cat_estado.lock().unwrap().clone(),
+            "artistas": app.catalogo.lock().unwrap().as_ref().map(|c| c.artistas).unwrap_or(0),
+            "discos": app.catalogo.lock().unwrap().as_ref().map(|c| c.discos).unwrap_or(0),
+            "mios": app.mios.lock().unwrap().len(),
+        },
     })
 }
 fn calidad_json(app: &App) -> Value {
@@ -1050,6 +1066,126 @@ fn informe_texto(app: &Arc<App>) -> String {
     t
 }
 
+// ---------- LA PARED DE 500 PAGINAS (el catalogo) ----------
+fn pon_catalogo(app: &App, c: catalogo::Catalogo, como: &str) {
+    let txt = format!("version {} ({} artistas, {} discos){como}", c.version, c.artistas, c.discos);
+    *app.catalogo.lock().unwrap() = Some(Arc::new(c));
+    *app.cat_estado.lock().unwrap() = txt;
+    app.pared_cache.lock().unwrap().clear();
+}
+
+fn sha256_hex(b: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(b).iter().map(|x| format!("{x:02x}")).collect()
+}
+
+async fn baja_texto(app: &App, nombre: &str, segundos: u64) -> Result<Vec<u8>, String> {
+    let r = app.http.get(format!("{}{nombre}", catalogo::URL_BASE)).timeout(Duration::from_secs(segundos))
+        .send().await.map_err(|e| e.to_string())?;
+    if !r.status().is_success() { return Err(format!("GitHub contesto {}", r.status().as_u16())); }
+    Ok(r.bytes().await.map_err(|e| e.to_string())?.to_vec())
+}
+
+// Al arrancar (y con el boton): el de la carpeta si lo hay; luego mira en GitHub si hay uno nuevo (el repositorio es publico: sin
+// llave), lo baja solo si cambio la version y lo comprueba con sha256 y su tamano antes de usarlo.
+async fn actualiza_catalogo(app: &Arc<App>) {
+    let dir = app.dir_catalogo();
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(p) = std::env::var("PRUEBA_CATALOGO") {
+        let t0 = Instant::now();
+        match std::fs::read(&p).map_err(|e| e.to_string()).and_then(|b| catalogo::lee(&b)) {
+            Ok(c) => { app.diag("catalogo", t0, Ok(format!("de {p}: {} artistas, {} discos", c.artistas, c.discos))); pon_catalogo(app, c, " (archivo de prueba)"); }
+            Err(e) => { app.diag("catalogo", t0, Err(e.clone())); *app.cat_estado.lock().unwrap() = e; }
+        }
+        return;
+    }
+    let local_gz = dir.join("rocola_catalogo.tsv.gz");
+    let local_txt = dir.join("rocola_catalogo.txt");
+    let version_local = std::fs::read_to_string(&local_txt).ok()
+        .and_then(|s| s.lines().find_map(|l| l.strip_prefix("version=").map(|v| v.trim().to_string())));
+    if app.catalogo.lock().unwrap().is_none() {
+        if let Ok(b) = std::fs::read(&local_gz) {
+            let t0 = Instant::now();
+            match catalogo::lee(&b) {
+                Ok(c) => { app.diag("catalogo", t0, Ok(format!("el guardado: {} artistas, {} discos", c.artistas, c.discos))); pon_catalogo(app, c, ""); }
+                Err(e) => app.diag("catalogo", t0, Err(format!("el guardado no sirve: {e}"))),
+            }
+        }
+    }
+    let antes = app.cat_estado.lock().unwrap().clone();
+    *app.cat_estado.lock().unwrap() = format!("{antes} · buscando uno nuevo...");
+    let t0 = Instant::now();
+    let res: Result<String, String> = async {
+        let txt = String::from_utf8_lossy(&baja_texto(app, "rocola_catalogo.txt", 30).await?).to_string();
+        let campo = |k: &str| txt.lines().find_map(|l| l.strip_prefix(&format!("{k}=")).map(|v| v.trim().to_string())).unwrap_or_default();
+        let (version, sha, bytes) = (campo("version"), campo("sha256"), campo("bytes").parse::<usize>().unwrap_or(0));
+        if version.is_empty() || sha.len() != 64 { return Err("la descripcion del catalogo no se entiende".into()); }
+        if Some(&version) == version_local.as_ref() && app.catalogo.lock().unwrap().is_some() { return Ok(format!("ya es el mas nuevo ({version})")); }
+        let gz = baja_texto(app, "rocola_catalogo.tsv.gz", 300).await?;
+        if gz.len() != bytes { return Err(format!("llego incompleto ({} de {bytes} bytes)", gz.len())); }
+        if sha256_hex(&gz) != sha { return Err("el sha256 no cuadra: no se usa".into()); }
+        let c = catalogo::lee(&gz)?;
+        let tmp = dir.join("rocola_catalogo.tsv.gz.nuevo");
+        std::fs::write(&tmp, &gz).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &local_gz).map_err(|e| e.to_string())?;
+        let _ = std::fs::write(&local_txt, &txt);
+        let m = format!("bajado {version}: {} artistas, {} discos ({:.1} MB)", c.artistas, c.discos, gz.len() as f64 / 1_048_576.0);
+        pon_catalogo(app, c, "");
+        Ok(m)
+    }.await;
+    match res {
+        Ok(m) => {
+            app.diag("catalogo", t0, Ok(m));
+            let txt = app.catalogo.lock().unwrap().as_ref().map(|c| format!("version {} ({} artistas, {} discos)", c.version, c.artistas, c.discos));
+            if let Some(s) = txt { *app.cat_estado.lock().unwrap() = s; }
+        }
+        Err(e) => {
+            app.diag("catalogo", t0, Err(e.clone()));
+            let hay = app.catalogo.lock().unwrap().is_some();
+            *app.cat_estado.lock().unwrap() = if hay { format!("{antes} (no se pudo ver si hay uno nuevo)") } else { format!("sin catalogo: {e}") };
+        }
+    }
+}
+
+fn pared_json(app: &App, letra: &str) -> Arc<String> {
+    if let Some(v) = app.pared_cache.lock().unwrap().get(letra) { return v.clone(); }
+    let cat = app.catalogo.lock().unwrap().clone();
+    let mios = app.mios.lock().unwrap().clone();
+    let ids = app.cat_ids.lock().unwrap().clone();
+    let items = catalogo::arma_letra(cat.as_deref(), &mios, &ids, letra);
+    let letras = catalogo::letras_con(cat.as_deref(), &mios);
+    let r = Arc::new(json!({"ok": true, "letra": letra, "letras": letras, "catalogo": cat.is_some(), "items": items}).to_string());
+    app.pared_cache.lock().unwrap().insert(letra.to_string(), r.clone());
+    r
+}
+
+// Un disco del catalogo sin id de Spotify: UNA busqueda (disco + artista) y se recuerda para siempre en catalogo_ids.json, tambien
+// cuando Spotify no lo tiene («-»: ese disco ya no se ensena).
+async fn resolver_cat(app: &Arc<App>, v: &Value) -> Value {
+    let (mbid, nombre, artista) = (v["mbid"].as_str().unwrap_or(""), v["nombre"].as_str().unwrap_or(""), v["artista"].as_str().unwrap_or(""));
+    if mbid.is_empty() || nombre.is_empty() { return json!({"ok": false, "error": "falta el disco"}); }
+    if let Some(id) = app.cat_ids.lock().unwrap().get(mbid).cloned() {
+        return if id == "-" { json!({"ok": false, "no_esta": true, "error": "Spotify no tiene este disco."}) } else { json!({"ok": true, "id": id}) };
+    }
+    let q = format!("album:\"{}\" artist:\"{}\"", nombre.replace('"', ""), artista.replace('"', ""));
+    let r = api_pagina(app, &format!("/v1/search?q={}&type=album&limit=5", catalogo::codifica(&q))).await;
+    if r["ok"].as_bool() != Some(true) { return r; } // 429, sin entrar...: no se recuerda nada
+    let items = r["datos"]["albums"]["items"].as_array().cloned().unwrap_or_default();
+    let hallado = catalogo::elige_disco(&items, nombre, artista);
+    let guardado = hallado.as_ref().map(|d| d.0.clone()).unwrap_or_else(|| "-".into());
+    let todo = {
+        let mut m = app.cat_ids.lock().unwrap();
+        m.insert(mbid.to_string(), guardado);
+        m.clone()
+    };
+    let _ = std::fs::write(app.ruta_cat_ids(), serde_json::to_string(&todo).unwrap_or_default());
+    app.pared_cache.lock().unwrap().clear();
+    match hallado {
+        Some((id, grande, chica)) => json!({"ok": true, "id": id, "grande": grande, "img": chica}),
+        None => json!({"ok": false, "no_esta": true, "error": "Spotify no tiene este disco."}),
+    }
+}
+
 // ---------- EL SERVIDOR LOCAL ----------
 fn decodifica(s: &str) -> String {
     let b = s.as_bytes();
@@ -1074,6 +1210,19 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
     match (post, camino) {
         (false, "/api/estado") => estado_json(app),
         (false, "/api/diag") => diag_json(app),
+        (true, "/api/pared/mios") => {
+            let mios: Vec<catalogo::Mio> = serde_json::from_value(v["items"].clone()).unwrap_or_default();
+            let n = mios.len();
+            *app.mios.lock().unwrap() = mios;
+            app.pared_cache.lock().unwrap().clear();
+            json!({"ok": true, "n": n})
+        }
+        (true, "/api/cat/resolver") => resolver_cat(app, &v).await,
+        (true, "/api/catalogo/actualizar") => {
+            let a = app.clone();
+            app.rt.spawn(async move { actualiza_catalogo(&a).await; });
+            json!({"ok": true})
+        }
         (false, "/api/spotify") => api_pagina(app, q.get("ruta").map(|s| s.as_str()).unwrap_or("")).await,
         (true, "/api/entrar_oauth") => entrar_oauth(app),
         (true, "/api/web/client_id") => {
@@ -1155,6 +1304,11 @@ fn atiende(app: &Arc<App>, h: &tokio::runtime::Handle, req: tiny_http::Request) 
     if !marca { return enviar(req, 403, "text/plain; charset=utf-8", "Falta la marca de la pagina.".into()); }
     let mut cuerpo = String::new();
     if post { use std::io::Read; let _ = req.as_reader().take(1 << 20).read_to_string(&mut cuerpo); }
+    if !post && camino == "/api/pared" {
+        // La letra ya va armada como texto (hasta 9 000 casillas): se manda tal cual, sin volver a pasar por Value.
+        let l = q.get("l").map(|s| s.as_str()).unwrap_or("A").to_string();
+        return enviar(req, 200, "application/json; charset=utf-8", (*pared_json(app, &l)).clone());
+    }
     let r = h.block_on(ruta(app, post, camino, &q, &cuerpo));
     enviar(req, 200, "application/json; charset=utf-8", r.to_string());
 }
@@ -1190,12 +1344,18 @@ async fn main() {
         soloist: Mutex::new(SoloistEstado::default()), soloist_child: Mutex::new(None), soloist_tx: Mutex::new(None),
         soloist_gen: std::sync::atomic::AtomicU64::new(0),
         calidad: Mutex::new(CalidadEstado::default()), rt: tokio::runtime::Handle::current(),
+        catalogo: Mutex::new(None), cat_estado: Mutex::new("sin cargar".into()), mios: Mutex::new(vec![]),
+        cat_ids: Mutex::new(HashMap::new()), pared_cache: Mutex::new(HashMap::new()),
     });
     carga_config_soloist(&app);
     if let Some(h) = std::fs::read_to_string(app.ruta_calidad()).ok().and_then(|s| serde_json::from_str(&s).ok()) {
         app.calidad.lock().unwrap().hechas = h;
     }
     { let a = app.clone(); std::thread::spawn(move || vigila_calidad(a)); }
+    if let Some(m) = std::fs::read_to_string(app.ruta_cat_ids()).ok().and_then(|s| serde_json::from_str(&s).ok()) {
+        *app.cat_ids.lock().unwrap() = m;
+    }
+    { let a = app.clone(); tokio::spawn(async move { actualiza_catalogo(&a).await; }); }
 
     let url = format!("http://127.0.0.1:{puerto}/");
     println!("  La pagina esta en: {url}");
