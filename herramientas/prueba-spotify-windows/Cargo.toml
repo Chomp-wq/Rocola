@@ -1,0 +1,33 @@
+[package]
+name = "rocola-spotify-demo"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "RocolaSpotifyDemo"
+path = "src/main.rs"
+
+[dependencies]
+librespot-core = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
+librespot-playback = { version = "=0.8.0", default-features = false, features = ["native-tls", "rodio-backend"] }
+librespot-discovery = { version = "=0.8.0", default-features = false, features = ["with-libmdns", "native-tls"] }
+librespot-oauth = { version = "=0.8.0" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+serde_json = "1"
+bytes = "1"
+http = "1"
+hyper = "1"
+http-body-util = "0.1"
+log = "0.4"
+tiny_http = "0.12"
+cpal = "0.16.0"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+env_logger = { version = "0.11", default-features = false }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "s"
