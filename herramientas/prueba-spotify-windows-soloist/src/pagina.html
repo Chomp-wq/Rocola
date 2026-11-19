@@ -475,20 +475,43 @@ function pintaPared(v) {
     $("cab-tit").textContent = v.titulo + (it ? " — " + it.nombre : "");
   }
   $("cab-pag").textContent = n ? "Pagina " + (pag + 1) + " de " + total : "";
+  // Si sigue la misma pagina solo se mueve el marco: las 18 portadas no se vuelven a poner (ni a parpadear).
+  const clave = v.letra + "|" + v.titulo + "|" + pag + "|" + n;
+  const grid = $("vista").querySelector(".pared");
+  if (grid && v._pintada === clave && pintadaVista === v) {
+    grid.querySelectorAll(".celda.sel").forEach(c => c.classList.remove("sel"));
+    const c = grid.querySelector('.celda[data-i="' + v.sel + '"]'); if (c) c.classList.add("sel");
+    return;
+  }
+  v._pintada = clave; pintadaVista = v;
+  precargaVecinas(v, pag); // antes de poner las 18 portadas: el aviso al servidor no se queda en la fila del navegador
   let h = '<div class="pared">';
   for (let k = 0; k < POR_PAG; k++) {
     const i = pag * POR_PAG + k, x = v.items[i];
     if (!x) { h += '<div class="celda vacia"></div>'; continue; }
     h += '<div class="celda' + (i === v.sel ? " sel" : "") + '" data-i="' + i + '" title="' + esc(x.artista + " — " + x.nombre) + '">' +
       '<div class="sinfoto"><b>' + esc(x.nombre) + '</b>' + esc(x.artista) + '</div>' +
-      (x.img ? '<img src="' + esc(x.img) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
+      (x.img ? '<img src="' + esc(x.img) + '" alt="" decoding="async" onerror="this.remove()">' : '') +
       (x.tipo === "lista" ? '<span class="marca">LISTA</span>' : "") + '</div>';
   }
   h += "</div>";
   if (!n) h = '<div style="text-align:center;font-size:26px;margin-top:60px">' + (cargandoLetra ? "Cargando..." : "No hay discos para mostrar.") + '</div>';
   $("vista").innerHTML = h;
   $("vista").querySelectorAll(".celda[data-i]").forEach(c => c.onclick = () => { v.sel = +c.dataset.i; abre(v.items[v.sel]); });
+  if (!n) v._pintada = "";
 }
+// Al cambiar de pagina: las portadas del catalogo de las paginas de al lado las adelanta el servidor de la demo (sin ocupar las
+// conexiones del navegador, que son para las 18 que se ven); las de Spotify (tus discos) las pide el navegador con poca prioridad.
+let pintadaVista = null, precargadas = [];
+function precargaVecinas(v, pag) {
+  if (v.conLetras) post("/api/pared/vista", {l: v.letra, p: pag});
+  const urls = [];
+  for (const p of [pag + 1, pag - 1])
+    for (let k = 0; k < POR_PAG; k++) { const x = v.items[p * POR_PAG + k]; if (p >= 0 && x && x.img && !x.img.startsWith("/p/")) urls.push(x.img); }
+  precargadas = urls.map(u => { const im = new Image(); im.decoding = "async"; try { im.fetchPriority = "low"; } catch (e) {} im.src = u; return im; });
+}
+// La portada grande de un disco del catalogo: la misma, en 500 (la del servidor de la demo, que tambien la guarda).
+const grandeDe = x => x.grande || (x.img && x.img.startsWith("/p/") ? x.img + "?t=500" : x.img || "");
 function teclaPared(e, v) {
   const n = v.items.length; if (!n && !e.shiftKey) return false;
   const pag = Math.floor(v.sel / POR_PAG), irPag = p => { p = Math.max(0, Math.min(Math.ceil(n / POR_PAG) - 1, p)); v.sel = Math.min(n - 1, p * POR_PAG + (v.sel % POR_PAG)); };
@@ -533,7 +556,7 @@ async function abreCat(x) {
     if (!x.grande && r.grande) x.grande = r.grande;
     if (!x.img && r.img) x.img = r.img;
   }
-  abre({tipo: "album", id: x.id, nombre: x.nombre, artista: x.artista, img: x.img, grande: x.grande, genero: x.genero});
+  abre({tipo: "album", id: x.id, nombre: x.nombre, artista: x.artista, img: x.img, grande: grandeDe(x), genero: x.genero});
 }
 async function cargaPistas(v) {
   const x = v.item, pistas = [];

@@ -1,6 +1,7 @@
 // EL CATALOGO DE LA ROCOLA EN LA DEMO (sistema/catalogo, contrato «I8» formato 1; plan en sistema/rocola/Xp/PLAN_PARED_GENEROS.md).
-// La pared de hasta 500 paginas por letra (18 discos cada una = 9 000) junta tus discos con los del catalogo, por genero, luego artista
-// por abecedario y, de cada artista, primero los tuyos y despues los del catalogo del mas al menos escuchado. Mirarla NO gasta ninguna
+// La pared de hasta 500 paginas por letra (18 discos cada una = 9 000) junta tus discos con los del catalogo, por genero, luego los
+// artistas del mas al menos famoso (la fama del catalogo: escuchas y oyentes de ListenBrainz, Wikipedias, pais) y, de cada artista,
+// primero los tuyos y despues los del catalogo del mas al menos escuchado. Mirarla NO gasta ninguna
 // peticion de la API de Spotify (portadas del Cover Art Archive); Spotify solo se usa al abrir un disco y para tocar (Soloist).
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
@@ -11,11 +12,12 @@ pub const URL_BASE: &str = "https://github.com/Chomp-wq/Rocola/releases/download
 pub const TOPE_LETRA: usize = 9_000; // 500 paginas de 18
 
 pub struct DiscoCat { pub nombre: String, pub anio: String, pub spotify: String, pub mbid: String, pub portada: bool }
-pub struct ArtistaCat { pub nombre: String, pub genero: String, pub discos: Vec<DiscoCat> }
+pub struct ArtistaCat { pub nombre: String, pub genero: String, pub fama: u32, pub discos: Vec<DiscoCat> }
 pub struct Catalogo {
     pub version: String,
     pub letras: HashMap<String, Vec<ArtistaCat>>, // en el orden del archivo: del mas al menos famoso
     pub genero_de: HashMap<String, String>,       // plano(nombre del artista) -> genero de XP
+    pub fama_de: HashMap<String, u32>,            // plano(nombre del artista) -> fama (0 a 1 000 000)
     pub total_genero: HashMap<String, usize>,     // discos del catalogo por genero (para el orden de los generos)
     pub artistas: usize,
     pub discos: usize,
@@ -68,7 +70,7 @@ pub fn lee(gz: &[u8]) -> Result<Catalogo, String> {
         return Err("no es un catalogo de la rocola de formato 1".into());
     }
     let mut c = Catalogo {
-        version: cab.get(2).unwrap_or(&"").to_string(), letras: HashMap::new(), genero_de: HashMap::new(),
+        version: cab.get(2).unwrap_or(&"").to_string(), letras: HashMap::new(), genero_de: HashMap::new(), fama_de: HashMap::new(),
         total_genero: HashMap::new(), artistas: 0, discos: 0,
     };
     let mut letra = String::new();
@@ -77,8 +79,10 @@ pub fn lee(gz: &[u8]) -> Result<Catalogo, String> {
         match f.first().copied() {
             Some("L") if f.len() >= 2 => { letra = f[1].to_string(); c.letras.entry(letra.clone()).or_default(); }
             Some("A") if f.len() >= 3 => {
+                let fama = f.get(3).and_then(|x| x.parse::<u32>().ok()).unwrap_or(0);
                 c.genero_de.entry(plano(f[1])).or_insert_with(|| f[2].to_string());
-                c.letras.entry(letra.clone()).or_default().push(ArtistaCat { nombre: f[1].into(), genero: f[2].into(), discos: vec![] });
+                c.fama_de.entry(plano(f[1])).or_insert(fama);
+                c.letras.entry(letra.clone()).or_default().push(ArtistaCat { nombre: f[1].into(), genero: f[2].into(), fama, discos: vec![] });
                 c.artistas += 1;
             }
             Some("D") if f.len() >= 6 => {
@@ -116,7 +120,15 @@ fn orden_generos(cat: Option<&Catalogo>, mios: &[Mio]) -> HashMap<String, usize>
     r
 }
 
-pub fn portada(mbid: &str, tam: u32) -> String { format!("https://coverartarchive.org/release-group/{mbid}/front-{tam}") }
+/// La portada en el Cover Art Archive (PRUEBA_CAA cambia el servidor, solo para probar con uno falso).
+pub fn portada(mbid: &str, tam: u32) -> String {
+    let base = std::env::var("PRUEBA_CAA").unwrap_or_else(|_| "https://coverartarchive.org".into());
+    format!("{base}/release-group/{mbid}/front-{tam}")
+}
+/// Un MBID tal como viene en el catalogo (8-4-4-4-12 en hexadecimal minuscula): lo unico que acepta /p/ del servidor.
+pub fn es_mbid(m: &str) -> bool {
+    m.len() == 36 && m.char_indices().all(|(i, c)| if [8, 13, 18, 23].contains(&i) { c == '-' } else { c.is_ascii_hexdigit() && !c.is_ascii_uppercase() })
+}
 
 /// Las letras que tienen algo (para la barra de letras).
 pub fn letras_con(cat: Option<&Catalogo>, mios: &[Mio]) -> Vec<String> {
@@ -139,14 +151,16 @@ pub fn arma_letra(cat: Option<&Catalogo>, mios: &[Mio], ids: &HashMap<String, St
     }
     let orden = orden_generos(cat, mios);
     let rango = |g: &str| *orden.get(g).unwrap_or(&(usize::MAX - 1));
-    // (rango del genero, artista plano, 0 = tuyo / 1 = catalogo, posicion) -> casilla
-    let mut filas: Vec<((usize, String, u8, usize), Value)> = vec![];
+    // (rango del genero, fama al reves, artista plano, 0 = tuyo / 1 = catalogo, posicion) -> casilla. Un artista tuyo que no esta en el
+    // catalogo no tiene fama (0): va al final de su genero (que sera «Otros»).
+    let fama = |a: &str| cat.and_then(|c| c.fama_de.get(&plano(a))).copied().unwrap_or(0);
+    let mut filas: Vec<((usize, std::cmp::Reverse<u32>, String, u8, usize), Value)> = vec![];
     let mut ya: HashSet<String> = HashSet::new();
     for (i, m) in mios.iter().filter(|m| m.tipo == "album" && letra_xp(&m.artista) == letra).enumerate() {
         let g = cat.and_then(|c| c.genero_de.get(&plano(&m.artista))).cloned().unwrap_or_else(|| "Otros".into());
         ya.insert(format!("{}|{}", plano(&m.artista), plano(&m.nombre)));
         ya.insert(m.id.clone());
-        filas.push(((rango(&g), plano(&m.artista), 0, i), json!({
+        filas.push(((rango(&g), std::cmp::Reverse(fama(&m.artista)), plano(&m.artista), 0, i), json!({
             "tipo": "album", "id": m.id, "nombre": m.nombre, "artista": m.artista, "genero": g, "img": m.img, "grande": m.grande, "mio": true,
         })));
     }
@@ -161,10 +175,10 @@ pub fn arma_letra(cat: Option<&Catalogo>, mios: &[Mio], ids: &HashMap<String, St
                 if ya.contains(&format!("{}|{}", plano(&a.nombre), plano(&d.nombre))) || (!id.is_empty() && ya.contains(&id)) { continue; }
                 pos += 1;
                 cupo -= 1;
-                filas.push(((rango(&a.genero), plano(&a.nombre), 1, pos), json!({
+                // La portada va por el servidor de la demo (/p/MBID: la guarda en el disco la primera vez); la grande es «?t=500».
+                filas.push(((rango(&a.genero), std::cmp::Reverse(a.fama), plano(&a.nombre), 1, pos), json!({
                     "tipo": "cat", "id": id, "mbid": d.mbid, "nombre": d.nombre, "artista": a.nombre, "genero": a.genero, "anio": d.anio,
-                    "img": if d.portada { portada(&d.mbid, 250) } else { String::new() },
-                    "grande": if d.portada { portada(&d.mbid, 500) } else { String::new() }, "mio": false,
+                    "img": if d.portada { format!("/p/{}", d.mbid) } else { String::new() },
                 })));
             }
         }
@@ -204,5 +218,8 @@ mod pruebas {
         assert_eq!(letra_xp("¡Ay"), "#");
         assert_eq!(letra_xp("3 Gallos"), "#");
         assert_eq!(plano("Los Ángeles Azules!"), "losangelesazules");
+        assert!(es_mbid("8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11"));
+        assert!(!es_mbid("8F6BD1E4-fbe1-4f50-aa9b-94c450ec0f11"));
+        assert!(!es_mbid("../../../etc/passwd-aaaaaaaaaaaaaaaaaaaaaa"));
     }
 }

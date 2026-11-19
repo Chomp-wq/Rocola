@@ -166,7 +166,15 @@ struct App {
     cat_estado: Mutex<String>,
     mios: Mutex<Vec<catalogo::Mio>>,
     cat_ids: Mutex<HashMap<String, String>>,
-    pared_cache: Mutex<HashMap<String, Arc<String>>>,
+    pared_cache: Mutex<HashMap<String, Arc<Vec<u8>>>>, // cada letra ya armada y en gzip
+    pared_gen: std::sync::atomic::AtomicU64,           // sube al cambiar el catalogo o tus discos: lo armado antes no se guarda
+    // LAS PORTADAS DEL CATALOGO: se guardan en el disco (datos/portadas) la primera vez; quien pide una que ya se esta bajando espera.
+    portadas_esperan: Mutex<HashMap<String, Vec<tiny_http::Request>>>,
+    sem_portadas: tokio::sync::Semaphore,
+    cola_portadas: Mutex<std::collections::VecDeque<String>>, // lo que se baja por adelantado (lo urgente, delante)
+    hay_cola: tokio::sync::Notify,
+    adelanto: Mutex<(usize, usize)>,                          // bajadas bien y mal desde que la cola estaba vacia
+    pared_mbids: Mutex<HashMap<String, Arc<Vec<String>>>>,    // por letra, el MBID con portada de cada casilla ("" = sin portada)
     calidad: Mutex<CalidadEstado>,
 }
 
@@ -1067,11 +1075,39 @@ fn informe_texto(app: &Arc<App>) -> String {
 }
 
 // ---------- LA PARED DE 500 PAGINAS (el catalogo) ----------
-fn pon_catalogo(app: &App, c: catalogo::Catalogo, como: &str) {
+fn pon_catalogo(app: &Arc<App>, c: catalogo::Catalogo, como: &str) {
     let txt = format!("version {} ({} artistas, {} discos){como}", c.version, c.artistas, c.discos);
     *app.catalogo.lock().unwrap() = Some(Arc::new(c));
     *app.cat_estado.lock().unwrap() = txt;
+    limpia_pared(app, true);
+}
+
+/// Lo armado ya no vale (otro catalogo, tus discos, un disco que Spotify no tiene): se borra y se vuelve a armar de fondo, letra por
+/// letra, para que al cambiar de letra ya este listo. `portadas`: ademas se bajan de fondo las de las dos primeras paginas de cada letra.
+fn limpia_pared(app: &Arc<App>, portadas: bool) {
+    use std::sync::atomic::Ordering;
+    let gen = app.pared_gen.fetch_add(1, Ordering::SeqCst) + 1;
     app.pared_cache.lock().unwrap().clear();
+    let a = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300)); // si llegan varios cambios seguidos, arma solo el ultimo
+        if a.pared_gen.load(Ordering::SeqCst) != gen { return; }
+        let t0 = Instant::now();
+        let letras = { let c = a.catalogo.lock().unwrap().clone(); let m = a.mios.lock().unwrap().clone(); catalogo::letras_con(c.as_deref(), &m) };
+        let mut todas: Vec<Arc<Vec<String>>> = vec![];
+        for l in &letras {
+            if a.pared_gen.load(Ordering::SeqCst) != gen { return; }
+            let ya = a.pared_mbids.lock().unwrap().get(l.as_str()).cloned(); // ya la pidio la pagina
+            todas.push(match ya { Some(m) => m, None => arma_pared(&a, l).1 });
+        }
+        a.diag("pared", t0, Ok(format!("{} letras armadas de antemano", letras.len())));
+        if portadas {
+            // De fondo: la primera pagina de todas las letras y despues la segunda (al final de la cola: lo que mires va antes).
+            let mut v = vec![];
+            for p in 0..2 { for m in &todas { v.extend(m.iter().skip(p * 18).take(18).filter(|x| !x.is_empty()).cloned()); } }
+            encola_portadas(&a, v, false);
+        }
+    });
 }
 
 fn sha256_hex(b: &[u8]) -> String {
@@ -1147,16 +1183,152 @@ async fn actualiza_catalogo(app: &Arc<App>) {
     }
 }
 
-fn pared_json(app: &App, letra: &str) -> Arc<String> {
-    if let Some(v) = app.pared_cache.lock().unwrap().get(letra) { return v.clone(); }
+/// Arma una letra en gzip y la guarda (solo si nada cambio mientras se armaba), con el MBID de la portada de cada casilla.
+fn arma_pared(app: &App, letra: &str) -> (Arc<Vec<u8>>, Arc<Vec<String>>) {
+    use std::sync::atomic::Ordering;
+    let gen = app.pared_gen.load(Ordering::SeqCst);
     let cat = app.catalogo.lock().unwrap().clone();
     let mios = app.mios.lock().unwrap().clone();
     let ids = app.cat_ids.lock().unwrap().clone();
     let items = catalogo::arma_letra(cat.as_deref(), &mios, &ids, letra);
     let letras = catalogo::letras_con(cat.as_deref(), &mios);
-    let r = Arc::new(json!({"ok": true, "letra": letra, "letras": letras, "catalogo": cat.is_some(), "items": items}).to_string());
-    app.pared_cache.lock().unwrap().insert(letra.to_string(), r.clone());
-    r
+    let mbids: Vec<String> = items.iter().map(|x| {
+        if x["img"].as_str().map(|i| i.starts_with("/p/")).unwrap_or(false) { x["mbid"].as_str().unwrap_or("").to_string() } else { String::new() }
+    }).collect();
+    let texto = json!({"ok": true, "letra": letra, "letras": letras, "catalogo": cat.is_some(), "items": items}).to_string();
+    let gz = {
+        use std::io::Write;
+        let mut e = flate2::write::GzEncoder::new(Vec::with_capacity(texto.len() / 6), flate2::Compression::fast());
+        let _ = e.write_all(texto.as_bytes());
+        e.finish().unwrap_or_default()
+    };
+    let gz = Arc::new(gz);
+    let mbids = Arc::new(mbids);
+    if app.pared_gen.load(Ordering::SeqCst) == gen {
+        app.pared_cache.lock().unwrap().insert(letra.to_string(), gz.clone());
+        app.pared_mbids.lock().unwrap().insert(letra.to_string(), mbids.clone());
+    }
+    (gz, mbids)
+}
+
+fn pared_gz(app: &App, letra: &str) -> Arc<Vec<u8>> {
+    if let Some(v) = app.pared_cache.lock().unwrap().get(letra) { return v.clone(); }
+    arma_pared(app, letra).0
+}
+
+// ---------- LAS PORTADAS DEL CATALOGO (Cover Art Archive, guardadas en el disco) ----------
+// El Cover Art Archive manda cada portada por tres redirecciones hasta archive.org (de medio segundo a varios segundos). La demo la
+// baja UNA vez y la guarda en datos/portadas; despues sale del disco al momento, y el navegador la recuerda (immutable).
+const TOPE_PORTADAS: u64 = 600 * 1024 * 1024;
+
+fn ruta_portada(app: &App, mbid: &str, tam: u32) -> PathBuf {
+    app.datos.join("portadas").join(&mbid[..2]).join(format!("{mbid}-{tam}.jpg"))
+}
+
+async fn baja_portada(app: &Arc<App>, mbid: &str, tam: u32) -> Result<Option<Vec<u8>>, String> {
+    let ruta = ruta_portada(app, mbid, tam);
+    if let Ok(b) = tokio::fs::read(&ruta).await { return Ok(Some(b)); }
+    let no = ruta.with_extension("no");
+    if no.exists() { return Ok(None); }
+    let _permiso = app.sem_portadas.acquire().await.map_err(|e| e.to_string())?;
+    if let Ok(b) = tokio::fs::read(&ruta).await { return Ok(Some(b)); } // otra la bajo mientras esperaba
+    let r = app.http.get(catalogo::portada(mbid, tam)).timeout(Duration::from_secs(25)).send().await.map_err(|e| e.to_string())?;
+    if let Some(d) = ruta.parent() { let _ = std::fs::create_dir_all(d); }
+    if r.status().as_u16() == 404 { let _ = std::fs::write(&no, b""); return Ok(None); }
+    if !r.status().is_success() { return Err(format!("contesto {}", r.status().as_u16())); }
+    let b = r.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    if b.len() < 200 { return Err("llego vacia".into()); }
+    let tmp = ruta.with_extension("tmp");
+    if std::fs::write(&tmp, &b).is_ok() { let _ = std::fs::rename(&tmp, &ruta); }
+    Ok(Some(b))
+}
+
+fn responde_portada(req: tiny_http::Request, res: &Result<Option<Vec<u8>>, String>) {
+    use tiny_http::{Header, Response};
+    let r = match res {
+        Ok(Some(b)) => Response::from_data(b.clone()).with_status_code(200)
+            .with_header(Header::from_bytes("Content-Type", "image/jpeg").unwrap())
+            .with_header(Header::from_bytes("Cache-Control", "public, max-age=31536000, immutable").unwrap()),
+        Ok(None) => Response::from_data(Vec::new()).with_status_code(404)
+            .with_header(Header::from_bytes("Cache-Control", "public, max-age=86400").unwrap()),
+        Err(_) => Response::from_data(Vec::new()).with_status_code(502)
+            .with_header(Header::from_bytes("Cache-Control", "no-store").unwrap()),
+    };
+    let _ = req.respond(r);
+}
+
+/// Una portada que no esta en el disco: la baja una sola vez aunque la pidan varias casillas a la vez o este ya en la cola de
+/// adelanto (la que llegue primero la baja; las demas esperan a esa). `req`: la casilla que la pidio (None = adelanto).
+async fn trae_portada(app: &Arc<App>, mbid: &str, tam: u32, req: Option<tiny_http::Request>) -> bool {
+    let clave = format!("{mbid}-{tam}");
+    {
+        let mut m = app.portadas_esperan.lock().unwrap();
+        if let Some(v) = m.get_mut(&clave) { v.extend(req); return true; }
+        m.insert(clave.clone(), req.into_iter().collect());
+    }
+    let res = baja_portada(app, mbid, tam).await;
+    let ok = res.is_ok();
+    let reqs = app.portadas_esperan.lock().unwrap().remove(&clave).unwrap_or_default();
+    if !reqs.is_empty() { let _ = tokio::task::spawn_blocking(move || { for r in reqs { responde_portada(r, &res); } }).await; }
+    ok
+}
+
+/// Pone portadas en la cola de adelanto: `urgente` delante (lo que se va a mirar ya), si no detras. Las que ya estan en el disco no.
+fn encola_portadas(app: &App, mbids: Vec<String>, urgente: bool) {
+    let faltan: Vec<String> = mbids.into_iter().filter(|m| {
+        let r = ruta_portada(app, m, 250);
+        !r.exists() && !r.with_extension("no").exists()
+    }).collect();
+    if faltan.is_empty() { return; }
+    {
+        let mut c = app.cola_portadas.lock().unwrap();
+        if urgente { for m in faltan.into_iter().rev() { c.push_front(m); } } else { c.extend(faltan); }
+        if c.len() > 4000 { c.truncate(4000); } // lo de mas atras (lo menos urgente) se olvida
+    }
+    app.hay_cola.notify_waiters();
+}
+
+/// Los 6 que bajan por adelantado (aparte de las 8 de las casillas que se ven, que no esperan a estos).
+async fn adelanta_portadas(app: Arc<App>) {
+    let mut seguidas_mal = 0;
+    loop {
+        let sig = app.cola_portadas.lock().unwrap().pop_front();
+        let Some(m) = sig else {
+            let (b, mal) = std::mem::take(&mut *app.adelanto.lock().unwrap());
+            if b + mal > 0 {
+                app.diag("portadas", Instant::now(), if mal == 0 { Ok(format!("{b} bajadas por adelantado")) } else { Err(format!("{b} bajadas por adelantado, {mal} fallaron")) });
+            }
+            let espera = app.hay_cola.notified();
+            if app.cola_portadas.lock().unwrap().is_empty() { espera.await; }
+            continue;
+        };
+        let r = ruta_portada(&app, &m, 250);
+        if r.exists() || r.with_extension("no").exists() { continue; }
+        let ok = trae_portada(&app, &m, 250, None).await;
+        { let mut a = app.adelanto.lock().unwrap(); if ok { a.0 += 1 } else { a.1 += 1 } }
+        seguidas_mal = if ok { 0 } else { seguidas_mal + 1 };
+        if seguidas_mal >= 10 { seguidas_mal = 0; tokio::time::sleep(Duration::from_secs(60)).await; } // sin internet: no insistir
+    }
+}
+
+/// Al arrancar: si las portadas guardadas pasan de 600 MB, se borran las que hace mas que no se usan hasta quedar en 450 MB.
+fn recorta_portadas(dir: PathBuf) {
+    let mut todas: Vec<(SystemTime, u64, PathBuf)> = vec![];
+    for sub in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+        for f in std::fs::read_dir(sub.path()).into_iter().flatten().flatten() {
+            if let Ok(m) = f.metadata() {
+                let t = m.accessed().or_else(|_| m.modified()).unwrap_or(UNIX_EPOCH);
+                todas.push((t, m.len(), f.path()));
+            }
+        }
+    }
+    let mut total: u64 = todas.iter().map(|x| x.1).sum();
+    if total <= TOPE_PORTADAS { return; }
+    todas.sort();
+    for (_, n, p) in todas {
+        if total <= TOPE_PORTADAS * 3 / 4 { break; }
+        if std::fs::remove_file(&p).is_ok() { total -= n; }
+    }
 }
 
 // Un disco del catalogo sin id de Spotify: UNA busqueda (disco + artista) y se recuerda para siempre en catalogo_ids.json, tambien
@@ -1179,7 +1351,7 @@ async fn resolver_cat(app: &Arc<App>, v: &Value) -> Value {
         m.clone()
     };
     let _ = std::fs::write(app.ruta_cat_ids(), serde_json::to_string(&todo).unwrap_or_default());
-    app.pared_cache.lock().unwrap().clear();
+    if hallado.is_none() { limpia_pared(app, false); } // ese disco ya no se ensena; con id, la casilla ya lo sabe en la pagina
     match hallado {
         Some((id, grande, chica)) => json!({"ok": true, "id": id, "grande": grande, "img": chica}),
         None => json!({"ok": false, "no_esta": true, "error": "Spotify no tiene este disco."}),
@@ -1214,10 +1386,24 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
             let mios: Vec<catalogo::Mio> = serde_json::from_value(v["items"].clone()).unwrap_or_default();
             let n = mios.len();
             *app.mios.lock().unwrap() = mios;
-            app.pared_cache.lock().unwrap().clear();
+            limpia_pared(app, true);
             json!({"ok": true, "n": n})
         }
         (true, "/api/cat/resolver") => resolver_cat(app, &v).await,
+        (true, "/api/pared/vista") => {
+            // La pagina que se mira (llega antes que sus 18 portadas): primero las suyas (asi se bajan mas a la vez que las 6 que
+            // pide el navegador), luego las 3 siguientes y la anterior.
+            let (l, p) = (v["l"].as_str().unwrap_or(""), v["p"].as_u64().unwrap_or(0) as usize);
+            if let Some(m) = app.pared_mbids.lock().unwrap().get(l).cloned() {
+                let mut q = vec![];
+                for pg in [p, p + 1, p + 2, p.wrapping_sub(1), p + 3] {
+                    if pg == usize::MAX { continue; }
+                    q.extend(m.iter().skip(pg * 18).take(18).filter(|x| !x.is_empty()).cloned());
+                }
+                encola_portadas(app, q, true);
+            }
+            json!({"ok": true})
+        }
         (true, "/api/catalogo/actualizar") => {
             let a = app.clone();
             app.rt.spawn(async move { actualiza_catalogo(&a).await; });
@@ -1289,6 +1475,7 @@ fn atiende(app: &Arc<App>, h: &tokio::runtime::Handle, req: tiny_http::Request) 
     let hdr = |nombre: &str| req.headers().iter().find(|x| x.field.as_str().as_str().eq_ignore_ascii_case(nombre)).map(|x| x.value.as_str().to_string());
     let host_ok = hdr("Host").map(|v| v == format!("127.0.0.1:{}", app.puerto) || v == format!("localhost:{}", app.puerto)).unwrap_or(false);
     let marca = hdr("X-Prueba").is_some();
+    let gzip_ok = hdr("Accept-Encoding").map(|v| v.contains("gzip")).unwrap_or(false);
     let (camino, q) = url.split_once('?').unwrap_or((url.as_str(), ""));
     let q = consulta(q);
     let mut req = req;
@@ -1300,6 +1487,16 @@ fn atiende(app: &Arc<App>, h: &tokio::runtime::Handle, req: tiny_http::Request) 
     };
     if !host_ok { return enviar(req, 403, "text/plain; charset=utf-8", "Solo desde esta misma computadora.".into()); }
     if !post && (camino == "/" || camino == "/index.html") { return enviar(req, 200, "text/html; charset=utf-8", PAGINA.to_string()); }
+    if !post && camino.starts_with("/p/") {
+        // Una portada del catalogo (la pide un <img>, que no lleva la marca). Del disco al momento; si no esta, la baja tokio.
+        let mbid = &camino[3..];
+        if !catalogo::es_mbid(mbid) { return enviar(req, 404, "text/plain; charset=utf-8", "No existe".into()); }
+        let tam = if q.get("t").map(|t| t == "500").unwrap_or(false) { 500 } else { 250 };
+        if let Ok(b) = std::fs::read(ruta_portada(app, mbid, tam)) { return responde_portada(req, &Ok(Some(b))); }
+        let (a, m) = (app.clone(), mbid.to_string());
+        h.spawn(async move { trae_portada(&a, &m, tam, Some(req)).await; });
+        return;
+    }
     if !camino.starts_with("/api/") { return enviar(req, 404, "text/plain; charset=utf-8", "No existe".into()); }
     if !marca { return enviar(req, 403, "text/plain; charset=utf-8", "Falta la marca de la pagina.".into()); }
     let mut cuerpo = String::new();
@@ -1307,7 +1504,18 @@ fn atiende(app: &Arc<App>, h: &tokio::runtime::Handle, req: tiny_http::Request) 
     if !post && camino == "/api/pared" {
         // La letra ya va armada como texto (hasta 9 000 casillas): se manda tal cual, sin volver a pasar por Value.
         let l = q.get("l").map(|s| s.as_str()).unwrap_or("A").to_string();
-        return enviar(req, 200, "application/json; charset=utf-8", (*pared_json(app, &l)).clone());
+        let gz = pared_gz(app, &l);
+        if gzip_ok {
+            let r = Response::from_data((*gz).clone()).with_status_code(200)
+                .with_header(Header::from_bytes("Content-Type", "application/json; charset=utf-8").unwrap())
+                .with_header(Header::from_bytes("Content-Encoding", "gzip").unwrap())
+                .with_header(Header::from_bytes("Cache-Control", "no-store").unwrap());
+            let _ = req.respond(r);
+            return;
+        }
+        let mut texto = String::new();
+        { use std::io::Read; let _ = flate2::read::GzDecoder::new(&gz[..]).read_to_string(&mut texto); }
+        return enviar(req, 200, "application/json; charset=utf-8", texto);
     }
     let r = h.block_on(ruta(app, post, camino, &q, &cuerpo));
     enviar(req, 200, "application/json; charset=utf-8", r.to_string());
@@ -1346,6 +1554,10 @@ async fn main() {
         calidad: Mutex::new(CalidadEstado::default()), rt: tokio::runtime::Handle::current(),
         catalogo: Mutex::new(None), cat_estado: Mutex::new("sin cargar".into()), mios: Mutex::new(vec![]),
         cat_ids: Mutex::new(HashMap::new()), pared_cache: Mutex::new(HashMap::new()),
+        pared_gen: std::sync::atomic::AtomicU64::new(0), portadas_esperan: Mutex::new(HashMap::new()),
+        sem_portadas: tokio::sync::Semaphore::new(8),
+        cola_portadas: Mutex::new(std::collections::VecDeque::new()), hay_cola: tokio::sync::Notify::new(),
+        adelanto: Mutex::new((0, 0)), pared_mbids: Mutex::new(HashMap::new()),
     });
     carga_config_soloist(&app);
     if let Some(h) = std::fs::read_to_string(app.ruta_calidad()).ok().and_then(|s| serde_json::from_str(&s).ok()) {
@@ -1356,6 +1568,8 @@ async fn main() {
         *app.cat_ids.lock().unwrap() = m;
     }
     { let a = app.clone(); tokio::spawn(async move { actualiza_catalogo(&a).await; }); }
+    { let d = app.datos.join("portadas"); std::thread::spawn(move || recorta_portadas(d)); }
+    for _ in 0..6 { let a = app.clone(); tokio::spawn(adelanta_portadas(a)); }
 
     let url = format!("http://127.0.0.1:{puerto}/");
     println!("  La pagina esta en: {url}");
@@ -1368,7 +1582,7 @@ async fn main() {
 
     let servidor = Arc::new(servidor);
     let h = tokio::runtime::Handle::current();
-    for _ in 0..6 {
+    for _ in 0..12 {
         let (s, a, h) = (servidor.clone(), app.clone(), h.clone());
         std::thread::spawn(move || { while let Ok(r) = s.recv() { atiende(&a, &h, r); } });
     }
