@@ -658,6 +658,7 @@ function pintaEstado() {
     ["Ultimo error", s.ultimo_error ? '<span class="mal">' + esc(s.ultimo_error) + '</span>' : "ninguno"],
     ["Version", esc(E.version || "")],
   ].map(f => "<div>" + f[0] + "</div><div>" + f[1] + "</div>").join("");
+  if (s.logged_in && /150 segundos|Arrancando/.test($("soloist-msg").textContent)) $("soloist-msg").textContent = "";
   if (!yaCargueCampos && s.exe) { $("s-exe").value = s.exe; $("s-nombre").value = s.nombre_aparato || ""; yaCargueCampos = true; }
   if (E.diag_n !== diagN) cargaDiag(false);
 }

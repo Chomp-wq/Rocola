@@ -154,6 +154,7 @@ struct App {
     soloist_child: Mutex<Option<Child>>,
     soloist_tx: Mutex<Option<mpsc::UnboundedSender<Value>>>,
     soloist_gen: std::sync::atomic::AtomicU64, // para que un "iniciar" viejo no pise al nuevo
+    rt: tokio::runtime::Handle, // tokio::spawn truena desde hilos que no son del runtime (el de --pair)
     calidad: Mutex<CalidadEstado>,
 }
 
@@ -343,7 +344,7 @@ fn entrar_oauth(app: &Arc<App>) -> Value {
     app.web.lock().unwrap().oauth_activo = true;
     app.oauth_cancelar.store(false, std::sync::atomic::Ordering::SeqCst);
     let a = app.clone();
-    tokio::spawn(async move {
+    app.rt.spawn(async move {
         let t0 = Instant::now();
         // La libreria espera al navegador bloqueando: va en su propio hilo (y abre el navegador ella misma).
         let cid = a.client_id();
@@ -701,6 +702,9 @@ fn iniciar_soloist(app: &Arc<App>) -> Value {
     let cache_dir = app.cache_soloist();
     let _ = std::fs::create_dir_all(&datos_dir);
     let _ = std::fs::create_dir_all(&cache_dir);
+    // Si el anterior se cerro de golpe (Detener en Windows lo termina), sus ws.addr/ws.port quedan con el puerto viejo.
+    let _ = std::fs::remove_file(datos_dir.join("ws.addr"));
+    let _ = std::fs::remove_file(datos_dir.join("ws.port"));
     let t0 = Instant::now();
     let hijo = Command::new(&exe)
         .args(["--device-name", &nombre, "--api-key", &llave, "--ws", "127.0.0.1:0", "--data-dir"])
@@ -757,7 +761,7 @@ fn iniciar_soloist(app: &Arc<App>) -> Value {
     {
         let a = app.clone();
         let datos_dir2 = datos_dir.clone();
-        tokio::spawn(async move { busca_y_conecta_ws(a, datos_dir2, gen).await; });
+        app.rt.spawn(async move { busca_y_conecta_ws(a, datos_dir2, gen).await; });
     }
     json!({"ok": true})
 }
@@ -766,22 +770,26 @@ fn app_generacion_vieja(app: &App, gen: u64) -> bool { app.soloist_gen.load(std:
 
 async fn busca_y_conecta_ws(app: Arc<App>, datos_dir: PathBuf, gen: u64) {
     let t0 = Instant::now();
-    let (direc, puerto) = loop {
+    // Se reintenta hasta 20 s: los archivos pueden tardar o, si el anterior se cerro de golpe, traer un puerto viejo.
+    let mut ultimo_error = String::from("Soloist no abrio su WebSocket");
+    let conexion = loop {
         if app_generacion_vieja(&app, gen) { return; }
-        if t0.elapsed() > Duration::from_secs(20) {
-            app.diag("conectar al WebSocket de Soloist", t0, Err("Soloist no abrio su WebSocket en 20 s.".into()));
-            return;
-        }
+        if t0.elapsed() > Duration::from_secs(20) { break Err(ultimo_error); }
         let a = tokio::fs::read_to_string(datos_dir.join("ws.addr")).await;
         let p = tokio::fs::read_to_string(datos_dir.join("ws.port")).await;
         if let (Ok(a), Ok(p)) = (a, p) {
-            if let Ok(p) = p.trim().parse::<u16>() { break (a.trim().to_string(), p); }
+            if let Ok(p) = p.trim().parse::<u16>() {
+                let (direc, puerto) = (a.trim().to_string(), p);
+                match tokio_tungstenite::connect_async(format!("ws://{direc}:{puerto}").as_str()).await {
+                    Ok((flujo, _)) => break Ok((flujo, direc, puerto)),
+                    Err(e) => ultimo_error = e.to_string(),
+                }
+            }
         }
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
     };
-    let url = format!("ws://{direc}:{puerto}");
-    match tokio_tungstenite::connect_async(url.as_str()).await {
-        Ok((flujo, _)) => {
+    match conexion {
+        Ok((flujo, direc, puerto)) => {
             if app_generacion_vieja(&app, gen) { return; }
             app.diag("conectar al WebSocket de Soloist", t0, Ok(format!("conectado ({direc}:{puerto})")));
             app.soloist.lock().unwrap().conectado_ws = true;
@@ -808,7 +816,7 @@ async fn busca_y_conecta_ws(app: Arc<App>, datos_dir: PathBuf, gen: u64) {
                 s.conectado_ws = false; s.logged_in = false; s.is_active = false;
             }
         }
-        Err(e) => { app.diag("conectar al WebSocket de Soloist", t0, Err(e.to_string())); }
+        Err(e) => { app.diag("conectar al WebSocket de Soloist", t0, Err(format!("no se pudo en 20 s: {e}"))); }
     }
 }
 
@@ -1115,7 +1123,7 @@ async fn main() {
         web: Mutex::new(WebEstado::default()), oauth_cancelar: std::sync::atomic::AtomicBool::new(false), oauth_gen: std::sync::atomic::AtomicU64::new(0),
         soloist: Mutex::new(SoloistEstado::default()), soloist_child: Mutex::new(None), soloist_tx: Mutex::new(None),
         soloist_gen: std::sync::atomic::AtomicU64::new(0),
-        calidad: Mutex::new(CalidadEstado::default()),
+        calidad: Mutex::new(CalidadEstado::default()), rt: tokio::runtime::Handle::current(),
     });
     carga_config_soloist(&app);
     if let Some(h) = std::fs::read_to_string(app.ruta_calidad()).ok().and_then(|s| serde_json::from_str(&s).ok()) {
