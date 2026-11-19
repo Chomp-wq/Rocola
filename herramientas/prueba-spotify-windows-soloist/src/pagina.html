@@ -165,7 +165,14 @@ p.nota{color:var(--suave);margin:6px 0}
     <p class="nota">Esto es solo para que el buscador y la pared puedan leer tus discos, listas y canciones de
       Spotify. Es una entrada aparte de la de Soloist: se abre el navegador, inicias sesion y aceptas los permisos.</p>
     <div class="kv" id="estado-web"></div>
+    <p class="nota"><b>Si sale «429» (Spotify frena):</b> el cliente compartido de escritorio lo usa demasiada gente.
+      Usa el de <b>tu propia app</b>: en <b>developer.spotify.com/dashboard</b> abre tu app (o crea una, marcando
+      «Web API»), en «Edit settings» agrega la Redirect URI <code>http://127.0.0.1:8898/login</code> exactamente asi,
+      guarda, copia el <b>Client ID</b> (32 letras y numeros, no es secreto) y pegalo aqui. Despues, «Entrar con el
+      navegador» otra vez.</p>
+    <div class="campo"><label>Client ID de tu app (vacio = el compartido)</label><input type="text" id="w-cid" placeholder="p. ej. 0123456789abcdef0123456789abcdef"></div>
     <div class="botones">
+      <button onclick="guardarClientId()">Guardar Client ID</button>
       <button class="oro" onclick="entrarOauth()">Entrar con el navegador</button>
       <button class="peligro" onclick="olvidarWeb()">Olvidar esta cuenta</button>
     </div>
@@ -207,7 +214,8 @@ async function sp(ruta) {
     const r = await get("/api/spotify?ruta=" + encodeURIComponent(ruta));
     if (r.estado === 429) {
       const s = r.espera_s || 5;
-      aviso("Spotify pide esperar " + s + " segundos (demasiadas peticiones). Se reintenta solo.", "mal", (s + 1) * 1000);
+      const consejo = E.web && !E.web.client_id_propio ? " Mejor: pon el Client ID de tu app (pestana Pruebas, Tu cuenta)." : "";
+      aviso("Spotify pide esperar " + s + " segundos (demasiadas peticiones). Se reintenta solo." + consejo, "mal", (s + 1) * 1000);
       await sleep((s + 1) * 1000);
       continue;
     }
@@ -633,9 +641,11 @@ function pintaEstado() {
   $("estado-web").innerHTML = [
     ["Entrada guardada en el navegador", w.conectado ? sino(true, "SI" + (w.usuario ? " (" + esc(w.usuario) + ")" : "")) : sino(false, "", "NO: falta entrar")],
     ["/v1/me", me ? "HTTP " + me.estado + ", pais " + esc(me.pais) + ", producto " + (me.producto === "premium" ? sino(true, "premium") : sino(false, "", esc(me.producto || "?") + " (se necesita premium para Soloist)")) : "(sin probar)"],
+    ["Client ID", w.client_id_propio ? sino(true, "el de tu app") : "el compartido de escritorio (suele dar 429)"],
     ["Ultimo error", w.error ? '<span class="mal">' + esc(w.error) + '</span>' : "ninguno"],
   ].map(f => "<div>" + f[0] + "</div><div>" + f[1] + "</div>").join("");
-  $("entrar-msg").textContent = w.oauth_activo ? "Esperando al navegador..." : "";
+  if (!yaCargueCid && w.client_id !== undefined) { $("w-cid").value = w.client_id_propio ? w.client_id : ""; yaCargueCid = true; }
+  if (w.oauth_activo) $("entrar-msg").textContent = "Esperando al navegador...";
 
   $("estado-soloist").innerHTML = [
     ["Proceso de Soloist", s.corriendo ? sino(true, "corriendo") : (s.arrancando ? "arrancando..." : sino(false, "", "detenido"))],
@@ -651,7 +661,12 @@ function pintaEstado() {
   if (!yaCargueCampos && s.exe) { $("s-exe").value = s.exe; $("s-nombre").value = s.nombre_aparato || ""; yaCargueCampos = true; }
   if (E.diag_n !== diagN) cargaDiag(false);
 }
-let yaCargueCampos = false;
+let yaCargueCampos = false, yaCargueCid = false;
+async function guardarClientId() {
+  const r = await post("/api/web/client_id", {id: $("w-cid").value.trim()});
+  biblio = null; pila = []; render();
+  $("entrar-msg").textContent = r.ok ? "Client ID guardado. Ahora pulsa «Entrar con el navegador»." : (r.error || "No se pudo.");
+}
 let diagN = -1;
 async function cargaDiag(forzar) {
   const d = await get("/api/diag"); if (!Array.isArray(d)) return;

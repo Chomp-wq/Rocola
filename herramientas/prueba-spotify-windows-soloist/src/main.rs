@@ -178,6 +178,13 @@ impl App {
     fn ruta_llave_soloist(&self) -> PathBuf { self.datos.join("soloist_llave.txt") }
     fn ruta_config_soloist(&self) -> PathBuf { self.datos.join("soloist_config.json") }
     fn ruta_refresh_web(&self) -> PathBuf { self.datos.join("oauth_refresh.txt") }
+    fn ruta_client_id(&self) -> PathBuf { self.datos.join("web_client_id.txt") }
+    // El Client ID de la app propia del dueno (developer.spotify.com/dashboard), si lo puso; si no, el compartido de
+    // escritorio, que casi siempre contesta 429 porque lo usan todos los programas que lo copian.
+    fn client_id(&self) -> String {
+        std::fs::read_to_string(self.ruta_client_id()).ok().map(|s| s.trim().to_string())
+            .filter(|s| es_client_id(s)).unwrap_or_else(|| OAUTH_CLIENT_ID.to_string())
+    }
     fn datos_soloist(&self) -> PathBuf { self.datos.join("soloist_datos") }
     fn cache_soloist(&self) -> PathBuf { self.datos.join("soloist_cache") }
     fn ruta_calidad(&self) -> PathBuf { self.datos.join("calidad_medida.json") }
@@ -278,8 +285,9 @@ fn vigila_calidad(app: Arc<App>) {
 }
 
 const OAUTH_LISTO: &str = "<!doctype html><meta charset=utf-8><body style='font-family:sans-serif;font-size:28px;background:#111;color:#eee'><h1>Listo</h1><p>Vuelve a la herramienta de la rocola. Puedes cerrar esta pestana.</p></body>";
-fn oauth_cliente(abrir: bool) -> OAuthClient {
-    let b = OAuthClientBuilder::new(OAUTH_CLIENT_ID, OAUTH_REDIRECT, ALCANCE.to_vec()).with_custom_message(OAUTH_LISTO);
+fn es_client_id(s: &str) -> bool { s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit()) }
+fn oauth_cliente(client_id: &str, abrir: bool) -> OAuthClient {
+    let b = OAuthClientBuilder::new(client_id, OAUTH_REDIRECT, ALCANCE.to_vec()).with_custom_message(OAUTH_LISTO);
     (if abrir { b.open_in_browser() } else { b }).build().expect("el cliente de OAuth no se pudo armar")
 }
 // Si el navegador nunca contesta, el que espera tiene el puerto 8898 abierto: una visita falsa lo suelta.
@@ -313,7 +321,7 @@ async fn asegura_token_web(app: &Arc<App>) -> Result<String, String> {
     });
     let Some(rt) = rt else { return Err("Falta entrar: todavia no hay cuenta (pestana Pruebas, seccion Tu cuenta).".to_string()) };
     let t0 = Instant::now();
-    match oauth_cliente(false).refresh_token_async(&rt).await {
+    match oauth_cliente(&app.client_id(), false).refresh_token_async(&rt).await {
         Ok(tok) => { app.diag("renovar la entrada (API web)", t0, Ok("bien".into())); guarda_token_web(app, &tok); Ok(tok.access_token) }
         Err(e) => {
             app.diag("renovar la entrada (API web)", t0, Err(e.to_string()));
@@ -338,7 +346,8 @@ fn entrar_oauth(app: &Arc<App>) -> Value {
     tokio::spawn(async move {
         let t0 = Instant::now();
         // La libreria espera al navegador bloqueando: va en su propio hilo (y abre el navegador ella misma).
-        let r = tokio::task::spawn_blocking(|| oauth_cliente(true).get_access_token().map_err(|e| e.to_string()))
+        let cid = a.client_id();
+        let r = tokio::task::spawn_blocking(move || oauth_cliente(&cid, true).get_access_token().map_err(|e| e.to_string()))
             .await.unwrap_or_else(|e| Err(e.to_string()));
         if a.oauth_gen.load(std::sync::atomic::Ordering::SeqCst) != gen { return; } // ya hay otra espera mas nueva
         a.web.lock().unwrap().oauth_activo = false;
@@ -926,6 +935,7 @@ fn estado_json(app: &Arc<App>) -> Value {
         "web": {
             "conectado": w.tok.is_some(), "usuario": w.usuario, "error": w.error, "oauth_activo": w.oauth_activo,
             "hay_refresh_guardado": app.ruta_refresh_web().exists(), "me": w.me,
+            "client_id_propio": app.client_id() != OAUTH_CLIENT_ID, "client_id": app.client_id(),
         },
         "soloist": {
             "exe": s.exe, "nombre_aparato": s.nombre_aparato, "tiene_llave": tiene_llave_soloist(app),
@@ -1000,6 +1010,18 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
         (false, "/api/diag") => diag_json(app),
         (false, "/api/spotify") => api_pagina(app, q.get("ruta").map(|s| s.as_str()).unwrap_or("")).await,
         (true, "/api/entrar_oauth") => entrar_oauth(app),
+        (true, "/api/web/client_id") => {
+            let id = v["id"].as_str().unwrap_or("").trim().to_string();
+            if !id.is_empty() && !es_client_id(&id) { json!({"ok": false, "error": "El Client ID son 32 letras y numeros (0-9, a-f)."}) }
+            else {
+                let _ = if id.is_empty() { std::fs::remove_file(app.ruta_client_id()) } else { std::fs::write(app.ruta_client_id(), &id) };
+                // La entrada guardada es del otro Client ID: no sirve con este.
+                olvidar_web(app);
+                *app.bloqueo.lock().unwrap() = None; // el 429 era del otro Client ID
+                app.diag("Client ID de la API web", Instant::now(), Ok(if id.is_empty() { "el compartido de escritorio".into() } else { "el de tu app".into() }));
+                json!({"ok": true})
+            }
+        }
         (true, "/api/olvidar_web") => { if v["confirmo"].as_bool() == Some(true) { olvidar_web(app) } else { json!({"ok": false, "error": "falta confirmar"}) } }
         (true, "/api/soloist/config") => {
             let exe = v["exe"].as_str().unwrap_or("").trim().to_string();
