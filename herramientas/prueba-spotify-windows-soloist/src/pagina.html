@@ -77,6 +77,9 @@ header button{font-size:16px;padding:6px 10px}
 #son .dat{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px}
 #son .nom{font-size:24px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #son .art{color:var(--suave);font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal{display:inline-block;margin-left:10px;padding:0 8px;border-radius:6px;font-size:14px;font-weight:700;border:1px solid #343c57;color:var(--suave);vertical-align:middle}
+.cal.flac{background:#103a25;border-color:var(--verde);color:var(--verde)}
+.cal.vorbis{border-color:var(--oro);color:var(--oro)}
 .barra{height:12px;background:#262d45;border-radius:6px;overflow:hidden;margin-top:4px}
 .barra i{display:block;height:100%;width:0;background:var(--oro)}
 #tiempos{display:flex;justify-content:space-between;color:var(--suave);font-size:15px}
@@ -146,10 +149,16 @@ p.nota{color:var(--suave);margin:6px 0}
       <button onclick="detenerSoloist()">Detener</button>
       <button onclick="reemparejar()">Volver a emparejar (elegir cuenta)</button>
       <button class="peligro" onclick="olvidarSoloist()">Olvidar este aparato</button>
+      <button onclick="vaciarCache()">Vaciar la cache (volver a medir)</button>
     </div>
     <p class="nota" id="soloist-msg"></p>
     <p class="nota">Una vez arrancado, abre Spotify en tu telefono o tu escritorio (misma red), toca el icono de
       aparatos y elige el nombre de arriba. Eso empareja tu cuenta; esta pagina no pide tu contraseña de Spotify.</p>
+    <p class="nota"><b>Para FLAC (Lossless):</b> en la app de Spotify, en el selector de aparatos, abre las opciones de
+      este aparato y pon su calidad en <b>Lossless</b> (va aparato por aparato; si no, Soloist baja a menor calidad).
+      Esta pagina no puede pedirlo: Soloist no tiene esa opcion. Lo que si hace es MEDIR lo que llega: el tamano del
+      archivo que Soloist guarda en su cache por cada cancion (FLAC ~700-1700 kbps, Vorbis ~330). Lo que ya estaba en la
+      cache antes de cambiar a Lossless sigue en la calidad vieja: deten Soloist y «Vaciar la cache» para volver a medir.</p>
   </div>
   <div class="tarjeta">
     <h2>Tu cuenta (para buscar y ver tu biblioteca)</h2>
@@ -273,7 +282,7 @@ async function siguiente() {
       actual = {uri: t.uri, id: t.id, nombre: t.nombre, artista: t.artista, img: t.img, dur: t.dur, iniciada: false};
       pintaPie();
       const r = await post("/api/tocar", {uri: t.uri, nombre: t.nombre, artista: t.artista, img: t.img, dur_ms: t.dur});
-      if (r.ok) { if (cola[0]) post("/api/precarga", {uri: cola[0].uri}); break; }
+      if (r.ok) break;
       creditos++; pintaCreditos();
       aviso("No se pudo tocar «" + t.nombre + "»: " + (r.error || "error") + " Se devolvio tu credito.", "mal", 7000);
       actual = null;
@@ -288,14 +297,15 @@ async function vigila() {
   if (pestanaAct === "pruebas") pintaEstado();
   pintaFalta();
   if (E.web && E.web.conectado && !biblio && !cargandoBiblio) cargaBiblio();
+  // Lo pedido (E.soloist.pedida) manda: acabo = siguiente sin devolver; error = devolver el credito.
   if (actual && !arrancando) {
-    const s = (E.soloist && E.soloist.son) || {};
-    if (s.uri === actual.uri) {
-      if (s.estado === "sonando" || s.estado === "pausa") actual.iniciada = true;
-      if (s.estado === "detenida" && actual.iniciada) { actual = null; await siguiente(); }
-      else if (s.estado === "error") {
+    const p = E.soloist && E.soloist.pedida;
+    if (p && p.uri === actual.uri) {
+      if (p.estado === "sonando" || p.estado === "pausa") actual.iniciada = true;
+      if (p.estado === "acabo") { actual = null; await siguiente(); }
+      else if (p.estado === "error") {
         creditos++; pintaCreditos();
-        aviso("No se pudo tocar «" + actual.nombre + "»: " + (s.aviso || "error") + " Se devolvio tu credito.", "mal", 7000);
+        aviso("No se pudo tocar «" + actual.nombre + "»: " + (p.aviso || "error") + " Se devolvio tu credito.", "mal", 7000);
         actual = null; await siguiente();
       }
     }
@@ -310,7 +320,7 @@ function pintaPie() {
     const est = s.uri === actual.uri ? s.estado : "cargando";
     const txt = est === "cargando" ? "Cargando..." : est === "pausa" ? "En pausa" : actual.artista;
     son.innerHTML = (actual.img ? '<img src="' + esc(actual.img) + '">' : '<div class="nofoto"></div>') +
-      '<div class="dat"><div class="nom">' + esc(actual.nombre) + '</div><div class="art">' + esc(txt) + '</div>' +
+      '<div class="dat"><div class="nom">' + esc(actual.nombre) + '</div><div class="art">' + esc(txt) + marcaCalidad() + '</div>' +
       '<div class="barra"><i id="barra-i"></i></div><div id="tiempos"><span id="t-pos">0:00</span><span>' + (dur ? mmss(dur) : "") + '</span></div></div>';
     pintaAvance();
   } else {
@@ -319,6 +329,22 @@ function pintaPie() {
   $("cola").innerHTML = '<h4>SIGUIENTES (' + cola.length + ')</h4>' + cola.slice(0, 4).map(t =>
     '<div class="it">' + (t.img ? '<img src="' + esc(t.img) + '">' : '') + '<span>' + esc(t.nombre) + ' &middot; ' + esc(t.artista) + '</span></div>').join("") +
     (cola.length > 4 ? '<div class="it">y ' + (cola.length - 4) + ' mas...</div>' : "");
+}
+// La calidad que se midio en la cache de Soloist para la que suena: FLAC en verde, Vorbis en dorado.
+function marcaCalidad() {
+  const c = E.soloist && E.soloist.calidad;
+  if (!c || !actual || c.uri !== actual.uri) return "";
+  if (c.estado === "midiendo" && c.nivel !== "flac") return '<span class="cal">midiendo calidad...</span>';
+  if (!c.kbps) return "";
+  if (c.nivel === "flac") return '<span class="cal flac">FLAC · ' + c.kbps + ' kbps</span>';
+  return '<span class="cal vorbis">' + c.kbps + ' kbps</span>';
+}
+function textoCalidad(c) {
+  if (!c || !c.estado) return "(se mide al pedir una cancion)";
+  if (c.estado === "midiendo") return c.nivel === "flac" ? sino(true, "Lossless (FLAC), bajando... " + c.kbps + " kbps hasta ahora") : "midiendo (esperando a que Soloist la baje)...";
+  if (c.estado === "sin_dato") return "sin medir (ya estaba en la cache, o se salto antes de bajarla)";
+  const t = esc(c.texto) + " · " + c.kbps + " kbps" + (c.estado === "en_cache" ? " (medida antes)" : "");
+  return c.nivel === "flac" ? sino(true, t) : '<span style="color:var(--oro)">' + t + "</span>";
 }
 function pintaAvance() {
   const i = $("barra-i"); if (!i || !actual) return;
@@ -616,6 +642,7 @@ function pintaEstado() {
     ["Conectado por WebSocket", sino(!!s.conectado_ws, "si", "no")],
     ["Cuenta emparejada", s.esperando_pareo ? "esperando a que elijas el aparato..." : sino(!!s.logged_in, "si", "no: emparejalo desde el telefono")],
     ["Aparato activo (recibe la musica)", sino(!!s.is_active, "si", "no")],
+    ["Calidad de la ultima pedida (medida)", textoCalidad(s.calidad)],
     ["Volumen", (s.volumen != null ? s.volumen : "-") + ""],
     ["Llave de Soloist guardada", sino(!!s.tiene_llave, "si", "no")],
     ["Ultimo error", s.ultimo_error ? '<span class="mal">' + esc(s.ultimo_error) + '</span>' : "ninguno"],
@@ -658,6 +685,11 @@ async function olvidarSoloist() {
   if (!confirm("Olvidar este aparato de Soloist? Habra que elegirlo otra vez desde el telefono.")) return;
   await post("/api/soloist/olvidar", {confirmo: true});
   $("soloist-msg").textContent = "Aparato olvidado.";
+}
+async function vaciarCache() {
+  if (!confirm("Vaciar la cache de Soloist? Las canciones se volveran a bajar (y a medir).")) return;
+  const r = await post("/api/soloist/vaciar_cache");
+  $("soloist-msg").textContent = r.ok ? "Cache vaciada." : (r.error || "No se pudo.");
 }
 async function guardarInforme() { const r = await post("/api/guardar_informe"); $("informe-msg").textContent = r.ok ? "Guardado en: " + r.archivo + " (manda ese archivo)." : (r.error || "No se pudo."); }
 async function cerrar() { if (confirm("Cerrar la herramienta?")) { await post("/api/salir"); document.body.innerHTML = "<h1 style='padding:40px'>Cerrado. Ya puedes cerrar esta pestana.</h1>"; } }

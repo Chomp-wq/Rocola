@@ -96,6 +96,29 @@ struct SonSoloist {
     aviso: String,
     pos_ms: u64, pos_epoch_ms: u64, veloc: f64,
 }
+// Lo que la rocola pidio y en que va (cargando | sonando | pausa | acabo | error): con esto la pagina cobra, devuelve
+// el credito o pasa a la siguiente. Lo que suena (`son`) puede ser otra cosa: el telefono o una continuacion de Spotify.
+#[derive(Clone)]
+struct Pedida { uri: String, nombre: String, dur_ms: u64, estado: String, aviso: String, t0: Instant, empezo: bool }
+
+// LA CALIDAD MEDIDA: Soloist no dice si toca FLAC o Vorbis (ni su linea de comandos ni su WebSocket). Guarda un archivo
+// cifrado por cancion en su cache; su tamano * 8 / la duracion da los kbps (lo mismo que hacen los plugins de Volumio y
+// Lyrion). Vorbis 320 da ~330 kbps; Lossless (FLAC) da ~700-1700. Nunca se abre ni se descifra el archivo: solo su tamano.
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+struct Medida { kbps: u32, nivel: String }
+#[derive(Default)]
+struct CalidadEstado {
+    uri: String,
+    foto: HashMap<PathBuf, u64>, // la cache justo antes de pedir
+    desde: Option<Instant>,
+    archivo: Option<PathBuf>,
+    tam: u64,
+    crecio: Option<Instant>,
+    estado: String, // midiendo | medida | en_cache | sin_dato
+    actual: Option<Medida>,
+    hechas: HashMap<String, Medida>, // por uri, guardadas en calidad_medida.json
+}
+
 #[derive(Default)]
 struct SoloistEstado {
     exe: String,
@@ -109,8 +132,8 @@ struct SoloistEstado {
     volumen: u8,
     ultimo_error: String,
     son: SonSoloist,
-    esperada: Option<String>,
-    tocar_inicio: Option<(Instant, String)>,
+    pedida: Option<Pedida>,
+    ultimo_pausado: String,
     cola_prev: Vec<Value>,
     cola_sig: Vec<Value>,
     pid_actual: Option<u32>,
@@ -130,6 +153,7 @@ struct App {
     soloist_child: Mutex<Option<Child>>,
     soloist_tx: Mutex<Option<mpsc::UnboundedSender<Value>>>,
     soloist_gen: std::sync::atomic::AtomicU64, // para que un "iniciar" viejo no pise al nuevo
+    calidad: Mutex<CalidadEstado>,
 }
 
 impl App {
@@ -155,6 +179,101 @@ impl App {
     fn ruta_refresh_web(&self) -> PathBuf { self.datos.join("oauth_refresh.txt") }
     fn datos_soloist(&self) -> PathBuf { self.datos.join("soloist_datos") }
     fn cache_soloist(&self) -> PathBuf { self.datos.join("soloist_cache") }
+    fn ruta_calidad(&self) -> PathBuf { self.datos.join("calidad_medida.json") }
+}
+
+// ---------- LA CALIDAD MEDIDA (FLAC o no) ----------
+fn nivel_de(kbps: u32) -> &'static str {
+    match kbps { 0..=59 => "baja", 60..=129 => "normal", 130..=239 => "alta", 240..=499 => "muy_alta", _ => "flac" }
+}
+fn texto_nivel(n: &str) -> &'static str {
+    match n {
+        "flac" => "Lossless (FLAC)", "muy_alta" => "Muy alta (320 kbps, Ogg Vorbis)", "alta" => "Alta (160 kbps, Ogg Vorbis)",
+        "normal" => "Normal (96 kbps)", "baja" => "Baja (24 kbps)", _ => "",
+    }
+}
+fn es_metadato(p: &Path) -> bool {
+    let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    n.ends_with(".ldb") || n.ends_with(".log") || n.starts_with("MANIFEST") || n == "CURRENT" || n == "LOCK" || n.ends_with(".pid") || n.starts_with("ws.")
+}
+// En Windows el tamano que da la lista del directorio va atrasado mientras Soloist escribe; fs::metadata abre el archivo
+// y da el de verdad.
+fn tam_real(p: &Path) -> Option<u64> { std::fs::metadata(p).ok().map(|m| m.len()) }
+fn foto_cache(dir: &Path) -> HashMap<PathBuf, u64> {
+    let mut m = HashMap::new();
+    let mut pila = vec![(dir.to_path_buf(), 0u32)];
+    while let Some((d, hondo)) = pila.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_dir() { if hondo < 6 { pila.push((p, hondo + 1)); } }
+            else if ft.is_file() && !es_metadato(&p) {
+                if let Some(t) = tam_real(&p) { if t >= 64 * 1024 { m.insert(p, t); } }
+            }
+            if m.len() > 5000 { return m; }
+        }
+    }
+    m
+}
+fn guarda_calidades(app: &App, hechas: &HashMap<String, Medida>) {
+    let _ = std::fs::write(app.ruta_calidad(), serde_json::to_string(hechas).unwrap_or_default());
+}
+
+// Cada segundo: busca el archivo que Soloist esta bajando para la cancion pedida y, cuando deja de crecer, da los kbps.
+fn vigila_calidad(app: Arc<App>) {
+    loop {
+        std::thread::sleep(Duration::from_secs(1));
+        let (pedida, son_uri, son_dur) = { let s = app.soloist.lock().unwrap(); (s.pedida.clone(), s.son.uri.clone(), s.son.dur_ms) };
+        let Some(p) = pedida else { continue };
+        let mut diag: Option<(Instant, Result<String, String>)> = None;
+        let mut guardar: Option<HashMap<String, Medida>> = None;
+        {
+            let mut c = app.calidad.lock().unwrap();
+            if c.uri != p.uri || c.estado != "midiendo" { continue; }
+            let viva = matches!(p.estado.as_str(), "cargando" | "sonando" | "pausa");
+            let dur = if son_uri == p.uri && son_dur > 0 { son_dur } else { p.dur_ms };
+            let desde = c.desde.unwrap_or_else(Instant::now);
+            if c.archivo.is_none() {
+                let ahora = foto_cache(&app.cache_soloist());
+                let mejor = ahora.iter().filter_map(|(f, t)| {
+                    let antes = c.foto.get(f).copied().unwrap_or(0);
+                    (*t > antes).then(|| (f.clone(), *t, *t - antes))
+                }).max_by_key(|x| x.2);
+                if let Some((f, t, _)) = mejor {
+                    c.archivo = Some(f); c.tam = t; c.crecio = Some(Instant::now());
+                } else if desde.elapsed() > Duration::from_secs(20) || !viva {
+                    // No bajo nada: ya estaba en la cache de antes.
+                    let previa = c.hechas.get(&p.uri).cloned();
+                    c.estado = if previa.is_some() { "en_cache".into() } else { "sin_dato".into() };
+                    c.actual = previa;
+                }
+            } else {
+                let f = c.archivo.clone().unwrap();
+                if let Some(t) = tam_real(&f) { if t > c.tam { c.tam = t; c.crecio = Some(Instant::now()); } }
+                let kbps = if dur > 0 { (c.tam as f64 * 8.0 / (dur as f64 / 1000.0) / 1000.0).round() as u32 } else { 0 };
+                let quieto = c.crecio.map(|i| i.elapsed() > Duration::from_secs(4)).unwrap_or(false);
+                let nivel = nivel_de(kbps);
+                // Mientras baja, los kbps salen de menos; solo se dice el nivel al acabar de bajar, o si ya paso del piso
+                // de FLAC (eso ya no puede ser Vorbis).
+                let termina = (quieto && viva) || (!viva && nivel == "flac");
+                if dur > 0 && termina {
+                    let m = Medida { kbps, nivel: nivel.to_string() };
+                    c.estado = "medida".into();
+                    c.actual = Some(m.clone());
+                    c.hechas.insert(p.uri.clone(), m);
+                    guardar = Some(c.hechas.clone());
+                    diag = Some((desde, Ok(format!("{} · {} kbps ({})", texto_nivel(nivel), kbps, p.nombre))));
+                } else if !viva {
+                    c.estado = "sin_dato".into(); // se salto antes de que acabara de bajar
+                } else if nivel == "flac" {
+                    c.actual = Some(Medida { kbps, nivel: nivel.to_string() });
+                }
+            }
+        }
+        if let Some(h) = guardar { guarda_calidades(&app, &h); }
+        if let Some((t0, r)) = diag { app.diag("calidad medida", t0, r); }
+    }
 }
 
 fn oauth_cliente() -> OAuthClient {
@@ -441,54 +560,63 @@ fn procesa_evento_ws(app: &Arc<App>, texto: &str) {
 // Decide si lo pedido ya empezo, si acabo (pasa a la siguiente sin devolver credito), si fallo (devuelve credito) o
 // si algo esta sonando SIN que la rocola lo haya pedido (el telefono, u otra continuacion): entonces lo pausa.
 fn revisa_reproduccion(app: &Arc<App>) {
-    let mut diags: Vec<(&'static str, Result<String, String>)> = vec![];
+    let mut diags: Vec<(&'static str, Instant, Result<String, String>)> = vec![];
     let mut pausar = false;
     {
         let mut s = app.soloist.lock().unwrap();
-        let uri = s.son.uri.clone();
-        let estado = s.son.estado.clone();
-        if let Some(e) = s.esperada.clone() {
-            if uri == e {
-                if estado == "sonando" || estado == "pausa" {
-                    if let Some((t0, u)) = s.tocar_inicio.take() {
-                        if u == e { diags.push(("tocar", Ok(format!("empezo a sonar ({})", s.son.nombre)))); let _ = t0; }
+        let (uri, estado, nombre) = (s.son.uri.clone(), s.son.estado.clone(), s.son.nombre.clone());
+        let mut libre = true; // nada pedido en curso: lo que suene, sobra
+        if let Some(p) = s.pedida.as_mut() {
+            if matches!(p.estado.as_str(), "cargando" | "sonando" | "pausa") {
+                libre = false;
+                if uri == p.uri {
+                    match estado.as_str() {
+                        "sonando" => {
+                            if !p.empezo { p.empezo = true; diags.push(("tocar", p.t0, Ok(format!("empezo a sonar ({nombre})")))); }
+                            p.estado = "sonando".into();
+                        }
+                        "pausa" if p.empezo => p.estado = "pausa".into(),
+                        "detenida" if p.empezo => p.estado = "acabo".into(),
+                        // Un «idle» justo despues de pedir puede ser de paso; despues de 3 s ya es que no pudo.
+                        "detenida" if p.t0.elapsed() > Duration::from_secs(3) => {
+                            p.estado = "error".into();
+                            p.aviso = "Soloist no pudo tocar esta cancion.".into();
+                            diags.push(("tocar", p.t0, Err("se detuvo sin empezar".into())));
+                        }
+                        _ => {}
                     }
-                } else if estado == "detenida" && s.tocar_inicio.is_none() {
-                    s.esperada = None; // ya habia sonado y termino: a la siguiente, sin devolver credito
+                } else if p.empezo {
+                    // La pedida ya sono y Soloist paso a otra cosa (se salto desde el telefono o Spotify siguio solo).
+                    p.estado = "acabo".into();
+                    libre = true;
                 }
-            } else if estado == "detenida" {
-                if let Some((t0, _)) = s.tocar_inicio.take() {
-                    s.son.estado = "error".into();
-                    s.son.aviso = "Soloist no pudo tocar esta cancion.".into();
-                    diags.push(("tocar", Err("no empezo a sonar".into())));
-                    let _ = t0;
-                }
-                s.esperada = None;
             }
-        } else if estado == "sonando" {
+        }
+        if libre && estado == "sonando" && !uri.is_empty() {
             pausar = true;
-            diags.push(("Soloist", Err("empezo a sonar algo que nadie pidio desde la rocola (telefono, u otra continuacion): se puso en pausa.".into())));
+            if s.ultimo_pausado != uri {
+                s.ultimo_pausado = uri.clone();
+                diags.push(("Soloist", Instant::now(), Err(format!("sonaba algo que no se pidio desde la rocola ({nombre}): en pausa"))));
+            }
         }
     }
     if pausar { envia_comando(app, json!({"type": "command", "command": "pause"})); }
-    for (q, r) in diags { app.diag(q, Instant::now(), r); }
+    for (q, t0, r) in diags { app.diag(q, t0, r); }
 }
 
 fn revisa_tardanza(app: &Arc<App>) {
     let mut diag = None;
     {
         let mut s = app.soloist.lock().unwrap();
-        if let Some((t0, _)) = s.tocar_inicio.clone() {
-            if t0.elapsed() > Duration::from_secs(20) {
-                s.tocar_inicio = None;
-                s.esperada = None;
-                s.son.estado = "error".into();
-                s.son.aviso = "Soloist no empezo a tocar en 20 segundos.".into();
-                diag = Some((t0, "no empezo en 20 s".to_string()));
+        if let Some(p) = s.pedida.as_mut() {
+            if p.estado == "cargando" && p.t0.elapsed() > Duration::from_secs(20) {
+                p.estado = "error".into();
+                p.aviso = "Soloist no empezo a tocar en 20 segundos.".into();
+                diag = Some(p.t0);
             }
         }
     }
-    if let Some((t0, m)) = diag { app.diag("tocar", t0, Err(m)); }
+    if let Some(t0) = diag { app.diag("tocar", t0, Err("no empezo en 20 s".into())); }
 }
 
 fn envia_comando(app: &Arc<App>, v: Value) -> bool {
@@ -533,6 +661,7 @@ fn iniciar_soloist(app: &Arc<App>) -> Value {
         .args(["--device-name", &nombre, "--api-key", &llave, "--ws", "127.0.0.1:0", "--data-dir"])
         .arg(&datos_dir)
         .args(["--cache-dir"]).arg(&cache_dir)
+        .args(["--cache-size", "1024"]) // sin tope crece sin limite; 1 GB alcanza para ~40 canciones en FLAC
         .stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn();
     let mut hijo = match hijo {
@@ -711,30 +840,41 @@ async fn tocar(app: &Arc<App>, v: &Value) -> Value {
         app.diag("tocar", t0, Err(m.clone()));
         return json!({"ok": false, "error": m});
     }
+    // La foto de la cache ANTES de pedir: el archivo que aparezca o crezca despues es el de esta cancion.
+    let foto = foto_cache(&app.cache_soloist());
+    {
+        let mut c = app.calidad.lock().unwrap();
+        let hechas = std::mem::take(&mut c.hechas);
+        *c = CalidadEstado { uri: uri.clone(), foto, desde: Some(Instant::now()), estado: "midiendo".into(), hechas, ..Default::default() };
+    }
     {
         let mut s = app.soloist.lock().unwrap();
-        s.esperada = Some(uri.clone());
-        s.tocar_inicio = Some((t0, uri.clone()));
-        s.son = SonSoloist {
-            uri: uri.clone(), nombre: v["nombre"].as_str().unwrap_or("").into(), artista: v["artista"].as_str().unwrap_or("").into(),
-            img: v["img"].as_str().unwrap_or("").into(), dur_ms: v["dur_ms"].as_u64().unwrap_or(0),
-            estado: "cargando".into(), ..Default::default()
-        };
+        s.pedida = Some(Pedida {
+            uri: uri.clone(), nombre: v["nombre"].as_str().unwrap_or("").into(), dur_ms: v["dur_ms"].as_u64().unwrap_or(0),
+            estado: "cargando".into(), aviso: String::new(), t0, empezo: false,
+        });
+        s.ultimo_pausado.clear();
     }
+    // Siempre «play» de una sola cancion (nada en la cola de Spotify: la cola es la de la rocola, con creditos).
     envia_comando(app, json!({"type": "command", "command": "activate"}));
     envia_comando(app, json!({"type": "command", "command": "play", "uri": uri}));
     json!({"ok": true})
 }
 fn parar(app: &Arc<App>) -> Value {
-    { let mut s = app.soloist.lock().unwrap(); s.esperada = None; s.tocar_inicio = None; }
+    app.soloist.lock().unwrap().pedida = None;
     envia_comando(app, json!({"type": "command", "command": "pause"}));
     json!({"ok": true})
 }
-fn precarga(app: &Arc<App>, v: &Value) -> Value {
-    let uri = v["uri"].as_str().unwrap_or("");
-    if uri.is_empty() { return json!({"ok": false, "error": "uri vacia"}); }
-    if envia_comando(app, json!({"type": "command", "command": "add_to_queue", "uri": uri})) { json!({"ok": true}) }
-    else { json!({"ok": false, "error": "Soloist no esta conectado."}) }
+fn vaciar_cache_soloist(app: &Arc<App>) -> Value {
+    if app.soloist.lock().unwrap().corriendo { return json!({"ok": false, "error": "Deten Soloist primero."}); }
+    let t0 = Instant::now();
+    let r = std::fs::remove_dir_all(app.cache_soloist());
+    let mut c = app.calidad.lock().unwrap();
+    *c = CalidadEstado::default();
+    drop(c);
+    let _ = std::fs::remove_file(app.ruta_calidad());
+    app.diag("vaciar la cache de Soloist", t0, Ok(if r.is_ok() { "listo: cada cancion se bajara y medira otra vez".into() } else { "no habia cache".into() }));
+    json!({"ok": true})
 }
 
 // ---------- ESTADO E INFORME ----------
@@ -758,10 +898,24 @@ fn estado_json(app: &Arc<App>) -> Value {
             "ultimo_error": s.ultimo_error,
             "son": {"uri": s.son.uri, "nombre": s.son.nombre, "artista": s.son.artista, "img": s.son.img,
                      "dur_ms": s.son.dur_ms, "estado": s.son.estado, "aviso": s.son.aviso, "pos_ms": pos.max(0.0) as u64},
+            "pedida": s.pedida.as_ref().map(|p| json!({"uri": p.uri, "estado": p.estado, "aviso": p.aviso})),
             "cola_n": s.cola_sig.len(),
+            "calidad": calidad_json(app),
         },
         "diag_n": app.diag.lock().unwrap().len(),
     })
+}
+fn calidad_json(app: &App) -> Value {
+    let c = app.calidad.lock().unwrap();
+    let (kbps, nivel) = c.actual.as_ref().map(|m| (m.kbps, m.nivel.clone())).unwrap_or((0, String::new()));
+    json!({"uri": c.uri, "estado": c.estado, "kbps": kbps, "nivel": nivel, "texto": texto_nivel(&nivel), "medidas": c.hechas.len()})
+}
+fn resumen_calidades(app: &App) -> String {
+    let c = app.calidad.lock().unwrap();
+    let mut n: std::collections::BTreeMap<&str, u32> = Default::default();
+    for m in c.hechas.values() { *n.entry(texto_nivel(&m.nivel)).or_default() += 1; }
+    if n.is_empty() { return "ninguna todavia".into(); }
+    n.iter().map(|(k, v)| format!("{v} en {k}")).collect::<Vec<_>>().join(", ")
 }
 fn diag_json(app: &Arc<App>) -> Value {
     let v = app.diag.lock().unwrap();
@@ -775,6 +929,7 @@ fn informe_texto(app: &Arc<App>) -> String {
     t.push_str(&format!("Tu cuenta (API web) entrada: {}\r\nSoloist corriendo: {}\r\nSoloist conectado por WebSocket: {}\r\nSoloist emparejado: {}\r\n",
         e["web"]["conectado"], e["soloist"]["corriendo"], e["soloist"]["conectado_ws"], e["soloist"]["logged_in"]));
     if !e["web"]["me"].is_null() { t.push_str(&format!("/v1/me: HTTP {}, pais {}, producto {}\r\n", e["web"]["me"]["estado"], e["web"]["me"]["pais"], e["web"]["me"]["producto"])); }
+    t.push_str(&format!("Calidad medida en la cache de Soloist: {}\r\n", resumen_calidades(app)));
     t.push_str(&format!("Ruta de soloist.exe: {}\r\nUltimo error de Soloist: {}\r\nUltimo error de tu cuenta: {}\r\n\r\nDIAGNOSTICO (hora, cuanto tardo, resultado):\r\n",
         e["soloist"]["exe"].as_str().unwrap_or(""), limpia(e["soloist"]["ultimo_error"].as_str().unwrap_or("")), limpia(e["web"]["error"].as_str().unwrap_or(""))));
     for d in app.diag.lock().unwrap().iter() {
@@ -830,8 +985,8 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
             let vol = v["v"].as_u64().unwrap_or(50).min(100);
             if envia_comando(app, json!({"type": "command", "command": "set_volume", "volume": vol})) { json!({"ok": true}) } else { json!({"ok": false, "error": "Soloist no esta conectado."}) }
         }
+        (true, "/api/soloist/vaciar_cache") => vaciar_cache_soloist(app),
         (true, "/api/tocar") => tocar(app, &v).await,
-        (true, "/api/precarga") => precarga(app, &v),
         (true, "/api/parar") => parar(app),
         (true, "/api/guardar_informe") => {
             let f = app.exe_dir.join("informe_spotify_soloist.txt");
@@ -902,8 +1057,13 @@ async fn main() {
         web: Mutex::new(WebEstado::default()), oauth_cancelar: std::sync::atomic::AtomicBool::new(false),
         soloist: Mutex::new(SoloistEstado::default()), soloist_child: Mutex::new(None), soloist_tx: Mutex::new(None),
         soloist_gen: std::sync::atomic::AtomicU64::new(0),
+        calidad: Mutex::new(CalidadEstado::default()),
     });
     carga_config_soloist(&app);
+    if let Some(h) = std::fs::read_to_string(app.ruta_calidad()).ok().and_then(|s| serde_json::from_str(&s).ok()) {
+        app.calidad.lock().unwrap().hechas = h;
+    }
+    { let a = app.clone(); std::thread::spawn(move || vigila_calidad(a)); }
 
     let url = format!("http://127.0.0.1:{puerto}/");
     println!("  La pagina esta en: {url}");

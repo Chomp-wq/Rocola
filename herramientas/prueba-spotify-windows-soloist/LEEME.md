@@ -72,9 +72,27 @@ Si eso contesta con la cuenta emparejada, Soloist ya funciona con esa cuenta —
   permiso, el buscador y la pared de esta demo no funcionaran, aunque Soloist si pueda tocar lo que ya este en la cola
   desde el telefono.
 - No hay letra (Soloist y la API web publica no la dan; se quito respecto a la version con librespot).
-- No hay forma de pedir ni verificar calidad "Lossless"/Hi-Res desde esta demo: Soloist no expone ninguna bandera de
-  calidad ni la reporta por su WebSocket (ver la respuesta al dueno del 19-11-2026 en el chat). Si la cuenta tiene
-  Spotify Lossless, Soloist la negocia solo, sin que se pueda confirmar desde aqui.
-- El acceso de "a quien pidio que" es aproximado (si alguien reanuda desde el telefono sin pasar por esta pagina, la
-  demo lo pausa: no hay creditos sin pedir desde aqui, pero esto no se ha probado con gente real).
+- Si algo suena sin pedirlo desde esta pagina (reanudado desde el telefono, o Spotify que sigue solo al acabar), la
+  demo lo pausa: nada suena sin credito. Cada pedida es un «play» de una sola cancion; la cola es la de la pagina (no
+  se usa la cola de Spotify).
+
+## FLAC (Spotify Lossless)
+
+- Solo el cliente oficial (Soloist) puede recibir Lossless (FLAC hasta 24 bit / 44,1 kHz); librespot se queda en Ogg
+  Vorbis de 320 kbps.
+- **Se activa en la app de Spotify, aparato por aparato**: en el selector de aparatos, en las opciones de «Rocola
+  (prueba Soloist)», poner la calidad en Lossless. La cuenta debe tener Lossless disponible. Esta demo NO puede pedirlo:
+  Soloist no tiene esa opcion ni en su linea de comandos ni en su WebSocket.
+- **La demo lo mide**: Soloist guarda un archivo (cifrado) por cancion en su cache; su tamano × 8 / la duracion da los
+  kbps (lo mismo que hacen los plugins de Volumio y Lyrion). Vorbis 320 da ~330 kbps; FLAC da ~700-1700. Se ve en la
+  pestana Pruebas («Calidad de la ultima pedida») y junto a lo que suena (FLAC en verde, los kbps en dorado si no). El
+  archivo nunca se abre ni se descifra: solo se mira su tamano. Las medidas se guardan por cancion en
+  `calidad_medida.json` (solo ids y numeros).
+- Lo que ya estaba en la cache antes de cambiar a Lossless sigue en la calidad vieja: «Detener» y luego «Vaciar la
+  cache (volver a medir)». La cache va con tope de 1 GB (`--cache-size 1024`; sin tope crece sin limite).
+- No es «bit a bit»: Soloist entrega coma flotante de 32 bits a WASAPI. Para la rocola da igual (su cadena procesa todo);
+  importa que la fuente sea FLAC.
+- Sin confirmar con una cuenta real: hay reportes de que Spotify sigue mandando Vorbis 320 a Soloist aun con Lossless
+  elegido. La medida de esta demo es justo para saberlo con la cuenta del dueno. La forma de la cache no la documenta
+  Spotify: si cambia en otra version de Soloist, la medida dira «sin medir».
 - Probada solo en Linux (servidor, paginas, botones, Soloist no instalado); no en Windows, no con cuenta real.
