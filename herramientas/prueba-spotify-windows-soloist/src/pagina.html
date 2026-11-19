@@ -141,6 +141,7 @@ p.nota{color:var(--suave);margin:6px 0}
     <div class="kv" id="estado-soloist"></div>
     <div class="campo"><label>Ruta a soloist.exe</label><input type="text" id="s-exe" placeholder="C:\ruta\a\soloist.exe"></div>
     <div class="campo"><label>Nombre del aparato (el que eliges desde el telefono)</label><input type="text" id="s-nombre" placeholder="Rocola (prueba Soloist)"></div>
+    <div class="campo"><label>Volumen de la rocola en Soloist: <b id="s-vol-n">100</b> (se pone al arrancar y en cada cancion pedida; lo que muevas en el telefono dura hasta la siguiente)</label><input type="range" id="s-vol" min="0" max="100" step="5" value="100" style="width:100%" oninput="$('s-vol-n').textContent=this.value" onchange="ponVolumen(this.value)"></div>
     <div class="campo"><label>Llave de la API de Soloist (se guarda en esta carpeta; nunca se vuelve a mostrar)</label><input type="password" id="s-llave" placeholder="pegala aqui"></div>
     <div class="botones">
       <button class="oro" onclick="guardarSoloistConfig()">Guardar ajustes</button>
@@ -653,16 +654,22 @@ function pintaEstado() {
     ["Cuenta emparejada", s.esperando_pareo ? "esperando a que elijas el aparato..." : sino(!!s.logged_in, "si", "no: emparejalo desde el telefono")],
     ["Aparato activo (recibe la musica)", sino(!!s.is_active, "si", "no")],
     ["Calidad de la ultima pedida (medida)", textoCalidad(s.calidad)],
-    ["Volumen", (s.volumen != null ? s.volumen : "-") + ""],
+    ["Volumen ahora (Soloist)", (s.volumen != null ? s.volumen : "-") + (s.volumen === 0 ? ' <span class="mal">(en silencio)</span>' : "")],
     ["Llave de Soloist guardada", sino(!!s.tiene_llave, "si", "no")],
     ["Ultimo error", s.ultimo_error ? '<span class="mal">' + esc(s.ultimo_error) + '</span>' : "ninguno"],
     ["Version", esc(E.version || "")],
   ].map(f => "<div>" + f[0] + "</div><div>" + f[1] + "</div>").join("");
   if (s.logged_in && /150 segundos|Arrancando/.test($("soloist-msg").textContent)) $("soloist-msg").textContent = "";
+  if (!yaCargueVol && s.vol_rocola != null) { $("s-vol").value = s.vol_rocola; $("s-vol-n").textContent = s.vol_rocola; yaCargueVol = true; }
   if (!yaCargueCampos && s.exe) { $("s-exe").value = s.exe; $("s-nombre").value = s.nombre_aparato || ""; yaCargueCampos = true; }
   if (E.diag_n !== diagN) cargaDiag(false);
 }
 let yaCargueCampos = false, yaCargueCid = false;
+let yaCargueVol = false;
+async function ponVolumen(v) {
+  const r = await post("/api/soloist/volumen", {v: +v});
+  $("soloist-msg").textContent = r.ok ? "Volumen " + v + " puesto." : "Volumen guardado (" + v + "); se pondra al conectar Soloist.";
+}
 async function guardarClientId() {
   const r = await post("/api/web/client_id", {id: $("w-cid").value.trim()});
   biblio = null; pila = []; render();

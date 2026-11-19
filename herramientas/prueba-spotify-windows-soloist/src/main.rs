@@ -123,6 +123,7 @@ struct CalidadEstado {
 struct SoloistEstado {
     exe: String,
     nombre_aparato: String,
+    vol_rocola: u8,
     corriendo: bool,
     arrancando: bool,
     esperando_pareo: bool,
@@ -488,7 +489,15 @@ fn normaliza_exe(s: &str) -> String {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
-struct ConfigSoloist { exe: String, nombre_aparato: String }
+struct ConfigSoloist {
+    exe: String,
+    nombre_aparato: String,
+    // El volumen de Soloist (0-100) que la rocola le pone al arrancar y antes de cada cancion; el de Spotify Connect se
+    // queda en lo ultimo que puso el telefono (a veces 0), y la rocola no debe depender de eso.
+    #[serde(default = "vol_defecto")]
+    volumen: u8,
+}
+fn vol_defecto() -> u8 { 100 }
 
 fn carga_config_soloist(app: &App) {
     let c: ConfigSoloist = std::fs::read_to_string(app.ruta_config_soloist()).ok()
@@ -500,10 +509,12 @@ fn carga_config_soloist(app: &App) {
     let mut s = app.soloist.lock().unwrap();
     s.exe = exe;
     s.nombre_aparato = if c.nombre_aparato.is_empty() { NOMBRE_APARATO_DEFECTO.to_string() } else { c.nombre_aparato };
+    s.vol_rocola = if std::fs::metadata(app.ruta_config_soloist()).is_ok() { c.volumen.min(100) } else { 100 };
 }
 fn guarda_config_soloist(app: &App, exe: &str, nombre: &str) {
     let exe = &normaliza_exe(exe);
-    let c = ConfigSoloist { exe: exe.to_string(), nombre_aparato: nombre.to_string() };
+    let vol = app.soloist.lock().unwrap().vol_rocola;
+    let c = ConfigSoloist { exe: exe.to_string(), nombre_aparato: nombre.to_string(), volumen: vol };
     let _ = std::fs::write(app.ruta_config_soloist(), serde_json::to_string_pretty(&c).unwrap_or_default());
     let mut s = app.soloist.lock().unwrap();
     s.exe = exe.to_string();
@@ -706,10 +717,12 @@ fn iniciar_soloist(app: &Arc<App>) -> Value {
     let _ = std::fs::remove_file(datos_dir.join("ws.addr"));
     let _ = std::fs::remove_file(datos_dir.join("ws.port"));
     let t0 = Instant::now();
+    let vol_ini = app.soloist.lock().unwrap().vol_rocola.to_string();
     let hijo = Command::new(&exe)
         .args(["--device-name", &nombre, "--api-key", &llave, "--ws", "127.0.0.1:0", "--data-dir"])
         .arg(&datos_dir)
         .args(["--cache-dir"]).arg(&cache_dir)
+        .args(["--initial-volume", &vol_ini])
         .args(["--cache-size", "1024"]) // sin tope crece sin limite; 1 GB alcanza para ~40 canciones en FLAC
         .stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn();
@@ -910,6 +923,8 @@ async fn tocar(app: &Arc<App>, v: &Value) -> Value {
     }
     // Siempre «play» de una sola cancion (nada en la cola de Spotify: la cola es la de la rocola, con creditos).
     envia_comando(app, json!({"type": "command", "command": "activate"}));
+    let vol = app.soloist.lock().unwrap().vol_rocola;
+    envia_comando(app, json!({"type": "command", "command": "set_volume", "volume": vol}));
     envia_comando(app, json!({"type": "command", "command": "play", "uri": uri}));
     json!({"ok": true})
 }
@@ -948,7 +963,7 @@ fn estado_json(app: &Arc<App>) -> Value {
         "soloist": {
             "exe": s.exe, "nombre_aparato": s.nombre_aparato, "tiene_llave": tiene_llave_soloist(app),
             "corriendo": s.corriendo, "arrancando": s.arrancando, "esperando_pareo": s.esperando_pareo,
-            "conectado_ws": s.conectado_ws, "logged_in": s.logged_in, "is_active": s.is_active, "volumen": s.volumen,
+            "conectado_ws": s.conectado_ws, "logged_in": s.logged_in, "is_active": s.is_active, "volumen": s.volumen, "vol_rocola": s.vol_rocola,
             "ultimo_error": s.ultimo_error,
             "son": {"uri": s.son.uri, "nombre": s.son.nombre, "artista": s.son.artista, "img": s.son.img,
                      "dur_ms": s.son.dur_ms, "estado": s.son.estado, "aviso": s.son.aviso, "pos_ms": pos.max(0.0) as u64},
@@ -1048,7 +1063,9 @@ async fn ruta(app: &Arc<App>, post: bool, camino: &str, q: &HashMap<String, Stri
         (true, "/api/soloist/reemparejar") => reemparejar(app),
         (true, "/api/soloist/olvidar") => { if v["confirmo"].as_bool() == Some(true) { olvidar_soloist(app) } else { json!({"ok": false, "error": "falta confirmar"}) } }
         (true, "/api/soloist/volumen") => {
-            let vol = v["v"].as_u64().unwrap_or(50).min(100);
+            let vol = v["v"].as_u64().unwrap_or(100).min(100);
+            let (exe, nombre) = { let mut s = app.soloist.lock().unwrap(); s.vol_rocola = vol as u8; (s.exe.clone(), s.nombre_aparato.clone()) };
+            guarda_config_soloist(app, &exe, &nombre);
             if envia_comando(app, json!({"type": "command", "command": "set_volume", "volume": vol})) { json!({"ok": true}) } else { json!({"ok": false, "error": "Soloist no esta conectado."}) }
         }
         (true, "/api/soloist/vaciar_cache") => vaciar_cache_soloist(app),
