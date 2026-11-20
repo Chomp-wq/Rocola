@@ -37,6 +37,7 @@ namespace Rocola
             internal SpectralTap Sbr;
             internal DeepBassProvider Bajo;
             internal GraveMono Mono;             // el grave en mono (GraveMono.cs)
+            internal GraveMono Noche;            // NV2: el corte del grave de noche (GraveMono.DeNoche), si hay corte (20-11-2026)
             internal SalaLocal Sala;             // claridad, partes suaves, balance, graves y agudos del local (SalaLocal.cs)
             internal PresenciaSala Presencia;    // el compresor suave de la sala ruidosa (PresenciaSala.cs)
             internal SuavizaEses Eses;           // suavizar las eses (T9, Eses.cs)
@@ -336,6 +337,7 @@ namespace Rocola
             if (nueva == null || vieja == null) return;
             if (nueva.Tap != null) nueva.Tap.Sigue(vieja.Tap);
             if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
+            if (nueva.Noche != null) nueva.Noche.Sigue(vieja.Noche);
             if (nueva.Sala != null) nueva.Sala.Sigue(vieja.Sala);
             if (nueva.Presencia != null) nueva.Presencia.Sigue(vieja.Presencia);
             if (nueva.Eses != null) nueva.Eses.Sigue(vieja.Eses);

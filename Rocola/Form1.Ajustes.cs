@@ -665,7 +665,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkPreEco = quitaPreEco; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar; bool bkNoche = nocheOn; int bkNocheG = nocheGraves; int bkNocheP = nochePct; int[] bkEqN = (int[])eqDuenoNormal.Clone(), bkEqB = (int[])eqDuenoBillar.Clone();   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkPreEco = quitaPreEco; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar; bool bkNoche = nocheOn; int bkNocheG = nocheGraves; int bkNocheP = nochePct; int bkNocheC = nocheCorte; bool bkNocheM = nocheMadrugada; int bkNocheMD = nocheMadDesde, bkNocheMP = nocheMadPct; int[] bkEqN = (int[])eqDuenoNormal.Clone(), bkEqB = (int[])eqDuenoBillar.Clone();   // por si se Cancela
             try
             {
                 Cursor.Show();
@@ -838,15 +838,13 @@ namespace Rocola
                     barNoche.Minimum = NochePctMin; barNoche.Maximum = NochePctMax; barNoche.Acento = cVol; barNoche.Value = nochePct;
                     BotonPlano bNoche = new BotonPlano(); bNoche.SetBounds(330, 336, 110, 30); bNoche.Font = fBot; bNoche.Text = "Probar";
                     bNoche.Name = "SonidoNocheProbar"; bNoche.AccessibleName = "Probar el modo noche"; bNoche.AccessibleRole = AccessibleRole.PushButton;
-                    // N1 «Graves de noche» (17-11-2026): cuantos dB de grave se quitan de noche (de 0 a 6; 0 = apagado), con la misma bajada lenta.
-                    Label nGraN = new Label(); nGraN.SetBounds(16, 371, 128, 18); nGraN.BackColor = Color.Transparent;
-                    nGraN.ForeColor = cTexto; nGraN.Font = fNom; nGraN.Text = "Graves de noche";
-                    Label vGraN = new Label(); vGraN.SetBounds(16 + anchoFila - 94, 371, 94, 20); vGraN.BackColor = Color.Transparent;
-                    vGraN.ForeColor = cVol; vGraN.Font = fVal; vGraN.TextAlign = ContentAlignment.TopRight;
-                    Deslizador barGraN = new Deslizador(); barGraN.SetBounds(148, 368, 192, 22);
-                    barGraN.Minimum = 0; barGraN.Maximum = NocheGravesMax; barGraN.Acento = cVol; barGraN.Value = Math.Max(0, Math.Min(NocheGravesMax, nocheGraves));
+                    // Lo que se quita de grave de noche y la madrugada (20-11-2026, NV1, NV2 y NV4): su propia hoja (abajo, pNoche), con su boton
+                    // aqui, en el sitio donde estaba «Graves de noche» (17-11-2026), que paso a esa hoja.
+                    BotonPlano bNocheMas = new BotonPlano(); bNocheMas.SetBounds(16, 368, 424, 24); bNocheMas.Font = fBot;
+                    bNocheMas.Text = "Graves, corte y madrugada..."; bNocheMas.Name = "SonidoNocheAbrir";
+                    bNocheMas.AccessibleName = "Graves, corte y madrugada del modo noche"; bNocheMas.AccessibleRole = AccessibleRole.PushButton;
                     tVol.Controls.Add(swNoche); tVol.Controls.Add(vNoche); tVol.Controls.Add(barNoche); tVol.Controls.Add(bNoche);
-                    tVol.Controls.Add(nGraN); tVol.Controls.Add(vGraN); tVol.Controls.Add(barGraN);
+                    tVol.Controls.Add(bNocheMas);
 
                     // ---------------- CALIDAD DEL SONIDO ----------------
                     Fila(4, tCal, 44, "EQ automatico", cCal, 0, 100, true);
@@ -1362,6 +1360,59 @@ namespace Rocola
                     bEqSin.Name = "SonidoEqSin"; bEqSin.AccessibleName = "Escuchar sin el ecualizador"; tEq.Controls.Add(bEqSin);
                     bEqSin.Click += delegate { EqDuenoSinCambia(); refrescaEq(); };
                     bool verEq = false;
+                    // ---------------- EL MODO NOCHE PARA LOS VECINOS (20-11-2026; Form1.Sonido.cs, AUDIO_NOCHE_VECINOS_MODEST_2026-11-20.md) ----------------
+                    // Su propia hoja, como la de voz y golpe, con el boton «Graves, corte y madrugada...» de la tarjeta del volumen: a la izquierda lo
+                    // que se quita de grave de noche (NV1: los graves de noche de 0 a 12 dB; NV2: el corte del grave), a la derecha la madrugada (NV4).
+                    Panel pNoche = new Panel(); pNoche.SetBounds(16, 100, 928, 398); pNoche.BackColor = dlg.BackColor;
+                    pNoche.Name = "SonidoNoche"; pNoche.Visible = false;
+                    Tarjeta tNocG = new Tarjeta(); tNocG.SetBounds(0, 0, 456, 398); tNocG.Titulo = "DE NOCHE, MENOS GRAVE HACIA AFUERA"; tNocG.Acento = cVol;
+                    Tarjeta tNocM = new Tarjeta(); tNocM.SetBounds(472, 0, 456, 398); tNocM.Titulo = "DE MADRUGADA"; tNocM.Acento = cFue;
+                    pNoche.Controls.Add(tNocG); pNoche.Controls.Add(tNocM);
+                    // N1/NV1 «Graves de noche»: cuantos dB de grave se quitan de noche (de 0 a 12 desde el 20-11-2026, 8 de fabrica; 0 = apagado).
+                    Label nGraN = new Label(); nGraN.SetBounds(16, 40, 300, 18); nGraN.BackColor = Color.Transparent;
+                    nGraN.ForeColor = cTexto; nGraN.Font = fNom; nGraN.Text = "Graves de noche";
+                    Label vGraN = new Label(); vGraN.SetBounds(16 + anchoFila - 94, 38, 94, 20); vGraN.BackColor = Color.Transparent;
+                    vGraN.ForeColor = cVol; vGraN.Font = fVal; vGraN.TextAlign = ContentAlignment.TopRight;
+                    notaLocal(tNocG, 61, 32, "Lo de 120 Hz para abajo baja estos dB, con la misma bajada de\nuna hora: es lo que mas atraviesa el muro. 8 de fabrica.");
+                    Deslizador barGraN = new Deslizador(); barGraN.SetBounds(16, 95, anchoFila, 22);
+                    barGraN.Minimum = 0; barGraN.Maximum = NocheGravesMax; barGraN.Acento = cVol; barGraN.Value = Math.Max(0, Math.Min(NocheGravesMax, nocheGraves));
+                    // NV2 «Cortar el grave mas hondo»: 0 = apagado; k = 1..9 son 40..120 Hz (30 + 10 k).
+                    Label nCorN = new Label(); nCorN.SetBounds(16, 130, 300, 18); nCorN.BackColor = Color.Transparent;
+                    nCorN.ForeColor = cTexto; nCorN.Font = fNom; nCorN.Text = "Cortar el grave mas hondo";
+                    Label vCorN = new Label(); vCorN.SetBounds(16 + anchoFila - 94, 128, 94, 20); vCorN.BackColor = Color.Transparent;
+                    vCorN.ForeColor = cVol; vCorN.Font = fVal; vCorN.TextAlign = ContentAlignment.TopRight;
+                    notaLocal(tNocG, 151, 32, "De noche quita lo de debajo, sin mover los picos (el bombo\ny el 808 mas secos). 80 Hz de fabrica; a la izquierda, nada.");
+                    Deslizador barCorN = new Deslizador(); barCorN.SetBounds(16, 185, anchoFila, 22);
+                    barCorN.Minimum = 0; barCorN.Maximum = (NocheCorteMax - 30) / 10; barCorN.Acento = cVol;
+                    barCorN.Value = nocheCorte <= 0 ? 0 : Math.Max(1, Math.Min(barCorN.Maximum, (nocheCorte - 30 + 5) / 10));
+                    notaLocal(tNocG, 222, 64, "Juntos (8 dB y 80 Hz), medido con canciones de prueba: afuera\n3 dB menos de graves y 5,7 menos de golpes que la noche de\nantes; dentro se oye 1,4 dB mas bajito. Nada medido en el\nbar. El corte nuevo vale desde la siguiente cancion.");
+                    BotonPlano bNocheP = new BotonPlano(); bNocheP.SetBounds(16, 300, 204, 32); bNocheP.Font = fBot; bNocheP.Text = "Probar la noche";
+                    bNocheP.Name = "SonidoNocheProbarHoja"; bNocheP.AccessibleName = "Probar el modo noche"; bNocheP.AccessibleRole = AccessibleRole.PushButton;
+                    tNocG.Controls.Add(nGraN); tNocG.Controls.Add(vGraN); tNocG.Controls.Add(barGraN);
+                    tNocG.Controls.Add(nCorN); tNocG.Controls.Add(vCorN); tNocG.Controls.Add(barCorN); tNocG.Controls.Add(bNocheP);
+                    // NV4 «Mas bajo de madrugada»: interruptor, cuanto se oye (de 50 a 90 %) y desde que hora (de las 22 a las 6: el deslizador va de 22
+                    // a 30 y la hora es su resto entre 24).
+                    Interruptor swMad = new Interruptor(); swMad.SetBounds(16, 40, 300, 26); swMad.ForeColor = cTexto; swMad.Font = fNom;
+                    swMad.Text = "Mas bajo de madrugada"; swMad.Acento = cFue; swMad.Checked = nocheMadrugada; swMad.Name = "SonidoNocheMadrugada";
+                    Label vMad = new Label(); vMad.SetBounds(16 + anchoFila - 94, 40, 94, 20); vMad.BackColor = Color.Transparent;
+                    vMad.ForeColor = cFue; vMad.Font = fVal; vMad.TextAlign = ContentAlignment.TopRight;
+                    Deslizador barMad = new Deslizador(); barMad.SetBounds(16, 70, anchoFila, 22);
+                    barMad.Minimum = NochePctMin; barMad.Maximum = NochePctMax; barMad.Acento = cFue; barMad.Value = Math.Max(NochePctMin, Math.Min(NochePctMax, nocheMadPct));
+                    Label nMadH = new Label(); nMadH.SetBounds(16, 104, 300, 18); nMadH.BackColor = Color.Transparent;
+                    nMadH.ForeColor = cTexto; nMadH.Font = fNom; nMadH.Text = "Desde las";
+                    Label vMadH = new Label(); vMadH.SetBounds(16 + anchoFila - 94, 102, 94, 20); vMadH.BackColor = Color.Transparent;
+                    vMadH.ForeColor = cFue; vMadH.Font = fVal; vMadH.TextAlign = ContentAlignment.TopRight;
+                    Deslizador barMadH = new Deslizador(); barMadH.SetBounds(16, 126, anchoFila, 22);
+                    barMadH.Minimum = 22; barMadH.Maximum = 30; barMadH.Acento = cFue; barMadH.Value = nocheMadDesde >= 22 ? nocheMadDesde : nocheMadDesde + 24;
+                    notaLocal(tNocM, 160, 80, "Desde esa hora, otra bajada de una hora hasta este porcentaje\n(nunca mas alto que el de la noche), con los graves de noche\na 12 dB y el corte del grave. A las 7 todo sube en 20 s, como\nsiempre. Medido al 70 %: afuera 6,5 dB menos de graves y 9,3\nmenos de golpes; dentro se oye 3,8 dB mas bajito.");
+                    BotonPlano bMadP = new BotonPlano(); bMadP.SetBounds(16, 250, 204, 32); bMadP.Font = fBot; bMadP.Text = "Probar la madrugada";
+                    bMadP.Name = "SonidoMadrugadaProbar"; bMadP.AccessibleName = "Probar la madrugada"; bMadP.AccessibleRole = AccessibleRole.PushButton;
+                    notaLocal(tNocM, 290, 32, "Lo que mas pesa suele no ser del programa: puertas, ventanas\ny bocinas pegadas al muro del vecino o en una esquina.");
+                    BotonPlano bVolverNoche = new BotonPlano(); bVolverNoche.SetBounds(16, 346, 424, 34); bVolverNoche.Font = fBot;
+                    bVolverNoche.Text = "Volver al volumen"; bVolverNoche.Name = "SonidoNocheVolver";
+                    tNocM.Controls.Add(swMad); tNocM.Controls.Add(vMad); tNocM.Controls.Add(barMad); tNocM.Controls.Add(nMadH); tNocM.Controls.Add(vMadH);
+                    tNocM.Controls.Add(barMadH); tNocM.Controls.Add(bMadP); tNocM.Controls.Add(bVolverNoche);
+                    bool verNoche = false;
 
                     // ---------------- TU BIBLIOTECA ----------------
                     Label lCal = new Label(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;
@@ -1565,13 +1616,22 @@ namespace Rocola
                         // ---------- EL MODO NOCHE ----------
                         int sNoche = SegundosPruebaNoche;
                         vNoche.Text = barNoche.Value + " %";
-                        bNoche.Text = sNoche > 0 ? "Quitar prueba" : "Probar";   // hasta otro toque (o 30 min)
+                        bool probMad = sNoche > 0 && ProbandoMadrugada;
+                        bNoche.Text = sNoche > 0 && !probMad ? "Quitar prueba" : "Probar";   // hasta otro toque (o 30 min)
+                        bNocheP.Text = sNoche > 0 && !probMad ? "Quitar prueba" : "Probar la noche";
+                        bMadP.Text = probMad ? "Quitar prueba" : "Probar la madrugada";
                         // La barra en gris con el modo apagado, salvo para probar (se puede oir antes de encenderlo).
                         vNoche.ForeColor = swNoche.Checked ? cVol : cApagado;
                         vGraN.Text = barGraN.Value == 0 ? "apagado" : ("\u2212" + barGraN.Value + " dB");   // N1: graves de noche
                         bool nocheViva = swNoche.Checked || sNoche > 0;
                         barGraN.Enabled = nocheViva;   // en gris con el modo apagado (se puede ajustar mientras se prueba)
                         vGraN.ForeColor = nocheViva ? cVol : cApagado; nGraN.ForeColor = nocheViva ? cTexto : cApagado;
+                        vCorN.Text = barCorN.Value == 0 ? "apagado" : ((30 + 10 * barCorN.Value) + " Hz");   // NV2
+                        barCorN.Enabled = nocheViva; vCorN.ForeColor = nocheViva ? cVol : cApagado; nCorN.ForeColor = nocheViva ? cTexto : cApagado;
+                        vMad.Text = barMad.Value + " %"; vMadH.Text = (barMadH.Value % 24) + " h";   // NV4
+                        bool madViva = (swNoche.Checked && swMad.Checked) || probMad;
+                        barMad.Enabled = madViva; barMadH.Enabled = madViva;
+                        vMad.ForeColor = madViva ? cFue : cApagado; vMadH.ForeColor = madViva ? cFue : cApagado; nMadH.ForeColor = madViva ? cTexto : cApagado;
                     };
                     EventHandler apply = delegate
                     {
@@ -1604,6 +1664,8 @@ namespace Rocola
                         nocheOn = swNoche.Checked;
                         nochePct = Math.Max(NochePctMin, Math.Min(NochePctMax, barNoche.Value));   // la rampa del reloj lo lleva sola al nuevo nivel
                         nocheGraves = Math.Max(0, Math.Min(NocheGravesMax, barGraN.Value));        // N1: el grave de noche (lo recoge el reloj de la noche)
+                        nocheCorte = barCorN.Value <= 0 ? 0 : Math.Max(NocheCorteMin, Math.Min(NocheCorteMax, 30 + 10 * barCorN.Value));   // NV2 (desde la siguiente cancion)
+                        nocheMadrugada = swMad.Checked; nocheMadPct = Math.Max(NochePctMin, Math.Min(NochePctMax, barMad.Value)); nocheMadDesde = barMadH.Value % 24;   // NV4
                         bool loAntes = localAuto;
                         localAuto = swAutoL.Checked;
                         AplicaBocinas();   // las bocinas del billar: al instante, en la que suena y en la siguiente
@@ -1619,7 +1681,10 @@ namespace Rocola
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     swSil.CheckedChanged += apply;
                     swNoche.CheckedChanged += apply; barNoche.Scroll += apply; barGraN.Scroll += apply;
+                    barCorN.Scroll += apply; swMad.CheckedChanged += apply; barMad.Scroll += apply; barMadH.Scroll += apply;
                     bNoche.Click += delegate { PruebaNoche(); updateLabels(); };   // el nivel de la noche al momento, hasta otro toque (Form1.Sonido.cs)
+                    bNocheP.Click += delegate { PruebaNoche(); updateLabels(); };
+                    bMadP.Click += delegate { PruebaMadrugada(); updateLabels(); };   // NV4: la madrugada entera, hasta otro toque
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     swCla.CheckedChanged += apply; swSua.CheckedChanged += apply; barBal.Scroll += apply;
                     barGra.Scroll += apply; barAgu.Scroll += apply; swPre.CheckedChanged += apply; swAutoL.CheckedChanged += apply;
@@ -1645,7 +1710,8 @@ namespace Rocola
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral apagado: es experimental
                         swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
                         swSil.Checked = true;                                // y saltar los silencios largos
-                        swNoche.Checked = true; barNoche.Value = 80; barGraN.Value = 4;   // el modo noche: encendido, al 80 %, con 4 dB menos de grave
+                        swNoche.Checked = true; barNoche.Value = 80; barGraN.Value = 8;   // el modo noche: encendido, al 80 %, con 8 dB menos de grave (4 hasta el 20-11-2026)
+                        barCorN.Value = 5; swMad.Checked = true; barMad.Value = 70; barMadH.Value = 25;   // NV2 el corte a 80 Hz; NV4 de madrugada, desde la 1, al 70 %
                         swSub.Checked = false; swEst.Checked = false;        // las bocinas del billar, apagadas: son para ese local
                         swCla.Checked = false; swSua.Checked = false;        // y la claridad y las partes suaves, igual
                         barBal.Value = SalaLocal.BalanceMax;                 // el balance, centrado
@@ -1698,7 +1764,7 @@ namespace Rocola
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (Control cc in dlg.Controls)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pTono && cc != pIa && cc != pAhora && cc != pAju && cc != pVoz && cc != pEq && cc != pAfi)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pTono && cc != pIa && cc != pAhora && cc != pAju && cc != pVoz && cc != pEq && cc != pAfi && cc != pNoche)
                                 cc.Visible = (f3Pagina == 0);
                         // La hoja del local va en el sitio de las dos tarjetas de arriba: o una, o las otras.
                         pLoc.Visible = (f3Pagina == 0 && verLocal && !verTono && !verAfi);
@@ -1710,7 +1776,8 @@ namespace Rocola
                         pVoz.Visible = (f3Pagina == 0 && verVoz && !verLocal && !verIa && !verAhora && !verEq);
                         pEq.Visible = (f3Pagina == 0 && verEq && !verLocal && !verIa && !verAhora && !verVoz);
                         pAju.Visible = (f3Pagina == 0 && verAju && !verLocal && !verIa && !verAhora && !verVoz && !verEq);
-                        tVol.Visible = tBil.Visible = (f3Pagina == 0 && !verAju && !verLocal && !verIa && !verAhora && !verVoz && !verEq);
+                        pNoche.Visible = (f3Pagina == 0 && verNoche && !verAju && !verLocal && !verIa && !verAhora && !verVoz && !verEq);   // la del modo noche (20-11-2026), en el sitio del volumen
+                        tVol.Visible = tBil.Visible = (f3Pagina == 0 && !verAju && !verLocal && !verIa && !verAhora && !verVoz && !verEq && !verNoche);
                         pImg.Visible = (f3Pagina == 1);
                         pDet.Visible = (f3Pagina == 2);
                         pCol.Visible = (f3Pagina == 3);
@@ -1756,6 +1823,8 @@ namespace Rocola
                     bVolverVoz.Click += delegate { verVoz = false; pintaPag(); };
                     bEq.Click += delegate { verEq = true; refrescaEq(); pintaPag(); };
                     bVolverEq.Click += delegate { verEq = false; EqDuenoSinTermina(); pintaPag(); };
+                    bNocheMas.Click += delegate { verNoche = true; updateLabels(); pintaPag(); };
+                    bVolverNoche.Click += delegate { verNoche = false; pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
                     bPagC.Click += delegate { f3Pagina = 3; pintaPag(); };
@@ -1774,6 +1843,7 @@ namespace Rocola
                     dlg.Controls.Add(pEq); pEq.BringToFront();
                     dlg.Controls.Add(pAfi); pAfi.BringToFront();
                     dlg.Controls.Add(pAju); pAju.BringToFront();
+                    dlg.Controls.Add(pNoche); pNoche.BringToFront();
                     pintaPag();
                     // Escape cierra, como toda la vida (los controles propios se comen las teclas, asi que la
                     // ventana las mira antes con KeyPreview).
@@ -1802,7 +1872,7 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; quitaPreEco = bkPreEco; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; nocheOn = bkNoche; nochePct = bkNocheP; nocheGraves = bkNocheG; Array.Copy(bkEqN, eqDuenoNormal, eqDuenoNormal.Length); Array.Copy(bkEqB, eqDuenoBillar, eqDuenoBillar.Length); sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; quitaPreEco = bkPreEco; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; nocheOn = bkNoche; nochePct = bkNocheP; nocheGraves = bkNocheG; nocheCorte = bkNocheC; nocheMadrugada = bkNocheM; nocheMadDesde = bkNocheMD; nocheMadPct = bkNocheMP; Array.Copy(bkEqN, eqDuenoNormal, eqDuenoNormal.Length); Array.Copy(bkEqB, eqDuenoBillar, eqDuenoBillar.Length); sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
             finally { try { EqDuenoSinTermina(); } catch { } try { Cursor.Hide(); } catch { } maintMode = wasMaint; ForceFocus(); }
         }
 
