@@ -23,6 +23,7 @@
 REPO=${ROCOLA_REPO:-Chomp-wq/Rocola}
 API=${ROCOLA_API:-https://api.github.com}
 DATOS=${ROCOLA_DATOS:-/rocola/datos}
+XPD=${ROCOLA_XP_DATOS:-$DATOS/xp}   # (los datos de rocola-xp: alli puede dejar el dueno la llave con Ctrl+F4 -> Archivos)
 RUN=${ROCOLA_RUN:-/run}
 OS=${ROCOLA_DISCO:-/rocola/disco}/rocola-os
 XPBIN=${ROCOLA_XP_BIN:-/usr/lib/rocola-xp/rocola-xp}
@@ -44,10 +45,13 @@ if [ -z "$ROCOLA_SIN_HORA" ] && [ ! -f "$RUN/rocola-hora" ]; then
 	timeout 30 ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 && touch "$RUN/rocola-hora" && hwclock -w -l 2>/dev/null
 fi
 
-# 1. LA LLAVE: de una memoria USB (aunque se conecte con la rocola prendida) o de la carpeta de XP. Solo se lee de ahi.
+# 1. LA LLAVE: de una memoria USB (aunque se conecte con la rocola prendida), de la carpeta de XP o de los datos de rocola-xp (donde la deja
+# Ctrl+F4 -> Archivos). Solo se lee de ahi.
 busca_llave() {
 	for f in /rocola/discos/*/rocola_github.txt /rocola/discos/*/*/rocola_github.txt; do [ -f "$f" ] && { echo "$f"; return; }; done
 	[ -s /run/rocola-datos-xp ] && f=$(find "$(cat /run/rocola-datos-xp)" -maxdepth 1 -iname rocola_github.txt 2>/dev/null | head -1) && [ -n "$f" ] && { echo "$f"; return; }
+	# la que dejo el dueno en los datos de rocola-xp con Ctrl+F4 -> Archivos (20-11-2026; FASE11_navegador-archivos.md)
+	[ -s "$XPD/rocola_github.txt" ] && { echo "$XPD/rocola_github.txt"; return; }
 	# memorias conectadas despues de prender: se miran en solo lectura y se desmontan
 	for p in /sys/class/block/*; do
 		[ -e "$p/partition" ] || continue
