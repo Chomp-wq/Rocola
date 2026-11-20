@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- LEE-IGUAL (rapido-caratulas): Imagenes.Lee y Mapas.Copia de ahora (Nativo/) contra las de la base (copiadas por leeigual.sh a
+       viejo/, con otro espacio de nombres): los mismos puntos, el mismo formato y la misma excepcion con cada imagen. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>disable</Nullable><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization><ImplicitUsings>disable</ImplicitUsings><PublishAot>true</PublishAot><IlcInstructionSet>x86-64-v2,avx</IlcInstructionSet>
+    <Fuente Condition="'$(Fuente)' == ''">$(MSBuildThisFileDirectory)../../..</Fuente>
+    <Viejo Condition="'$(Viejo)' == ''">$(MSBuildThisFileDirectory)viejo</Viejo>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.116.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="**/*.cs" />
+    <Compile Include="Prueba.cs;$(Fuente)/Nativo/Imagenes.cs;$(Fuente)/Nativo/Mapas.cs;$(Viejo)/*.cs" />
+  </ItemGroup>
+</Project>
