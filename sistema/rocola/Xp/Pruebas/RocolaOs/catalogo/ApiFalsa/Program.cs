@@ -496,7 +496,7 @@ internal static class ApiFalsa
         c.Response.ContentType = ctype;
         foreach (KeyValuePair<string, string> kv in extra) c.Response.Headers[kv.Key] = kv.Value;
         c.Response.ContentLength64 = b.Length;
-        c.Response.OutputStream.Write(b, 0, b.Length);
+        if (c.Request.HttpMethod != "HEAD") c.Response.OutputStream.Write(b, 0, b.Length);   // (rapido-spotify: el HEAD de calentar, sin cuerpo)
         c.Response.OutputStream.Close();
     }
 }

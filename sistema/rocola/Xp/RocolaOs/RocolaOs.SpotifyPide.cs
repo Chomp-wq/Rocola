@@ -121,6 +121,7 @@ namespace Rocola
             int n = 0;
             for (int i = 0; i < queue.Count; i++) { PlayItem it = queue[i]; if (it != null && !it.IsVideo && it.Song != null && RocolaOsSpotify.EsUriDeCancion(it.Song.Path)) n++; }
             Volatile.Write(ref RocolaOsSpotify.EnCola, n);
+            RocolaOsSpotifyCatalogoLatido();   // (rapido-spotify: al abrirse el buscador, la llave y las conexiones de la API ya calientes)
         }
 
         // ================================================================== I6

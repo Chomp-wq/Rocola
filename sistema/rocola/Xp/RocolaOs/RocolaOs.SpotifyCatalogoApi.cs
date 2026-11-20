@@ -165,6 +165,43 @@ namespace Rocola
         // LO DE LA CUENTA (solo con refresh_token): una vez por sesion, detras de lo que alguien espera
         internal static void PideCuenta(Action<object, string> listo) { Encola(new Pedido { Que = "cuenta", Clave = "", Alguien = false, Listo = listo }); }
 
+        // (rapido-spotify) CALENTAR, AL ABRIRSE EL BUSCADOR (el latido de la pantalla lo ve; como mucho cada 20 s): lo que la primera busqueda
+        // tendria que esperar se hace mientras se escribe (escribir 3 letras y los 300 ms de espera dan mas de un segundo).
+        //   - la llave de la app, si falta o vence en menos de 5 min (antes: la primera busqueda la pedia y esperaba, y otra vez cada hora);
+        //   - la conexion con el servidor de la API y con el de las portadas: una peticion HEAD a su raiz, SIN la llave (no es de la app: no
+        //     cuenta en su cuota, y no se le pregunta nada), para que la busqueda y sus portadas no esperen a abrirla (DNS, TCP y TLS: dos o tres
+        //     viajes). La conexion queda en el grupo de HttpClient (se cierra sola al minuto sin usarse, como siempre).
+        // Nada con 429 (Frena), sin la llave o con una llave rechazada.
+        internal const string Calentar = "calienta";
+        internal const long MargenCalentarMs = 300000;
+        private static long ultimoCalentar = long.MinValue / 2;
+        private static volatile string hostPortadas;   // (el de la ultima portada de Spotify que se bajo; sin ninguna, el de Spotify)
+        internal static long Calentadas;
+        internal static void PortadaDe(string url) { try { Uri u = new Uri(url); hostPortadas = u.Scheme + "://" + u.Authority + "/"; } catch { } }
+        internal static void Calienta()
+        {
+            long ahora = Environment.TickCount64;
+            if (ahora - Interlocked.Read(ref ultimoCalentar) < 20000 || Frena) return;
+            Config c = LeeConfig();
+            if (c == null || !c.Listo) return;
+            Interlocked.Exchange(ref ultimoCalentar, ahora);
+            Interlocked.Increment(ref Calentadas);
+            Encola(new Pedido { Que = Calentar, Clave = "", Alguien = true });
+            string api, img = hostPortadas;
+            try { Uri u = new Uri(Base); api = u.Scheme + "://" + u.Authority + "/"; } catch { return; }
+            if (img == null) img = api.StartsWith("http://127.0.0.1", StringComparison.Ordinal) ? api : "https://i.scdn.co/";
+            RocolaOs.Hilo("spotify_calienta", delegate
+            {
+                foreach (string u in img == api ? new[] { api } : new[] { api, img })
+                    try
+                    {
+                        using (CancellationTokenSource cts = new CancellationTokenSource(8000))
+                        using (HttpResponseMessage r = Http.Send(new HttpRequestMessage(HttpMethod.Head, u), HttpCompletionOption.ResponseHeadersRead, cts.Token)) { }
+                    }
+                    catch { }   // (sin red: la busqueda dira lo suyo)
+            });
+        }
+
         private static void Encola(Pedido p)
         {
             lock (cerrojo)
@@ -419,6 +456,11 @@ namespace Rocola
                 return l;
             }
             if (p.Que == "pareja") return AtiendePareja(c, p.Clave, out error);   // (la sustitucion invisible: RocolaOs.CalidadApi.cs)
+            if (p.Que == Calentar)
+            {   // (rapido-spotify) la llave de la app, si falta o vence en menos de 5 min (no es una peticion a la API: es la de cuentas)
+                string ll = Llave(c, false, MargenCalentarMs, out error);
+                return ll != null ? (object)Calentar : null;
+            }
             error = "pedido desconocido";
             return null;
         }
@@ -623,12 +665,14 @@ namespace Rocola
         // peticiones de mas y la bitacora llena); al cambiar el archivo (otro client_secret, otra autorizacion) se intenta de nuevo
         private static Config rechazadaApp, rechazadaCuenta;
         private static void OlvidaLlave(bool deUsuario) { if (deUsuario) llaveCuenta = null; else llaveApp = null; }
-        private static string Llave(Config c, bool deUsuario, out string error)
+        private static string Llave(Config c, bool deUsuario, out string error) { return Llave(c, deUsuario, 60000, out error); }
+        // (rapido-spotify) margenMs: cuanto antes de vencer se pide otra (60 s al preguntar; 5 min al calentar: Calienta)
+        private static string Llave(Config c, bool deUsuario, long margenMs, out string error)
         {
             error = null;
             long ahora = Environment.TickCount64;
-            if (!deUsuario && llaveApp != null && ahora < venceApp - 60000) return llaveApp;
-            if (deUsuario && llaveCuenta != null && ahora < venceCuenta - 60000) return llaveCuenta;
+            if (!deUsuario && llaveApp != null && ahora < venceApp - margenMs) return llaveApp;
+            if (deUsuario && llaveCuenta != null && ahora < venceCuenta - margenMs) return llaveCuenta;
             if (ReferenceEquals(deUsuario ? rechazadaCuenta : rechazadaApp, c))
             {
                 api = "falla";

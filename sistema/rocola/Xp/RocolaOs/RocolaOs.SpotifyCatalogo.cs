@@ -80,6 +80,66 @@ namespace Rocola
             RocolaOsSpotifyCatalogoApi.PideEstado();   // (lo escribe el hilo del catalogo: en la pantalla, nada de archivos)
         }
         private static bool RocolaOsEsSpotify(Album a) { return a != null && a.Folder != null && a.Folder.StartsWith(RocolaOsSpotifyCarpeta, StringComparison.Ordinal); }
+        // (rapido-spotify) EN EL LATIDO DEL NUCLEO (cada segundo, en la pantalla): al abrirse el buscador, calentar la llave y las conexiones
+        // (RocolaOsSpotifyCatalogoApi.Calienta: sin peticiones a la API). Sin el modo o sin la llave, nada.
+        private bool rocolaOsSpBuscadorAntes;
+        private void RocolaOsSpotifyCatalogoLatido()
+        {
+            bool abierto = searchOpen;
+            if (abierto && !rocolaOsSpBuscadorAntes && RocolaOsSpotifyCatalogoVa && RocolaOsSpotifyCatalogoApi.HayLlave) RocolaOsSpotifyCatalogoApi.Calienta();
+            rocolaOsSpBuscadorAntes = abierto;
+            RocolaOsSpotifyCatalogoMiraTarjeta(abierto);
+        }
+        // (rapido-spotify) LA TARJETA DE SPOTIFY EN QUE SE QUEDA EL BUSCADOR (dos latidos seguidos en la misma: 1 a 2 s), como g52 en la pared: lo
+        // que abriria PONER se pide ya, para que al pulsarlo se abra al momento. Un disco: sus canciones (1 peticion, la misma que haria al
+        // abrirlo); un artista: la primera pagina de su pared (1 peticion de 10 y, si tiene mas de 10 discos, la 2a: las mismas que al abrirla).
+        // Lo contestado se queda en la memoria de la sesion como siempre (abrirlo despues: 0 peticiones). Para la cuota: solo lo que alguien esta
+        // mirando, una tarjeta como mucho cada 3 s, cada una una vez, nada con 429 ni sin la llave.
+        private SearchItem rocolaOsSpTarjetaMirada;
+        private HashSet<Album> rocolaOsSpTarjetasAdelantadas;
+        private long rocolaOsSpUltimoAdelantoMs = long.MinValue / 2;
+        internal static long RocolaOsSpAdelantadas;
+        private void RocolaOsSpotifyCatalogoMiraTarjeta(bool abierto)
+        {
+            SearchItem it = null;
+            if (abierto && searchOverlay != null && searchOverlay.FocusResults && rocolaOsSpDiscos != null)
+            {
+                List<SearchItem> r = searchOverlay.Results;
+                int i = searchOverlay.SelResult;
+                if (r != null && i >= 0 && i < r.Count) it = r[i];
+            }
+            if (it == null || !ReferenceEquals(it, rocolaOsSpTarjetaMirada)) { rocolaOsSpTarjetaMirada = it; return; }
+            Album a = it.AlbumRef;
+            if (!RocolaOsEsSpotify(a) || !RocolaOsSpotifyCatalogoVa || RocolaOsSpotifyCatalogoApi.Frena || !RocolaOsSpotifyCatalogoApi.HayLlave) return;
+            if (rocolaOsSpTarjetasAdelantadas == null) rocolaOsSpTarjetasAdelantadas = new HashSet<Album>();
+            if (rocolaOsSpTarjetasAdelantadas.Contains(a)) return;
+            long ahora = Environment.TickCount64;
+            if (ahora - rocolaOsSpUltimoAdelantoMs < 3000) return;
+            RocolaOsSpotifyCatalogoDisco d;
+            RocolaOsSpotifyCatalogoArtista ar;
+            if (it.Kind == 1 && rocolaOsSpDeDisco.TryGetValue(a, out d) && d.Tipo == "album" && d.Canciones == null && a.Tracks.Count == 0)
+            {
+                rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++;
+                RocolaOsSpotifyCatalogoApi.AbreDisco(d.Id, delegate (object r, string error)
+                {
+                    RocolaOs.Encarga("spotify_catalogo:adelanto", delegate { RocolaOsSpotifyCatalogoLlegoPrevisto(a, r as RocolaOsSpotifyCatalogoDisco); });
+                });
+            }
+            else if (it.Kind == 0 && rocolaOsSpDeArtista.TryGetValue(a, out ar) && !string.IsNullOrEmpty(ar.Id)
+                && RocolaOsSpotifyCatalogoApi.PaginaYa(RocolaOsSpotifyCatalogoApi.ParedArtista, ar.Id, 0) == null)
+            {
+                rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++;
+                string id = ar.Id;
+                // (la respuesta se queda en la memoria del cliente; nada que hacer en la pantalla. La 2a pagina, solo si hace falta para las 18
+                // casillas de la primera pagina de la pared: «Canciones de» y 17 discos)
+                RocolaOsSpotifyCatalogoApi.PidePagina(RocolaOsSpotifyCatalogoApi.ParedArtista, id, 0, delegate (object r, string error)
+                {
+                    RocolaOsSpotifyCatalogoPagina pg = r as RocolaOsSpotifyCatalogoPagina;
+                    if (pg != null && pg.Total > RocolaOsSpotifyCatalogoApi.PorPaginaPared && pg.Crudos >= RocolaOsSpotifyCatalogoApi.PorPaginaPared && !RocolaOsSpotifyCatalogoApi.Frena)
+                        RocolaOsSpotifyCatalogoApi.PidePagina(RocolaOsSpotifyCatalogoApi.ParedArtista, id, RocolaOsSpotifyCatalogoApi.PorPaginaPared, null);
+                });
+            }
+        }
         private static bool RocolaOsEsSpotify(Track t) { return t != null && t.Path != null && t.Path.StartsWith("spotify:track:", StringComparison.Ordinal); }
 
         // ================================================================= los ganchos =================================================
@@ -561,7 +621,7 @@ namespace Rocola
         }
 
         // ================================================================= las portadas ===============================================
-        // Se bajan a /run/rocola-xp/spotify/portadas/<id>.jpg (en memoria; nunca al disco), una a la vez y detras de la API (no gastan su
+        // Se bajan a /run/rocola-xp/spotify/portadas/<id>.jpg (en memoria; nunca al disco), varias a la vez y aparte de la API (no gastan su
         // cuota: vienen del servidor de imagenes de Spotify), y al llegar el disco toma su ruta y XP la lee como cualquier portada.
         private Dictionary<string, List<Album>> rocolaOsSpEsperanPortada;   // ruta -> los discos que la esperan
 
@@ -590,21 +650,28 @@ namespace Rocola
         }
     }
 
-    // EL HILO DE LAS PORTADAS DE SPOTIFY: una a la vez, de su servidor de imagenes (no gasta la cuota de la API), a /run; al llegar, la
-    // pantalla le pone la ruta al disco (encargo «RocolaOs:spotify_catalogo:portada»)
+    // LOS HILOS DE LAS PORTADAS DE SPOTIFY: de su servidor de imagenes (no gasta la cuota de la API), a /run; al llegar, la pantalla le pone la
+    // ruta al disco (encargo «RocolaOs:spotify_catalogo:portada»).
+    // (rapido-spotify) VARIAS A LA VEZ y LO ULTIMO QUE SE PIDIO PRIMERO. Antes, una a la vez y en el orden en que se pidieron: la pared de un
+    // artista (17 portadas) se llenaba de una en una (con 120 ms por portada, la ultima a los 2,7 s de abrirla) y lo que pidio una busqueda
+    // vieja iba delante de lo que se mira ahora. Ahora 6 hilos (lo que el navegador abre por servidor; esperan a la red, no gastan procesador,
+    // con nice 19 como todo lo de fondo) y, de lo que espera, primero el ULTIMO LOTE (lo que la pantalla pidio en el mismo cuadro: la pagina
+    // o la busqueda de ahora) y dentro de el en su orden (de arriba abajo). Lo que llega es lo mismo, al mismo archivo; solo antes.
     internal static class RocolaOsSpotifyCatalogoPortadas
     {
+        internal const int Hilos = 6;
+        private sealed class Pedido { internal string Url, Ruta; internal long Lote, Orden; }
         private static readonly object cerrojo = new object();
-        private static readonly Queue<KeyValuePair<string, string>> cola = new Queue<KeyValuePair<string, string>>();
-        private static readonly AutoResetEvent hay = new AutoResetEvent(false);
-        private static Thread hilo;
+        private static readonly List<Pedido> cola = new List<Pedido>();
+        private static int hilos;
+        private static long lote, orden, ultimoPedidoMs = long.MinValue / 2;
         private static string carpeta;
         internal static long Bajadas;
         // (revision cuota-hilos-y-fallos de paredes-buscador, 2a pasada) LA QUE NO SE BAJO POR LA RED (sin red, el servidor caido: 5xx, 429):
         // antes se quedaba sin portada toda la sesion (el disco ya no la vuelve a pedir: queda esperandola). Ahora, otra vez a los 15 s y, si
         // tampoco, a los 60 s (al servidor de imagenes: no gasta la cuota de la API); despues, ya no. Un 404 o una de mas de 4 MB, no.
         private static readonly int[] reintentosMs = { 15000, 60000 };
-        private static readonly List<KeyValuePair<long, KeyValuePair<string, string>>> luego = new List<KeyValuePair<long, KeyValuePair<string, string>>>();
+        private static readonly List<KeyValuePair<long, Pedido>> luego = new List<KeyValuePair<long, Pedido>>();
         private static readonly Dictionary<string, int> intentos = new Dictionary<string, int>(StringComparer.Ordinal);
         // /run/rocola-xp/spotify/portadas/ (con «/» al final), desde que se baja la primera (antes, null: g43 no cambia nada)
         internal static string Carpeta { get { return Volatile.Read(ref carpeta); } }
@@ -613,77 +680,102 @@ namespace Rocola
         {
             lock (cerrojo)
             {
-                cola.Enqueue(new KeyValuePair<string, string>(url, ruta));
-                if (hilo == null) hilo = RocolaOs.Hilo("spotify_portadas", Corre);
+                // un lote: lo pedido en el mismo cuadro de la pantalla (las llamadas a menos de 30 ms una de otra)
+                long ahora = Environment.TickCount64;
+                if (ahora - ultimoPedidoMs > 30) lote++;
+                ultimoPedidoMs = ahora;
+                cola.Add(new Pedido { Url = url, Ruta = ruta, Lote = lote, Orden = ++orden });
+                while (hilos < Hilos) { hilos++; RocolaOs.Hilo("spotify_portadas_" + hilos.ToString(CultureInfo.InvariantCulture), Corre); }
+                Monitor.Pulse(cerrojo);
             }
-            hay.Set();
+        }
+        // la siguiente: la del ultimo lote y, dentro de el, la primera que se pidio (bajo el cerrojo)
+        private static Pedido Siguiente()
+        {
+            int mejor = -1;
+            for (int i = 0; i < cola.Count; i++)
+                if (mejor < 0 || cola[i].Lote > cola[mejor].Lote || (cola[i].Lote == cola[mejor].Lote && cola[i].Orden < cola[mejor].Orden)) mejor = i;
+            if (mejor < 0) return null;
+            Pedido p = cola[mejor];
+            cola.RemoveAt(mejor);
+            return p;
         }
         private static void Corre()
         {
             while (true)
             {
-                KeyValuePair<string, string> p;
-                int espera = 10000;
+                Pedido p;
                 lock (cerrojo)
                 {
-                    long ahora = Environment.TickCount64;
-                    for (int i = luego.Count - 1; i >= 0; i--)
-                        if (luego[i].Key <= ahora) { cola.Enqueue(luego[i].Value); luego.RemoveAt(i); }
-                        else espera = (int)Math.Max(1, Math.Min(espera, luego[i].Key - ahora));
-                    p = cola.Count == 0 ? default(KeyValuePair<string, string>) : cola.Dequeue();
-                }
-                if (p.Key == null) { hay.WaitOne(espera); continue; }
-                bool bien = false, otraVez = false;
-                try
-                {
-                    string dir = Path.GetDirectoryName(p.Value);
-                    if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                    string mini = Path.Combine(Path.GetDirectoryName(dir), "miniaturas");
-                    if (!Directory.Exists(mini)) Directory.CreateDirectory(mini);
-                    Volatile.Write(ref carpeta, dir.TrimEnd('/') + "/");
-                    using (HttpResponseMessage r = RocolaOsSpotifyCatalogoApi.Http.Send(new HttpRequestMessage(HttpMethod.Get, p.Key)))
+                    while (true)
                     {
-                        if ((int)r.StatusCode == 200)
-                        {
-                            byte[] b;
-                            using (Stream s = r.Content.ReadAsStream())
-                            using (MemoryStream m = new MemoryStream())
-                            {
-                                byte[] buf = new byte[16384]; int n;
-                                while ((n = s.Read(buf, 0, buf.Length)) > 0) { m.Write(buf, 0, n); if (m.Length > 4 * 1024 * 1024) throw new InvalidDataException("portada de mas de 4 MB"); }
-                                b = m.ToArray();
-                            }
-                            string t = p.Value + ".t";
-                            File.WriteAllBytes(t, b);
-                            File.Move(t, p.Value, true);
-                            bien = true;
-                            Interlocked.Increment(ref Bajadas);
-                        }
-                        else
-                        {
-                            int cod = (int)r.StatusCode;
-                            otraVez = cod >= 500 || cod == 429;
-                            // (revision: como mucho un renglon igual cada 10 min; sin red, cada disco que llega diria lo mismo)
-                            RocolaOsSpotifyCatalogoApi.ApuntaCallado("una portada no se bajo (" + cod.ToString(CultureInfo.InvariantCulture) + ")");
-                        }
+                        int espera = 10000;
+                        long ahora = Environment.TickCount64;
+                        for (int i = luego.Count - 1; i >= 0; i--)
+                            if (luego[i].Key <= ahora) { Pedido x = luego[i].Value; x.Lote = 0; cola.Add(x); luego.RemoveAt(i); }   // (detras de lo nuevo)
+                            else espera = (int)Math.Max(1, Math.Min(espera, luego[i].Key - ahora));
+                        p = Siguiente();
+                        if (p != null) break;
+                        Monitor.Wait(cerrojo, espera);
                     }
                 }
-                catch (Exception ex)
+                Baja(p);
+            }
+        }
+        private static void Baja(Pedido p)
+        {
+            bool bien = false, otraVez = false;
+            try
+            {
+                string dir = Path.GetDirectoryName(p.Ruta);
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                string mini = Path.Combine(Path.GetDirectoryName(dir), "miniaturas");
+                if (!Directory.Exists(mini)) Directory.CreateDirectory(mini);
+                Volatile.Write(ref carpeta, dir.TrimEnd('/') + "/");
+                using (HttpResponseMessage r = RocolaOsSpotifyCatalogoApi.Http.Send(new HttpRequestMessage(HttpMethod.Get, p.Url)))
                 {
-                    otraVez = !(ex is InvalidDataException);   // (la de mas de 4 MB, no: es la misma la proxima vez)
-                    RocolaOsSpotifyCatalogoApi.ApuntaCallado("una portada no se bajo (" + ex.GetType().Name + ")");
-                }
-                if (otraVez)
-                    lock (cerrojo)
+                    RocolaOsSpotifyCatalogoApi.PortadaDe(p.Url);   // (el servidor de las portadas: Calienta abre su conexion al abrir el buscador)
+                    if ((int)r.StatusCode == 200)
                     {
-                        int n; intentos.TryGetValue(p.Value, out n);
-                        if (n < reintentosMs.Length) { intentos[p.Value] = n + 1; luego.Add(new KeyValuePair<long, KeyValuePair<string, string>>(Environment.TickCount64 + reintentosMs[n], p)); }
+                        byte[] b;
+                        using (Stream s = r.Content.ReadAsStream())
+                        using (MemoryStream m = new MemoryStream())
+                        {
+                            byte[] buf = new byte[16384]; int n;
+                            while ((n = s.Read(buf, 0, buf.Length)) > 0) { m.Write(buf, 0, n); if (m.Length > 4 * 1024 * 1024) throw new InvalidDataException("portada de mas de 4 MB"); }
+                            b = m.ToArray();
+                        }
+                        // (cada hilo con su archivo de paso: dos pedidos de la misma ruta -un reintento y uno nuevo- no se pisan)
+                        string t = p.Ruta + ".t" + Environment.CurrentManagedThreadId.ToString(CultureInfo.InvariantCulture);
+                        File.WriteAllBytes(t, b);
+                        File.Move(t, p.Ruta, true);
+                        bien = true;
+                        Interlocked.Increment(ref Bajadas);
                     }
-                if (bien)
-                {
-                    string ruta = p.Value;
-                    RocolaOs.Encarga("spotify_catalogo:portada", delegate { Form1 f = RocolaOs.LaRocola; if (f != null) f.RocolaOsSpotifyCatalogoLlegoPortada(ruta); });
+                    else
+                    {
+                        int cod = (int)r.StatusCode;
+                        otraVez = cod >= 500 || cod == 429;
+                        // (revision: como mucho un renglon igual cada 10 min; sin red, cada disco que llega diria lo mismo)
+                        RocolaOsSpotifyCatalogoApi.ApuntaCallado("una portada no se bajo (" + cod.ToString(CultureInfo.InvariantCulture) + ")");
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                otraVez = !(ex is InvalidDataException);   // (la de mas de 4 MB, no: es la misma la proxima vez)
+                RocolaOsSpotifyCatalogoApi.ApuntaCallado("una portada no se bajo (" + ex.GetType().Name + ")");
+            }
+            if (otraVez)
+                lock (cerrojo)
+                {
+                    int n; intentos.TryGetValue(p.Ruta, out n);
+                    if (n < reintentosMs.Length) { intentos[p.Ruta] = n + 1; luego.Add(new KeyValuePair<long, Pedido>(Environment.TickCount64 + reintentosMs[n], p)); Monitor.Pulse(cerrojo); }
+                }
+            if (bien)
+            {
+                string ruta = p.Ruta;
+                RocolaOs.Encarga("spotify_catalogo:portada", delegate { Form1 f = RocolaOs.LaRocola; if (f != null) f.RocolaOsSpotifyCatalogoLlegoPortada(ruta); });
             }
         }
     }
