@@ -143,7 +143,7 @@ namespace Rocola
             }
             OlvidaBuscadasViejas(ahora);
             for (int i = 0; i < buscadas.Count; i++) AgregaAtajo(AtajoBuscaste, "Buscaste: " + TextoBuscada(buscadas[i]), buscadas[i]);
-            List<string> textos = new List<string>(atajosBusca.Count);
+            RocolaOsSpotifyCatalogoAtajos(); List<string> textos = new List<string>(atajosBusca.Count);   // ROCOLA OS g55: (XP) List<string> textos = new List<string>(atajosBusca.Count); — con el modo Spotify y la cuenta, los atajos «Tus mas escuchadas» y «Escuchado hace poco» detras de los de XP (RocolaOs/RocolaOs.SpotifyCatalogoParedes.cs; sin el modo, nada)
             for (int i = 0; i < atajosBusca.Count; i++) textos.Add(atajosBusca[i].Texto);
             searchOverlay.PonAtajos(textos);
         }
@@ -195,7 +195,7 @@ namespace Rocola
                 letterBar.OnPick(VideoMark);   // lo mismo que elegir la letra de los videos
                 return;
             }
-            if (a.Tipo == AtajoBuscaste) { searchOverlay.BuscaAtajo(a.Consulta); return; }
+            if (RocolaOsSpotifyCatalogoUsaAtajo(a.Tipo, a.Texto)) return; if (a.Tipo == AtajoBuscaste) { searchOverlay.BuscaAtajo(a.Consulta); return; }   // ROCOLA OS g56: (XP) if (a.Tipo == AtajoBuscaste) { searchOverlay.BuscaAtajo(a.Consulta); return; } — los atajos de Spotify ponen sus canciones como resultados, como «Lo mas pedido hoy» (RocolaOs/RocolaOs.SpotifyCatalogoParedes.cs; los de XP, false)
             searchOverlay.MuestraAtajo(a.Texto, a.Tipo == AtajoPedidas ? PedidasHoy() : DiscosKaraoke());
         }
 
