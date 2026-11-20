@@ -7,7 +7,8 @@
 # Soloist de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): apagado fabrica dos mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche
+#   escenas (de fabrica todas): apagado fabrica dos adelanto adelantoxp mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso
+#   vigilante noche (adelanto y adelantoxp: el play adelantado de la siguiente de Spotify, rapido-spotify: FASE11_rapido-spotify.md)
 #   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
 #   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
 #   «vigilante» (sin el, no se corre): rocola-xp lo abre y el abre el Soloist falso por soloist-envoltorio.sh (SOLOIST_BIN); y para «fabrica»
@@ -23,7 +24,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado fabrica dos mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche}"
+partes="${*:-apagado fabrica dos adelanto adelantoxp mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -247,6 +248,51 @@ sys.exit(0 if u[:2]==['spotify:track:f440d008aa','spotify:track:f550d006bb'] els
   si "dos: el Soloist falso salio y borro ws.port" test ! -e "$o/soloist/ws.port"
   si "dos: rocola_stats.txt y rocola_noche.txt sin «spotify:» (R6)" bash -c "! grep -qs 'spotify:' '$d/rocola_stats.txt' '$d/rocola_noche.txt'"
   si "dos: ninguna tabla de lo aprendido con «spotify:» (R7; fuera de las bitacoras)" bash -c "! grep -rlsF 'spotify:' '$d' --include='rocola_*.txt' | grep -vE 'rocola_spotify.txt|rocola_os_bitacora.txt|rocola_error.txt|rocola_estado.txt' | grep -q ."
+fi
+
+# ---------------------------------------------------------------- adelanto (rapido-spotify): el play adelantado entre dos de Spotify
+# El Soloist falso tarda 1 s en empezar cada una (SOLOIST_FALSO_LENTO): sin el play adelantado, ese segundo se sumaba al hueco entre las dos
+# (la de antes acababa de sonar en la tarjeta y solo entonces se mandaba el play de la siguiente). Con el, el play de la 2a se manda al
+# acabar de llegar la 1a: el hueco es el de siempre (el arranque sin hueco de la fuente). Todo lo demas, como en «dos».
+if [[ " $partes " == *" adelanto "* ]]; then
+  echo "== adelanto (el play de la siguiente de Spotify, adelantado; Soloist tarda 1 s en empezar)"
+  d=$(datos adelanto); T0=$(date +%s.%N)
+  abre adelanto "$d" "7:67" "9:pide spotify:track:f440d008aa|$P|8000;9.2:pide spotify:track:f550d006bb|$P|6000;31:copia" 32 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=1
+  o="$W/adelanto"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$f" | head -12
+  si "adelanto: sale con 0" test "$(cat $o/salio)" = 0
+  si "adelanto: la bitacora dice el play adelantado de la 2a al acabar la 1a" contiene "$b" "play adelantado spotify:track:f550d006bb (Prueba): la siguiente de la cola, al acabar spotify:track:f440d008aa"
+  si "adelanto: y nada de un adelanto que no se uso" nocontiene "$b" "no se uso"
+  si "adelanto: un solo play de la 2a (la fuente la tomo: no se pidio otra vez)" test "$(grep '"play"' "$o/falso.txt" | grep -c f550d006bb)" = 1
+  t440=$(oye "$f" 440); t550=$(oye "$f" 550); t990=$(oye "$f" 990)
+  si "adelanto: la primera entera (8 s: $t440 s)" entre "$t440" 7.7 8.3
+  si "adelanto: la segunda entera (6 s: $t550 s)" entre "$t550" 5.7 6.3
+  hueco=$(echo "$(primero "$f" 550) - $(ultimo "$f" 440)" | bc)
+  si "adelanto: el hueco entre las dos sin el segundo de Soloist (menos de 1,9 s: $hueco s; sin adelantar, unos 2,3)" entre "$hueco" 0 1.9
+  si "adelanto: el autoplay del final (990 Hz) no se oye ($t990 s)" entre "$t990" 0 0.15
+  si "adelanto: ni un hueco dentro de cada una (440: $(huecos "$f" 440), 550: $(huecos "$f" 550))" test "$(huecos "$f" 440)$(huecos "$f" 550)" = 00
+  si "adelanto: la bitacora: 2 cobradas y 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c 'COBRADA' '$b') = 2 ] && [ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
+  si "adelanto: el estado: cobradas=2 devueltas=0" bash -c "[ '$(estado $o cobradas)$(estado $o devueltas)' = 20 ]"
+fi
+# ---------------------------------------------------------------- adelantoxp (rapido-spotify): de una de XP a una de Spotify
+if [[ " $partes " == *" adelantoxp "* ]]; then
+  echo "== adelantoxp (una de XP y detras una de Spotify: su play, adelantado al final de la de XP; Soloist tarda 1 s)"
+  d=$(datos adelantoxp); T0=$(date +%s.%N)
+  abre adelantoxp "$d" "7:67,9.5:13" "10.5:pide spotify:track:f440d006aa|$P|6000;25:copia" 26 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=1
+  o="$W/adelantoxp"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$f" | head -12
+  si "adelantoxp: sale con 0" test "$(cat $o/salio)" = 0
+  si "adelantoxp: la bitacora dice el play adelantado al acabar la de XP" contiene "$b" "play adelantado spotify:track:f440d006aa (Prueba): la siguiente de la cola, al acabar la de XP que suena"
+  si "adelantoxp: y nada de un adelanto que no se uso" nocontiene "$b" "no se uso"
+  si "adelantoxp: un solo play (la fuente la tomo)" test "$(grep '"play"' "$o/falso.txt" | grep -c f440d006aa)" = 1
+  t440=$(oye "$f" 440)
+  si "adelantoxp: la de Spotify entera (6 s: $t440 s)" entre "$t440" 5.7 6.3
+  si "adelantoxp: ni un hueco dentro (440: $(huecos "$f" 440))" test "$(huecos "$f" 440)" = 0
+  # el hueco: de lo ultimo de XP (otro tono) a lo primero de 440
+  xp=$(awk -v p="$(primero "$f" 440)" '$1 < p && $3 != 0 && ($3 < 425 || $3 > 455) {u=$2} END {print u+0}' "$f")
+  hueco=$(echo "$(primero "$f" 440) - $xp" | bc)
+  si "adelantoxp: el hueco de la de XP a la de Spotify sin el segundo de Soloist (menos de 1,9 s: $hueco s)" entre "$hueco" 0 1.9
+  si "adelantoxp: 1 cobrada y 1 acabada de verdad, sin devolver" bash -c "[ \$(grep -c 'COBRADA' '$b') = 1 ] && [ \$(grep -c ': termino, sono' '$b') = 1 ] && ! grep -q DEVUELTA '$b'"
 fi
 
 # ---------------------------------------------------------------- mezcla: con las de XP, el turno, sin creditos
