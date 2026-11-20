@@ -61,6 +61,10 @@ elif esc == 'disco':
         M('abrir_disco', (d[0] - k[0]) if d else None)
         f = en('Form1.Portadas.cs:653', k[0], k[0] + 4000)
         M('disco_ultima_en_pantalla', (f[-1] - k[0]) if f else None)
+        # el disco a la vista: XP arranca el asentamiento de su portada (coverSettleTimer, 120 ms, Form1.cs:719) al abrirlo; su primer tick
+        # menos 120 ms. Con el disco ya pedido mientras se miraba su tarjeta, no hay encargo «disco» despues de PONER (abrir_disco: -)
+        st = [t for t, x in EV if k[0] < t <= k[0] + 4000 and x.startswith('tick Form1.cs:719')]
+        M('disco_a_la_vista', (st[0] - 120 - k[0]) if st else None)
 elif esc == 'artista':
     k = [t for t in teclas(13) if t > 18000]
     a = [t for t in teclas(0x26) if t > 23000]
@@ -73,6 +77,8 @@ elif esc == 'artista':
         M('pared_artista_ultima_portada', (po[-1] - k[0]) if po else None)
         f = en('Form1.Portadas.cs:653', k[0], fin)
         M('pared_artista_ultima_en_pantalla', (f[-1] - k[0]) if f else None)
+        st = [t for t, x in EV if k[0] < t <= fin and x.startswith('tick Form1.cs:719')]
+        M('pared_artista_a_la_vista', (st[0] - 120 - k[0]) if st else None)
     if a:
         pa = en('RocolaOs:spotify_catalogo:pared', a[0], a[0] + 3900)
         M('pared_artista_pag2', (pa[-1] - a[0]) if pa else None)
