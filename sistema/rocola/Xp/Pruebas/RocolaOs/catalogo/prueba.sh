@@ -444,7 +444,7 @@ for e in $escenas; do
     # peticion, ninguna pared ni vuelta del buscador, nada cobrado, y la traza igual a la de sin ROCOLA_OS quitando lo de RocolaOs
     apifalsa $e
     T="$BASE,$(escribe 9.5 inventad),$(derechas 14 14),17:13,19:27+38,20.5:27,21:13,22.5:27,23:38,23.5:27"
-    d=$(datos $e apagado); rm -f "$d/rocola_spotify_api.txt"; printf 'spotify=1\n' > "$d/rocola_os.txt"; abre $e "$d" "$T" 26 ROCOLA_OS=1
+    d=$(datos $e apagado); rm -f "$d/rocola_spotify_api.txt" "$d/rocola_os.txt"; abre $e "$d" "$T" 26 ROCOLA_OS=1   # (la junta) sin rocola_os.txt: el modo va ENCENDIDO DE FABRICA
     espera $e; o="$W/$e"
     si "sinllave: sale con 0" test "$(cat $o/salio)" = 0
     si "sinllave: ninguna peticion a la API falsa (ni la llave)" test "$(wc -l < $o/api/peticiones.txt)" = 0
