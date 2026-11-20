@@ -11,8 +11,8 @@
 #   5. DEVOLVIENDO LAS DE ANTES, Codigo/ queda byte a byte como en la base (los mismos archivos, las mismas lineas y los mismos finales,
 #      CRLF o LF); y la linea «antes» de cada gancho de fuera de Codigo/ esta en ese archivo de la base;
 #   6. cuantos ganchos hay y en que archivos.
-# Sale con 0 solo si todo esta bien. REV: la base de Codigo/ (por defecto ebdb272: la del plan, fc7b667, con los cambios de la rocola de XP
-# del 17 y 18-11-2026, PORT_xp-1718.md, y el modo noche de 50 a 90 % del 20-11-2026; antes 69e6547; si cambia Rocola/ y se pasa a Codigo/, la nueva: un commit con Codigo/ SIN los ganchos). Sin git (o sin la base), los puntos 1 a 4 y lo dice.
+# Sale con 0 solo si todo esta bien. REV: la base de Codigo/ (por defecto ca9802f: la del plan, fc7b667, con los cambios de la rocola de XP
+# del 17 y 18-11-2026, PORT_xp-1718.md, el modo noche de 50 a 90 % y el de los vecinos del 20-11-2026, PORT_noche-nv.md; antes ebdb272; si cambia Rocola/ y se pasa a Codigo/, la nueva: un commit con Codigo/ SIN los ganchos). Sin git (o sin la base), los puntos 1 a 4 y lo dice.
 import os, re, subprocess, sys, collections
 
 AQUI = os.path.dirname(os.path.realpath(__file__))
@@ -69,7 +69,7 @@ def git_ls(rev, carpeta):
 
 def main():
     args = sys.argv[1:]
-    base, manifiesto, ver = "ebdb272", os.path.join(XP, "RocolaOs", "GANCHOS.tsv"), False
+    base, manifiesto, ver = "ca9802f", os.path.join(XP, "RocolaOs", "GANCHOS.tsv"), False
     if "--base" in args: i = args.index("--base"); base = args[i + 1]; del args[i:i + 2]
     if "--manifiesto" in args: i = args.index("--manifiesto"); manifiesto = args[i + 1]; del args[i:i + 2]
     if "-v" in args: ver = True; args.remove("-v")

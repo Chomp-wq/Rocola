@@ -157,7 +157,7 @@ namespace Rocola
         }
         private void IndexedSave(string identity, byte[] bytes)
         {
-            if (bytes == null || bytes.Length != Bytes) return;
+            if (bytes == null || bytes.Length != Bytes || Form1.RocolaOsSpotifyCatalogoEsMiniatura(identity)) return;   // ROCOLA OS g50: (XP) if (bytes == null || bytes.Length != Bytes) return; — la previa de 32 px de una portada de Spotify no se guarda en previews32-v1.bin: nada de Spotify al disco (RocolaOs/RocolaOs.SpotifyCatalogo.cs; de XP, false)
             lock (sync) {
                 Load(); ulong key = Key(identity);
                 if (ReadPixels(key, null) != null) return;

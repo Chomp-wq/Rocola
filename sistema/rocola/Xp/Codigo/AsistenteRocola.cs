@@ -209,7 +209,7 @@ namespace Rocola
             if (!asistenteVisible) return true;           // regreso animado: no activar nada debajo
             if (unchecked(Environment.TickCount - asistenteInicioTick) < 450) return true;
             if (repeticion) return true;                  // mantener un boton no recorre varias opciones
-            if (IsBack(kc)) CierraAsistente();
+            if (IsBack(kc)) { if (!RocolaOsAsistenteAtras()) CierraAsistente(); }   // ROCOLA OS g78: (XP) if (IsBack(kc)) CierraAsistente(); — ROJO en la pregunta de Spotify vuelve a la de XP (RocolaOs/RocolaOs.Asistente.cs; en la de XP y sin Spotify, false: se cierra, como XP)
             else if (IsLeft(kc) || IsUp(kc)) SeleccionaAsistente(asistenteSeleccion - 1);
             else if (IsRight(kc) || IsDown(kc)) SeleccionaAsistente(asistenteSeleccion + 1);
             else if (IsOK(kc)) EligeAsistente();
@@ -261,7 +261,7 @@ namespace Rocola
         internal const int AsistenteOpciones = 3;
         private void SeleccionaAsistente(int seleccion)
         {
-            seleccion = Math.Max(0, Math.Min(AsistenteOpciones - 1, seleccion));
+            seleccion = Math.Max(0, Math.Min(RocolaOsAsistenteOpciones - 1, seleccion));   // ROCOLA OS g70: (XP) seleccion = Math.Max(0, Math.Min(AsistenteOpciones - 1, seleccion)); — con el modo Spotify y la llave de la API la pregunta lleva cuatro opciones (la cuarta, «Canciones de Spotify») y la de Spotify, tres (RocolaOs/RocolaOs.Asistente.cs; sin Spotify, AsistenteOpciones de XP)
             if (asistenteSeleccion == seleccion) return;
             asistenteSeleccion = seleccion; AnimaAsistente(AsistenteGestoGpu.Senalar);
         }
@@ -271,7 +271,7 @@ namespace Rocola
         private void EligeAsistente()
         {
             if (!asistenteVisible || asistenteMision != 0) return;
-            EmpiezaMision(asistenteSeleccion + 1);
+            if (!RocolaOsAsistenteElige()) EmpiezaMision(asistenteSeleccion + 1);   // ROCOLA OS g77: (XP) EmpiezaMision(asistenteSeleccion + 1); — «Canciones de Spotify» abre la pregunta de Spotify y en ella cada opcion empieza su guia (RocolaOs/RocolaOs.Asistente.cs; las de XP y sin Spotify, false: EmpiezaMision de XP)
         }
 
         private void AsistenteClick(Point punto)
@@ -282,7 +282,7 @@ namespace Rocola
             // sigue hacia la pared: quien lo dio queria cerrar, no elegir un disco a ciegas.
             if (!r.Contains(punto)) { CierraAsistente(); return; }
             punto.Offset(-r.Left, -r.Top);
-            for (int i = 0; i < AsistenteOpciones; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))
+            for (int i = 0; i < RocolaOsAsistenteOpciones; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))   // ROCOLA OS g71: (XP) for (int i = 0; i < AsistenteOpciones; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto)) — el toque tambien llega a la cuarta opcion (RocolaOs/RocolaOs.Asistente.cs; sin Spotify, las tres de XP)
             { asistenteSeleccion = i; asistenteActividadTick = Environment.TickCount; EligeAsistente(); return; }
         }
 
@@ -292,7 +292,7 @@ namespace Rocola
             asistenteActividadTick = Environment.TickCount;
             Rectangle r = GpuPanel.AsistentePanelRect(ClientSize.Width, ClientSize.Height);
             punto.Offset(-r.Left, -r.Top);
-            for (int i = 0; i < AsistenteOpciones; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))
+            for (int i = 0; i < RocolaOsAsistenteOpciones; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto))   // ROCOLA OS g72: (XP) for (int i = 0; i < AsistenteOpciones; i++) if (AsistenteOpcionRect(r.Width, r.Height, i).Contains(punto)) — el raton tambien elige la cuarta opcion (RocolaOs/RocolaOs.Asistente.cs; sin Spotify, las tres de XP)
             { SeleccionaAsistente(i); return; }
         }
 
@@ -319,13 +319,13 @@ namespace Rocola
             bool guia = asistenteMision != 0 && !adios;   // despidiendose: el globo de siempre, con el adios
             int w = ClientSize.Width, h = ClientSize.Height;
             Size tam = guia ? GpuPanel.AsistenteGuiaTam(w, h) : GpuPanel.AsistentePanelRect(w, h).Size;
-            int pagina = adios ? PaginaAdios : guia ? 16 + asistenteMision : 0;
+            int pagina = adios ? PaginaAdios : guia ? 16 + asistenteMision : RocolaOsAsistenteMenuPagina();   // ROCOLA OS g79: (XP) int pagina = adios ? PaginaAdios : guia ? 16 + asistenteMision : 0; — al abrirse la ayuda mira si va lo de Spotify; la pregunta con Spotify es la pagina 40 o 41, para que el globo se hornee otra vez (RocolaOs/RocolaOs.Asistente.cs; sin Spotify, 0)
             int leccion = guia ? ClaveGuia() : 0;
             if (asistentePanel != null && asistentePanelTam == tam && asistentePanelPagina == pagina
                 && asistentePanelSeleccion == asistenteSeleccion && asistentePanelLeccion == leccion) return;
             SKBitmap nuevo = adios ? PintaAdiosAsistente(tam.Width, tam.Height)   // EN LINUX: un SKBitmap
                 : guia ? PintaGuiaActual(tam.Width, tam.Height)
-                : PintaPanelAsistente(tam.Width, tam.Height, 0, 0, asistenteSeleccion);
+                : RocolaOsAsistenteMenuPinta(tam.Width, tam.Height, asistenteSeleccion) ?? PintaPanelAsistente(tam.Width, tam.Height, 0, 0, asistenteSeleccion);   // ROCOLA OS g80: (XP) : PintaPanelAsistente(tam.Width, tam.Height, 0, 0, asistenteSeleccion); — el globo de la pregunta con la cuarta opcion o con las tres de Spotify, con el mismo dibujo (RocolaOs/RocolaOs.AsistentePinta.cs; sin Spotify, null: el de XP)
             SKBitmap anterior = asistentePanel; asistentePanel = nuevo; asistentePanelVersion++;   // EN LINUX: un SKBitmap
             asistentePanelTam = tam; asistentePanelPagina = pagina; asistentePanelSeleccion = asistenteSeleccion; asistentePanelLeccion = leccion;
             asistentePagina = pagina; asistenteLeccion = leccion;
@@ -335,7 +335,7 @@ namespace Rocola
         internal static Rectangle AsistenteOpcionRect(int w, int h, int i)
         {
             int x = AsistenteGloboMargen(w), derecha = Math.Max(12, w / 20);
-            return new Rectangle(x, (int)(h * (.50f + i * .135f)), Math.Max(1, w - x - derecha), Math.Max(22, (int)(h * .115f)));
+            return RocolaOsAsistenteCuatro ? RocolaOsAsistenteOpcion4(x, derecha, w, h, i) : new Rectangle(x, (int)(h * (.50f + i * .135f)), Math.Max(1, w - x - derecha), Math.Max(22, (int)(h * .115f)));   // ROCOLA OS g76: (XP) return new Rectangle(x, (int)(h * (.50f + i * .135f)), Math.Max(1, w - x - derecha), Math.Max(22, (int)(h * .115f))); — con cuatro opciones van un poco mas juntas para que la cuarta quepa sobre la leyenda (RocolaOs/RocolaOs.Asistente.cs; con tres, el rectangulo de XP)
         }
 
         // LOS CONTROLES DIBUJADOS EN LA OPCION ELEGIDA (peticion del 12-10-2026: "pon los controles en su pantalla,
