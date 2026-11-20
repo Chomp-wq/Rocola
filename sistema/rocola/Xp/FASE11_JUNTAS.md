@@ -71,4 +71,13 @@ g20-g24, g40-g57, g60-g62, g70-g87, g90-g98, g100-g101; 20 archivos de `Codigo/`
 
 ### Las pruebas
 
-PENDIENTE
+EN CURSO (20-11-2026, tercera sesión, después del corte): lo de abajo es lo ya medido; falta lo marcado «falta».
+
+Los programas: JIT (`dotnet build -c Release`) y NativeAOT (`dotnet publish -p:PublishAot=true`) del código de `9621d34` (el de
+`junta-2` desde entonces: los commits de después solo tocan pruebas y documentos), en `/root/rocola-trabajo/fase11/junta-segunda/jit` y
+`.../aot`. JIT: 0 errores y 13 avisos, los mismos 13 de `avisos-base.txt` (archivo y línea; ninguno nuevo). NativeAOT: sale con 0, 0 avisos
+IL/AOT (13 avisos de C#, los mismos).
+
+- `ganchos.py --base 69e6547`: TODO BIEN; 63 ganchos en 25 archivos; `Codigo/` devolviendo los ganchos: 112 archivos iguales a `69e6547`.
+- `diff-xp.py --sin-ganchos` (112 archivos): 5 135 líneas quitadas, 4 868 puestas y 229 sin marca, las de la base.
+- falta: las baterías y el nivel 0 (se corren).
