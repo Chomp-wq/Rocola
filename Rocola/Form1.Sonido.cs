@@ -217,10 +217,10 @@ namespace Rocola
         // «Probar» (Ctrl+F3 -> Sonido): el nivel de la noche (y su grave) al momento, HASTA OTRO TOQUE (decision del dueno del 17-11-2026:
         // «Que se quede hasta que lo vuelva a pulsar»; antes, 15 s). Sigue aunque se cierre la ventana, para oirlo por el local; si se
         // olvida, se quita solo a los 30 min, y no sobrevive a un reinicio. Al quitarla vuelve rapido (de dia) o se queda (si ya es de noche).
-        internal void PruebaNoche() { PruebaNoche(false); }
+        internal void PruebaNoche() { PruebaNocheDe(false); }
         // NV4 (20-11-2026): «Probar la madrugada», lo mismo con la madrugada entera. Tocar el otro boton cambia de prueba sin quitarla.
-        internal void PruebaMadrugada() { PruebaNoche(true); }
-        private void PruebaNoche(bool mad)
+        internal void PruebaMadrugada() { PruebaNocheDe(true); }
+        private void PruebaNocheDe(bool mad)
         {
             if (ProbandoNoche && nochePruebaMad == mad) nochePruebaHasta = (Environment.TickCount - 1) | 1;   // ya estaba: se quita (AvanzaModoNoche la da por acabada y vuelve rapido)
             else nochePruebaHasta = (Environment.TickCount + NochePruebaMs) | 1;
@@ -247,6 +247,7 @@ namespace Rocola
             if (msPasados <= 0) return avance;
             if (haciaNoche) { avance += (double)msPasados / NocheBajadaMs; if (avance > 1.0) avance = 1.0; }
             else { avance -= (double)msPasados / NocheRampaMs; if (avance < 0.0) avance = 0.0; }
+            if (avance < 1e-9) avance = 0.0; else if (avance > 1.0 - 1e-9) avance = 1.0;   // (20-11-2026) los restos de redondeo: en los extremos, 0 y 1 exactos (de dia, el grave y el corte en 0 de verdad)
             return avance;
         }
 

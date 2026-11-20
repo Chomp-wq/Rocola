@@ -29,8 +29,15 @@ using NAudio.Wave;
 //     se ignoran sin error; el 23 guardado pasa a 22 una vez (noche_desde_22=).
 //  7) LA BAJADA DE UNA HORA, PAREJA EN dB, y el arranque ya de noche.
 //  8) LA SUBIDA DE LA MANANA (20 s), «PROBAR» RAPIDO, EL GRAVE DE NOCHE (N1) y SalaLocal bit a bit de dia.
-//  9) AL 50 % (20-11-2026): -10 dB en la hora pareja en dB, los videos con la perilla al 50 %, el grave de noche igual, la subida de la
+//  9) AL 50 % (20-11-2026): -10 dB en la hora pareja en dB, los videos con los mismos dB, el grave de noche igual, la subida de la
 //     manana y «Probar» con su rampa (que de 50 a 65 % da un paso mayor para seguir llegando en 20 s y 1,5 s; de 66 a 90 %, el de antes).
+// 10) PARA LOS VECINOS (20-11-2026, el dueno: «Del modo noche haz lo que me recomiendes»; AUDIO_NOCHE_VECINOS_MODEST_2026-11-20.md):
+//     NV1 «Graves de noche» de 0 a 12 dB y 8 de fabrica (el 4 guardado pasa a 8 una vez, con la marca noche_graves_8=1); NV2 el corte del grave
+//     de noche (noche_corte=, 80 Hz; la etapa GraveMono.DeNoche: de dia bit a bit, de noche la curva del subgrave en fase lineal, su mezcla
+//     pareja en dB, sin chasquido al entrar ni muestras perdidas, y su empalme en un disco continuo); NV4 «Mas bajo de madrugada»
+//     (noche_madrugada=, _desde=, _pct=: la segunda bajada de una hora, las horas de cruce, prendida ya de madrugada, «Probar la madrugada»,
+//     a las 7 todo sube en 20 s); NV5a los videos con los mismos dB que la musica; y el volumen parejo del billar no aprende de noche.
+//     (Los tramos 1 a 9 se corren con la madrugada apagada: con la noche «siempre» de 0 a 24, la madrugada tambien seria siempre.)
 class FuenteN : ISampleProvider
 {
     readonly float[] x; int pos; readonly WaveFormat wf;
@@ -59,6 +66,15 @@ class Noche
         Check(fOn != null && fDesde != null && fHasta != null && fPct != null && mEs != null && mDb != null && mRampa != null, "el modo noche esta (campos, hora, dB y rampa)");
         if (fallos > 0) return fallos;
         Check((int)fDesde.GetValue(null) == 22 && (int)fHasta.GetValue(null) == 7, "de fabrica empieza a las 22 h y acaba a las 7");
+        // (20-11-2026) los de fabrica de lo de los vecinos, antes de que nada los toque
+        FieldInfo fGrav0 = TF.GetField("nocheGraves", T), fCorte = TF.GetField("nocheCorte", T), fMad = TF.GetField("nocheMadrugada", T),
+                  fMadD = TF.GetField("nocheMadDesde", T), fMadP = TF.GetField("nocheMadPct", T);
+        Check(fCorte != null && fMad != null && fMadD != null && fMadP != null, "estan el corte del grave (NV2) y la madrugada (NV4)");
+        if (fallos > 0) return fallos;
+        Check((int)fGrav0.GetValue(null) == 8 && (int)TF.GetField("NocheGravesMax", T).GetValue(null) == 12, "de fabrica, graves de noche 8 dB (de 0 a 12; antes 4, de 0 a 6)");
+        Check((int)fCorte.GetValue(null) == 80 && (bool)fMad.GetValue(null) && (int)fMadD.GetValue(null) == 1 && (int)fMadP.GetValue(null) == 70,
+              "de fabrica, el corte a 80 Hz y la madrugada encendida, desde la 1, al 70 %");
+        fMad.SetValue(null, false);   // (los tramos 1 a 9: sin la madrugada; ver arriba)
 
         Console.WriteLine("\n  1) EL CRUCE DE LA MEDIANOCHE\n");
         fDesde.SetValue(null, 23); fHasta.SetValue(null, 7);
@@ -159,7 +175,7 @@ class Noche
             mProb.Invoke(f, null);
             Check(Math.Abs((float)mFac.Invoke(f, null) - lin80) < 1e-6f, "«Probar», antes de la primera vuelta del reloj: ya en el nivel de la noche");
             fArr.SetValue(f, true); fFac.SetValue(f, lin80);
-            Check(Math.Abs((float)mVid.Invoke(f, null) - 0.80f) < 1e-4f, "los videos, al 80 % de su perilla");
+            Check(Math.Abs((float)mVid.Invoke(f, null) - lin80) < 1e-6f, "los videos, con los mismos dB que la musica (NV5a: -3,22 dB, la perilla al " + (lin80 * 100).ToString("0.0") + " %; antes al 80 %)");
             // Interruptor (17-11-2026, «que se quede hasta que lo vuelva a pulsar»): se queda mucho mas que los 15 s de antes, y otro toque la quita.
             int quedan = unchecked((int)fHastaP.GetValue(f) - Environment.TickCount);
             Check(quedan > 25 * 60 * 1000, "«Probar» se queda hasta otro toque (con tope de seguridad de 30 min): quedan " + quedan / 60000 + " min");
@@ -198,7 +214,9 @@ class Noche
             carga("noche_desde=0\r\n");
             Check((int)fDesde.GetValue(null) == 0, "y un 0");
             carga("noche_graves=9\r\n");
-            Check((int)fGrav.GetValue(null) == 6, "noche_graves=9 se acota a 6");
+            Check((int)fGrav.GetValue(null) == 9, "noche_graves=9 se lee (de 0 a 12 desde el 20-11-2026; antes se acotaba a 6)");
+            carga("noche_graves=15\r\n");
+            Check((int)fGrav.GetValue(null) == 12, "noche_graves=15 se acota a 12");
             carga("noche_graves=2\r\n");
             Check((int)fGrav.GetValue(null) == 2, "noche_graves=2 se lee");
             carga("noche_graves=0\r\n");
@@ -229,6 +247,9 @@ class Noche
             Check(nuevo.Contains("noche_pct=50\r\n") && (int)fPct.GetValue(null) == 50, "un 50 se guarda como noche_pct=50 y se vuelve a leer igual");
             fPct.SetValue(null, 85);
             Check(nuevo.Contains("noche_desde_22=1\r\n") && nuevo.Contains("noche_graves=0\r\n"), "y se guardan la marca noche_desde_22=1 y noche_graves=");
+            Check(nuevo.Contains("noche_graves_8=1\r\n") && nuevo.Contains("noche_corte=80\r\n") && nuevo.Contains("noche_madrugada=0\r\n")
+                  && nuevo.Contains("noche_madrugada_desde=1\r\n") && nuevo.Contains("noche_madrugada_pct=70\r\n"),
+                  "y la marca noche_graves_8=1, noche_corte=, noche_madrugada=, noche_madrugada_desde= y noche_madrugada_pct= (20-11-2026)");
 
             Console.WriteLine("\n  7) LA BAJADA DE UNA HORA, PAREJA EN dB\n");
             Type TSala = TF.GetNestedType("SalaLocal", T);
@@ -266,7 +287,7 @@ class Noche
             Check(Math.Abs(d10 - dbN / 6.0) < 0.01 && Math.Abs(d20 - dbN / 3.0) < 0.01, "PAREJO EN dB: a 10 y 20 min lleva 1/6 y 2/6 de los dB (" + d10.ToString("0.000") + ", " + d20.ToString("0.000") + ")");
             float fMitad = (float)mFacAv.Invoke(null, new object[] { 0.5 });
             Check(Math.Abs(aDb(fMitad) - dbN / 2.0) < 0.001, "a la mitad del tiempo, la mitad de los dB");
-            Check(Math.Abs((float)mVid.Invoke(f, null) - 0.80f) < 1e-3f, "los videos, al final, al 80 % de su perilla (coherentes con la bajada)");
+            Check(Math.Abs((float)mVid.Invoke(f, null) - factor()) < 1e-7f, "los videos, al final, con los mismos dB que la musica (NV5a)");
             Check(Math.Abs(g30 - 2.0) < 0.02 && Math.Abs(g60 - 4.0) < 0.01, "el grave de noche: la mitad (" + g30.ToString("0.00") + " dB) a mitad de la bajada y todo (" + g60.ToString("0.00") + " dB) al final");
             double avTodo = (double)mAvAv.Invoke(null, new object[] { 0.0, true, 3600000 }), avCasi = (double)mAvAv.Invoke(null, new object[] { 0.0, true, 3599000 });
             Check(avTodo == 1.0 && avCasi < 1.0, "AvanzaAvance: 3 600 000 ms hacia la noche = el avance completo; 3 599 000, no");
@@ -364,7 +385,7 @@ class Noche
             Check(!fallo && bajaSiempre, "al 50 %, la bajada de una hora corre sin fallo y solo baja, vuelta a vuelta");
             Check(e59 > db50 + 0.1 && Math.Abs(e60 - db50) < 0.002, "a los 59 minutos todavia no llega (le faltan " + (e59 - db50).ToString("0.000") + " dB) y a los 60 llega a los -10 dB (" + e60.ToString("0.000") + ")");
             Check(Math.Abs(e10 - db50 / 6.0) < 0.01 && Math.Abs(e20 - db50 / 3.0) < 0.01, "PAREJO EN dB: a 10 y 20 min lleva 1/6 y 2/6 de los -10 dB (" + e10.ToString("0.000") + ", " + e20.ToString("0.000") + "; -0,167 dB por minuto)");
-            Check(Math.Abs(v30 - 0.75) < 1e-3 && Math.Abs((float)mVid.Invoke(f, null) - 0.50f) < 1e-3f, "los videos: a la media hora la perilla al " + (v30 * 100).ToString("0.0") + " % (la mitad del camino en dB) y al final al 50 %");
+            Check(Math.Abs(20 * Math.Log10(v30) + 5.0) < 0.01 && Math.Abs((float)mVid.Invoke(f, null) - lin50n) < 1e-6f, "los videos (NV5a): a la media hora " + (20 * Math.Log10(v30)).ToString("0.00") + " dB (la mitad de los -10) y al final -10 dB, como la musica (antes la perilla al 75 y al 50 %: -2,5 y -6 dB)");
             Check(Math.Abs(h30 - 2.0) < 0.02 && Math.Abs(h60 - 4.0) < 0.01, "el grave de noche no depende del porcentaje: " + h30.ToString("0.00") + " dB a la media hora y " + h60.ToString("0.00") + " al final");
             fArr.SetValue(f, false); vuelta(4000);
             Check(Math.Abs(factor() - lin50n) < 1e-6f && Math.Abs(grave() - 4f) < 0.01f, "al 50 %, prendida ya de noche: arranca en -10 dB al momento (" + aDb(factor()).ToString("0.000") + " dB)");
@@ -384,11 +405,266 @@ class Noche
             pasosV = 0; for (k = 0; k < 12; k++) { vuelta(500); pasosV++; if (factor() == 1f && grave() == 0f) break; }
             Check(factor() == 1f && grave() == 0f && pasosV * 0.5 <= 2.0, "acabada la prueba, de dia, vuelve a 1 en " + (pasosV * 0.5) + " s");
             fPct.SetValue(null, 80);
+
+            Vecinos(TF, f, fOn, fDesde, fHasta, fPct, fGrav, fCorte, fMad, fMadD, fMadP, dir);
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
 
         Console.WriteLine();
         Console.WriteLine(fallos == 0 ? "  TODO BIEN (" + oks + " comprobaciones)" : "  FALLOS: " + fallos);
         return fallos;
+    }
+
+    // 10) PARA LOS VECINOS (20-11-2026): NV1, NV2, NV4 y NV5a.
+    static void Vecinos(Type TF, object f, FieldInfo fOn, FieldInfo fDesde, FieldInfo fHasta, FieldInfo fPct, FieldInfo fGrav, FieldInfo fCorte,
+                        FieldInfo fMad, FieldInfo fMadD, FieldInfo fMadP, string dir)
+    {
+        Console.WriteLine("\n  10) PARA LOS VECINOS (20-11-2026): NV1 graves de noche, NV2 el corte del grave, NV4 la madrugada, NV5a los videos\n");
+        Type TSala = TF.GetNestedType("SalaLocal", T), TG = TF.GetNestedType("GraveMono", T);
+        FieldInfo fGN = TSala.GetField("GravesNocheDb", T), fMz = TG.GetField("NocheMezcla", T);
+        FieldInfo fArr = TF.GetField("nocheArrancada", T), fHastaP = TF.GetField("nochePruebaHasta", T), fUlt = TF.GetField("nocheUltMs", T), fMira = TF.GetField("nocheMirada", T);
+        MethodInfo av = TF.GetMethod("AvanzaModoNoche", T), mFac = TF.GetMethod("FactorNoche", T), mVid = TF.GetMethod("FactorVideoNoche", T);
+        MethodInfo mProb = TF.GetMethod("PruebaNoche", T, null, Type.EmptyTypes, null), mProbM = TF.GetMethod("PruebaMadrugada", T);
+        MethodInfo mMezcla = TF.GetMethod("MezclaDeCorte", T), mEquiv = TF.GetMethod("CorteEquivalenteHz", T), mEsMad = TF.GetMethod("EsMadrugada", T);
+        MethodInfo mDeNoche = TG.GetMethod("DeNoche", T), mHz = TF.GetMethod("NocheCorteHz", T), mDb = TF.GetMethod("NocheDb", T);
+        Check(fMz != null && mMezcla != null && mEquiv != null && mEsMad != null && mDeNoche != null && mProbM != null && mHz != null, "estan la mezcla del corte, la madrugada y la etapa del corte de noche");
+        if (fMz == null || mMezcla == null || mEquiv == null || mEsMad == null || mDeNoche == null || mProbM == null || mHz == null) return;
+        Func<double, double> aDb = v => 20.0 * Math.Log10(v);
+        Action<int> vuelta = ms => { fUlt.SetValue(f, Environment.TickCount - ms); fMira.SetValue(f, 0); av.Invoke(f, null); };
+        Func<float> factor = () => (float)mFac.Invoke(f, null), grave = () => (float)fGN.GetValue(null), mezcla = () => (float)fMz.GetValue(null);
+        Func<float> corteAv = () => (float)TF.GetField("corteAhora", T).GetValue(f);
+        Action<string> carga = txt => { File.WriteAllText(Path.Combine(dir, "rocola_config.txt"), txt); TF.GetMethod("LoadConfigPrefs", T).Invoke(f, null); };
+        Func<int, float> dbDe = p => { int a = (int)fPct.GetValue(null); fPct.SetValue(null, p); float r = (float)mDb.Invoke(null, null); fPct.SetValue(null, a); return r; };
+
+        // --- La configuracion
+        carga("noche_graves=4\r\n");
+        Check((int)fGrav.GetValue(null) == 8, "NV1: un noche_graves=4 sin la marca (el de fabrica de antes, que se escribia siempre) pasa a 8");
+        carga("noche_graves=4\r\nnoche_graves_8=1\r\n");
+        Check((int)fGrav.GetValue(null) == 4, "con la marca noche_graves_8=1, un 4 puesto a mano se respeta");
+        carga("noche_graves_8=1\r\nnoche_graves=4\r\n");
+        Check((int)fGrav.GetValue(null) == 4, "(la marca antes de la clave, igual)");
+        carga("noche_graves=6\r\n"); bool g6 = (int)fGrav.GetValue(null) == 6; carga("noche_graves=0\r\n"); bool g0 = (int)fGrav.GetValue(null) == 0;
+        carga("noche_graves=12\r\n");
+        Check(g6 && g0 && (int)fGrav.GetValue(null) == 12, "otro valor sin marca se respeta (6, 0 y 12)");
+        carga("noche_corte=0\r\n"); bool c0 = (int)fCorte.GetValue(null) == 0; carga("noche_corte=85\r\n"); bool c85 = (int)fCorte.GetValue(null) == 90;
+        carga("noche_corte=30\r\n"); bool c30 = (int)fCorte.GetValue(null) == 40; carga("noche_corte=200\r\n"); bool c200 = (int)fCorte.GetValue(null) == 120;
+        carga("noche_corte=-5\r\n"); bool cm = (int)fCorte.GetValue(null) == 0; carga("noche_corte=100\r\n");
+        Check(c0 && c85 && c30 && c200 && cm && (int)fCorte.GetValue(null) == 100, "NV2 noche_corte=: 0 lo apaga, 85 -> 90 (a pasos de 10, como su deslizador), 30 -> 40, 200 -> 120, -5 -> 0, 100 se lee");
+        carga("noche_madrugada=0\r\nnoche_madrugada_desde=2\r\nnoche_madrugada_pct=60\r\n");
+        bool m1 = !(bool)fMad.GetValue(null) && (int)fMadD.GetValue(null) == 2 && (int)fMadP.GetValue(null) == 60;
+        carga("noche_madrugada=1\r\nnoche_madrugada_desde=12\r\nnoche_madrugada_pct=40\r\n");
+        bool m2 = (bool)fMad.GetValue(null) && (int)fMadD.GetValue(null) == 2 && (int)fMadP.GetValue(null) == 50;
+        carga("noche_madrugada_desde=23\r\nnoche_madrugada_pct=95\r\n");
+        bool m3 = (int)fMadD.GetValue(null) == 23 && (int)fMadP.GetValue(null) == 90;
+        Check(m1 && m2 && m3, "NV4: noche_madrugada=, _desde= (de las 22 a las 6; las 12 se ignoran) y _pct= (acotado a 50-90) se leen");
+        fGrav.SetValue(null, 8); fCorte.SetValue(null, 80); fMad.SetValue(null, true); fMadD.SetValue(null, 1); fMadP.SetValue(null, 70); fPct.SetValue(null, 80);
+        TF.GetMethod("SaveConfigPrefs", T).Invoke(f, null);
+        Codigo.EsperaGuardado(TF, f);
+        string nuevo = File.ReadAllText(Path.Combine(dir, "rocola_config.txt"));
+        Check(nuevo.Contains("noche_graves=8\r\n") && nuevo.Contains("noche_graves_8=1\r\n") && nuevo.Contains("noche_corte=80\r\n") && nuevo.Contains("noche_madrugada=1\r\n")
+              && nuevo.Contains("noche_madrugada_desde=1\r\n") && nuevo.Contains("noche_madrugada_pct=70\r\n"), "se guardan las de fabrica y la marca");
+        carga(nuevo);
+        Check((int)fGrav.GetValue(null) == 8 && (int)fCorte.GetValue(null) == 80 && (bool)fMad.GetValue(null) && (int)fMadD.GetValue(null) == 1 && (int)fMadP.GetValue(null) == 70,
+              "y se vuelven a leer igual (el 8 con su marca)");
+
+        // --- Las horas de la madrugada (1 a 7 de fabrica), siempre dentro de la noche
+        fDesde.SetValue(null, 22); fHasta.SetValue(null, 7);
+        Func<int, int, bool> esM = (h, mi) => (bool)mEsMad.Invoke(null, new object[] { new DateTime(2026, 11, 21, h, mi, 0) });
+        Check(!esM(22, 30) && !esM(0, 59) && esM(1, 0) && esM(3, 30) && esM(6, 59) && !esM(7, 0) && !esM(12, 0),
+              "la madrugada: las 22:30 y las 0:59 no; la 1:00, las 3:30 y las 6:59 si; las 7:00 y las 12:00 no");
+        fMadD.SetValue(null, 23);
+        Check(esM(23, 0) && esM(0, 30) && !esM(22, 59), "desde las 23: las 23:00 y las 0:30 si, las 22:59 no");
+        fMadD.SetValue(null, 22);
+        Check(esM(22, 0) && esM(6, 0) && !esM(21, 59), "desde las 22 (lo mismo que la noche): de 22 a 7");
+        fDesde.SetValue(null, 3); fHasta.SetValue(null, 3);
+        Check(!esM(1, 30) && !esM(3, 30), "sin noche (desde = hasta), nunca hay madrugada");
+        fMadD.SetValue(null, 1); fDesde.SetValue(null, 22); fHasta.SetValue(null, 7);
+
+        // --- La mezcla del corte: pareja en dB a 0,7 veces el corte
+        double g = 1.0 / Math.Sqrt(1.0 + Math.Pow(1.0 / 0.7, 8.0));
+        Func<float, float> mz = c => (float)mMezcla.Invoke(null, new object[] { c });
+        bool pareja = true; string mal = "";
+        foreach (float c in new float[] { 0.1f, 0.25f, 0.5f, 0.75f, 0.9f })
+        {
+            double m = mz(c), dbAlli = aDb((1 - m) + m * g), quiere = c * aDb(g);
+            if (Math.Abs(dbAlli - quiere) > 0.01) { pareja = false; mal += " " + c + ":" + dbAlli.ToString("0.00"); }
+        }
+        Check(mz(0f) == 0f && mz(-1f) == 0f && mz(1f) == 1f && mz(2f) == 1f, "la mezcla: 0 con el corte en 0 y 1 con el corte entero, exactos");
+        Check(pareja, "PAREJA EN dB a 0,7 veces el corte (" + aDb(g).ToString("0.0") + " dB con el corte entero): a 0,1, 0,25, 0,5, 0,75 y 0,9 del avance quita esa parte de los dB" + mal);
+        // Para los videos (NV5b, rocola-xp): el corte equivalente de un Butterworth de cuarto orden da lo mismo a 0,7 veces el corte.
+        Func<float, float, float> eq = (hz, c) => (float)mEquiv.Invoke(null, new object[] { hz, c });
+        bool equiv = true;
+        foreach (float c in new float[] { 0.25f, 0.5f, 0.75f })
+        {
+            double fc = eq(80f, c), bw = 1.0 / Math.Sqrt(1.0 + Math.Pow(fc / 56.0, 8.0));
+            if (Math.Abs(aDb(bw) - c * aDb(g)) > 0.02) equiv = false;
+        }
+        Check(eq(80f, 0f) == 0f && eq(0f, 1f) == 0f && eq(80f, 1f) == 80f && equiv && eq(80f, 0.5f) > 60f && eq(80f, 0.5f) < 70f,
+              "el corte equivalente de los videos: 0 sin corte, 80 Hz con el corte entero y a la mitad " + eq(80f, 0.5f).ToString("0.0") + " Hz (los mismos dB a 56 Hz)");
+
+        // --- La etapa del corte de noche (GraveMono.DeNoche)
+        int fs = 44100;
+        Random rnd = new Random(5);
+        float[] ruido = new float[fs * 4 * 2]; for (int i = 0; i < ruido.Length; i++) ruido[i] = (float)(0.3 * (rnd.NextDouble() * 2 - 1));
+        Func<float[], float, int[], float[]> pasa = (xs, hz, trozos) =>
+        {
+            ISampleProvider s = (ISampleProvider)mDeNoche.Invoke(null, new object[] { new FuenteN(xs, fs, 2), hz });
+            List<float> r = new List<float>(); float[] b = new float[8192]; int n, k = 0;
+            while ((n = s.Read(b, 0, trozos[k++ % trozos.Length])) > 0) for (int i = 0; i < n; i++) r.Add(b[i]);
+            return r.ToArray();
+        };
+        fMz.SetValue(null, 0f);
+        float[] y0 = pasa(ruido, 80f, new int[] { 4096, 1, 777, 2, 3000 });
+        bool igual = y0.Length == ruido.Length; for (int i = 0; igual && i < ruido.Length; i++) if (y0[i] != ruido[i]) igual = false;
+        Check(igual, "NV2 de dia (mezcla 0): una senal pasa por la etapa IDENTICA, bit a bit, leida a trozos de 4096, 1, 777, 2 y 3000");
+        Func<double, float[]> tono = hz => { float[] xt = new float[fs * 3 * 2]; for (int i = 0; i < fs * 3; i++) { float v = (float)(0.25 * Math.Sin(2 * Math.PI * hz * i / fs)); xt[2 * i] = v; xt[2 * i + 1] = v; } return xt; };
+        Func<float[], double> ef = y => { double s = 0; int a = fs, b2 = 2 * fs; for (int i = a; i < b2; i++) s += (double)y[2 * i] * y[2 * i] + (double)y[2 * i + 1] * y[2 * i + 1]; return Math.Sqrt(s / (2 * (b2 - a))); };
+        Func<double, float, double> ganancia = (hz, m) => { fMz.SetValue(null, m); float[] x = tono(hz); return aDb(ef(pasa(x, 80f, new int[] { 4096 })) / ef(x)); };
+        double g40 = ganancia(40, 1f), g56 = ganancia(56, 1f), g80 = ganancia(80, 1f), g160 = ganancia(160, 1f), g1k = ganancia(1000, 1f);
+        Console.WriteLine("        con el corte entero a 80 Hz: 40 Hz " + g40.ToString("0.00") + " dB, 56 Hz " + g56.ToString("0.00") + ", 80 Hz " + g80.ToString("0.00") + ", 160 Hz " + g160.ToString("0.000") + ", 1 kHz " + g1k.ToString("0.0000"));
+        Check(g40 < -21.0 && g40 > -25.0 && Math.Abs(g80 + 3.0) < 0.3 && Math.Abs(g160) < 0.1 && Math.Abs(g1k) < 0.01,
+              "con la noche entera es la curva del subgrave a 80 Hz (Butterworth de cuarto orden en fase lineal): 40 Hz unos -22 dB (la de verdad, -24; el FIR de 3,5 periodos se queda en -22 a la mitad del corte, como el subgrave a 15 Hz), 80 Hz -3, 160 Hz y 1 kHz casi nada");
+        double g56m = ganancia(56, mz(0.5f));
+        Check(Math.Abs(g56m - g56 / 2) < 0.4, "a la mitad del avance, a 56 Hz la mitad de los dB (" + g56m.ToString("0.00") + " de " + g56.ToString("0.00") + ")");
+        // Entra a media cancion: sin chasquido y sin perder ni repetir muestras.
+        float[] mezclaT = new float[fs * 4 * 2];
+        for (int i = 0; i < fs * 4; i++) { double t = (double)i / fs; float v = (float)(0.2 * Math.Sin(2 * Math.PI * 50 * t) + 0.1 * Math.Sin(2 * Math.PI * 1000 * t)); mezclaT[2 * i] = v; mezclaT[2 * i + 1] = 0.9f * v; }
+        fMz.SetValue(null, 0f);
+        {
+            ISampleProvider s = (ISampleProvider)mDeNoche.Invoke(null, new object[] { new FuenteN(mezclaT, fs, 2), 80f });
+            List<float> r = new List<float>(); float[] b = new float[1024]; int n, lecturas = 0;
+            while ((n = s.Read(b, 0, b.Length)) > 0)
+            {
+                for (int i = 0; i < n; i++) r.Add(b[i]);
+                if (++lecturas == 86) fMz.SetValue(null, 1f);      // a 1 s: entra (la etapa sigue la mezcla en 25 ms)
+                if (lecturas == 258) fMz.SetValue(null, 0f);       // a 3 s: sale
+            }
+            float[] y = r.ToArray();
+            double saltoMax = 0, saltoAntes = 0;
+            for (int i = 2; i < y.Length; i += 2) { double d = Math.Abs(y[i] - y[i - 2]); if (i < fs * 2 * 1 - 4096) saltoAntes = Math.Max(saltoAntes, d); saltoMax = Math.Max(saltoMax, d); }
+            bool tras = true; for (int i = fs * 2 * 3 + 2 * 4096 + 1200; i < y.Length; i++) if (y[i] != mezclaT[i]) { tras = false; break; }
+            Check(y.Length == mezclaT.Length, "entrar y salir a media cancion no pierde ni repite muestras (" + y.Length + " de " + mezclaT.Length + ")");
+            Check(saltoMax < saltoAntes * 1.05 + 1e-4, "sin chasquido: el mayor salto entre dos muestras seguidas (" + saltoMax.ToString("0.0000") + ") no pasa del de la musica sin tocar (" + saltoAntes.ToString("0.0000") + ")");
+            Check(tras, "y al volver a 0 la cancion vuelve a salir bit a bit");
+        }
+        // Disco continuo: la siguiente sigue con la memoria de la anterior (Sigue), sin escalon en el cambio.
+        fMz.SetValue(null, 1f);
+        {
+            int mitad = fs * 2 * 2;   // 2 s
+            float[] a1 = new float[mitad], a2 = new float[mezclaT.Length - mitad]; Array.Copy(mezclaT, a1, mitad); Array.Copy(mezclaT, mitad, a2, 0, a2.Length);
+            object e1 = mDeNoche.Invoke(null, new object[] { new FuenteN(a1, fs, 2), 80f }), e2 = mDeNoche.Invoke(null, new object[] { new FuenteN(a2, fs, 2), 80f });
+            TG.GetMethod("Sigue", T).Invoke(e2, new object[] { e1 });
+            List<float> r = new List<float>(); float[] b = new float[4096]; int n;
+            while ((n = ((ISampleProvider)e1).Read(b, 0, b.Length)) > 0) for (int i = 0; i < n; i++) r.Add(b[i]);
+            while ((n = ((ISampleProvider)e2).Read(b, 0, b.Length)) > 0) for (int i = 0; i < n; i++) r.Add(b[i]);
+            float[] todo = pasa(mezclaT, 80f, new int[] { 4096 });
+            double dif = 0, difLejos = 0, saltoUnion = 0, saltoLejos = 0; int cerca = fs / 20 * 2;   // 50 ms a cada lado del cambio
+            for (int i = 0; i < r.Count && i < todo.Length; i++) { double d = Math.Abs(r[i] - todo[i]); dif = Math.Max(dif, d); if (Math.Abs(i - mitad) > cerca) difLejos = Math.Max(difLejos, d); }
+            for (int i = mitad - 400; i < mitad + 400; i += 2) saltoUnion = Math.Max(saltoUnion, Math.Abs(r[i] - r[i - 2]));
+            for (int i = fs * 2 + 2; i < fs * 2 + 20000; i += 2) saltoLejos = Math.Max(saltoLejos, Math.Abs(r[i] - r[i - 2]));
+            Console.WriteLine("        disco continuo: lo mas que se aparta de la cancion de una pieza " + dif.ToString("0.00000") + " (a mas de 50 ms del cambio, " + difLejos.ToString("0.000000") + "); salto en el cambio " + saltoUnion.ToString("0.0000") + " (lejos " + saltoLejos.ToString("0.0000") + ")");
+            Check(r.Count == mezclaT.Length && saltoUnion < saltoLejos * 1.1 + 1e-4 && difLejos < 1e-4,
+                  "en un disco continuo la siguiente sigue con la anterior: sin escalon en el cambio (cerca del cambio se aparta como el subgrave de siempre: la anterior acaba sin conocer la siguiente y el empalme lo lleva a cero en 25 ms)");
+        }
+        fMz.SetValue(null, 0f);
+        // Se arma en la cadena (con corte), detras del grave en mono, y la siguiente del mismo disco la hereda.
+        MethodInfo mArma = TF.GetMethod("ArmaCadena", T), mSigueA = TF.GetMethod("SigueA", T);
+        Check(Codigo.Llama(Codigo.Llamadas(mArma), "DeNoche") && Codigo.Llama(Codigo.Llamadas(mArma), "NocheCorteHz"), "ArmaCadena arma el corte de noche (GraveMono.DeNoche) con NocheCorteHz");
+        Check(mSigueA != null && Codigo.LeeCampo(new List<MethodBase> { mSigueA }, "Noche"), "SigueA pasa el corte de noche a la siguiente del mismo disco");
+        fCorte.SetValue(null, 0); fMad.SetValue(null, false);
+        float hz0 = (float)mHz.Invoke(null, null);
+        fMad.SetValue(null, true); float hzM = (float)mHz.Invoke(null, null);
+        fCorte.SetValue(null, 100); float hz100 = (float)mHz.Invoke(null, null);
+        Check(hz0 == 0f && hzM == 80f && hz100 == 100f, "sin corte ni madrugada no se arma (la cadena de siempre); con el corte apagado y la madrugada puesta, a 80 Hz; si no, el del mando");
+        fCorte.SetValue(null, 80);
+
+        // --- La noche y la madrugada, por reloj (la madrugada siempre con desde = 0 y la noche de 0 a 24)
+        fPct.SetValue(null, 80); fGrav.SetValue(null, 8); fCorte.SetValue(null, 80); fMad.SetValue(null, true); fMadP.SetValue(null, 70);
+        double dbN = dbDe(80), dbM = dbDe(70);
+        fDesde.SetValue(null, 3); fHasta.SetValue(null, 3); fOn.SetValue(null, true); fArr.SetValue(f, false); fHastaP.SetValue(f, 0);
+        vuelta(4000);
+        Check(factor() == 1f && grave() == 0f && mezcla() == 0f && (float)mVid.Invoke(f, null) == 1f, "de dia: volumen 1, graves 0, mezcla del corte 0 y videos 1, exactos");
+        // 22 h: la noche (sin madrugada todavia: desde la 1, y la noche de 0 a 24 con madrugada desde las 24 = nunca)
+        fDesde.SetValue(null, 0); fHasta.SetValue(null, 24); fMadD.SetValue(null, 24);
+        bool baja = true; float previo = 1f, gPrev = 0f, mPrev = 0f; double n30 = 0, g30 = 0, c30x = 0; bool fallo = false;
+        for (int k = 1; k <= 900; k++)
+        {
+            try { vuelta(4000); } catch (Exception e) { fallo = true; Console.WriteLine("    " + (e.InnerException ?? e).Message); break; }
+            float v = factor(); if (v > previo || grave() < gPrev || mezcla() < mPrev) baja = false; previo = v; gPrev = grave(); mPrev = mezcla();
+            if (k == 450) { n30 = aDb(v); g30 = grave(); c30x = corteAv(); }
+        }
+        Check(!fallo && baja, "la noche baja una hora (volumen, graves y corte, vuelta a vuelta solo hacia abajo)");
+        Check(Math.Abs(aDb(factor()) - dbN) < 0.002 && Math.Abs(grave() - 8f) < 1e-4 && mezcla() == 1f,
+              "a los 60 min: " + aDb(factor()).ToString("0.000") + " dB, graves de noche " + grave().ToString("0.00") + " dB (NV1, 8 de fabrica) y el corte entero (NV2)");
+        Check(Math.Abs(n30 - dbN / 2) < 0.01 && Math.Abs(g30 - 4.0) < 0.02 && Math.Abs(c30x - 0.5) < 0.01, "a la media hora, la mitad de todo: " + n30.ToString("0.000") + " dB, " + g30.ToString("0.00") + " dB de graves, el corte a " + c30x.ToString("0.00"));
+        Check(Math.Abs((float)mVid.Invoke(f, null) - factor()) < 1e-7f, "los videos con los mismos dB (NV5a)");
+        // La 1 h: la madrugada, otra hora
+        fMadD.SetValue(null, 0);
+        baja = true; previo = factor(); gPrev = grave(); double m10 = 0, m30 = 0, mg30 = 0, m59 = 0;
+        for (int k = 1; k <= 900; k++)
+        {
+            try { vuelta(4000); } catch (Exception e) { fallo = true; Console.WriteLine("    " + (e.InnerException ?? e).Message); break; }
+            float v = factor(); if (v > previo || grave() < gPrev || mezcla() != 1f) baja = false; previo = v; gPrev = grave();
+            if (k == 150) m10 = aDb(v); if (k == 450) { m30 = aDb(v); mg30 = grave(); } if (k == 885) m59 = aDb(v);
+        }
+        Console.WriteLine("        la madrugada: a 10 min " + m10.ToString("0.000") + " dB, a 30 " + m30.ToString("0.000") + ", a 59 " + m59.ToString("0.000") + ", a 60 " + aDb(factor()).ToString("0.000") + " (de " + dbN.ToString("0.000") + " a " + dbM.ToString("0.000") + ")");
+        Check(!fallo && baja, "NV4: desde la hora de la madrugada, otra bajada (solo hacia abajo; el corte ya entero, quieto)");
+        Check(Math.Abs(m10 - (dbN + (dbM - dbN) / 6)) < 0.01 && Math.Abs(m30 - (dbN + dbM) / 2) < 0.01 && m59 > dbM + 0.01, "PAREJA EN dB, de " + dbN.ToString("0.00") + " a " + dbM.ToString("0.00") + " en una hora (a los 59 min aun no llega)");
+        Check(Math.Abs(aDb(factor()) - dbM) < 0.002 && Math.Abs(grave() - 12f) < 1e-4 && Math.Abs(mg30 - 10.0) < 0.02 && mezcla() == 1f,
+              "a los 60 min: al 70 % (" + aDb(factor()).ToString("0.000") + " dB), graves de noche 12 dB (a la media hora " + mg30.ToString("0.00") + ") y el corte entero");
+        Check(Math.Abs((float)mVid.Invoke(f, null) - factor()) < 1e-7f, "y los videos con los mismos dB que la musica");
+        // Prendida ya de madrugada: al momento
+        fArr.SetValue(f, false); vuelta(4000);
+        Check(Math.Abs(aDb(factor()) - dbM) < 0.002 && Math.Abs(grave() - 12f) < 1e-4 && mezcla() == 1f, "prendida ya de madrugada: arranca al 70 %, con 12 dB de graves y el corte, al momento");
+        // Las 7: todo sube en 20 s
+        fDesde.SetValue(null, 3); fHasta.SetValue(null, 3); TF.GetField("nocheAvisada", T).SetValue(f, false);
+        int pasos = 0; bool sube = true; previo = factor();
+        for (int k = 0; k < 100; k++) { try { vuelta(500); } catch { sube = false; break; } pasos++; if (factor() < previo) sube = false; previo = factor(); if (factor() == 1f && grave() == 0f && mezcla() == 0f) break; }
+        Check(sube && factor() == 1f && grave() == 0f && mezcla() == 0f && pasos * 0.5 >= 15 && pasos * 0.5 <= 24, "a las 7 todo sube junto en " + (pasos * 0.5).ToString("0.0") + " s (unos 20): volumen 1, graves 0 y el corte fuera, exactos");
+        // Ninguna madrugada con ella apagada, ni con el modo noche apagado
+        fDesde.SetValue(null, 0); fHasta.SetValue(null, 24); fMadD.SetValue(null, 0); fMad.SetValue(null, false); fArr.SetValue(f, false); vuelta(4000);
+        Check(Math.Abs(aDb(factor()) - dbN) < 0.002 && Math.Abs(grave() - 8f) < 1e-4, "con «Mas bajo de madrugada» apagado, de madrugada se queda en la noche (80 % y 8 dB)");
+        fMad.SetValue(null, true); fOn.SetValue(null, false); fArr.SetValue(f, false); vuelta(4000);
+        Check(factor() == 1f && grave() == 0f && mezcla() == 0f, "con el modo noche apagado, ni noche ni madrugada");
+        fOn.SetValue(null, true);
+        // Nunca mas alta que la noche
+        fPct.SetValue(null, 60); fMadP.SetValue(null, 75); fArr.SetValue(f, false); vuelta(4000);
+        Check(Math.Abs(aDb(factor()) - dbDe(60)) < 0.002 && Math.Abs(grave() - 12f) < 1e-4, "con la noche al 60 % y la madrugada al 75 %, la madrugada no sube el volumen (" + aDb(factor()).ToString("0.00") + " dB): solo los graves y el corte");
+        fPct.SetValue(null, 80); fMadP.SetValue(null, 70);
+        // Con el corte de noche apagado, la madrugada si corta
+        fCorte.SetValue(null, 0); fMadD.SetValue(null, 24); fArr.SetValue(f, false); vuelta(4000);
+        float sinCorte = mezcla();
+        fMadD.SetValue(null, 0); fArr.SetValue(f, false); vuelta(4000);
+        Check(sinCorte == 0f && mezcla() == 1f, "con el corte de noche apagado: de noche sin corte, de madrugada con el (a 80 Hz)");
+        fCorte.SetValue(null, 80);
+
+        // --- «Probar» y «Probar la madrugada» (de dia)
+        fDesde.SetValue(null, 3); fHasta.SetValue(null, 3); fArr.SetValue(f, false); fHastaP.SetValue(f, 0); vuelta(4000);
+        mProb.Invoke(f, null);
+        int pp = 0; for (int k = 0; k < 12; k++) { vuelta(500); pp++; if (Math.Abs(aDb(factor()) - dbN) < 0.002 && Math.Abs(grave() - 8f) < 1e-4 && mezcla() == 1f) break; }
+        Check(pp * 0.5 <= 2.0, "«Probar»: la noche entera (80 %, 8 dB de graves y el corte) en " + (pp * 0.5) + " s");
+        mProbM.Invoke(f, null);
+        pp = 0; for (int k = 0; k < 12; k++) { vuelta(500); pp++; if (Math.Abs(aDb(factor()) - dbM) < 0.002 && Math.Abs(grave() - 12f) < 1e-4 && mezcla() == 1f) break; }
+        Check(pp * 0.5 <= 2.0 && (bool)TF.GetProperty("ProbandoMadrugada", T).GetValue(f, null), "«Probar la madrugada» (tocado con «Probar» puesto: cambia de prueba): la madrugada entera (70 % y 12 dB) en " + (pp * 0.5) + " s");
+        mProbM.Invoke(f, null);   // otro toque: se quita
+        pp = 0; for (int k = 0; k < 12; k++) { vuelta(500); pp++; if (factor() == 1f && grave() == 0f && mezcla() == 0f) break; }
+        Check(factor() == 1f && grave() == 0f && mezcla() == 0f && pp * 0.5 <= 2.0, "otro toque la quita y de dia vuelve todo en " + (pp * 0.5) + " s");
+
+        // --- El volumen parejo del billar no aprende con la noche puesta
+        Type TC = TF.GetNestedType("CadenaCancion", T), TM = TF.GetNestedType("MideMargen", T);
+        object cad = Activator.CreateInstance(TC, true);
+        object mm = Activator.CreateInstance(TM, T, null, new object[] { new FuenteN(new float[16], fs, 2), 0.9f, true, 0f, 10.0 }, null);
+        TC.GetField("Margen", T).SetValue(cad, mm);
+        FieldInfo fSon = TF.GetField("cadenaSonando", T); object antesSon = fSon.GetValue(f);
+        fSon.SetValue(f, cad);
+        vuelta(500);
+        bool deDia = (bool)TM.GetField("Descarta", T).GetValue(mm);
+        fDesde.SetValue(null, 0); fHasta.SetValue(null, 24); fMadD.SetValue(null, 24);
+        for (int k = 0; k < 3; k++) vuelta(4000);
+        bool deNoche = (bool)TM.GetField("Descarta", T).GetValue(mm);
+        fSon.SetValue(f, antesSon);
+        Check(!deDia && deNoche, "el volumen parejo del billar aprende de dia, y no de una cancion que sono con la noche puesta (se descarta)");
+        fDesde.SetValue(null, 22); fHasta.SetValue(null, 7); fMadD.SetValue(null, 1); fArr.SetValue(f, false);
+        fMz.SetValue(null, 0f); fGN.SetValue(null, 0f);
     }
 }
