@@ -94,8 +94,8 @@ if [[ " $partes " == *" convierte "* ]]; then
   sed 's/^/   /' "$o/log.txt"; grep -F '[convierte]' "$b" | sed 's/^[0-9-]* [0-9:]*  /   /'
   si "convierte: sale con 0" test "$(cat $o/salio)" = 0
   for x in "01 m4a:440" "02 ogg:550" "03 flac:660" "04 wav:770" "05 mp3wav:880" "07 buena:330"; do
-    n=${x%:*}; hz=${x#*:}; t=$(oye "$f" $hz); c=$(cobro convierte "$n.mp3")
-    si "convierte: «$n» se cobro (${c:-?}) y se oyo entera ($hz Hz: $t s de 6)" bash -c "[ -n '$c' ] && [ \$(echo '$c' | awk '{print \$1-\$2}') = 1 ] && python3 -c 'import sys; sys.exit(0 if 5.5 <= $t <= 6.6 else 1)'"
+    n=${x%:*}; hz=${x#*:}; t=$(oye "$f" $hz); c=$(cobro convierte "$n.mp3"); hasta=6.6; [ "$n" = "07 buena" ] && hasta=8.2   # (la buena se pide otra vez a los 58 s y suena hasta el cierre)
+    si "convierte: «$n» se cobro (${c:-?}) y se oyo entera ($hz Hz: $t s de 6)" bash -c "[ -n '$c' ] && [ \$(echo '$c' | awk '{print \$1-\$2}') = 1 ] && python3 -c 'import sys; sys.exit(0 if 5.5 <= $t <= $hasta else 1)'"
   done
   a=$(cobro convierte "01 m4a.mp3" | cut -d' ' -f1); z=$(cobro convierte "07 buena.mp3" 2 | cut -d' ' -f1)
   si "convierte: ningun credito devuelto (antes de la primera, $a; al pedir otra al final, ${z:-?} = $a menos las 6)" test "${z:-x}" = "$((a - 6))"
