@@ -14,9 +14,13 @@
 //   POST {cuentas}/api/token                         la llave (client_credentials o refresh_token), renovada 60 s antes de vencer
 //   GET  /search?q=..&type=track,album,artist&limit=10&market=MX           UNA por busqueda (el tope de hoy es 10 por tipo)
 //   GET  /albums/{id}?market=MX                      un disco con sus canciones (hasta 50; si tiene mas, /albums/{id}/tracks?offset=50)
-//   GET  /artists/{id}/albums?include_groups=album,single&limit=10&market=MX   los discos de un artista
 //   GET  /me/tracks?limit=50, /me/albums?limit=50, /me/playlists?limit=50     lo de la cuenta (solo con refresh_token; una vez por sesion)
 //   GET  /playlists/{id}/items?limit=50&market=MX    una lista propia, al abrirla (ya no es /tracks; las de Spotify dan 404)
+// LAS PAREDES DEL BUSCADOR (grupo paredes-buscador, FASE11_paredes-buscador.md), de 10 en 10 y solo la pagina que se mira:
+//   GET  /artists/{id}/albums?include_groups=album,single&limit=10&offset=N&market=MX   la pared de un artista
+//   GET  /search?q=..&type=album&limit=10&offset=N&market=MX              «Todos los discos de «lo escrito»» (offset hasta 990)
+//   GET  /search?q=artist:"NOMBRE"&type=track&limit=10&offset=N&market=MX «Canciones de ARTISTA» (hasta 50: 5 peticiones, al entrar)
+//   GET  /me/top/tracks?limit=40, /me/player/recently-played?limit=40   los atajos de SP9 (solo con refresh_token; una vez por sesion)
 // LA CUOTA (por cuenta de desarrollador; con 429 hay bloqueos de horas): UNA peticion a la vez, en su hilo; lo que alguien espera (buscar,
 // abrir) antes que lo de la cuenta; nada de recorridos de fondo; todo lo contestado se guarda en memoria toda la sesion; una busqueda se pide
 // a los 300 ms de dejar de escribir (y solo la ultima); con 429 no se pregunta NADA hasta que pase su Retry-After («Spotify frena» en la
@@ -54,6 +58,16 @@ namespace Rocola
     {
         internal string Id, Uri, Nombre, PortadaUrl;
     }
+    // UNA PAGINA DE UNA PARED DEL BUSCADOR (paredes-buscador): hasta 10 discos (o canciones) desde Offset, y cuantos dice Spotify que hay
+    internal sealed class RocolaOsSpotifyCatalogoPagina
+    {
+        internal int Offset, Total;
+        // (revision cuota-hilos-y-fallos, 2a pasada) cuantos trajo «items» de verdad, contando los null: menos de los pedidos = ahi se acaba
+        // la lista, diga lo que diga «total» (el de search es una estimacion de Spotify y puede quedarse muy por encima)
+        internal int Crudos;
+        internal List<RocolaOsSpotifyCatalogoDisco> Discos = new List<RocolaOsSpotifyCatalogoDisco>();
+        internal List<RocolaOsSpotifyCatalogoCancion> Canciones = new List<RocolaOsSpotifyCatalogoCancion>();
+    }
     internal sealed class RocolaOsSpotifyCatalogoBusqueda
     {
         internal string Consulta;
@@ -62,20 +76,27 @@ namespace Rocola
         internal List<RocolaOsSpotifyCatalogoArtista> Artistas = new List<RocolaOsSpotifyCatalogoArtista>();
     }
 
-    internal static class RocolaOsSpotifyCatalogoApi
+    internal static partial class RocolaOsSpotifyCatalogoApi   // (partial: la busqueda de la pareja de la sustitucion invisible va en RocolaOs.CalidadApi.cs)
     {
         internal const string Archivo = "rocola_spotify_api.txt";
         internal const int EsperaBusquedaMs = 300;
         internal const int ReintentoCuentaMs = 30000;
+        internal const int PorPaginaPared = 10;      // lo que da Spotify por peticion (el tope de hoy en search y artists/{id}/albums)
+        internal const int TopeTodos = 1000;         // search: offset de 0 a 1000 (documentacion de search del 14-11-2026)
+        internal const int TopeCanciones = 50;       // «Canciones de ARTISTA»: hasta 50, en 5 peticiones
+        internal const string ParedArtista = "pared_artista", ParedTodos = "pared_todos", ParedCanciones = "pared_canciones";
+        internal const string AtajoTop = "atajo_top", AtajoRecientes = "atajo_recientes";
 
         // ---------- los pedidos ----------
         private sealed class Pedido
         {
-            internal string Que;              // «busca», «disco», «artista», «lista», «cuenta»
+            internal string Que;              // «busca», «disco», «lista», «cuenta», las paginas de las paredes y los atajos
             internal string Clave;            // la consulta o el id
             internal bool Alguien;            // lo espera alguien (va antes que lo de la cuenta)
             internal long NoAntesDe;          // (las busquedas: a los 300 ms de la ultima tecla)
             internal Action<object, string> Listo;   // (resultado o null, error o null), en ESTE hilo: quien lo pide lo encarga a la pantalla
+            internal Func<bool> Sigue;        // (revision cuota-hilos-y-fallos; las paginas de las paredes) null = siempre; si no, se pregunta en
+                                              // este hilo al tocarle: false = ya nadie mira esa pagina, y se deja sin preguntar a la red
         }
         private static readonly object cerrojo = new object();
         private static readonly List<Pedido> cola = new List<Pedido>();
@@ -86,10 +107,11 @@ namespace Rocola
         // lo contestado, toda la sesion (solo en memoria)
         private static readonly Dictionary<string, RocolaOsSpotifyCatalogoBusqueda> busquedas = new Dictionary<string, RocolaOsSpotifyCatalogoBusqueda>(StringComparer.Ordinal);
         private static readonly Dictionary<string, RocolaOsSpotifyCatalogoDisco> discos = new Dictionary<string, RocolaOsSpotifyCatalogoDisco>(StringComparer.Ordinal);
-        private static readonly Dictionary<string, List<RocolaOsSpotifyCatalogoDisco>> deArtista = new Dictionary<string, List<RocolaOsSpotifyCatalogoDisco>>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, RocolaOsSpotifyCatalogoPagina> paginas = new Dictionary<string, RocolaOsSpotifyCatalogoPagina>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, List<RocolaOsSpotifyCatalogoCancion>> atajos = new Dictionary<string, List<RocolaOsSpotifyCatalogoCancion>>(StringComparer.Ordinal);
 
         // ---------- lo que se sabe (para el estado y las pruebas: sin secretos) ----------
-        private static long peticiones, peticionesBusqueda, peticionesDisco, peticionesArtista, peticionesCuenta, peticionesLlave, frenadas, fallos;
+        private static long peticiones, peticionesBusqueda, peticionesDisco, peticionesArtista, peticionesCuenta, peticionesLlave, frenadas, fallos, peticionesPared, peticionesAtajos, dejadas;
         private static int ultimoCodigo;
         private static long frenaHastaMs;          // (Environment.TickCount64) con 429: nada hasta entonces
         private static string frenaRazon = "";
@@ -118,11 +140,24 @@ namespace Rocola
         }
         internal static void AbreDisco(string id, Action<object, string> listo) { Encola(new Pedido { Que = "disco", Clave = id, Alguien = true, Listo = listo }); }
         internal static void AbreLista(string id, Action<object, string> listo) { Encola(new Pedido { Que = "lista", Clave = id, Alguien = true, Listo = listo }); }
-        internal static List<RocolaOsSpotifyCatalogoDisco> DeArtistaYa(string id)
+        // UNA PAGINA DE UNA PARED (que: ParedArtista, ParedTodos o ParedCanciones; de: el id del artista, lo escrito o el nombre del artista;
+        // desde: el offset, de 10 en 10). Lo que alguien mira: va antes que lo de la cuenta. La contestada, de memoria toda la sesion.
+        internal static string ClavePagina(string de, int desde) { return desde.ToString(CultureInfo.InvariantCulture) + "\n" + (de ?? ""); }
+        internal static RocolaOsSpotifyCatalogoPagina PaginaYa(string que, string de, int desde)
         {
-            lock (cerrojo) { List<RocolaOsSpotifyCatalogoDisco> l; return deArtista.TryGetValue(id, out l) ? l : null; }
+            lock (cerrojo) { RocolaOsSpotifyCatalogoPagina p; return paginas.TryGetValue(que + "\n" + ClavePagina(de, desde), out p) ? p : null; }
         }
-        internal static void AbreArtista(string id, Action<object, string> listo) { Encola(new Pedido { Que = "artista", Clave = id, Alguien = true, Listo = listo }); }
+        // (revision cuota-hilos-y-fallos) sigue: si aun hace falta cuando le toque (lo lee ESTE hilo: solo campos volatiles); si no, se deja
+        // sin preguntar y se contesta Dejada. Al hojear deprisa (mantener ARRIBA), cada pagina que pasa pediria lo suyo y la cola lo pediria
+        // TODO despues, pagina por pagina, aunque ya nadie lo mire: con esto, solo la que se mira.
+        internal const string Dejada = "ya no se mira";
+        internal static void PidePagina(string que, string de, int desde, Action<object, string> listo, Func<bool> sigue = null) { Encola(new Pedido { Que = que, Clave = ClavePagina(de, desde), Alguien = true, Listo = listo, Sigue = sigue }); }
+        // LOS ATAJOS DE SP9 (AtajoTop, AtajoRecientes): solo con la cuenta, una vez por sesion, detras de lo que alguien espera
+        internal static List<RocolaOsSpotifyCatalogoCancion> AtajoYa(string que)
+        {
+            lock (cerrojo) { List<RocolaOsSpotifyCatalogoCancion> l; return atajos.TryGetValue(que, out l) ? l : null; }
+        }
+        internal static void PideAtajo(string que, Action<object, string> listo) { Encola(new Pedido { Que = que, Clave = "", Alguien = false, Listo = listo }); }
         // LO DE LA CUENTA (solo con refresh_token): una vez por sesion, detras de lo que alguien espera
         internal static void PideCuenta(Action<object, string> listo) { Encola(new Pedido { Que = "cuenta", Clave = "", Alguien = false, Listo = listo }); }
 
@@ -130,7 +165,12 @@ namespace Rocola
         {
             lock (cerrojo)
             {
-                foreach (Pedido q in cola) if (q.Que == p.Que && q.Clave == p.Clave) { Action<object, string> a = q.Listo, b = p.Listo; q.Listo = delegate (object r, string e) { if (a != null) a(r, e); if (b != null) b(r, e); }; return; }
+                foreach (Pedido q in cola) if (q.Que == p.Que && q.Clave == p.Clave)
+                {
+                    Action<object, string> a = q.Listo, b = p.Listo; q.Listo = delegate (object r, string e) { if (a != null) a(r, e); if (b != null) b(r, e); };
+                    Func<bool> sa = q.Sigue, sb = p.Sigue; q.Sigue = sa == null || sb == null ? null : (() => sa() || sb());   // (lo quiere cualquiera de los dos)
+                    return;
+                }
                 cola.Add(p);
             }
             Despierta();
@@ -170,6 +210,17 @@ namespace Rocola
                 }
                 if (estadoPedido) { estadoPedido = false; EscribeEstado(); }
                 if (p == null) { hayAlgo.WaitOne(espera); continue; }
+                // (revision cuota-hilos-y-fallos) una pagina de pared que ya nadie mira: se deja (ninguna peticion) y se contesta Dejada
+                bool sigue = true;
+                try { sigue = p.Sigue == null || p.Sigue(); } catch { }
+                if (!sigue)
+                {
+                    Interlocked.Increment(ref dejadas);
+                    estadoPedido = true;
+                    try { if (p.Listo != null) p.Listo(null, Dejada); }
+                    catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "al dejar «" + p.Que + "»", ex); }
+                    continue;
+                }
                 object r = null; string error = null;
                 try { r = Atiende(p, out error); }
                 catch (Exception ex) { error = "fallo: " + ex.GetType().Name; RocolaOs.Falla("spotify_catalogo", "pedido «" + p.Que + "»", ex); }
@@ -254,24 +305,31 @@ namespace Rocola
                 lock (cerrojo) { lista.Canciones = l; }
                 return lista;
             }
-            if (p.Que == "artista")
+            if (p.Que == ParedArtista || p.Que == ParedTodos || p.Que == ParedCanciones) return AtiendePagina(c, m, p, out error);
+            if (p.Que == AtajoTop || p.Que == AtajoRecientes)
             {
-                List<RocolaOsSpotifyCatalogoDisco> ya = DeArtistaYa(p.Clave);
+                List<RocolaOsSpotifyCatalogoCancion> ya = AtajoYa(p.Que);
                 if (ya != null) return ya;
-                JsonDocument d = Pide(c, false, "/artists/" + Uri.EscapeDataString(p.Clave) + "/albums?include_groups=album,single&limit=10&market=" + m, ref peticionesArtista, true, out error);
+                if (!c.TieneCuenta) { error = "sin cuenta"; return null; }
+                // (top: los objetos de cancion van sueltos en items; recently-played: cada renglon la trae en «track»)
+                JsonDocument d = Pide(c, true, p.Que == AtajoTop ? "/me/top/tracks?limit=40" : "/me/player/recently-played?limit=40", ref peticionesAtajos, false, out error);
                 if (d == null) return null;
-                List<RocolaOsSpotifyCatalogoDisco> l = new List<RocolaOsSpotifyCatalogoDisco>();
+                List<RocolaOsSpotifyCatalogoCancion> l = new List<RocolaOsSpotifyCatalogoCancion>();
+                HashSet<string> vistas = new HashSet<string>(StringComparer.Ordinal);
                 using (d)
                 {
                     JsonElement items;
                     if (d.RootElement.TryGetProperty("items", out items) && items.ValueKind == JsonValueKind.Array)
-                        foreach (JsonElement a in items.EnumerateArray()) { RocolaOsSpotifyCatalogoDisco x = LeeDisco(a, null); if (x != null) l.Add(x); }
+                        foreach (JsonElement it in items.EnumerateArray())
+                        {
+                            if (it.ValueKind != JsonValueKind.Object) continue;
+                            JsonElement t = it;
+                            if (p.Que == AtajoRecientes && (!it.TryGetProperty("track", out t) || t.ValueKind != JsonValueKind.Object)) continue;
+                            RocolaOsSpotifyCatalogoCancion x = LeeCancion(t, null);
+                            if (x != null && vistas.Add(x.Uri)) l.Add(x);   // (lo escuchado hace poco repite: una vez cada una)
+                        }
                 }
-                lock (cerrojo)
-                {
-                    for (int i = 0; i < l.Count; i++) { RocolaOsSpotifyCatalogoDisco y; if (discos.TryGetValue(l[i].Id, out y)) l[i] = y; else discos[l[i].Id] = l[i]; }
-                    deArtista[p.Clave] = l;
-                }
+                lock (cerrojo) { atajos[p.Que] = l; }
                 return l;
             }
             if (p.Que == "cuenta")
@@ -338,8 +396,51 @@ namespace Rocola
                 error = null;
                 return l;
             }
+            if (p.Que == "pareja") return AtiendePareja(c, p.Clave, out error);   // (la sustitucion invisible: RocolaOs.CalidadApi.cs)
             error = "pedido desconocido";
             return null;
+        }
+
+        // UNA PAGINA DE UNA PARED: 1 peticion de 10 (nada mas: la siguiente se pide cuando alguien la mira)
+        private static object AtiendePagina(Config c, string m, Pedido p, out string error)
+        {
+            error = null;
+            int nl = p.Clave.IndexOf('\n');
+            int desde = int.Parse(p.Clave.Substring(0, nl), NumberStyles.Integer, CultureInfo.InvariantCulture);
+            string de = p.Clave.Substring(nl + 1), clave = p.Que + "\n" + p.Clave;
+            lock (cerrojo) { RocolaOsSpotifyCatalogoPagina ya; if (paginas.TryGetValue(clave, out ya)) return ya; }
+            string off = "&limit=" + PorPaginaPared.ToString(CultureInfo.InvariantCulture) + "&offset=" + desde.ToString(CultureInfo.InvariantCulture) + "&market=" + m;
+            string ruta = p.Que == ParedArtista ? "/artists/" + Uri.EscapeDataString(de) + "/albums?include_groups=album,single" + off
+                : p.Que == ParedTodos ? "/search?q=" + Uri.EscapeDataString(de) + "&type=album" + off
+                : "/search?q=" + Uri.EscapeDataString("artist:\"" + de + "\"") + "&type=track" + off;
+            JsonDocument d = p.Que == ParedArtista ? Pide(c, false, ruta, ref peticionesArtista, true, out error) : Pide(c, false, ruta, ref peticionesPared, true, out error);
+            if (d == null) return null;
+            RocolaOsSpotifyCatalogoPagina pg = new RocolaOsSpotifyCatalogoPagina { Offset = desde };
+            using (d)
+            {
+                JsonElement pag = d.RootElement, s;
+                if (p.Que != ParedArtista)
+                {
+                    if (!pag.TryGetProperty(p.Que == ParedTodos ? "albums" : "tracks", out s) || s.ValueKind != JsonValueKind.Object) { error = "respuesta rara (sin la pagina)"; return null; }
+                    pag = s;
+                }
+                pg.Total = Math.Max(0, Entero(pag, "total"));
+                JsonElement items;
+                if (pag.TryGetProperty("items", out items) && items.ValueKind == JsonValueKind.Array)
+                    foreach (JsonElement x in items.EnumerateArray())
+                    {
+                        pg.Crudos++;
+                        if (x.ValueKind != JsonValueKind.Object) continue;   // (Spotify da huecos null)
+                        if (p.Que == ParedCanciones) { RocolaOsSpotifyCatalogoCancion t = LeeCancion(x, null); if (t != null) pg.Canciones.Add(t); }
+                        else { RocolaOsSpotifyCatalogoDisco y = LeeDisco(x, null); if (y != null) pg.Discos.Add(y); }
+                    }
+            }
+            lock (cerrojo)
+            {
+                for (int i = 0; i < pg.Discos.Count; i++) { RocolaOsSpotifyCatalogoDisco y; if (discos.TryGetValue(pg.Discos[i].Id, out y)) pg.Discos[i] = y; else discos[pg.Discos[i].Id] = pg.Discos[i]; }
+                paginas[clave] = pg;
+            }
+            return pg;
         }
 
         // ---------- la red ----------
@@ -778,6 +879,9 @@ namespace Rocola
                 sb.Append("busquedas=").Append(Interlocked.Read(ref peticionesBusqueda).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("discos=").Append(Interlocked.Read(ref peticionesDisco).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("artistas=").Append(Interlocked.Read(ref peticionesArtista).ToString(CultureInfo.InvariantCulture)).Append('\n');
+                sb.Append("paredes=").Append(Interlocked.Read(ref peticionesPared).ToString(CultureInfo.InvariantCulture)).Append('\n');
+                sb.Append("atajos=").Append(Interlocked.Read(ref peticionesAtajos).ToString(CultureInfo.InvariantCulture)).Append('\n');
+                sb.Append("dejadas=").Append(Interlocked.Read(ref dejadas).ToString(CultureInfo.InvariantCulture)).Append('\n');   // (paginas que ya nadie miraba: sin peticion)
                 sb.Append("cuenta_peticiones=").Append(Interlocked.Read(ref peticionesCuenta).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("llaves=").Append(Interlocked.Read(ref peticionesLlave).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("frenadas=").Append(Interlocked.Read(ref frenadas).ToString(CultureInfo.InvariantCulture)).Append('\n');

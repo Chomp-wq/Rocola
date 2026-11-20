@@ -8,6 +8,8 @@
 2. **HECHO** (lo hizo el grupo catalogo al juntar el núcleo; comprobado en la junta: el archivo no está y sus pruebas cuentan las
    pedidas por las «COBRADA» del núcleo). Borrar `RocolaOs/RocolaOs.SpotifyCatalogoDobleI6.cs` (el doble de I6 del grupo catalogo) y cambiar sus comprobaciones de «pedidas».
 3. **El buscador con Spotify como lo pidió el dueño el 7-11-2026** (AGENTS.md; lo funcional, sin dibujo nuevo):
+   **HECHO en la rama `paredes-buscador`** (`FASE11_paredes-buscador.md`; 116 de 116 en JIT y NativeAOT con la API falsa). Al elegir un
+   artista de Spotify se abre su pared (punto 4), no sus discos en la letra.
    - Un disco o lista de Spotify abierto desde el buscador que NO está en la pared: REGRESAR vuelve AL BUSCADOR con lo escrito y la
      misma elección (hoy el grupo catalogo vuelve a la pared, a la letra ♫). Si está en la pared, la pared se queda en él.
    - Artistas de Spotify: solo los que NO están en la rocola (ni por el nombre de un disco tuyo, sin acentos ni mayúsculas), hasta 3,
@@ -18,7 +20,8 @@
    - SP9, los atajos del buscador: «tus más escuchadas» (`/v1/me/top/tracks`) y «escuchado hace poco»
      (`/v1/me/player/recently-played`), una petición cada uno por sesión y en memoria; solo con `refresh_token` (si no, no salen).
    - El zoom desde la casilla es visual: a la presentación del final.
-4. **Las paredes del buscador** (decisión del dueño del 15-11-2026, AGENTS.md). Va en un grupo propio («paredes-buscador») encima de la
+4. **Las paredes del buscador** (decisión del dueño del 15-11-2026, AGENTS.md). **HECHO en la rama `paredes-buscador`** (`FASE11_paredes-buscador.md`, ganchos
+   g53-g56). Va en un grupo propio («paredes-buscador») encima de la
    rama `fase11-catalogo` en cuanto ese grupo termine (toca los mismos archivos), y se junta con la base si está a tiempo:
    - Pared del artista que solo está en Spotify: la rejilla de XP (18 por página, IZQ/DER, ARRIBA/ABAJO de página, PONER abre), fuera de
      la barra de letras; la cabecera dice su nombre. Casilla 1: «Canciones de ARTISTA» (`/v1/search?type=track&q=artist:"..."`, hasta
@@ -34,6 +37,16 @@
      pared, apagado = XP tal cual.
 5. **HECHO en la junta** (abajo, escena «noche»). **El modo noche también con Spotify** (pregunta del dueño del 15-11-2026): comprobar con una escena que una canción de Spotify (la
    fuente de `RocolaOs.SpotifyFuente.cs` por `ArmaCadena`) baja al `noche_pct` de noche y con «Probar», con su rampa, igual que una de XP.
+6. **La sustitución invisible** (petición del dueño del 15-11-2026, «si una canción de mi rocola existe en mejor calidad en Spotify, que tome
+   esa versión»; rama `sustitucion-spotify`, `FASE11_sustitucion.md`): la función «calidad_spotify» (encendida de fábrica), sus ganchos
+   **g60-g62** (`AperturaAudio.cs` 238, `Form1.Sonido.cs` 1288, `NivelDisco.cs` 46) y los cambios chicos en lo del núcleo y del catálogo
+   (`SinDevolver` en la fuente, la primera línea de `RocolaOsSpotifyAbre`, `partial` y el pedido «pareja» en el cliente de la API). Al juntar:
+   la línea de la petición en `AGENTS.md`, y si las paredes del buscador renumeran ganchos, que no choquen con g60-g62.
+7. **El asistente con lo nuevo de Spotify** (petición del dueño del 15-11-2026, AGENTS.md): grupo «asistente-spotify» después de juntar
+   las paredes del buscador: guías nuevas del asistente con su mismo dibujo, solo con el modo Spotify; sin el modo, el de XP tal cual.
+   **HECHO en la rama `asistente-spotify`** (`FASE11_asistente-spotify.md`).
+8. **«AYUDA» siempre en la casilla de la ayuda** (petición del dueño del 15-11-2026): con Rocola OS activo, `AyudaCasillaGpu` no va
+   compacta en 1024x768 (la cabecera cede el sitio). Lo hace el grupo del asistente (es su casilla). **HECHO en la rama `asistente-spotify`**.
 
 ## La junta (15-11-2026, rama `junta-spotify`)
 
