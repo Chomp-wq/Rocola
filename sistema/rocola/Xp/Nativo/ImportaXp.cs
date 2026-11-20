@@ -23,7 +23,8 @@
 // QUE SE TRAE (lo lee el codigo de XP tal cual; quien lo lee, entre parentesis):
 //  - lo aprendido y medido, con sus rutas traducidas: rocola_sonoridad.txt (Sonoridad.cs), rocola_volumen.txt (Form1.Sonido.cs),
 //    rocola_eq.txt y rocola_stats.txt (Form1.Datos.cs), rocola_fuentes.txt (FuentesMedidas.cs), rocola_duracion.txt, rocola_afondo.txt y
-//    rocola_ia_hechas.txt (Form1.Biblioteca.cs), rocola_billar_nivel.txt (VolumenParejo.cs) y rocola_billar_bitacora.txt (BitacoraBillar.cs:
+//    rocola_ia_hechas.txt (Form1.Biblioteca.cs), rocola_billar_nivel.txt (VolumenParejo.cs; solo si la configuracion de XP trae
+//    parejo_v2=1, y la marca va con la tabla que quede: ver «LA MARCA DEL VOLUMEN PAREJO») y rocola_billar_bitacora.txt (BitacoraBillar.cs:
 //    solo lleva el nombre del archivo, va tal cual). Sin el archivo, su copia .bak (como lo recupera XP: RecuperaGuardadosCortados).
 //  - EL SELLO DE CADA CANCION (rocola_fuentes.txt: largo|creada|escrita|...): rocola-xp comprueba con el que la medida es del archivo que
 //    hay hoy (CompruebaFuenteMedida); si no cuadra, la adopta pero la vuelve a medir. «escrita» y el largo valen igual en Linux (NTFS guarda
@@ -293,12 +294,24 @@ namespace Rocola
                     if (reimporta || delLanzador.Contains("rocola_config.txt")) { final = JuntaConfig(cfg, ya); como = "; con las claves que solo tenia la de antes"; }
                     else { final = JuntaConfig(ya, cfg); como = "; junto a la que ya tenia rocola-xp (manda la suya)"; }
                 }
+                // LA MARCA DEL VOLUMEN PAREJO (parejo_v2=, 18-11-2026) VA CON LA TABLA QUE QUEDE: es de rocola_billar_nivel.txt, no una
+                // preferencia. Si la tabla de XP (con su marca) va a su sitio, «1»; si se queda la de rocola-xp (o ninguna), la marca que tenia
+                // rocola-xp, y si no tenia, ninguna (rocola-xp aparta lo suyo al cargar, como XP). Sin esto, juntar las dos configuraciones
+                // le pondria la marca de XP a una tabla vieja de rocola-xp aprendida con la presencia (o la de rocola-xp a una de XP sin ella).
+                string dstNivel = Path.Combine(destino, "rocola_billar_nivel.txt");
+                bool nivelDeXp = hechos.Contains("rocola_billar_nivel.txt")
+                    && (!File.Exists(dstNivel) || reimporta || delLanzador.Contains("rocola_billar_nivel.txt") || (ant == null && SinCanciones(dstNivel))
+                        || MismosBytes(Path.Combine(paso, "rocola_billar_nivel.txt"), dstNivel));
+                string parejo = null;
+                if (nivelDeXp) parejo = "1";
+                else if (File.Exists(cfgDestino) && !delLanzador.Contains("rocola_config.txt")) parejo = ValorDe(Lineas(LeeTexto(cfgDestino), false), "parejo_v2");
+                final = ConParejo(final, parejo);
                 try { EscribeTexto(Path.Combine(paso, "rocola_config.txt"), string.Join("\r\n", final) + (final.Count > 0 ? "\r\n" : "")); }
                 catch (Exception ex) { return Falla(4, "no se pudo escribir rocola_config.txt (" + ex.Message + ")"); }
                 hechos.Add("rocola_config.txt");
                 informe.Append("rocola_config.txt: ").Append(dirT).Append(" carpetas de musica (dir=) traducidas, ").Append(dirF).Append(" fuera");
                 if (resp > 0) informe.Append("; respaldo_dir= quitada");
-                informe.Append(como).Append("\r\n");
+                informe.Append(como).Append("; parejo_v2=").Append(parejo ?? "(ninguna)").Append(nivelDeXp ? " (con la tabla de XP)" : " (la de rocola-xp)").Append("\r\n");
             }
 
             // 5. Los modelos de IA, tal cual (sin el material para entrenar).
@@ -547,6 +560,22 @@ namespace Rocola
                 }
                 if (claves.Add(s.Substring(0, e).Trim())) r.Add(l);
             }
+            return r;
+        }
+
+        // El valor de una clave de la configuracion (la ultima que la diga; null si no esta).
+        private static string ValorDe(List<string> cfg, string clave)
+        {
+            string r = null;
+            foreach (string l in cfg) { string s = l.Trim(); if (s.StartsWith(clave + "=", StringComparison.Ordinal)) r = s.Substring(clave.Length + 1).Trim(); }
+            return r;
+        }
+        // La configuracion con parejo_v2= puesta a ese valor (una sola linea, al final) o sin ella (null).
+        private static List<string> ConParejo(List<string> cfg, string valor)
+        {
+            List<string> r = new List<string>();
+            foreach (string l in cfg) if (!l.Trim().StartsWith("parejo_v2=", StringComparison.Ordinal)) r.Add(l);
+            if (valor != null) r.Add("parejo_v2=" + valor);
             return r;
         }
 

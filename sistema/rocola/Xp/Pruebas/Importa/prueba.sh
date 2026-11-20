@@ -62,7 +62,7 @@ gen() { mkdir -p "$(dirname "$1")"; ffmpeg -hide_banner -loglevel error -y -f la
 # los ticks de .NET de la fecha de escritura y de la «creacion» que .NET da en Linux (la mas vieja de escritura y cambio)
 ticks() { python3 -c 'import os,sys; s=os.stat(sys.argv[1]); t=lambda n: 621355968000000000 + n // 100; print(t(s.st_mtime_ns), t(min(s.st_mtime_ns, s.st_ctime_ns)))' "$1"; }
 
-for d in "$D" "$W/prep" "$W/run" "$W/destino1" "$W/destino2" "$W/destino3" "$W/destino4" "$W/destino5" "$W/destino6" "$W/destino7" "$W/destino8" "$W/usa" "$W/usa2" "$W/mat"; do rm -rf "$d"; done
+for d in "$D" "$W/prep" "$W/run" "$W/destino1" "$W/destino2" "$W/destino3" "$W/destino4" "$W/destino5" "$W/destino6" "$W/destino7" "$W/destino8" "$W/destino9" "$W/destino10" "$W/destino11" "$W/usa" "$W/usa2" "$W/mat"; do rm -rf "$d"; done
 rm -f "$W"/*.salida.txt; mkdir -p "$W/run"
 
 # ================= EL MUNDO =================
@@ -134,6 +134,12 @@ if [[ " $partes " == *" importa "* ]]; then
 	si "rocola_config.txt: la carpeta que no esta (E:\\Nada), fuera" nocontiene "$T/rocola_config.txt" "Nada"
 	si "rocola_config.txt: respaldo_dir= quitada" nocontiene "$T/rocola_config.txt" "respaldo_dir="
 	si "rocola_config.txt: lo demas tal cual" contiene "$T/rocola_config.txt" "noche_pct=80"
+	# lo del 17 y 18-11-2026: el ecualizador del dueno, la noche y la marca del volumen parejo pasan tal cual (las lee el codigo de XP)
+	si "rocola_config.txt: eq_dueno= (la memoria del sonido normal) tal cual" contiene "$T/rocola_config.txt" "eq_dueno=1.5;0.0;-2.0;0.0;0.0;3.0;0.0;0.0;-1.5;0.0"
+	si "rocola_config.txt: eq_dueno_billar= (la del modo billar) tal cual" contiene "$T/rocola_config.txt" "eq_dueno_billar=0.0;2.5;0.0;0.0;-4.0;0.0;0.0;1.0;0.0;6.0"
+	si "rocola_config.txt: noche_graves=, noche_desde= y noche_desde_22= tal cual" bash -c 'grep -qx "noche_graves=5" <(tr -d "\r" < "$1") && grep -qx "noche_desde=23" <(tr -d "\r" < "$1") && grep -qx "noche_desde_22=1" <(tr -d "\r" < "$1")' sh "$T/rocola_config.txt"
+	si "rocola_config.txt: parejo_v2=1 (va con la tabla de XP), una sola vez" bash -c '[ "$(tr -d "\r" < "$1" | grep -c "^parejo_v2=")" = 1 ] && tr -d "\r" < "$1" | grep -qx "parejo_v2=1"' sh "$T/rocola_config.txt"
+	si "y la marca dice que la marca del volumen parejo va con la tabla de XP" contiene "$T/rocola_importado_xp.txt" "parejo_v2=1 (con la tabla de XP)"
 	si "el modelo de IAS/, tal cual" igual "$T/IAS/rocola_ia.bin" "$XPC/IAS/rocola_ia.bin"
 	si "y su copia anterior" igual "$T/IAS/rocola_ia.bin.anterior-1" "$XPC/IAS/rocola_ia.bin.anterior-1"
 	si "el suelto «Rocola_EQ_IA.bin», como rocola_eq_ia.bin (rocola-xp lo pasa a IAS/)" igual "$T/rocola_eq_ia.bin" "$XPC/Rocola_EQ_IA.bin"
@@ -254,6 +260,65 @@ if [[ " $partes " == *" importa "* ]]; then
 	si "la tabla vacia no tapa la de XP: rocola_volumen.txt con sus seis, sin .antes-xp" bash -c '[ "$(wc -l < "$1/rocola_volumen.txt")" = 6 ] && [ ! -e "$1/rocola_volumen.txt.antes-xp" ]' sh "$T"
 	si "y lo dice la marca" contiene "$T/rocola_importado_xp.txt" "vacias (de rocola-xp, sin ninguna cancion), reemplazadas: rocola_volumen.txt"
 	si "la tabla con una cancion de rocola-xp no se toca" bash -c 'grep -qF "/otra/cancion/de/rocola-xp.mp3" "$1/rocola_billar_nivel.txt" && grep -qF "no se tocan: rocola_billar_nivel.txt" "$1/rocola_importado_xp.txt"' sh "$T"
+	# EL VOLUMEN PAREJO (18-11-2026, VolumenParejo.cs de XP): lo aprendido antes de la marca parejo_v2=1 se midio con la presencia puesta.
+	# La marca es de la tabla (rocola_billar_nivel.txt), no una preferencia: va con la tabla que quede. Y lo demas del 17-18-11 al usarse:
+	# rocola-xp abierta con lo importado guarda su configuracion (CargaParejo la guarda al poner la marca) sin dsee_genero= (I3, se ignora)
+	# y con lo demas igual. Dos carpetas de XP mas en sdb1 (se borran al final): X3 sin la marca (una XP de antes del 18-11) y X4 con
+	# parejo_v2=0 escrito (una XP que guardo antes de apartar lo suyo).
+	X3=$D/sdb1/Rocola\ Vieja/Release; X4=$D/sdb1/Rocola\ Cero/Release; rm -rf "$D/sdb1/Rocola Vieja" "$D/sdb1/Rocola Cero"; mkdir -p "$X3" "$X4"
+	for x in "$X3" "$X4"; do cp -a "$XPC"/rocola_*.txt "$XPC/Rocola.exe" "$x/"; done
+	grep -v '^parejo_v2=' "$XPC/rocola_config.txt" > "$X3/rocola_config.txt"
+	sed 's/^parejo_v2=1/parejo_v2=0/' "$XPC/rocola_config.txt" > "$X4/rocola_config.txt"
+	foto "$D/sdb1/Rocola Vieja" > "$W/foto-x3-antes.txt"
+	# (a) de una XP sin la marca, a una rocola-xp nueva: su tabla no se importa; rocola-xp empieza de cero y pone la marca
+	T=$W/destino9
+	importa "$T" "$X3" "${DISCOS[@]}"
+	si "(XP sin parejo_v2=1) la importacion sale con 0 y nada en la salida de errores" bash -c '[ $1 = 0 ] && [ ! -s "$2" ]' sh $rc "$W/err.txt"
+	si "(XP sin parejo_v2=1) su rocola_billar_nivel.txt no se importa" nohay "$T/rocola_billar_nivel.txt"
+	si "(XP sin parejo_v2=1) y lo dice la marca" contiene "$T/rocola_importado_xp.txt" "rocola_billar_nivel.txt: no se importa (la configuracion de XP no trae parejo_v2=1"
+	si "(XP sin parejo_v2=1) la configuracion sin parejo_v2=" nocontiene "$T/rocola_config.txt" "parejo_v2="
+	si "(XP sin parejo_v2=1) lo demas si (rocola_volumen.txt con sus seis)" lineas "$T/rocola_volumen.txt" 6
+	SENAL=USR1 corre "$T" 40 'tr -d "\r" < "$T/rocola_config.txt" | grep -qx "parejo_v2=1"'
+	si "(rocola-xp con lo importado) guarda la marca parejo_v2=1" bash -c 'tr -d "\r" < "$1" | grep -qx "parejo_v2=1"' sh "$T/rocola_config.txt"
+	si "(rocola-xp con lo importado) sin nada que apartar (no habia tabla)" bash -c '! ls "$1"/rocola_billar_nivel.antes-2026-11-18* > /dev/null 2>&1' sh "$T"
+	si "(rocola-xp con lo importado) dsee_genero= se ignora y no se vuelve a guardar" nocontiene "$T/rocola_config.txt" "dsee_genero"
+	si "(rocola-xp con lo importado) y sin error por ella" bash -c '! grep -qi "dsee" "$1" 2> /dev/null' sh "$T/rocola_error.txt"
+	si "(rocola-xp con lo importado) eq_dueno= y eq_dueno_billar= los mismos" bash -c 'tr -d "\r" < "$1" | grep -qx "eq_dueno=1.5;0.0;-2.0;0.0;0.0;3.0;0.0;0.0;-1.5;0.0" && tr -d "\r" < "$1" | grep -qx "eq_dueno_billar=0.0;2.5;0.0;0.0;-4.0;0.0;0.0;1.0;0.0;6.0"' sh "$T/rocola_config.txt"
+	si "(rocola-xp con lo importado) noche_graves=5 y la noche desde las 23 respetada (con noche_desde_22=1)" bash -c 'tr -d "\r" < "$1" | grep -qx "noche_graves=5" && tr -d "\r" < "$1" | grep -qx "noche_desde=23" && tr -d "\r" < "$1" | grep -qx "noche_desde_22=1"' sh "$T/rocola_config.txt"
+	foto "$D/sdb1/Rocola Vieja" > "$W/foto-x3-despues.txt"
+	si "(XP sin parejo_v2=1) su carpeta sin tocar (la tabla sigue alli)" bash -c 'cmp -s "$1" "$2" && [ -s "$3/rocola_billar_nivel.txt" ]' sh "$W/foto-x3-antes.txt" "$W/foto-x3-despues.txt" "$X3"
+	# (b) una rocola-xp de antes del 18-11 (su tabla aprendida con la presencia, sin la marca) y una XP con la marca: la tabla de rocola-xp
+	# se queda (no se tocan) y la marca NO se toma de XP; al abrir, el codigo de XP aparta la de rocola-xp y empieza de cero
+	T=$W/destino10; mkdir -p "$T"
+	printf 'diagnostico=1\r\n' > "$T/rocola_config.txt"
+	printf '2.5|/vieja/de/rocola-xp.mp3\r\n' > "$T/rocola_billar_nivel.txt"; cp "$T/rocola_billar_nivel.txt" "$W/nivel-viejo.txt"
+	importa "$T" "$XPC" "${DISCOS[@]}"
+	si "(rocola-xp vieja sin la marca, XP con ella) sale con 0" [ $rc = 0 ]
+	si "(rocola-xp vieja sin la marca) su tabla no se toca" bash -c 'cmp -s "$1/rocola_billar_nivel.txt" "$2" && grep -qF "no se tocan: rocola_billar_nivel.txt" "$1/rocola_importado_xp.txt"' sh "$T" "$W/nivel-viejo.txt"
+	si "(rocola-xp vieja sin la marca) y la configuracion sin la marca de XP" nocontiene "$T/rocola_config.txt" "parejo_v2="
+	si "(rocola-xp vieja sin la marca) lo dice la marca de la importacion" contiene "$T/rocola_importado_xp.txt" "parejo_v2=(ninguna) (la de rocola-xp)"
+	SENAL=USR1 corre "$T" 40 'tr -d "\r" < "$T/rocola_config.txt" | grep -qx "parejo_v2=1"'
+	si "(rocola-xp vieja, al abrir) aparta su tabla vieja (rocola_billar_nivel.antes-2026-11-18.txt, la misma) y pone la marca" bash -c 'cmp -s "$1/rocola_billar_nivel.antes-2026-11-18.txt" "$2" && ! grep -qF "/vieja/de/rocola-xp.mp3" "$1/rocola_billar_nivel.txt" 2> /dev/null && tr -d "\r" < "$1/rocola_config.txt" | grep -qx "parejo_v2=1"' sh "$T" "$W/nivel-viejo.txt"
+	# (c) una rocola-xp con la marca y su tabla, y una XP sin la marca: la de XP no entra, la suya se queda con su marca
+	T=$W/destino11; mkdir -p "$T"
+	printf 'diagnostico=1\r\nparejo_v2=1\r\n' > "$T/rocola_config.txt"
+	printf '%s\r\n' "-1.25|$LA" > "$T/rocola_billar_nivel.txt"; cp "$T/rocola_billar_nivel.txt" "$W/nivel-v2.txt"
+	importa "$T" "$X3" "${DISCOS[@]}"
+	si "(rocola-xp con la marca, XP sin ella) sale con 0" [ $rc = 0 ]
+	si "(rocola-xp con la marca, XP sin ella) la tabla de XP no entra: la suya igual, sin .antes-xp" bash -c 'cmp -s "$1/rocola_billar_nivel.txt" "$2" && [ ! -e "$1/rocola_billar_nivel.txt.antes-xp" ]' sh "$T" "$W/nivel-v2.txt"
+	si "(rocola-xp con la marca, XP sin ella) y su marca se queda (una vez)" bash -c '[ "$(tr -d "\r" < "$1" | grep -c "^parejo_v2=")" = 1 ] && tr -d "\r" < "$1" | grep -qx "parejo_v2=1"' sh "$T/rocola_config.txt"
+	SENAL=USR1 corre "$T" 15 'false'
+	si "(rocola-xp con la marca, al abrir) no aparta nada: su tabla sigue" bash -c '! ls "$1"/rocola_billar_nivel.antes-2026-11-18* > /dev/null 2>&1 && grep -qF -- "-1.25|" "$1/rocola_billar_nivel.txt"' sh "$T"
+	# (d) re-importacion de una XP con parejo_v2=0 escrito (manda su configuracion): la tabla no entra y la marca sigue siendo la de rocola-xp
+	cp "$T/rocola_billar_nivel.txt" "$W/nivel-v2b.txt"
+	importa "$T" "$X4" "${DISCOS[@]}"
+	si "(re-importa de una XP con parejo_v2=0) sale con 0 e importa otra vez" bash -c '[ $1 = 0 ] && grep -qF "importado otra vez" "$2"' sh $rc "$W/sale.txt"
+	si "(re-importa de una XP con parejo_v2=0) la tabla de rocola-xp se queda y su marca 1, no el 0 de XP" bash -c 'cmp -s "$1/rocola_billar_nivel.txt" "$2" && [ "$(tr -d "\r" < "$1/rocola_config.txt" | grep -c "^parejo_v2=")" = 1 ] && tr -d "\r" < "$1/rocola_config.txt" | grep -qx "parejo_v2=1"' sh "$T" "$W/nivel-v2b.txt"
+	# (e) re-importacion de la XP con la marca: su tabla sustituye a la de rocola-xp (la de antes en .antes-xp) y la marca es 1
+	importa "$T" "$XPC" "${DISCOS[@]}"
+	si "(re-importa de la XP con la marca) su tabla entra (las dos) y la de rocola-xp va a .antes-xp" bash -c '[ "$(wc -l < "$1/rocola_billar_nivel.txt")" = 2 ] && cmp -s "$1/rocola_billar_nivel.txt.antes-xp" "$2"' sh "$T" "$W/nivel-v2b.txt"
+	si "(re-importa de la XP con la marca) parejo_v2=1, con la tabla de XP" bash -c 'tr -d "\r" < "$1/rocola_config.txt" | grep -qx "parejo_v2=1" && grep -qF "parejo_v2=1 (con la tabla de XP)" "$1/rocola_importado_xp.txt"' sh "$T"
+	rm -rf "$D/sdb1/Rocola Vieja" "$D/sdb1/Rocola Cero"
 	# LA CARPETA DE DATOS ES LA DE XP («datos=xp»): nada que importar
 	importa "$XPC" "$XPC" "${DISCOS[@]}"
 	si "con la carpeta de XP como destino: sale con 0 sin tocar nada" bash -c '[ $1 = 0 ] && grep -qF "nada que importar" "$2"' sh $rc "$W/sale.txt"

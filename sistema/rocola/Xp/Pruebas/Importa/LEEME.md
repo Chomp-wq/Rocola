@@ -23,6 +23,11 @@ Partes (sin nombrarlas, las tres; unos 3 a 4 minutos con la máquina libre):
   poner un archivo en su sitio; la siguiente llamada deja lo mismo que una sin cortes, también los `.antes-xp`) y `rocola-xp` abierta antes
   de la primera importación sin la música (deja `rocola_volumen.txt` vacío, que no debe tapar la tabla de XP; una tabla con alguna canción
   suya sí se queda).
+  Añadido el 20-11-2026 (los cambios de XP del 17 y 18-11): `eq_dueno=`, `eq_dueno_billar=`, `noche_graves=`, `noche_desde=` y
+  `noche_desde_22=` pasan tal cual; `dsee_genero=` (I3, quitado) se copia, rocola-xp la ignora y no la vuelve a guardar; y el volumen
+  parejo (`parejo_v2=`): una XP sin la marca no trae su `rocola_billar_nivel.txt`, y la marca va con la tabla que quede (una rocola-xp vieja
+  sin la marca no toma la de XP y aparta lo suyo al abrir; una con la marca la conserva aunque la XP diga `parejo_v2=0`; la re-importación
+  de una XP con la marca trae su tabla y su `1`).
 - **usa**: `rocola-xp` fuera de pantalla con lo importado (como el lanzador: más el `dir=` de la música): lee las seis medidas, el
   repaso solo mide la canción nueva, los botones importados dan créditos sin abrir el asistente de los botones, y al sonar una importada
   su sello vale tal cual; con el sello de Windows (la prueba de control) `rocola-xp` la adopta y le pone el de hoy, que es lo que evita
