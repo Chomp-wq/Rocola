@@ -10,7 +10,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-orden pastilla hojea hojeaxp abre portadas tope descarga contrato real sincatalogo apagado cero sinllave}"
+escenas="${*:-orden pastilla hojea hojeaxp abre portadas tope descarga contrato real sincatalogo quitallave apagado cero sinllave}"
 T=${T:-/root/rocola-trabajo/fase11/pared-generos}
 API=${API:-$T/api-falsa}
 REAL=${REAL:-$T/catalogo-real}   # el catalogo de verdad (escena real), bajado aparte de la version «catalogo»
@@ -151,7 +151,7 @@ for i in range(18):
     caja = (cx - 47, y0, cx + 47, y0 + 131)   # la cara del disco en 1024x768
     n = sum(1 for p, q in zip(a.crop(caja).get_flattened_data() if hasattr(a, 'get_flattened_data') else a.crop(caja).getdata(), b.crop(caja).get_flattened_data() if hasattr(b, 'get_flattened_data') else b.crop(caja).getdata()) if sum(abs(u - v) for u, v in zip(p, q)) > 60)
     lleva = pas.get(str(i), "-") != "-"
-    bien = i == sel or (n > 120 if lleva else n < 20)
+    bien = i == sel or (n > 400 if lleva else n < 250)   # (revision: las estrellas del cielo que titilan detras de una casilla vacia cambian ~100 puntos; una pastilla, 700 o mas)
     if not bien: mal += 1
     print("casilla %2d %-12s %5d puntos distintos%s%s" % (i, pas.get(str(i), "-"), n, " (la elegida)" if i == sel else "", "" if bien else "  MAL"))
 sys.exit(1 if mal else 0)
@@ -307,6 +307,17 @@ PY
     si "sincatalogo: sale con 0" test "$(cat $o/salio)" = 0
     si "sincatalogo: se pidio el .txt (404) y nada mas; ni la API ($(v1 $a))" bash -c "grep -q 'GET /catalogo/rocola_catalogo.txt catalogo 404' '$a' && ! grep -q 'tsv.gz' '$a' && [ $(v1 $a) = 0 ]"
     si "sincatalogo: la pared de XP (va=$(est $o va), sin pastilla, sin letras armadas)" bash -c "[ '$(est $o va)' = no ] && [ -z '$(est $o pastilla)' ] && [ '$(est $o vista)' = 0 ] && [ ! -d '$o/volcado' ]" ;;
+  quitallave)
+    # (revision) LA LLAVE QUITADA A MEDIA SESION, en la pagina 3 de la A (casilla 38, del catalogo): la pared vuelve a la de XP al momento (sin
+    # letras armadas en la memoria, sin pastillas) y la eleccion queda dentro de la lista de XP (en el tuyo que iba despues: el primero)
+    apifalsa $e "$CAT"; d=$(datos $e encendido)
+    ( sleep 17; rm -f "$d/rocola_spotify_api.txt" ) &
+    abre $e "$d" "$BASE,12:38,13:38,14:39,14.5:39" 30 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 15 pared-generos-antes-de-quitar-la-llave),$(cap 27 pared-generos-llave-quitada)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
+    grep -E 'pared_generos\] (ya no va|letra A)' "$d/rocola_os_bitacora.txt" | sed 's/^.*\] /   /' | cut -c1-160
+    si "quitallave: sale con 0 y ninguna peticion a la API (/v1: $(v1 $a))" bash -c "[ '$(cat $o/salio)' = 0 ] && [ $(v1 $a) = 0 ]"
+    si "quitallave: antes, la A armada; despues, la pared de XP (va=$(est $o va), vista=$(est $o vista), en memoria «$(est $o en_memoria)»)" bash -c "grep -q 'letra A: 9000 discos' '$d/rocola_os_bitacora.txt' && grep -q 'ya no va' '$d/rocola_os_bitacora.txt' && [ '$(est $o va)' = no ] && [ '$(est $o vista)' = 0 ] && [ -z '$(est $o en_memoria)' ]"
+    si "quitallave: la eleccion dentro de la lista de XP (pagina $(est $o pagina), elegido $(est $o elegido))" bash -c "[ '$(est $o pagina)' = 0 ] && [ '$(est $o elegido)' = 0 ]" ;;
   apagado|cero|sinllave)
     # SIN EL MODO: sin ROCOLA_OS (apagado), con ROCOLA_OS=1 y spotify=0 (cero) y con el modo encendido pero SIN la llave de la API (sinllave):
     # ni una peticion (ni el catalogo), ni pared por generos; la traza igual a la de sin ROCOLA_OS quitando lo de RocolaOs (cero y sinllave)

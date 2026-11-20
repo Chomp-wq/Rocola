@@ -73,6 +73,7 @@ namespace Rocola
             internal long Ms;
             internal RocolaOsPgCatalogo De;
             internal List<Album> AlbumsDeXp;
+            internal int GenSig;                                        // lo que XP sabia de los generos al armarla (RocolaOsPgGenSig)
         }
         // lo que la pantalla le da al hilo que arma (una copia: el hilo no toca nada de XP)
         private sealed class RocolaOsPgEncargo
@@ -84,7 +85,8 @@ namespace Rocola
             internal HashSet<string> Ocultos;
             internal List<Album> AlbumsDeXp;
             internal string Volcado;
-            internal int Numero;
+            internal int Numero, GenSig;
+            internal RocolaOsPgLetra Previa;                            // (revision) la de antes de esta letra: sus discos del catalogo se reusan
         }
 
         private RocolaOsPgCatalogo rocolaOsPgCat;
@@ -161,9 +163,10 @@ namespace Rocola
                 if (rocolaOsPgCat != null && letterBar != null && !libBuilding)
                 {
                     RecalculaLetras();
-                    if (RocolaOsPgLetraSuya(currentLetter)) { if (llave) RocolaOsPgPideConVecinas(currentLetter); else if (panelSongs != null && !panelSongs.Visible) RefreshAlbums(); }
+                    if (llave && RocolaOsPgLetraSuya(currentLetter)) RocolaOsPgPideConVecinas(currentLetter);
                 }
             }
+            if (!RocolaOsPgVa && rocolaOsPgListas.Count > 0) RocolaOsPgSuelta();   // (revision) sin la llave, «spotify apagar», la funcion apagada
             Action a;
             while (rocolaOsPgListos.TryDequeue(out a)) a();
             RocolaOsPgCatalogo c = RocolaOsPgDescarga.Actual;
@@ -204,6 +207,13 @@ namespace Rocola
             if (e != null)
             {
                 if (!ReferenceEquals(e.De, rocolaOsPgCat)) RocolaOsPgPide(l);   // (de un catalogo de antes: se ve hasta que llegue la nueva)
+                else if (e.GenSig != RocolaOsPgGenSig() && Environment.TickCount64 - rocolaOsPgRearmada >= 30000)
+                {
+                    // (revision) XP aprendio generos despues de armarla (el paseo de fondo): otra vez, para que las pastillas digan lo de ahora;
+                    // como mucho cada 30 s. El orden no cambia (no depende del genero) y los discos del catalogo se reusan: la eleccion no salta
+                    rocolaOsPgRearmada = Environment.TickCount64;
+                    RocolaOsPgPide(l, true);
+                }
                 return e.Lista;
             }
             RocolaOsPgPide(l);
@@ -243,11 +253,16 @@ namespace Rocola
                     break;
                 }
         }
-        private void RocolaOsPgPide(char l)
+        // (revision) lo que XP sabe de los generos de tus discos: crece cuando el paseo de fondo aprende (GeneroDeCancion: discTag y artistTag)
+        private long rocolaOsPgRearmada;
+        private int RocolaOsPgGenSig() { return unchecked(discTag.Count * 65599 + artistTag.Count); }
+        private void RocolaOsPgPide(char l) { RocolaOsPgPide(l, false); }
+        private void RocolaOsPgPide(char l, bool generos)
         {
             if (rocolaOsPgCat == null || libBuilding || albums == null || rocolaOsPgPedidas.ContainsKey(l)) return;
             RocolaOsPgLetra ya = RocolaOsPgEnMemoria(l);
-            if (ya != null && ReferenceEquals(ya.De, rocolaOsPgCat)) return;
+            if (ya != null && ReferenceEquals(ya.De, rocolaOsPgCat) && !generos) return;
+            int sig = RocolaOsPgGenSig();
             List<Album> loc;
             if (!byLetter.TryGetValue(l, out loc) || loc == null) loc = new List<Album>();
             loc = new List<Album>(loc);
@@ -257,7 +272,7 @@ namespace Rocola
             try { vol = Environment.GetEnvironmentVariable("ROCOLA_PARED_VOLCADO"); } catch { }
             RocolaOsPgEncargo e = new RocolaOsPgEncargo
             {
-                Letra = l, Cat = rocolaOsPgCat, Locales = loc, GenerosLocales = gen,
+                Letra = l, Cat = rocolaOsPgCat, Locales = loc, GenerosLocales = gen, GenSig = sig, Previa = ya,
                 Ocultos = new HashSet<string>(rocolaOsPgOcultos, StringComparer.Ordinal), AlbumsDeXp = albums, Volcado = string.IsNullOrEmpty(vol) ? null : vol,
             };
             e.Numero = ++rocolaOsPgPedidoN;
@@ -367,7 +382,14 @@ namespace Rocola
                 return c != 0 ? c : x.N.CompareTo(y.N);
             });
             // INTERCALADOS con los tuyos (que ya vienen en el orden de XP): a igualdad, lo tuyo antes
-            RocolaOsPgLetra r = new RocolaOsPgLetra { Letra = e.Letra, De = e.Cat, AlbumsDeXp = e.AlbumsDeXp, Catalogo = new Dictionary<Album, RocolaOsPgDisco>(entran.Count) };
+            RocolaOsPgLetra r = new RocolaOsPgLetra { Letra = e.Letra, De = e.Cat, AlbumsDeXp = e.AlbumsDeXp, GenSig = e.GenSig, Catalogo = new Dictionary<Album, RocolaOsPgDisco>(entran.Count) };
+            // (revision) los discos del catalogo de la de antes, por su clave: el mismo objeto (sus canciones ya pedidas, su portada, la eleccion)
+            Dictionary<string, Album> previos = null;
+            if (e.Previa != null && e.Previa.Catalogo != null)
+            {
+                previos = new Dictionary<string, Album>(e.Previa.Catalogo.Count, StringComparer.Ordinal);
+                foreach (KeyValuePair<Album, RocolaOsPgDisco> kv in e.Previa.Catalogo) previos[kv.Value.Clave] = kv.Key;
+            }
             List<Album> lista = new List<Album>(e.Locales.Count + entran.Count);
             List<string> generos = new List<string>(lista.Capacity);
             Dictionary<Album, string> pastillas = new Dictionary<Album, string>(lista.Capacity);
@@ -387,7 +409,9 @@ namespace Rocola
                 else
                 {
                     RocolaOsPgEntrada c = entran[ic++];
-                    a = new Album { Folder = RocolaOsPgCarpeta + c.D.Clave, Name = c.D.Nombre, Artist = c.D.Art.Nombre, Letter = e.Letra };
+                    Album p0;
+                    if (previos != null && previos.TryGetValue(c.D.Clave, out p0) && p0.Name == c.D.Nombre && p0.Artist == c.D.Art.Nombre && p0.Letter == e.Letra) a = p0;
+                    else a = new Album { Folder = RocolaOsPgCarpeta + c.D.Clave, Name = c.D.Nombre, Artist = c.D.Art.Nombre, Letter = e.Letra };
                     r.Catalogo[a] = c.D;
                     g = c.Pastilla;
                 }
@@ -429,8 +453,11 @@ namespace Rocola
         {
             int n;
             bool ultimo = rocolaOsPgPedidas.TryGetValue(l, out n) && n == numero;
-            if (ultimo) rocolaOsPgPedidas.Remove(l);   // (si no, hay uno mas nuevo en camino: este no vale)
-            if (r == null || !ultimo) return;
+            if (!ultimo) return;   // (hay uno mas nuevo en camino: este no vale)
+            // (revision) si no se pudo armar (se apunto la falla), se queda como pedida: no se vuelve a armar en cada cuadro; otro catalogo o
+            // otra biblioteca lo vuelven a intentar (rocolaOsPgPedidas.Clear)
+            if (r == null) return;
+            rocolaOsPgPedidas.Remove(l);
             if (!ReferenceEquals(r.De, rocolaOsPgCat) || !ReferenceEquals(r.AlbumsDeXp, albums) || libBuilding)
             {
                 if (l == currentLetter && RocolaOsPgVa) RocolaOsPgPide(l);   // (de un catalogo o una biblioteca de antes: otra vez)
@@ -739,6 +766,29 @@ namespace Rocola
                 songList.Invalidate();
             }
         }
+        // (revision) YA NO VA (sin la llave, «spotify apagar», «pared» apagada): fuera las letras armadas (la memoria) y la pared de XP al
+        // momento, con la eleccion en el mismo disco si es tuyo (si era del catalogo, en el tuyo que iba despues de el). Sin esto la pantalla
+        // seguia con la pagina del catalogo mientras CurrentList ya daba la de XP: PONER abria otro disco.
+        private void RocolaOsPgSuelta()
+        {
+            RocolaOsPgLetra m = RocolaOsPgMirada();
+            Album eleg = m != null && selAlbumIndex >= 0 && selAlbumIndex < m.Lista.Count ? m.Lista[selAlbumIndex] : null;
+            int antes = 0;
+            if (m != null) for (int i = 0; i < selAlbumIndex && i < m.Lista.Count; i++) if (!m.Catalogo.ContainsKey(m.Lista[i])) antes++;
+            rocolaOsPgListas.Clear(); rocolaOsPgPedidas.Clear(); rocolaOsPgEsperan.Clear(); rocolaOsPgUltimaLetra = '\0';
+            RocolaOsPgPublica();
+            RocolaOs.Apunta("pared_generos", "ya no va (sin la llave, el modo o la funcion): la pared de XP");
+            if (letterBar == null || libBuilding) return;
+            RecalculaLetras();
+            if (m == null) return;
+            List<Album> xp;
+            if (!byLetter.TryGetValue(currentLetter, out xp) || xp == null) xp = new List<Album>();
+            int k = eleg != null && !m.Catalogo.ContainsKey(eleg) ? xp.IndexOf(eleg) : -1;
+            if (k < 0) k = Math.Min(antes, Math.Max(0, xp.Count - 1));
+            selAlbumIndex = k; page = k / PageSize;
+            if (panelSongs != null && !panelSongs.Visible) RefreshAlbums();
+        }
+
         // ESCONDER UN DISCO (Spotify no lo tiene): se quita de las listas en memoria y no vuelve en la sesion; la eleccion no salta
         private void RocolaOsPgEsconde(Album a, RocolaOsPgDisco d)
         {
@@ -754,7 +804,8 @@ namespace Rocola
                 Dictionary<Album, string> ps = new Dictionary<Album, string>(e.Pastillas); ps.Remove(a);
                 RocolaOsPgLetra n = new RocolaOsPgLetra { Letra = e.Letra, Lista = l, Generos = g.ToArray(), Pastillas = ps, Catalogo = c, Locales = e.Locales, DelCatalogo = e.DelCatalogo - 1, Ms = e.Ms, De = e.De, AlbumsDeXp = e.AlbumsDeXp };
                 rocolaOsPgListas[k] = n;
-                if (e.Letra == currentLetter && selAlbumIndex > i) selAlbumIndex--;
+                // (revision) el elegido sigue en el mismo disco, salvo que eso lo saque de la pagina que se ve (entonces, la misma casilla)
+                if (e.Letra == currentLetter && selAlbumIndex > i && (selAlbumIndex - 1) / PageSize == page) selAlbumIndex--;
             }
             RocolaOsPgPublica();
             if (panelSongs != null && !panelSongs.Visible && RocolaOsPgLetraSuya(currentLetter)) RefreshAlbums();

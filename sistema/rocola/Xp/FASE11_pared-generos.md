@@ -191,6 +191,50 @@ para la junta.
 - **El disco elegido** no muestra la pastilla (es el cubo que gira de XP).
 - **La ficha y el letrero de XP** no salen en un disco del catálogo sin abrir (dirían «0 canciones»).
 - **El tope de las portadas** se mide cada 15 s y tras cada 64 bajadas: entre medida y medida puede pasarse un poco.
-- **Un catálogo nuevo a media sesión** y **«spotify apagar» a media sesión**: leídos, sin escena (las pastillas se quitan al siguiente latido:
-  `RocolaOsPgPublica`).
+- **Un catálogo nuevo a media sesión**: leído, sin escena (las letras se rearman de una pieza y la elección sigue por la clave del disco).
+  **«spotify apagar» a media sesión** vale desde el siguiente arranque (el andamio decide las funciones una vez); lo que sí cambia a media
+  sesión es la llave de la API: escena `quitallave` (revisión, abajo).
+- **«spotify encender» a media sesión** con el modo apagado al arrancar: la pared no arranca hasta el siguiente arranque (igual que el resto
+  de las funciones).
 - La memoria: unos 100-130 MB más que la pared de XP con 4 letras de 9 000 (con el catálogo de verdad).
+
+## 8. Revisión independiente (20-11-2026)
+
+Revisado contra el código, con las pruebas corridas otra vez y las capturas mirando la pantalla de 1024x768. Lo que se comprobó y está bien:
+el orden es el de `BuildLibrary` (`OrdinalIgnoreCase`, artista y disco) y la letra de cada artista del catálogo la pone el armador con la
+misma regla que `FirstLetter` (`letra_xp` de `arma_catalogo.py`); el tope de 9 000 cuenta los tuyos y del catálogo entran los primeros del
+archivo (los artistas van del más al menos famoso dentro de su letra); la lista se arma en un hilo y entra de una pieza; por cuadro solo se
+pregunta un diccionario por casilla (`Pastillas`) y la clave con pastilla se arma una vez por disco; nada O(n) por tecla (lo O(n) es al
+llegar una letra, al esconder un disco y en `NavigateToAlbum` de XP); hojear no pide nada a `/v1` y las portadas solo de la página donde se
+para; el catálogo se comprueba por bytes y sha256 antes de usarlo y uno a medias, corrupto o sin red no se usa; sin el modo, sin la llave o
+sin catálogo, la de XP sin pastillas. La pastilla cabe en la cara del disco a 1024x768 (8 pt), abajo a la izquierda, sin tapar el nombre
+(que va debajo de la portada).
+
+Arreglado en la revisión (solo en `RocolaOs/RocolaOs.ParedGeneros.cs` y la prueba; ningún gancho nuevo):
+
+1. **Los géneros que XP aprende después** (el paseo de fondo: `discTag`, `artistTag`): una letra armada antes se quedaba toda la sesión con
+   las pastillas de entonces (tus discos sin pastilla y los del catálogo de tus artistas con la del catálogo). Ahora cada letra guarda lo que
+   XP sabía (`GenSig`) y la que se mira se vuelve a armar si cambió, como mucho cada 30 s. Se vio en la escena `orden`: la A se arma dos
+   veces en el primer segundo (258 ms y 30 ms) porque los géneros de XP llegan justo después.
+2. **Los discos del catálogo se reusan** al rearmar una letra (por su clave, si el nombre, el artista y la letra son los mismos): el mismo
+   objeto, con sus canciones ya pedidas a Spotify, su portada y la elección. Antes un catálogo nuevo hacía discos nuevos: un disco abierto
+   se volvía a pedir (1 petición más) y esconder el que estaba abierto no lo encontraba en la lista nueva.
+3. **Una letra que no se pudo armar** (la excepción se apunta) se pedía otra vez en cada llamada a `CurrentList`: un bucle de armados sin
+   fin en el hilo. Ahora queda como pedida hasta otro catálogo u otra biblioteca.
+4. **La llave quitada a media sesión** (`RocolaOsPgSuelta`): fuera las letras armadas de la memoria (hasta 4 de 9 000 discos), la barra de
+   letras sin las que solo traía el catálogo, y la elección en el mismo disco si es tuyo o en el tuyo que iba después (antes se recortaba al
+   último de la lista de XP y las letras se quedaban en la memoria). Escena nueva `quitallave`.
+5. **Esconder un disco** (Spotify no lo tiene) con el elegido en la primera casilla de su página lo sacaba de la página que se ve; ahora en
+   ese caso se queda la misma casilla.
+6. **La escena `pastilla`**: una casilla vacía (sin portada) cambiaba ~100 puntos entre las dos capturas por las estrellas del cielo que
+   titilan detrás; el umbral pasa a «menos de 250» sin pastilla y «más de 400» con ella (las pastillas cambian de 708 a 1 164).
+
+Pruebas de la revisión (máquina a carga 10-15, otros agentes compilando): `dotnet build` JIT 0 errores, ningún aviso en `RocolaOs/`;
+NativeAOT 0 avisos IL/AOT (1 min 57 s). NativeAOT, las 15 escenas: 68 de 69 BIEN; el MAL era el umbral de `pastilla` (punto 6), y con el
+umbral nuevo `orden`+`pastilla` 12 de 12. JIT: `orden pastilla abre sincatalogo apagado cero sinllave` 34 de 34 y `quitallave` 3 de 3.
+`hojea` en NativeAOT: 737 páginas vistas, 0 a `/v1`, 58 portadas pedidas y 12 014 dejadas; cuadros al hojear p50/p95/p99/máx 44/62/82/511
+ms frente a 36/53/71/375 ms de `hojeaxp` (131 cuadros de más de 50 ms frente a 70): con esta carga de la máquina no se puede decir cuánto
+es de la pared; se mide en el A4. `real` (182 418 discos): la A con 9 000 (5 tuyos, 5 del archivo fuera), 0 a `/v1`, armada en 219 ms como
+mucho, RSS 354 MB y objetos de .NET 168 MB. `ganchos.py` TODO BIEN; `diff-xp.py --sin-ganchos` 5095 / 4828 / 229, como la base. No se
+corrieron las escenas del nivel 0 y del nivel 1 (la carga). Nada en el A4 ni con el monitor de verdad: si la pastilla de 8 pt se lee desde
+la barra del bar es de la presentación visual del final.
