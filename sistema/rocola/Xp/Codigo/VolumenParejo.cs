@@ -170,7 +170,7 @@ namespace Rocola
         // Al soltar una cadena (acabo, se salto o se paro): si sono entera en el billar, se aprende. En el hilo de la pantalla.
         private void AprendeParejo(CadenaCancion c)
         {
-            if (c == null || c.Margen == null || c.Cancion == null || c.Cancion.Path == null || !RocolaOsSpotifyAprende(c.Cancion.Path)) return;   // ROCOLA OS g24: (XP) if (c == null || c.Margen == null || c.Cancion == null || c.Cancion.Path == null) return; — de una de Spotify no se aprende el volumen parejo del billar (R7; RocolaOs/RocolaOs.SpotifyPide.cs); sin Rocola OS o con una de XP, true
+            if (c == null || c.Margen == null || c.Cancion == null || c.Cancion.Path == null) return;
             MideMargen m = c.Margen; c.Margen = null;
             float p90, p99, max;
             bool hay = m.Percentiles(out p90, out p99, out max);

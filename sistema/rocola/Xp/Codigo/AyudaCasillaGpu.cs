@@ -157,7 +157,7 @@ namespace Rocola
             // palabra). Antes de quitarsela, el encabezado cede hasta un 15 % de lo que pide: su nombre se achica solo un
             // poco (HeaderView.RenderContent lo encoge de medio en medio punto hasta caber) y el numero de pagina pasa a
             // su forma corta. "LO MAS SONADO" sigue grande; la casilla de AYUDA dice lo que es.
-            int pideApretado = RocolaOsAyudaCede(pide);   // ROCOLA OS g84: (XP) int pideApretado = pide * 85 / 100; — con Rocola OS la cabecera cede hasta quedarse en 90 px para que la casilla diga siempre AYUDA (RocolaOs/RocolaOs.Asistente.cs; sin ROCOLA_OS, pide * 85 / 100)
+            int pideApretado = pide * 85 / 100;
             if (compacta && busW + 10 + AyudaView.Ancho(filaH, false) + 12 + pideApretado <= libre)
             {
                 compacta = false;
