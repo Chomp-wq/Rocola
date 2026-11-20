@@ -335,7 +335,7 @@ namespace Rocola
                 {
                     HttpClient h = Volatile.Read(ref http);
                     if (h != null) return h;
-                    h = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = true, MaxAutomaticRedirections = 8, ConnectTimeout = TimeSpan.FromSeconds(15), MaxConnectionsPerServer = 4 }) { Timeout = TimeSpan.FromMinutes(5) };
+                    h = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = true, MaxAutomaticRedirections = 8, ConnectTimeout = TimeSpan.FromSeconds(15), MaxConnectionsPerServer = RocolaOsPgPortadas.Hilos }) { Timeout = TimeSpan.FromMinutes(5) };
                     h.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "rocola-xp");
                     HttpClient otro = Interlocked.CompareExchange(ref http, h, null);
                     if (otro != null) { h.Dispose(); return otro; }
@@ -400,9 +400,11 @@ namespace Rocola
         }
 
         // ================================================================= las portadas del catalogo ======================================
-        // Del Cover Art Archive (la de 250 px del disco de MusicBrainz), AL VERSE: solo las de la pagina que se mira (lo de otra pagina se deja
-        // sin pedir), 4 a la vez, a su cache en el disco de la rocola con tope (300 MB de fabrica; las que no se usaron en la sesion y son mas
-        // viejas se borran primero). Sin portada (404), la casilla de XP sin caratula. Nada de esto es de Spotify ni gasta su cuota.
+        // Del Cover Art Archive (la de 250 px del disco de MusicBrainz), AL VERSE: primero las de la pagina que se mira y (rapido-spotify) despues,
+        // por adelantado, las de las de al lado y la que sigue hacia donde se va (lo de otra pagina se deja sin pedir), 12 a la vez (antes 4: una
+        // pagina de 18 tardaba 5 vueltas de la red; el Cover Art Archive hace dos redirecciones por portada), a su cache en el disco de la rocola
+        // con tope (300 MB de fabrica; las que no se usaron en la sesion y son mas viejas se borran primero). Sin portada (404), la casilla de XP
+        // sin caratula. Nada de esto es de Spotify ni gasta su cuota.
         internal static class RocolaOsPgPortadas
         {
             private sealed class Pedido { internal string Mbid; internal char Letra; internal int Pagina; }
@@ -414,6 +416,9 @@ namespace Rocola
             private static readonly HashSet<string> usadas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             private static readonly Dictionary<string, long> fallo = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
             private static char visLetra; private static int visPagina = -1; private static long visDesde;
+            private static int visDir = 1;                 // (rapido-spotify) hacia donde se va: +1 (ARRIBA, la siguiente) o -1
+            private static char visVecinaDespues, visVecinaAntes;   // (rapido-spotify) las letras de al lado (su primera pagina, al final)
+            internal const int Hilos = 12;                 // (rapido-spotify; antes 4) esperan a la red, con nice 19
             // AL VERSE: una pagina se pide cuando lleva 300 ms a la vista (como el asentamiento de las portadas de XP); al hojear deprisa
             // (mantener ARRIBA: unas 15-30 paginas por segundo) no se pide ninguna de las que pasan
             internal const int AsientaMs = 300;
@@ -454,7 +459,7 @@ namespace Rocola
                     Volatile.Write(ref carpetaBarra, carpeta.TrimEnd('/') + "/");
                 }
                 RocolaOs.Hilo("pared_portadas_indice", Indexa);
-                for (int i = 0; i < 4; i++) RocolaOs.Hilo("pared_portadas_" + i.ToString(CultureInfo.InvariantCulture), Corre);
+                for (int i = 0; i < Hilos; i++) RocolaOs.Hilo("pared_portadas_" + i.ToString(CultureInfo.InvariantCulture), Corre);
             }
             // LO QUE YA HAY EN EL DISCO (en su hilo, al arrancar): sus nombres y cuanto ocupan, con las miniaturas
             private static void Indexa()
@@ -487,15 +492,31 @@ namespace Rocola
             internal static string Ruta(string mbid) { return Path.Combine(carpeta, mbid + ".jpg"); }
             internal static bool EnDisco(string mbid) { lock (cerrojo) return enDisco.Contains(mbid); }
             internal static void Usada(string mbid) { lock (cerrojo) usadas.Add(mbid); }
-            // LA PAGINA QUE SE MIRA (la pantalla, en cada RefreshAlbums): lo pedido de otra se deja
-            internal static void Mira(char letra, int pagina)
+            // LA PAGINA QUE SE MIRA (la pantalla, en cada RefreshAlbums): lo pedido de otra se deja (salvo, desde rapido-spotify, lo de las de al
+            // lado y la que sigue hacia donde se va, que se baja por adelantado). Devuelve hacia donde se va (+1 o -1).
+            internal static int Mira(char letra, int pagina, char vecinaDespues = '\0', char vecinaAntes = '\0')
             {
                 lock (cerrojo)
                 {
-                    if (letra == visLetra && pagina == visPagina) return;
+                    visVecinaDespues = vecinaDespues; visVecinaAntes = vecinaAntes;
+                    if (letra == visLetra && pagina == visPagina) return visDir;
+                    visDir = letra == visLetra && pagina < visPagina ? -1 : 1;
                     visLetra = letra; visPagina = pagina; visDesde = Environment.TickCount64;
                     Monitor.PulseAll(cerrojo);
+                    return visDir;
                 }
+            }
+            // (rapido-spotify) EL TURNO de una pagina: 0 la que se mira; 1 la siguiente hacia donde se va, 2 la de atras, 3 la de dos mas alla; 4 y 5 la
+            // primera de la letra de despues y la de antes; -1 las demas (ya no se miran: se dejan). Bajo el cerrojo.
+            private static int Turno(Pedido q)
+            {
+                if (q.Letra != visLetra)
+                {
+                    if (q.Pagina != 0 || q.Letra == '\0') return -1;
+                    return q.Letra == visVecinaDespues ? 4 : q.Letra == visVecinaAntes ? 5 : -1;
+                }
+                int d = (q.Pagina - visPagina) * visDir;
+                return d == 0 ? 0 : d == 1 ? 1 : d == -1 ? 2 : d == 2 ? 3 : -1;
             }
             internal static void Pide(string mbid, char letra, int pagina)
             {
@@ -520,14 +541,18 @@ namespace Rocola
                         {
                             long falta = visDesde + AsientaMs - Environment.TickCount64;
                             if (falta > 0 && cola.Count > 0) { Monitor.Wait(cerrojo, (int)falta + 1); continue; }
+                            // la de la pagina que se mira primero y, si no queda ninguna de ella, la de su turno (rapido-spotify: las de al lado, por
+                            // adelantado); en cada turno, en el orden en que se pidieron
+                            int mejor = -1, mejorTurno = int.MaxValue;
                             for (int i = 0; i < cola.Count; i++)
                             {
-                                Pedido q = cola[i];
-                                if (q.Letra == visLetra && q.Pagina == visPagina) { p = q; cola.RemoveAt(i); break; }
+                                int tu = Turno(cola[i]);
+                                if (tu >= 0 && tu < mejorTurno) { mejor = i; mejorTurno = tu; if (tu == 0) break; }
                             }
+                            if (mejor >= 0) { p = cola[mejor]; cola.RemoveAt(mejor); }
                             // lo de las paginas que ya pasaron (hojear deprisa): se deja sin preguntar a la red
                             for (int i = cola.Count - 1; i >= 0; i--)
-                                if (cola[i].Letra != visLetra || cola[i].Pagina != visPagina) { enCola.Remove(cola[i].Mbid); cola.RemoveAt(i); Dejadas++; }
+                                if (Turno(cola[i]) < 0) { enCola.Remove(cola[i].Mbid); cola.RemoveAt(i); Dejadas++; }
                             if (p == null) Monitor.Wait(cerrojo, 10000);
                         }
                     }
@@ -544,7 +569,11 @@ namespace Rocola
                     else
                     {
                         Interlocked.Increment(ref Pedidas);
-                        using (HttpResponseMessage r = RocolaOsPgDescarga.Http.Send(new HttpRequestMessage(HttpMethod.Get, Base + "/release-group/" + p.Mbid + "/front-250"), HttpCompletionOption.ResponseHeadersRead))
+                        // (rapido-spotify) una portada que se atasca suelta su hilo a los 20 s (el cliente es el del catalogo, con 5 min para el archivo
+                        // grande): con 12 a la vez, una red que se cuelga no deja a la pagina sin hilos
+                        using (CancellationTokenSource cts = new CancellationTokenSource(20000))
+                        using (HttpResponseMessage r = RocolaOsPgDescarga.Http.Send(new HttpRequestMessage(HttpMethod.Get, Base + "/release-group/" + p.Mbid + "/front-250"), HttpCompletionOption.ResponseHeadersRead, cts.Token))
+                        using (cts.Token.Register(delegate { try { r.Dispose(); } catch { } }))
                         {
                             int cod = (int)r.StatusCode;
                             if (cod == 200)

@@ -95,6 +95,9 @@ namespace Rocola
         private int rocolaOsPgPedidoN;
         private HashSet<string> rocolaOsPgOcultos;
         private Dictionary<string, List<Album>> rocolaOsPgEsperan;        // mbid -> los discos que esperan su portada
+        // (rapido-spotify) los de las paginas de al lado que se bajan por adelantado: mbid -> los discos y la pagina (con su letra) donde estan
+        private Dictionary<string, List<KeyValuePair<Album, int>>> rocolaOsPgEsperanVecinas;
+        private char rocolaOsPgVecinasLetra;
         private HashSet<Album> rocolaOsPgAbriendo;
         private List<Album> rocolaOsPgAlbumsXp;                           // la biblioteca de XP con que se armaron (otra tras re-escanear)
         private char rocolaOsPgUltimaLetra;
@@ -134,6 +137,7 @@ namespace Rocola
             rocolaOsPgPedidas = new Dictionary<char, int>();
             rocolaOsPgOcultos = new HashSet<string>(StringComparer.Ordinal);
             rocolaOsPgEsperan = new Dictionary<string, List<Album>>(StringComparer.OrdinalIgnoreCase);
+            rocolaOsPgEsperanVecinas = new Dictionary<string, List<KeyValuePair<Album, int>>>(StringComparer.OrdinalIgnoreCase);
             rocolaOsPgAbriendo = new HashSet<Album>();
             rocolaOsPgCuadros = new int[1001]; rocolaOsPgCuadrosHojeo = new int[1001];
             try { rocolaOsPgSinPastillas = Environment.GetEnvironmentVariable("ROCOLA_PARED_SIN_PASTILLAS") == "1"; } catch { }
@@ -483,7 +487,7 @@ namespace Rocola
                 rocolaOsPgListas.RemoveAt(i);
             }
             RocolaOsPgPublica();
-            if (!mirando) return;
+            if (!mirando) { if (RocolaOsPgVa && RocolaOsPgMirada() != null) RocolaOsPgAdelantaLetra(r); return; }   // (rapido-spotify: si es de al lado, su 1a pagina)
             rocolaOsPgCambios++;
             int nuevo = elegido != null ? r.Lista.IndexOf(elegido) : 0;
             if (nuevo < 0 && elegido != null && elegido.Folder != null)   // (uno del catalogo de antes: el mismo disco del nuevo, por su clave)
@@ -504,12 +508,34 @@ namespace Rocola
             string sig = currentLetter + "|" + page.ToString(CultureInfo.InvariantCulture);
             if (sig != rocolaOsPgUltimaPagina) { rocolaOsPgUltimaPagina = sig; rocolaOsPgUltimoCambio = Stopwatch.GetTimestamp(); if (e != null) rocolaOsPgCambiosPagina++; }
             if (e == null) return;
-            RocolaOsPgPortadas.Mira(currentLetter, page);
-            // las portadas: las que ya estan en el disco, de esta pagina y de las de al lado (XP las lee por adelantado); las que faltan, solo
-            // de esta (al verse)
-            for (int p = page - 1; p <= page + 1; p++)
+            // (rapido-spotify) las letras de al lado (las de REGRESAR+izq/der, que llegan a su primera pagina): su primera pagina tambien se baja
+            // por adelantado, detras de todo lo de esta letra (solo al disco: XP la lee al llegar)
+            char vecinaAntes = '\0', vecinaDespues = '\0';
+            {
+                string orden = LetrasOrden;
+                int li = orden.IndexOf(currentLetter);
+                for (int sd = 1; li >= 0 && sd >= -1; sd -= 2)
+                    for (int k = 1; k < orden.Length; k++)
+                    {
+                        char c = orden[((li + sd * k) % orden.Length + orden.Length) % orden.Length];
+                        if (letterAvailable == null || !letterAvailable.Contains(c)) continue;
+                        if (RocolaOsPgLetraSuya(c) && c != currentLetter) { if (sd > 0) vecinaDespues = c; else vecinaAntes = c; }
+                        break;
+                    }
+            }
+            int dir = RocolaOsPgPortadas.Mira(currentLetter, page, vecinaDespues, vecinaAntes);
+            if (rocolaOsPgVecinasLetra != currentLetter) { rocolaOsPgEsperanVecinas.Clear(); rocolaOsPgVecinasLetra = currentLetter; }   // (otra letra: lo de la de antes ya no)
+            // las portadas: las que ya estan en el disco, de esta pagina y de las de al lado (XP las lee por adelantado); las que faltan, de esta
+            // (al verse) y (rapido-spotify) tambien de las de al lado y de la que sigue hacia donde se va, POR ADELANTADO: las baja el hilo de las
+            // portadas cuando ya no le queda nada de la que se mira (asi, al pasar de pagina, ya estan en el disco y XP ya las leyo). Nada de la
+            // API de Spotify: del Cover Art Archive, a su cache con tope
+            for (int p = page - 1; p <= page + 2; p++)
             {
                 int ini = p * PageSize;
+                if (ini < 0) continue;
+                bool lejos = p == page + 2 && dir < 0;   // (la de dos mas alla, solo hacia donde se va: hacia atras seria page-2)
+                int pp = lejos ? page - 2 : p;
+                ini = pp * PageSize;
                 if (ini < 0) continue;
                 for (int i = ini; i < ini + PageSize && i < e.Lista.Count; i++)
                 {
@@ -518,27 +544,77 @@ namespace Rocola
                     if (a.CoverPath != null || !e.Catalogo.TryGetValue(a, out d) || !d.Portada || d.Mbid.Length == 0) continue;
                     if (RocolaOsPgPortadas.EnDisco(d.Mbid))
                     {
+                        if (pp < page - 1 || pp > page + 1) continue;   // (la de dos mas alla, solo al disco: XP la lee al llegar a la de al lado)
                         RocolaOsPgPortadas.Usada(d.Mbid);
                         a.CoverPath = RocolaOsPgPortadas.Ruta(d.Mbid);
-                        RequestCover(a, p != page, p == page);
+                        RequestCover(a, pp != page, pp == page);
                     }
-                    else if (p == page)
+                    else if (pp == page)
                     {
                         List<Album> l;
                         if (!rocolaOsPgEsperan.TryGetValue(d.Mbid, out l)) { l = new List<Album>(); rocolaOsPgEsperan[d.Mbid] = l; }
                         if (!l.Contains(a)) l.Add(a);
                         RocolaOsPgPortadas.Pide(d.Mbid, currentLetter, page);
                     }
+                    else
+                    {
+                        List<KeyValuePair<Album, int>> l;
+                        if (!rocolaOsPgEsperanVecinas.TryGetValue(d.Mbid, out l)) { l = new List<KeyValuePair<Album, int>>(); rocolaOsPgEsperanVecinas[d.Mbid] = l; }
+                        bool ya = false;
+                        foreach (KeyValuePair<Album, int> x in l) if (ReferenceEquals(x.Key, a)) { ya = true; break; }
+                        if (!ya) l.Add(new KeyValuePair<Album, int>(a, pp));
+                        RocolaOsPgPortadas.Pide(d.Mbid, currentLetter, pp);
+                    }
                 }
+            }
+            foreach (char vl in new[] { vecinaDespues, vecinaAntes })
+            {
+                if (vl == '\0') continue;
+                RocolaOsPgLetra ev = null;
+                for (int i = rocolaOsPgListas.Count - 1; i >= 0; i--) if (rocolaOsPgListas[i].Letra == vl) { ev = rocolaOsPgListas[i]; break; }   // (sin moverla en la memoria)
+                RocolaOsPgAdelantaLetra(ev);
+            }
+        }
+        // (rapido-spotify) la primera pagina de una letra de al lado, al disco por adelantado (el turno lo decide el hilo de las portadas: si ya no es
+        // de al lado cuando le toca, se deja)
+        private void RocolaOsPgAdelantaLetra(RocolaOsPgLetra ev)
+        {
+            if (ev == null) return;
+            for (int i = 0; i < PageSize && i < ev.Lista.Count; i++)
+            {
+                RocolaOsPgDisco d;
+                Album a = ev.Lista[i];
+                if (a.CoverPath != null || !ev.Catalogo.TryGetValue(a, out d) || !d.Portada || d.Mbid.Length == 0 || RocolaOsPgPortadas.EnDisco(d.Mbid)) continue;
+                RocolaOsPgPortadas.Pide(d.Mbid, ev.Letra, 0);
             }
         }
         internal void RocolaOsPgLlegoPortada(string mbid)
         {
-            List<Album> l;
-            if (rocolaOsPgEsperan == null || !rocolaOsPgEsperan.TryGetValue(mbid, out l)) return;
-            rocolaOsPgEsperan.Remove(mbid);
+            List<Album> l = null;
+            List<KeyValuePair<Album, int>> v = null;
+            bool deAqui = rocolaOsPgEsperan != null && rocolaOsPgEsperan.TryGetValue(mbid, out l);
+            bool vecina = rocolaOsPgEsperanVecinas != null && rocolaOsPgEsperanVecinas.TryGetValue(mbid, out v);
+            if (!deAqui && !vecina) return;
             string ruta = RocolaOsPgPortadas.Ruta(mbid);
-            foreach (Album a in l) { a.CoverPath = ruta; RequestCover(a, false, true); }
+            if (deAqui)
+            {
+                rocolaOsPgEsperan.Remove(mbid);
+                foreach (Album a in l) { a.CoverPath = ruta; RequestCover(a, false, true); }
+            }
+            if (vecina)
+            {
+                // (rapido-spotify) las de al lado bajadas por adelantado: su ruta y, si siguen al lado de la que se mira, XP las lee ya, como lee
+                // por adelantado las de al lado que ya estaban en el disco (RequestCover con la prioridad baja); si ya no, solo la ruta
+                rocolaOsPgEsperanVecinas.Remove(mbid);
+                bool letra = currentLetter == rocolaOsPgVecinasLetra;
+                foreach (KeyValuePair<Album, int> x in v)
+                {
+                    if (x.Key.CoverPath != null) continue;
+                    x.Key.CoverPath = ruta;
+                    RocolaOsPgPortadas.Usada(mbid);
+                    if (letra && x.Value >= page - 1 && x.Value <= page + 1) RequestCover(x.Key, x.Value != page, x.Value == page);
+                }
+            }
             if (albumView != null && albumView.Visible) albumView.Invalidate();
         }
 
@@ -775,7 +851,7 @@ namespace Rocola
             Album eleg = m != null && selAlbumIndex >= 0 && selAlbumIndex < m.Lista.Count ? m.Lista[selAlbumIndex] : null;
             int antes = 0;
             if (m != null) for (int i = 0; i < selAlbumIndex && i < m.Lista.Count; i++) if (!m.Catalogo.ContainsKey(m.Lista[i])) antes++;
-            rocolaOsPgListas.Clear(); rocolaOsPgPedidas.Clear(); rocolaOsPgEsperan.Clear(); rocolaOsPgUltimaLetra = '\0';
+            rocolaOsPgListas.Clear(); rocolaOsPgPedidas.Clear(); rocolaOsPgEsperan.Clear(); rocolaOsPgEsperanVecinas.Clear(); rocolaOsPgUltimaLetra = '\0';
             RocolaOsPgPublica();
             RocolaOs.Apunta("pared_generos", "ya no va (sin la llave, el modo o la funcion): la pared de XP");
             if (letterBar == null || libBuilding) return;
