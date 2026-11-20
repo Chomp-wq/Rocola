@@ -101,19 +101,26 @@ if ! sistema "$SLOT"; then
 	fi
 fi
 # Lo aprendido, aparte (si esta: una instalacion de antes de las dos copias lo tenia dentro del sistema)
+# CON «dirsync» (auditoria «apagones», 20-11-2026; sistema/rocola/Xp/FASE11_apagones.md): rocola-xp guarda el estado del dia (creditos,
+# cola: rocola_estado.txt) y todo lo aprendido como XP: un archivo de paso bajado al disco (fsync) y un cambio de nombre. En ext4 el cambio
+# de nombre se queda en la memoria hasta el siguiente asiento del diario (hasta 5 s): un corte de luz en ese rato devolvia el estado de
+# ANTES (las monedas recien echadas, perdidas; visto en QEMU: Pruebas/Qemu/apagones.py). Con dirsync cada crear, enlazar, cambiar de
+# nombre o borrar en /rocola/datos queda en el disco al volver la llamada, sin tocar el codigo de XP (lo mismo vale para los borrados del
+# apagado a proposito). Son pocas operaciones y van en hilos de fondo.
+DATOS_OPC=noatime,dirsync
 if [ -f "/disco$OS/datos.img" ]; then
 	mkdir -p /raiz/rocola/datos
 	# si no monta (un apagon que lo dejo con errores), se repara (e2fsck -p: lo que se arregla sin preguntar; -y si con eso no
 	# basta) y se vuelve a probar; solo si aun asi no monta, la rocola arranca sin lo aprendido
 	if losetup /dev/loop1 "/disco$OS/datos.img"; then
-		if ! mount -t ext4 -o noatime /dev/loop1 /raiz/rocola/datos 2>/dev/null; then
+		if ! mount -t ext4 -o $DATOS_OPC /dev/loop1 /raiz/rocola/datos 2>/dev/null; then
 			if [ -x /bin/e2fsck ]; then
 				echo "Rocola OS: reparando lo aprendido (datos.img)..."
 				/bin/e2fsck -p /dev/loop1 >/dev/null 2>&1; r=$?
 				[ $r -ge 4 ] && { /bin/e2fsck -fy /dev/loop1 >/dev/null 2>&1; r=$?; }
 				apunta "datos.img no montaba: e2fsck devolvio $r"
 			fi
-			mount -t ext4 -o noatime /dev/loop1 /raiz/rocola/datos \
+			mount -t ext4 -o $DATOS_OPC /dev/loop1 /raiz/rocola/datos \
 				|| { apunta "no se pudo montar datos.img: la rocola arranca sin lo aprendido"; sync; }
 		fi
 	else apunta "no se pudo montar datos.img: la rocola arranca sin lo aprendido"; sync

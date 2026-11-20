@@ -16,7 +16,8 @@
 #   - SIGHUP (no la atiende: el lanzador la ignora para sus hijos) -> como un apagon: se conserva
 #   - un corte JUSTO mientras guarda (strace -e inject: SIGKILL en la escritura del de paso, en su fsync, en el cambio de nombre): al volver,
 #     un estado entero (el de antes o el nuevo), nunca roto
-#   - como guarda (strace): de paso, fsync del de paso, copia .bak por enlace y cambio de nombre (y si se baja la carpeta al disco)
+#   - como guarda (strace): de paso, fsync del de paso, copia .bak por enlace y cambio de nombre; y con lo aprendido montado como lo deja
+#     el initramfs (dirsync), que el cambio de nombre espera al disco (que sobreviva a un corte de luz se ve en QEMU: Pruebas/Qemu/apagones.py)
 #   - el importador de XP no trae el estado del dia ni pisa el de rocola-xp
 # Cada comprobacion: BIEN o MAL en una linea; al final «TODO BIEN (N comprobaciones)» o cuantas MAL (y sale con 1).
 set -u
@@ -175,7 +176,7 @@ fi
 
 # ---------------------------------------------------------------- como se guarda (strace, sin cortar)
 if [[ " $partes " == *" strace "* ]]; then
-  echo "== strace: las llamadas de cada guardado del estado (y si la carpeta se baja al disco)"
+  echo "== strace: las llamadas de cada guardado del estado (y que con dirsync el cambio de nombre espera al disco)"
   d=$(datos strace); st="$d/rocola_estado.txt"
   abre strace "$d" "$PIDE" 18 KILL -- strace -f -qq --seccomp-bpf -o "$W/strace.strace" -e trace=openat,write,fsync,fdatasync,sync,syncfs,link,linkat,rename,renameat,renameat2,unlink,unlinkat
   s="$W/strace.strace"
@@ -186,27 +187,33 @@ if [[ " $partes " == *" strace "* ]]; then
   echo "  guardados (cambios de nombre): $ren; fsync del de paso: $fs; aperturas de la carpeta de datos: $dirfd"
   awk -v p="rocola_estado" 'index($0, p) || /fsync\(/' "$s" | grep -E "rocola_estado|fsync" | head -14 | sed 's/^/    /'
   si "strace: el estado se guarda con un de paso, fsync, copia .bak (link) y cambio de nombre" bash -c "[ '$ren' -ge 3 ] && [ '$fs' -ge 1 ] && grep -qE 'link(at)?\(.*rocola_estado\.txt\", .*rocola_estado\.txt\.bak\"' '$s'"
-  # tras cada cambio de nombre, ¿se baja la carpeta (fsync de un descriptor de la carpeta de datos)? (en Windows el cambio de nombre lo
-  # lleva el diario de NTFS; en Linux, POSIX pide fsync de la carpeta para que el nombre nuevo sobreviva a un corte de luz)
-  python3 - "$s" "$d" > "$W/strace-carpeta.txt" <<'EOP'
+  # EL CAMBIO DE NOMBRE NO SE BAJA SOLO. En Windows lo lleva el diario de NTFS; en Linux (ext4) se queda en la memoria hasta el siguiente
+  # asiento del diario (hasta 5 s) y un corte de luz en ese rato devuelve el estado de ANTES (visto en QEMU: Pruebas/Qemu/apagones.py, «dd
+  # normal»). El arreglo no toca el codigo de XP: /rocola/datos se monta con dirsync (initramfs/init, DATOS_OPC), y asi el nucleo baja
+  # cada crear, enlazar, cambiar de nombre y borrar ANTES de volver de la llamada. Aqui: las opciones salen del init del repositorio, se
+  # monta un ext4 en un archivo con ellas, la rocola guarda alli, y se mide (strace -T) cuanto tarda cada cambio de nombre: con dirsync
+  # espera al disco (milisegundos), sin el vuelve al momento (microsegundos). Que sobrevive a un corte de luz se ve en QEMU, no aqui.
+  opc=$(sed -n 's/^DATOS_OPC=//p' "$XP/../../board/rocola/initramfs/init" | head -1)
+  si "strace: el initramfs monta lo aprendido (/rocola/datos) con dirsync ($opc)" bash -c "[[ ',$opc,' == *',dirsync,'* ]]"
+  for m in dirsync nodirsync; do
+    img="$W/datos-$m.img"; mnt="$W/datos-$m"; rm -f "$img"; mkdir -p "$mnt"
+    truncate -s 64M "$img" && mkfs.ext4 -q "$img" && mount -o loop,"$([ $m = dirsync ] && echo "$opc" || echo noatime)" "$img" "$mnt" \
+      || { echo "MAL   strace $m: no se pudo montar un ext4 de prueba (hace falta root y loop)"; mal=$((mal + 1)); continue; }
+    cp -r "$DATOS0"/. "$mnt"/; rm -f "$mnt"/rocola_estado.txt*
+    abre "strace-$m" "$mnt" "$PIDE" 18 KILL -- strace -f -qq -T -o "$W/strace-$m.strace" -P "$mnt/rocola_estado.txt.tmp" -P "$mnt/rocola_estado.txt" -e trace=rename,renameat,renameat2
+    grep ' '"$mnt"' ' /proc/mounts | head -1 > "$W/strace-$m.montaje"
+    python3 - "$W/strace-$m.strace" > "$W/strace-$m.tiempos" <<'EOP'
 import re, sys
-s, d = sys.argv[1], sys.argv[2]
-dirfds, ok, ren = {}, 0, 0
-pend = {}
-for l in open(s, errors="replace"):
-    m = re.match(r"(\d+)\s+(.*)", l);
-    if not m: continue
-    pid, c = m.group(1), m.group(2)
-    m2 = re.match(r'openat\(.*"' + re.escape(d) + r'".*O_DIRECTORY.*= (\d+)$', c)
-    if m2: dirfds[(pid, m2.group(1))] = 1
-    if re.match(r'rename(at2?)?\(.*rocola_estado\.txt\.tmp", .*rocola_estado\.txt"', c): ren += 1; pend[pid] = 1
-    m3 = re.match(r'f(data)?sync\((\d+)\)', c)
-    if m3 and pend.get(pid) and (pid, m3.group(2)) in dirfds: ok += 1; pend[pid] = 0
-print(ren, ok)
+t = [float(m.group(1)) * 1000 for l in open(sys.argv[1], errors="replace") if "rocola_estado.txt.tmp" in l
+     for m in [re.search(r"= 0 <([0-9.]+)>", l)] if m]
+t.sort(); print(len(t), "%.3f" % (t[len(t) // 2] if t else 0), "%.3f" % (t[0] if t else 0))
 EOP
-  read -r nren nok < "$W/strace-carpeta.txt"
-  echo "  cambios de nombre del estado: $nren; seguidos de fsync de la carpeta: $nok"
-  si "strace: cada cambio de nombre del estado va seguido del fsync de su carpeta (sobrevive a un corte de luz)" bash -c "[ '$nren' -ge 3 ] && [ '$nok' = '$nren' ]"
+    umount "$mnt" 2>/dev/null || umount -l "$mnt"; rm -f "$img"
+  done
+  read -r nd md0 mind < "$W/strace-dirsync.tiempos"; read -r nn mdn minn < "$W/strace-nodirsync.tiempos"
+  echo "  cambios de nombre del estado: con dirsync $nd (mediana $md0 ms, el mas rapido $mind ms); sin dirsync $nn (mediana $mdn ms)"
+  si "strace: montado con dirsync, la rocola guarda alli igual (3 o mas guardados) y cada cambio de nombre espera al disco (el mas rapido >= 5 veces la mediana sin dirsync)" \
+    bash -c "grep -q dirsync '$W/strace-dirsync.montaje' && [ '${nd:-0}' -ge 3 ] && [ '${nn:-0}' -ge 3 ] && python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= 5 * max(float(sys.argv[2]), 0.001) else 1)' '${mind:-0}' '${mdn:-0}'"
 fi
 
 # ---------------------------------------------------------------- el importador de XP no trae el estado del dia ni pisa el de rocola-xp

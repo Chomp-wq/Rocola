@@ -10,6 +10,10 @@
 #                      lo monta el initramfs) o «dirsync» (remontado con dirsync antes, lo que pone el arreglo).
 #     moneda:MODO:ESPERA   rocola-xp de verdad: una moneda (la M), se espera a ver los creditos nuevos en rocola_estado.txt y ESPERA s despues,
 #                      el corte; al volver, los creditos que quedaron.
+#     moneda:initrd:ESPERA   lo mismo con el ARREGLO DE VERDAD: el init del repositorio (sistema/board/rocola/initramfs/init, con dirsync)
+#                      va en un cpio aparte pegado al final del initrd.gz instalado (el nucleo desempaca los cpio seguidos y el ultimo
+#                      «init» manda; BusyBox no arma cpio, asi que se arma aqui y entra por un segundo disco en bruto), se vuelve a
+#                      prender, se mira que /rocola/datos quedo con dirsync y se hace la moneda y el corte sin remontar nada.
 #     mira             arranca y dice como esta montado /rocola/datos (opciones, commit) y si el NTFS quedo sucio.
 # Cada una: una linea «RESULTADO ...» (y el resumen en Q/apagones.txt).
 import os, re, subprocess, sys, time
@@ -31,9 +35,9 @@ def capa_nueva():
     if os.path.exists(XP): os.remove(XP)
     subprocess.run(["qemu-img", "create", "-q", "-f", "qcow2", "-b", BASE, "-F", "qcow2", XP], check=True)
 
-def arranca():
+def arranca(extra=None):
     global c
-    lanza(MAQ, XP, os.path.join(Q, "sonido.wav"))
+    lanza(MAQ, XP, os.path.join(Q, "sonido.wav"), extra=extra)
     c = Control(MAQ)
     if not c.espera("mountpoint -q /rocola/datos", 900, 5): raise SystemExit("la maquina no contesto por el puerto serie")
 
@@ -68,11 +72,36 @@ def dd(modo, espera):
     di("RESULTADO dd %s espera=%s: quedo [%s] (se escribio v=5)" % (modo, espera, v))
     corte()
 
+def init_nuevo():
+    """El init del repositorio en un cpio newc comprimido, relleno hasta 512 bytes (un disco en bruto); devuelve (ruta, bytes del gz)."""
+    repo_init = os.path.abspath(os.path.join(AQUI, "..", "..", "..", "board", "rocola", "initramfs", "init"))
+    t = os.path.join(Q, "init-nuevo"); subprocess.run(["rm", "-rf", t], check=True); os.makedirs(t)
+    subprocess.run(["install", "-m", "755", repo_init, os.path.join(t, "init")], check=True)
+    gz = subprocess.run("cd %s && echo init | cpio -o -H newc -R 0:0 --quiet | gzip -9" % t, shell=True, check=True, capture_output=True).stdout
+    raw = os.path.join(Q, "init-nuevo.raw")
+    with open(raw, "wb") as f: f.write(gz + b"\0" * ((-len(gz)) % 512 or 512))
+    return raw, len(gz)
+
+def pon_init_nuevo():
+    """Pega el init nuevo a los initrd.gz instalados (en esta capa: el disco base no se toca) y vuelve a prender. Devuelve el montaje."""
+    raw, n = init_nuevo()
+    arranca(extra=raw)
+    para_la_rocola()
+    r = orden("for f in $(find /rocola/disco/rocola-os -maxdepth 2 -name initrd.gz); do head -c %d /dev/sdb >> $f && echo \"$f\"; done; sync" % n, 120)
+    di("initrd: el init del repositorio pegado a: " + r.strip().replace("\n", " "))
+    orden("sync; sync"); corte()
+    arranca()
+    return orden("grep ' /rocola/datos ' /proc/mounts").strip()
+
 def moneda(modo, espera):
-    capa_nueva(); arranca()
+    capa_nueva()
+    if modo == "initrd":
+        m = pon_init_nuevo(); di("initrd: tras volver a prender: " + m)
+        if "dirsync" not in m: di("RESULTADO moneda initrd: /rocola/datos NO quedo con dirsync"); corte(); return
+    else: arranca()
     if not c.espera("for p in $(pidof rocola-xp); do tr '\\0' '\\n' < /proc/$p/cmdline | grep -qx -- --importa-xp || exit 0; done; exit 1", 900, 10):
         di("RESULTADO moneda %s: rocola-xp no se abrio" % modo); corte(); return
-    m = monta(modo)
+    m = monta(modo if modo != "initrd" else "normal")
     time.sleep(60)   # (que acabe de arrancar: la biblioteca y la restauracion del estado)
     cr0 = orden("sed -n 's/^creditos=//p' /rocola/datos/xp/rocola_estado.txt 2>/dev/null | tr -d '\\r'").strip() or "0"
     di("moneda %s %s: montado: %s; creditos antes: %s" % (modo, espera, m, cr0))
