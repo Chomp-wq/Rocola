@@ -14,7 +14,7 @@
 #   (el de verdad, SIN llave: espera la llave y no abre nada)
 # De la junta de Spotify (15-11-2026): «fabrica» (el modo encendido de fabrica sin ninguna llave = XP tal cual, sin una peticion a la red y
 # con el vigilante esperando sin gastar; contra la misma escena sin ROCOLA_OS) y «noche» (el modo noche de XP baja una de Spotify al
-# noche_pct de noche y con «Probar», con su rampa, igual que una de XP; niveles.py)
+# noche_pct de noche y con «Probar», con su rampa, igual que una de XP; niveles.py; desde el 17-11-2026, la bajada de una hora desde las 22 h)
 #   W: la carpeta de trabajo (/root/rocola-trabajo/fase11/spotify-xp/prueba; se rehace); FALSO: el Soloist falso compilado (se compila si
 #   falta, con el candado de lo pesado); DATOS0 (/root/rocola-trabajo/port/ventanas/datos0, se copian, nunca se tocan)
 # Las cuentas del sonido: frecuencias.py (tramos de 50 ms con la frecuencia dominante). Cada cancion de Spotify de prueba lleva su tono en su
@@ -492,14 +492,16 @@ if [[ " $partes " == *" vigilante "* ]]; then
 fi
 
 # ---------------------------------------------------------------- noche: el modo noche de XP baja tambien lo de Spotify, igual que una de XP
-# (pregunta del dueno del 15-11-2026; pendiente 5 de SPOTIFY_JUNTA_PENDIENTES.md). Cuatro corridas, todas con el modo noche de fabrica (noche=1,
+# (pregunta del dueno del 15-11-2026; pendiente 5 de SPOTIFY_JUNTA_PENDIENTES.md). Seis corridas, todas con el modo noche de fabrica (noche=1,
 # noche_pct=80: -3,22 dB, 10*log2(0,8)): una de Spotify (la fuente de RocolaOs.SpotifyFuente.cs por ArmaCadena, 440 Hz) y una de XP (un MP3
-# de 1000 Hz y 60 s en lugar de los de los datos de prueba), (1) cruzando las 11 de la noche a media cancion (una zona horaria de mentira
-# hecha con zic, en la que la rocola arranca a las 22:59:30) y (2) con «Probar» (el boton de Ctrl+F3 -> Sonido, por el doble del catalogo:
-# «noche-probar») de dia (la zona a las 12:00). Lo que sono, en la tarjeta de prueba con reloj; el nivel con niveles.py. La rampa de XP:
-# medio volumen en 20 s (de 1 a 0,69: 12,4 s) al entrar la noche, y en 1,5 s con «Probar» (0,93 s), que dura 15 s y vuelve sola.
+# de 1000 Hz y 80 s en lugar de los de los datos de prueba), (1) cruzando las 10 de la noche a media cancion (una zona horaria de mentira
+# hecha con zic, en la que la rocola arranca a las 21:59:30), (2) prendida ya de noche (las 23:30) y (3) con «Probar» (el boton de Ctrl+F3 ->
+# Sonido, por el doble del catalogo: «noche-probar») de dia (la zona a las 12:00), tocado otra vez a los 15 s. Lo que sono, en la tarjeta de
+# prueba con reloj; el nivel con niveles.py. Desde el 17-11-2026 (decision del dueno, la rocola de XP; AGENTS.md) la noche empieza a las 22 h
+# y baja en UNA HORA, pareja en dB (-3,22 dB en 60 min: -0,0537 dB por minuto), sin escalon y sin aviso; prendida ya de noche, arranca en el
+# nivel de la noche; «Probar» baja en 1,5 s (0,93 s hasta medio volumen) y se queda hasta otro toque (antes, 15 s y volvia sola).
 if [[ " $partes " == *" noche "* ]]; then
-  echo "== noche (el modo noche de XP con una de Spotify y una de XP: de noche y con «Probar», con su rampa)"
+  echo "== noche (el modo noche de XP con una de Spotify y una de XP: al cruzar las 22 h, prendida de noche y con «Probar», con sus rampas)"
   ZI="$W/zonas"; mkdir -p "$ZI"
   # zona NOMBRE HH:MM: una zona horaria en la que AHORA son las HH:MM (los segundos, los de UTC). Se llama justo antes de abrir la rocola.
   zona() {
@@ -507,19 +509,24 @@ if [[ " $partes " == *" noche "* ]]; then
     u=$(( 10#$(date -u +%H) * 60 + 10#$(date -u +%M) )); off=$(( (10#$h * 60 + 10#$m - u + 2880) % 1440 )); [ $off -gt 840 ] && off=$((off - 1440))
     [ $off -lt 0 ] && { sg=-; off=$((-off)); }
     echo "Zone $n $sg$((off / 60)):$(printf %02d $((off % 60))) - PRB" > "$ZI/$n.txt"; zic -d "$ZI" "$ZI/$n.txt" || return 1; echo "$ZI/$n"; }
-  enelsegundo() { while [ "$(date -u +%S)" != "$1" ]; do sleep 0.2; done; }   # (para que las 23:00 caigan a los 30 s de abrir)
-  [ -f "$W/tono1000.mp3" ] || ffmpeg -loglevel error -y -f lavfi -i "aevalsrc=0.25*sin(2*PI*1000*t)|0.25*sin(2*PI*1000*t):s=44100:d=60" -c:a libmp3lame -b:a 192k "$W/tono1000.mp3"
+  enelsegundo() { while [ "$(date -u +%S)" != "$1" ]; do sleep 0.2; done; }   # (para que las 22:00 caigan a los 30 s de abrir)
+  [ -f "$W/tono1000.mp3" ] || ffmpeg -loglevel error -y -f lavfi -i "aevalsrc=0.25*sin(2*PI*1000*t)|0.25*sin(2*PI*1000*t):s=44100:d=80" -c:a libmp3lame -b:a 192k "$W/tono1000.mp3"
   for c in sp xp; do
-    for m in noche probar; do
+    for m in noche yanoche probar; do
       d=$(datos noche-$m-$c)
       [ $c = xp ] && for f in "$d"/musica/*/*/*.mp3; do cp "$W/tono1000.mp3" "$f"; done
-      if [ $m = noche ]; then enelsegundo 30; z=$(zona noche-$c 22:59); pide=""; fin=48; else z=$(zona dia-$c 12:00); pide="20:noche-probar"; fin=45; fi
-      [ $c = sp ] && pide="9:pide spotify:track:f440d050aa|$P|50000${pide:+;$pide}"
+      cruce=""; largo=50000
+      case $m in
+        noche) enelsegundo 30; z=$(zona noche-$c 21:59); cruce=$(( ($(date +%s) / 60 + 1) * 60 )); pide=""; fin=72; largo=75000 ;;
+        yanoche) z=$(zona ya-$c 23:30); pide=""; fin=40 ;;
+        probar) z=$(zona dia-$c 12:00); pide="20:noche-probar;35:noche-probar"; fin=48 ;;
+      esac
+      [ $c = sp ] && pide="9:pide spotify:track:f440d050aa|$P|$largo${pide:+;$pide}"
       T0=$(date +%s.%N)
       if [ $c = sp ]; then abre noche-$m-$c "$d" "7:67" "$pide" $fin TERM ROCOLA_OS=spotify,spotify-prueba TZ="$z"
       else abre noche-$m-$c "$d" "7:67,9:13,10.5:13" "$pide" $fin TERM ROCOLA_OS=spotify,spotify-prueba TZ="$z"; fi
       hz=440; [ $c = xp ] && hz=1000
-      python3 "$G/niveles.py" "$W/noche-$m-$c/sonado.raw" "$W/noche-$m-$c/registro.txt" $hz --serie > "$W/noche-$m-$c/niveles.txt"
+      python3 "$G/niveles.py" "$W/noche-$m-$c/sonado.raw" "$W/noche-$m-$c/registro.txt" $hz --serie ${cruce:+--cruce $cruce} > "$W/noche-$m-$c/niveles.txt"
       echo "   $m $c: $(head -1 "$W/noche-$m-$c/niveles.txt")"
     done
   done
@@ -527,19 +534,28 @@ if [[ " $partes " == *" noche "* ]]; then
   for c in sp xp; do
     o="$W/noche-noche-$c"
     si "noche $c: sale con 0" test "$(cat $o/salio)" = 0
-    si "noche $c: baja al 80 % de lo que se oye (-3,22 dB: $(nv noche-$c baja) dB)" entre "$(nv noche-$c baja)" -3.40 -3.05
-    si "noche $c: con su rampa (12,4 s: $(nv noche-$c rampa) s), sin escalon" entre "$(nv noche-$c rampa)" 11.4 13.4
+    si "noche $c: el cruce de las 22 h cae con la cancion sonando ($(nv noche-$c cruce) s de lo sonado)" entre "$(nv noche-$c cruce)" 8 50
+    si "noche $c: antes de las 22 h no baja ($(nv noche-$c pend_antes) dB/min)" entre "$(nv noche-$c pend_antes)" -0.012 0.012
+    si "noche $c: desde las 22 h baja PAREJO, una hora para -3,22 dB (-0,0537 dB/min: $(nv noche-$c pend_despues) dB/min)" entre "$(nv noche-$c pend_despues)" -0.075 -0.035
+    si "noche $c: sin escalon (el mayor cambio entre dos tramos de 100 ms: $(nv noche-$c salto) dB; la rampa de 20 s de antes daba unos 0,016)" entre "$(nv noche-$c salto)" 0 0.005
+    o="$W/noche-yanoche-$c"
+    si "yanoche $c: sale con 0" test "$(cat $o/salio)" = 0
+    si "yanoche $c: prendida ya de noche, suena desde el principio al 80 % de lo de dia (-3,22 dB: $(nv yanoche-$c mediana) - $(nv probar-$c antes) dB)" \
+      entre "$(echo "$(nv yanoche-$c mediana) - $(nv probar-$c antes)" | bc)" -3.40 -3.05
+    si "yanoche $c: y quieta (no hay rampa que ver: $(nv yanoche-$c baja) dB)" entre "$(nv yanoche-$c baja)" -0.1 0.1
     o="$W/noche-probar-$c"
     si "probar $c: sale con 0" test "$(cat $o/salio)" = 0
     si "probar $c: «Probar» la baja al 80 % (-3,22 dB: $(nv probar-$c baja) dB)" entre "$(nv probar-$c baja)" -3.40 -3.05
     si "probar $c: con la rampa rapida (0,93 s: $(nv probar-$c rampa) s)" entre "$(nv probar-$c rampa)" 0.6 1.4
-    si "probar $c: 15 s abajo ($(nv probar-$c abajo) s) y vuelve sola a lo de antes ($(nv probar-$c antes) -> $(nv probar-$c vuelve) dB, en $(nv probar-$c subida) s)" \
+    si "probar $c: se queda hasta el otro toque, 15 s despues ($(nv probar-$c abajo) s abajo), y vuelve a lo de antes ($(nv probar-$c antes) -> $(nv probar-$c vuelve) dB, en $(nv probar-$c subida) s)" \
       bash -c "echo '$(nv probar-$c abajo) > 14.4 && $(nv probar-$c abajo) < 15.8 && $(nv probar-$c vuelve) - $(nv probar-$c antes) < 0.15 && $(nv probar-$c antes) - $(nv probar-$c vuelve) < 0.15 && $(nv probar-$c subida) > 0.5 && $(nv probar-$c subida) < 1.4' | bc | grep -q 1"
   done
-  for m in noche probar; do
-    db=$(echo "$(nv $m-sp baja) - $(nv $m-xp baja)" | bc); dr=$(echo "$(nv $m-sp rampa) - $(nv $m-xp rampa)" | bc)
-    si "$m: la de Spotify baja igual que la de XP (lo que baja: $db dB de diferencia; la rampa: $dr s)" bash -c "echo '$db < 0.1 && $db > -0.1 && $dr < 0.6 && $dr > -0.6' | bc | grep -q 1"
-  done
+  dp=$(echo "$(nv noche-sp pend_despues) - $(nv noche-xp pend_despues)" | bc)
+  si "noche: la de Spotify baja igual que la de XP (la pendiente: $dp dB/min de diferencia)" bash -c "echo '$dp < 0.015 && $dp > -0.015' | bc | grep -q 1"
+  db=$(echo "$(nv yanoche-sp mediana) - $(nv probar-sp antes) - $(nv yanoche-xp mediana) + $(nv probar-xp antes)" | bc)
+  si "yanoche: la de Spotify baja igual que la de XP ($db dB de diferencia)" bash -c "echo '$db < 0.1 && $db > -0.1' | bc | grep -q 1"
+  db=$(echo "$(nv probar-sp baja) - $(nv probar-xp baja)" | bc); dr=$(echo "$(nv probar-sp rampa) - $(nv probar-xp rampa)" | bc)
+  si "probar: la de Spotify baja igual que la de XP (lo que baja: $db dB de diferencia; la rampa: $dr s)" bash -c "echo '$db < 0.1 && $db > -0.1 && $dr < 0.6 && $dr > -0.6' | bc | grep -q 1"
   si "noche sp: la de Spotify sono por Spotify (cobrada, por la fuente de RocolaOs.SpotifyFuente.cs)" bash -c "grep -q 'COBRADA spotify:track:f440d050aa' '$W/datos-noche-noche-sp/rocola_spotify.txt'"
 fi
 

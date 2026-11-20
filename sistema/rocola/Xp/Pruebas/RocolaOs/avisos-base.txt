@@ -1,13 +1,15 @@
 # Los avisos de compilar rocola-xp en la base de la fase 11 (fc7b667 = 1afaade en el codigo; los 13 de la junta de N7, PORT_borrar-capas.md):
 # archivo(linea): codigo, sin la columna. nivel0.sh (paso compila) da MAL si sale alguno que no este aqui. Son lineas de XP (Thread.VolatileRead,
 # FormatterServices, lecturas inexactas) y una de prueba (PruebasLinux.cs): no se quitan.
+# (20-11-2026, PORT_xp-1718.md: los cambios de la rocola de XP del 17 y 18-11-2026 corren 12 lineas las de Form1.Datos.cs y 56 las de
+# Form1.Sonido.cs; los mismos 13 avisos.)
 Codigo/FlotanteNLayer.cs(360): SYSLIB0054
-Codigo/Form1.Datos.cs(2381): SYSLIB0054
-Codigo/Form1.Datos.cs(2391): SYSLIB0054
-Codigo/Form1.Datos.cs(2457): SYSLIB0054
+Codigo/Form1.Datos.cs(2393): SYSLIB0054
+Codigo/Form1.Datos.cs(2403): SYSLIB0054
+Codigo/Form1.Datos.cs(2469): SYSLIB0054
 Codigo/Form1.DiagnosticoCompleto.cs(371): SYSLIB0054
-Codigo/Form1.Sonido.cs(3214): SYSLIB0054
-Codigo/Form1.Sonido.cs(3232): SYSLIB0054
+Codigo/Form1.Sonido.cs(3270): SYSLIB0054
+Codigo/Form1.Sonido.cs(3288): SYSLIB0054
 Codigo/Form1.cs(375): CA2022
 Codigo/MedidasBitacora.cs(214): SYSLIB0054
 Codigo/Mp3Ligero.cs(199): CA2022

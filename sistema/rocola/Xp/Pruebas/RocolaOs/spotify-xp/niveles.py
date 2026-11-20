@@ -11,6 +11,11 @@
 #   subida     lo que tardo en volver a subir (si volvio; si no, -1), s
 #   vuelve     el nivel quieto al final, si volvio a subir (si no, -99), dB
 #   desde      cuando empezo a bajar (segundos de lo sonado)
+#   mediana    la mediana de todo (sin el primer medio segundo), dB (para una que suena quieta: la rocola prendida ya de noche)
+# Con --cruce EPOCA (la hora, en segundos de UNIX, en que la rocola cruza las 22 h; 17-11-2026: la noche baja en UNA HORA, pareja en dB),
+# ademas: cruce (en segundos de lo sonado, desde el primer ARRANCA del REGISTRO), pend_antes y pend_despues (la pendiente de la recta que
+# mejor pasa por el nivel antes y despues del cruce, sin el segundo de alrededor, dB/min) y salto (el mayor cambio entre dos tramos
+# seguidos despues del cruce, dB).
 # Con --serie, ademas, la serie entera (t dB) en las lineas siguientes.
 import sys, numpy as np
 sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
@@ -43,6 +48,19 @@ def principal():
     t = np.array([p[0] for p in s]); d = np.array([p[1] for p in s])
     # (se saltan los primeros 0,5 s: la entrada de la cancion)
     i0 = int(np.searchsorted(t, t[0] + 0.5))
+    out['mediana'] = round(float(np.median(d[i0:])), 3)
+    if '--cruce' in sys.argv:
+        epoca = float(sys.argv[sys.argv.index('--cruce') + 1])
+        arranca = next(float(l.split()[0]) for l in open(reg) if ' ARRANCA ' in l)
+        c = epoca - arranca
+        an = (t >= t[i0]) & (t < c - 1.0); de = t > c + 1.0
+        pend = lambda m: round(float(np.polyfit(t[m], d[m], 1)[0] * 60.0), 4) if m.sum() >= 30 else -99
+        out.update(cruce=round(c, 2), pend_antes=pend(an), pend_despues=pend(de),
+                   salto=round(float(np.max(np.abs(np.diff(d[de])))), 4) if de.sum() >= 2 else -99)
+        print(' '.join('%s=%s' % kv for kv in out.items()))
+        if '--serie' in sys.argv:
+            for a_, b_ in s: print('%.2f %.3f' % (a_, b_))
+        return
     base = np.median(d[i0:i0 + 20])
     j = i0
     while j < len(d) and d[j] > base - 0.1: j += 1
