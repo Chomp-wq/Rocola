@@ -30,8 +30,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="**/*.cs" />
-    <Compile Include="Banco.cs;Mide.cs" />
     <Compile Include="$(Fuente)/Codigo/**/*.cs;$(Fuente)/Plataforma/**/*.cs;$(Fuente)/Nativo/**/*.cs;$(Fuente)/RocolaOs/**/*.cs" Exclude="$(Fuente)/**/bin/**;$(Fuente)/**/obj/**" />
     <Compile Include="$(Fuente)/../Consola/Pantalla/Gl.cs;$(Fuente)/../Consola/Pantalla/Kms.cs;$(Fuente)/../Motor/Botones.cs" />
+    <!-- al final: sus inicializadores corren despues de los del programa (las funciones de Rocola OS ya registradas) -->
+    <Compile Include="Banco.cs;Mide.cs" />
   </ItemGroup>
 </Project>
