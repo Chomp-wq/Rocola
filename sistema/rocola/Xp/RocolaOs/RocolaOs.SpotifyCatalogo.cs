@@ -94,7 +94,14 @@ namespace Rocola
             rocolaOsSpXp = res; rocolaOsSpConsulta = q; rocolaOsSpEscrito = consulta;
             if (q.Length < 3 || !RocolaOsSpotifyCatalogoApi.HayLlave) { RocolaOsSpotifyCatalogoApi.OlvidaBusqueda(); return res; }
             RocolaOsSpotifyCatalogoBusqueda b = RocolaOsSpotifyCatalogoApi.BuscaYa(q);
-            if (b != null) return RocolaOsSpotifyCatalogoMezcla(res, b);
+            if (b != null)
+            {
+                // (revision del asistente) lo contestado de memoria (lo mismo escrito otra vez, o AL VOLVER de una pared o de un disco) tambien
+                // cuenta en la casilla: XP acaba de poner solo los suyos y, con todo de Spotify, decia «Sin resultados» encima de las tarjetas
+                List<SearchItem> m = RocolaOsSpotifyCatalogoMezcla(res, b);
+                CuentaResultados(consulta, (lastMatches != null ? lastMatches.Count : 0) + m.Count - res.Count);
+                return m;
+            }
             RocolaOsSpotifyCatalogoApi.Busca(q, delegate (object r, string error)
             {
                 RocolaOs.Encarga("spotify_catalogo:resultados", delegate { RocolaOsSpotifyCatalogoLlegoBusqueda(q, r as RocolaOsSpotifyCatalogoBusqueda, error); });

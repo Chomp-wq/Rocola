@@ -42,11 +42,11 @@
    **g60-g62** (`AperturaAudio.cs` 238, `Form1.Sonido.cs` 1288, `NivelDisco.cs` 46) y los cambios chicos en lo del núcleo y del catálogo
    (`SinDevolver` en la fuente, la primera línea de `RocolaOsSpotifyAbre`, `partial` y el pedido «pareja» en el cliente de la API). Al juntar:
    la línea de la petición en `AGENTS.md`, y si las paredes del buscador renumeran ganchos, que no choquen con g60-g62.
-7. **El asistente con lo nuevo de Spotify** (petición del dueño del 15-11-2026, AGENTS.md): grupo «asistente-spotify» después de juntar
+7. **HECHO y JUNTADO** (rama `asistente-spotify`, 8564ec8, juntada el 20-11-2026; `FASE11_asistente-spotify.md`). **El asistente con lo nuevo de Spotify** (petición del dueño del 15-11-2026, AGENTS.md): grupo «asistente-spotify» después de juntar
    las paredes del buscador: guías nuevas del asistente con su mismo dibujo, solo con el modo Spotify; sin el modo, el de XP tal cual.
    **HECHO en la rama `asistente-spotify`** (`FASE11_asistente-spotify.md`). **NO entra en esta junta**: el asistente queda para
    después (se junta y se prueba aparte, con la batería de abajo otra vez).
-8. **«AYUDA» siempre en la casilla de la ayuda** (petición del dueño del 15-11-2026): con Rocola OS activo, `AyudaCasillaGpu` no va
+8. **HECHO y JUNTADO** con el 7 (20-11-2026). **«AYUDA» siempre en la casilla de la ayuda** (petición del dueño del 15-11-2026): con Rocola OS activo, `AyudaCasillaGpu` no va
    compacta en 1024x768 (la cabecera cede el sitio). Lo hace el grupo del asistente (es su casilla). **HECHO en la rama `asistente-spotify`**; como el 7, **no entra en esta
    junta**.
 
