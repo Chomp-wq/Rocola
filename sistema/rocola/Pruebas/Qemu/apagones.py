@@ -37,9 +37,15 @@ def capa_nueva():
 
 def arranca(extra=None):
     global c
-    lanza(MAQ, XP, os.path.join(Q, "sonido.wav"), extra=extra)
-    c = Control(MAQ)
-    if not c.espera("mountpoint -q /rocola/datos", 900, 5): raise SystemExit("la maquina no contesto por el puerto serie")
+    # (con la maquina cargada -otros trabajos y QEMU sin KVM- el puerto serie a veces no contesta en todo el arranque: entonces se corta y se
+    # vuelve a prender, hasta tres veces; un corte antes de que haya contestado no cambia lo que se mide, que se mira despues)
+    for vez in range(3):
+        lanza(MAQ, XP, os.path.join(Q, "sonido.wav"), extra=extra)
+        c = Control(MAQ)
+        if c.espera("mountpoint -q /rocola/datos", 420, 5): return
+        di("(el puerto serie no contesto en 420 s: se vuelve a prender, vez %d)" % (vez + 2))
+        c.apagon()
+    raise SystemExit("la maquina no contesto por el puerto serie")
 
 def orden(cmd, maximo=60):
     cod, sale = c.orden(cmd, maximo); return sale if cod is not None else ""
