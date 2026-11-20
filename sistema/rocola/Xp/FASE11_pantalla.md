@@ -138,7 +138,7 @@ sus modos de `/sys/class/drm/*/modes` (sin repetir; los hercios se ven en Ctrl+F
 | `diff-xp.py --sin-ganchos` (109 archivos) | 5 095 / 4 828 / 229, las de la base; 33 ganchos de `Codigo/` devueltos en 13 archivos |
 | `Pruebas/RocolaOs/pantalla/prueba.sh` | 15-11: JIT 65 de 65, AOT 65 de 65. **20-11: JIT 71 de 71; AOT 71 de 71** (con la parte «teclado»); tras el arreglo de los rótulos, ventana, teclado, lista y apagada otra vez: JIT 26 de 26, AOT 26 de 26 |
 | `Pruebas/Qemu/pantalla.py` (QEMU, bochs-drm, KMS de verdad) | **18 de 18** (abajo) |
-| nivel 0 (sin `ROCOLA_OS`, contra la referencia congelada) | NIVEL0_PENDIENTE |
+| nivel 0 (sin `ROCOLA_OS`, contra la referencia congelada; 20-11, `nivel0.sh` con los pasos previo, codigo, ganchos y escenas, el JIT de la rama) | codigo, ganchos y diff-xp BIEN; las 24 escenas: 16 IGUALES a la primera, sigterm y f3sigterm lo aceptado; f12 y f12vigia IGUALES al repetirlas; captura, salirq, f2sin y aviso **solo por las cuentas** del reloj `Form1.cs:724` y del encargo `MedidasBitacora.cs:129`, que cambian de signo entre corridas (la máquina con carga 15 a 20: otros agentes compilando y la prueba de QEMU), como en `PORT_JUNTAS.md` (RJ9b, RJ12b). No se repitieron más: lo de esta rama sin `ROCOLA_OS` solo es g80 (`false`), g81 (solo con la pantalla de verdad) y g82 (la misma medida); y la escena «sin» de `prueba.sh` salió IGUAL contra la referencia en JIT y AOT |
 
 `prueba.sh`, por partes (las mismas en JIT y en AOT):
 - **numeros** (12): la tabla de fábrica es la recta exacta (i·257 con 256); la del núcleo para «Restablecer», `i<<8`; brillo +25 y
