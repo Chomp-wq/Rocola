@@ -106,11 +106,11 @@ for e in $escenas; do
     abre $e "$d" "7:67,$(veces 14 5 38 4),34:40,37:40" 41 ROCOLA_OS=1 ROCOLA_PARED_VOLCADO="$W/$e/volcado"
     espera $e ;;
   mezcla)
-    # una de XP (PONER en el primer disco: unos 3 s) y detras una de Spotify: el hueco entre las dos
+    # una de XP (PONER abre el primer disco y PONER otra vez toca su primera: 3,2 s) y detras una de Spotify: el hueco entre las dos
     apifalsa $e; d=$(datos $e)
     mkdir -p "$W/$e/run/rocola-xp/spotify"
-    abre $e "$d" "7:67,9.5:13" 24 ROCOLA_OS=spotify,spotify-prueba
-    ( sleep 10.5; echo "pide spotify:track:f440d006aa|Prueba|Artista inventado|Disco inventado|6000" >> "$W/$e/run/rocola-xp/spotify/prueba-pide" ) &
+    abre $e "$d" "7:67,9.5:13,11:13" 24 ROCOLA_OS=spotify,spotify-prueba
+    ( sleep 11.6; echo "pide spotify:track:f440d006aa|Prueba|Artista inventado|Disco inventado|6000" >> "$W/$e/run/rocola-xp/spotify/prueba-pide" ) &
     espera $e
     [ -f "$W/$e/sonado.raw" ] && python3 "$SX/frecuencias.py" "$W/$e/sonado.raw" "$W/$e/registro.txt" > "$W/$e/frec.txt" ;;
   arranque)

@@ -278,7 +278,7 @@ fi
 if [[ " $partes " == *" adelantoxp "* ]]; then
   echo "== adelantoxp (una de XP y detras una de Spotify: su play, adelantado al final de la de XP; Soloist tarda 1 s)"
   d=$(datos adelantoxp); T0=$(date +%s.%N)
-  abre adelantoxp "$d" "7:67,9.5:13" "10.5:pide spotify:track:f440d006aa|$P|6000;25:copia" 26 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=1
+  abre adelantoxp "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;25:copia" 26 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=1
   o="$W/adelantoxp"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
   sed 's/^/   /' "$f" | head -12
   si "adelantoxp: sale con 0" test "$(cat $o/salio)" = 0
