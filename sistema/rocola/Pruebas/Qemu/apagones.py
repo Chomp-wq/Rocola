@@ -112,7 +112,8 @@ def moneda(modo, espera):
         m = pon_init_nuevo(); di("initrd: tras volver a prender: " + m)
         if "dirsync" not in m: di("RESULTADO moneda initrd: /rocola/datos NO quedo con dirsync"); corte(); return
     else: arranca()
-    if not c.espera("for p in $(pidof rocola-xp); do tr '\\0' '\\n' < /proc/$p/cmdline | grep -qx -- --importa-xp || exit 0; done; exit 1", 900, 10):
+    # (entre parentesis: un «exit» suelto cerraria la linea de ordenes del puerto serie y la orden nunca contestaria)
+    if not c.espera("( for p in $(pidof rocola-xp); do tr '\\0' '\\n' < /proc/$p/cmdline | grep -qx -- --importa-xp || exit 0; done; exit 1 )", 900, 10):
         di("RESULTADO moneda %s: rocola-xp no se abrio" % modo); corte(); return
     m = monta(modo if modo != "initrd" else "normal")
     time.sleep(60)   # (que acabe de arrancar: la biblioteca y la restauracion del estado)
