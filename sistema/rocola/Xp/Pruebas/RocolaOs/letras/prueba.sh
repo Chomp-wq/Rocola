@@ -159,6 +159,7 @@ for e in $escenas; do
     si "l3: lo exacto de XP primero: la 03 (titulo) es la 1a tarjeta" test "$(lugar "$u1" "Luna de Papel Brillante")" = 1
     n1=$(echo "$u1" | awk -F' [|] ' '{print NF-1}')
     si "l3: la 04 (por su letra) detras de todo lo de XP: la ultima tarjeta ($n1)" bash -c "[ $(lugar "$u1" "Noche Sin Nombre") = $n1 ] && [ $n1 -ge 2 ]"
+    si "l3: la casilla de XP las cuenta (2 resultados)" bash -c "echo '$u1' | grep -qF '«$F1» (2) |'"
     si "l3: 3 de 4 palabras en la letra (perro viento frio tarde): la 05" test "$(lugar "$u2" "Tres Palabras")" -ge 1
     si "l3: 2 de 4 (perro azul viento frio): no sale" test "$(lugar "$u3" "Tres Palabras")" = 0
     si "l3: rocola_letras_mp3.txt solo con palabras sueltas en orden alfabetico (ningun renglon de la letra)" bash -c "! cut -f4 '$d/rocola_letras_mp3.txt' | grep -qE 'luna papel|viento frio|bajo lluvia' && awk -F'\t' '\$4 != \"\" { n = split(\$4, w, \" \"); for (i = 2; i <= n; i++) if (w[i-1] >= w[i]) exit 1 }' '$d/rocola_letras_mp3.txt'"
@@ -209,6 +210,7 @@ for e in $escenas; do
     si "genius: 1a delante, TU cancion (Lluvia Inventada)" test "$(lugar "$u1" "2:Los Probados - 01 Lluvia Inventada")" = 1
     si "genius: 2a, la de Spotify (Tema Tema de Mentira, por la busqueda «titulo artista»)" bash -c "[ $(lugar "$u1" "spotify:Los Inventados - Tema Tema de Mentira") = 2 ] && grep -q 'q=tema tema de mentira los inventados' '$a'"
     si "genius: 3a, la tarjeta NO ESTA con lo que dice Genius" test "$(lugar "$u1" "noesta:Cancion Desconocida (En Vivo)")" = 3
+    si "genius: la casilla las cuenta tambien con el modo Spotify (3 resultados, no «Sin resultados»)" bash -c "echo '$u1' | grep -qF '«$F1» (3) |'"
     si "genius: la 4a de Genius (Remix de la misma) no es otra tarjeta, y la tuya no sale dos veces" bash -c "[ \$(echo '$u1' | grep -o 'Lluvia Inventada' | wc -l) = 1 ] && [ \$(echo '$u1' | grep -o 'noesta:' | wc -l) = 1 ]"
     si "genius: la llave nunca en los datos (salvo su archivo), /run, la salida, la traza ni la bitacora" sinllave_en "$d" "$o/run" "$o/salida.txt" "$o/traza.txt"
     si "genius: nada de Genius guardado en los datos (ni el titulo de la NO ESTA)" bash -c "! grep -rlF 'Cancion Desconocida' '$d' | grep -q ."

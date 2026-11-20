@@ -293,6 +293,8 @@ namespace Rocola
         private Dictionary<string, SearchItem> rocolaOsLetrasPorRuta;   // ruta -> su cancion del indice de XP (se rehace con cada foto)
         private static readonly bool RocolaOsLetrasMuestra = Environment.GetEnvironmentVariable("ROCOLA_LETRAS_MUESTRA") == "1";   // (pruebas: los resultados, por la salida)
         private string rocolaOsLetrasMostrado;
+        // cuantas metio g110 en la lista de XP de la ultima consulta (para que la cuenta de g40, con el modo Spotify, las sume tambien)
+        private int rocolaOsLetrasMetidas;
 
 #pragma warning disable CA2255
         [ModuleInitializer]
@@ -346,6 +348,7 @@ namespace Rocola
         // g110 (Form1.Biblioteca.cs, RecomputeResults): LO DE LA LETRA EN LA LISTA DE XP, antes de contarla. Devuelve cuantos se metieron.
         private int RocolaOsLetrasResultados(string consulta, List<SearchItem> res)
         {
+            rocolaOsLetrasMetidas = 0;
             if (!RocolaOs.Activo || res == null) return 0;
             bool l3 = RocolaOs.Encendida("letras_mp3"), l1 = RocolaOs.Encendida("busca_letra");
             if (!l3 && !l1) return 0;
@@ -355,6 +358,7 @@ namespace Rocola
             int n = 0;
             if (l1) n += RocolaOsGeniusDelante(q, res);
             if (l3) n += RocolaOsLetrasDeTusMp3(toks, res);
+            rocolaOsLetrasMetidas = n;
             return n;
         }
         private int RocolaOsLetrasDeTusMp3(List<string> toks, List<SearchItem> res)
@@ -398,6 +402,9 @@ namespace Rocola
             List<SearchItem> r = searchOverlay != null ? searchOverlay.Results : null;
             StringBuilder sb = new StringBuilder();
             sb.Append("BUSCADOR «").Append(searchOverlay != null ? searchOverlay.Query : "").Append("»");
+#if ROCOLA_GPU
+            if (searchOverlay != null) sb.Append(" (").Append(searchOverlay.TotalResultados.ToString(CultureInfo.InvariantCulture)).Append(')');
+#endif
             if (r != null)
                 for (int i = 0; i < r.Count && i < 60; i++)
                 {

@@ -99,7 +99,7 @@ namespace Rocola
                 // (revision del asistente) lo contestado de memoria (lo mismo escrito otra vez, o AL VOLVER de una pared o de un disco) tambien
                 // cuenta en la casilla: XP acaba de poner solo los suyos y, con todo de Spotify, decia «Sin resultados» encima de las tarjetas
                 List<SearchItem> m = RocolaOsSpotifyCatalogoMezcla(res, b);
-                CuentaResultados(consulta, (lastMatches != null ? lastMatches.Count : 0) + m.Count - res.Count);
+                CuentaResultados(consulta, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas + m.Count - res.Count);   // (letras: + las de la letra que g110 metio en res)
                 return m;
             }
             RocolaOsSpotifyCatalogoApi.Busca(q, delegate (object r, string error)
@@ -140,7 +140,7 @@ namespace Rocola
                 if (n >= 0) searchOverlay.SelResult = n;
             }
             searchOverlay.Results = m;
-            CuentaResultados(rocolaOsSpEscrito, (lastMatches != null ? lastMatches.Count : 0) + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
+            CuentaResultados(rocolaOsSpEscrito, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
             searchOverlay.DatosVer++;   // (la cache de las tarjetas se rehace: la consulta es la misma)
             searchOverlay.Invalidate();
             RocolaOsSpotifyCatalogoApi.PideEstado();
