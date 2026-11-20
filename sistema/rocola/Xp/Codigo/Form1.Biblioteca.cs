@@ -3512,7 +3512,7 @@ namespace Rocola
                 // no solo las visibles; sus puntos se calculan con la nueva consulta.
             }
             else { lastMatches = null; lastQuery = null; lastMatchesApproximate = false; }
-            CuentaResultados(query, lastMatches != null ? lastMatches.Count : 0);   // la casilla del buscador con portadas lo dice
+            CuentaResultados(query, (lastMatches != null ? lastMatches.Count : 0) + RocolaOsLetrasResultados(query, res));   // la casilla del buscador con portadas lo dice   // ROCOLA OS g110: (XP) CuentaResultados(query, lastMatches != null ? lastMatches.Count : 0);   // la casilla del buscador con portadas lo dice — buscar por la letra: lo de Genius delante y lo de la letra de tus MP3 detras, en la misma lista de XP y antes de g40, y la casilla los cuenta (RocolaOs/RocolaOs.Letras.cs; sin ROCOLA_OS o con las dos apagadas, 0 sin tocar res)
             searchOverlay.Results = RocolaOsSpotifyCatalogoResultados(query, res);   // ROCOLA OS g40: (XP) searchOverlay.Results = res; — con el modo Spotify, sus canciones, discos y artistas como resultados mas de la misma lista, debajo de las primeras de XP (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, res tal cual)
             searchOverlay.Invalidate();
         }
@@ -3558,7 +3558,7 @@ namespace Rocola
         private void ChooseSearchResult(SearchItem it)
         {
             if (it == null || RocolaOsSpotifyCatalogoElige(it)) return;   // ROCOLA OS g41: (XP) if (it == null) return; — elegir un resultado de Spotify: la cancion se pide por I6, el disco se abre en la vista de disco, el artista lleva a sus discos (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, false)
-            MarkSearchActivity();
+            if (RocolaOsLetrasElige(it)) return; MarkSearchActivity();   // ROCOLA OS g111: (XP) MarkSearchActivity(); — la tarjeta «NO ESTA EN LA ROCOLA» de Genius solo lo dice con el aviso del buscador de XP (RocolaOs/RocolaOs.Letras.cs; sin ROCOLA_OS, false)
             if (it.Kind == 3) { GrantSecretCredits(it); return; }
             ApuntaBusqueda(it);   // lo buscado pasa a los atajos del buscador con portadas ("Buscaste: ...")
             if (it.Kind == 2 && it.TrackRef != null)
