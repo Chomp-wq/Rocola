@@ -7,7 +7,8 @@
 #   PRUEBA:
 #     dd:MODO:ESPERA   el guardado de XP hecho a mano con BusyBox (EscribeSeguroYa: el de paso con fsync -dd conv=fsync- y el cambio de nombre
 #                      -mv-), cinco veces seguidas con el numero 1..5; ESPERA s despues del ultimo, el corte. MODO: «normal» (/rocola/datos como
-#                      lo monta el initramfs) o «dirsync» (remontado con dirsync antes, lo que pone el arreglo).
+#                      lo monta el initramfs instalado) o «initrd» (con el init del repositorio, que lo monta con dirsync: ver moneda:initrd).
+#                      («dirsync», remontar con dirsync, NO sirve: el nucleo no cambia dirsync al remontar; queda solo para verlo).
 #     moneda:MODO:ESPERA   rocola-xp de verdad: una moneda (la M), se espera a ver los creditos nuevos en rocola_estado.txt y ESPERA s despues,
 #                      el corte; al volver, los creditos que quedaron.
 #     moneda:initrd:ESPERA   lo mismo con el ARREGLO DE VERDAD: el init del repositorio (sistema/board/rocola/initramfs/init, con dirsync)
@@ -58,13 +59,19 @@ def para_la_rocola():
     orden("killall rocola 2>/dev/null; killall -USR1 rocola-xp 2>/dev/null; i=0; while pidof rocola-xp >/dev/null && [ $i -lt 40 ]; do sleep 1; i=$((i+1)); done; killall -KILL rocola-xp 2>/dev/null; true", 90)
 
 def monta(modo):
+    # (OJO: «mount -o remount,dirsync» no hace nada -el nucleo no cambia dirsync al remontar: MS_RMT_MASK-; visto aqui el 20-11-2026: el
+    # modo «dirsync» de antes medía sin dirsync. Por eso el arreglo se prueba con el init de verdad: modo «initrd»)
     if modo == "dirsync":
         orden("mount -o remount,dirsync /rocola/datos")
     return orden("grep ' /rocola/datos ' /proc/mounts").strip()
 
 def dd(modo, espera):
-    capa_nueva(); arranca(); para_la_rocola()
+    capa_nueva()
+    if modo == "initrd": pon_init_nuevo()
+    else: arranca()
+    para_la_rocola()
     m = monta(modo); di("dd %s %s: montado: %s" % (modo, espera, m))
+    if modo != "normal" and "dirsync" not in m: di("RESULTADO dd %s: /rocola/datos NO quedo con dirsync" % modo); corte(); return
     f = "/rocola/datos/xp/prueba_apagon.txt"
     orden("rm -f %s %s.tmp; sync" % (f, f))
     t = None

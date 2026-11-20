@@ -85,7 +85,10 @@ como_esperado() { local l; l=$(lineas "$1"); [ "$(echo "$l" | wc -l)" = 4 ] && [
 # una corrida que se corta con SENAL a los S s (a media cancion 1: sono ~ S - 11 s) y otra que vuelve a abrir con lo que quedo
 corta_y_vuelve() {
   local n="$1" sen="$2" s="$3" d; d=$(datos "$n")
-  abre "$n-1" "$d" "$PIDE" "$s" "$sen"
+  # (con SIGHUP la de fabrica: si la prueba corre con nohup, la rocola la heredaria ignorada y no se moriria -visto el 20-11-2026-; bash
+  # no puede quitar una senal ignorada al entrar, python si)
+  if [ "$sen" = HUP ]; then abre "$n-1" "$d" "$PIDE" "$s" "$sen" -- python3 -c 'import os, signal, sys; signal.signal(signal.SIGHUP, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])'
+  else abre "$n-1" "$d" "$PIDE" "$s" "$sen"; fi
   cp "$d/rocola_estado.txt" "$W/$n-quedo.txt" 2>/dev/null
   ESTADO="6:a,14:b" abre "$n-2" "$d" "" 40 TERM
   echo "$d"
