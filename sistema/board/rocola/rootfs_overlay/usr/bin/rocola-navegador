@@ -1,0 +1,115 @@
+#!/bin/sh
+# EL NAVEGADOR WEB DE LA ROCOLA (peticion del dueno del 20-11-2026: «en la ventana de ctrl f4, debes poner un navegador por si quiero
+# desarrollar en la misma rocola entrando a Claude»; sistema/rocola/Xp/FASE11_navegador-archivos.md). Lo abre rocola-xp desde Ctrl+F4 ->
+# Navegador DESPUES de soltar la pantalla (DRM master) y sin dejar de sonar; cuando este guion acaba, rocola-xp la retoma.
+#
+#   rocola-navegador hay            sale con 0 si el sistema trae el navegador (cog y WPE WebKit); si no, dice por que (sale con 1)
+#   rocola-navegador abre [URL]     cog a pantalla completa (plataforma DRM: la tarjeta por KMS, el teclado y el raton por libinput, que lee
+#                                   los aparatos de udev -eudev, que Rocola OS arranca desde la etapa 1: S10udevd-), con URL o con la pagina
+#                                   de inicio de la rocola (un campo para escribir la direccion y atajos). Vuelve cuando cog se cierra.
+#                                   SIGTERM (lo manda rocola-xp con Ctrl+Alt+F1) lo cierra y deja todo como estaba.
+#   rocola-navegador olvida         borra lo guardado (sesion, galletas, cache). No con el navegador abierto.
+#   rocola-navegador cuanto         lo que ocupa lo guardado (KB) y el tope
+#
+# LO GUARDADO va en /rocola/datos/xp/navegador (0700; la carpeta de datos de rocola-xp): datos/ (la sesion de WebKit), galletas.sqlite y
+# cache/. EL TOPE (ROCOLA_NAVEGADOR_TOPE_MB, de navegador_tope_mb= de rocola_os.txt; 128 MB de fabrica, de 32 a 256): al abrir y al cerrar,
+# si lo pasa -o si en los datos quedan menos de 64 MB libres-, se borra la cache; si aun lo pasa, se dice (y se abre igual). Va en lo
+# aprendido (datos.img, de 512 MB, con todo lo de la rocola): por eso el tope.
+# NADA DE LO QUE SE VISITA SE APUNTA: lo que dice cog va a /run/rocola-navegador.txt (en memoria, se rehace cada vez; el buzon no lo sube).
+# LO QUE SE ESCRIBE EN EL NAVEGADOR no queda en la consola de la rocola (tty1, donde tambien llegan las teclas): mientras esta abierto, sin
+# eco; al cerrarlo se tira lo que se acumulo y se vuelve a como estaba.
+# Si rocola-xp se cae con el navegador abierto (ROCOLA_NAVEGADOR_DUENO: su pid), cog se cierra solo en 1 s: el lanzador vuelve a abrir la
+# rocola, que necesita la pantalla.
+# Para probarlo fuera (sistema/rocola/Xp/Pruebas/RocolaOs/navegador): ROCOLA_COG (un programa de mentira), ROCOLA_XP_DATOS, ROCOLA_RUN,
+# ROCOLA_NAVEGADOR_TTY, ROCOLA_NAVEGADOR_INICIO_HTML. BusyBox ash, sin stat.
+COG=${ROCOLA_COG:-/usr/bin/cog}
+XPD=${ROCOLA_XP_DATOS:-/rocola/datos/xp}
+DIR=$XPD/navegador
+RUN=${ROCOLA_RUN:-/run}
+LOG=$RUN/rocola-navegador.txt
+PIDF=$RUN/rocola-navegador.pid
+TOPE=${ROCOLA_NAVEGADOR_TOPE_MB:-128}
+TECLADO=${ROCOLA_NAVEGADOR_TECLADO:-us}
+TTY=${ROCOLA_NAVEGADOR_TTY:-/dev/tty1}
+INICIO=${ROCOLA_NAVEGADOR_INICIO_HTML:-/usr/share/rocola/navegador/inicio.html}
+case "$TOPE" in ''|*[!0-9]*) TOPE=128 ;; esac
+[ "$TOPE" -gt 256 ] && TOPE=256
+
+kb() { du -sk "$DIR" 2>/dev/null | awk '{print $1}'; }
+# el tope: si lo pasa, fuera la cache (la sesion y las galletas se quedan)
+recorta() {
+	[ -d "$DIR" ] || return 0
+	k=$(kb); [ -n "$k" ] || return 0
+	libre=$(df -k "$XPD" 2>/dev/null | awk 'NR == 2 {print $4}')
+	if [ "$k" -gt $((TOPE * 1024)) ]; then por="pasaba el tope de $TOPE MB ($k KB)"
+	elif [ -n "$libre" ] && [ "$libre" -lt 65536 ] && [ -d "$DIR/cache" ]; then por="en los datos quedaban $libre KB libres"
+	else return 0; fi
+	rm -rf "$DIR/cache"
+	echo "$(date '+%F %T') lo guardado $por: se borro la cache" >> "$LOG"
+	k=$(kb); [ "$k" -gt $((TOPE * 1024)) ] && echo "$(date '+%F %T') aun sin la cache pasa el tope ($k KB): «rocola-navegador olvida» lo borra todo" >> "$LOG"
+	return 0
+}
+abierto() { p=$(cat "$PIDF" 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
+
+case "$1" in
+hay)
+	if [ ! -x "$COG" ]; then echo "El sistema no trae el navegador ($COG): llega con la compilacion completa del sistema."; exit 1; fi
+	[ -e "$INICIO" ] || echo "(falta la pagina de inicio $INICIO: se abre en blanco)"
+	exit 0 ;;
+cuanto)
+	echo "$(kb || echo 0) KB en $DIR (tope $TOPE MB)"; exit 0 ;;
+olvida)
+	if abierto; then echo "El navegador esta abierto: cierralo antes (Ctrl+Alt+F1)."; exit 1; fi
+	[ -d "$DIR" ] && find "$DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+	echo "Listo: se olvido lo del navegador (sesion, galletas y cache)."; exit 0 ;;
+abre) ;;
+*)
+	echo "uso: rocola-navegador hay | abre [URL] | olvida | cuanto"
+	[ -z "$1" ] && exit 0 || exit 2 ;;
+esac
+
+[ -x "$COG" ] || { echo "El sistema no trae el navegador ($COG)." >&2; exit 3; }
+if abierto; then echo "Ya hay un navegador abierto." >&2; exit 4; fi
+URL=$2
+if [ -z "$URL" ]; then
+	if [ -e "$INICIO" ]; then URL="file://$INICIO"; else URL="about:blank"; fi
+fi
+mkdir -p "$DIR" "$RUN" && chmod 700 "$DIR"
+: > "$LOG"; chmod 600 "$LOG"
+recorta
+
+# LA CONSOLA DE LA ROCOLA (tty1): sin eco ni renglones mientras el navegador esta abierto (las teclas tambien le llegan a ella)
+TTYG=
+if [ -c "$TTY" ]; then TTYG=$(stty -F "$TTY" -g 2>/dev/null) && stty -F "$TTY" -echo -icanon min 0 time 0 2>/dev/null; fi
+vuelve_tty() {
+	[ -n "$TTYG" ] || return 0
+	cat "$TTY" > /dev/null 2>&1   # (lo que se escribio y nadie leyo: fuera; con min 0 time 0 no espera)
+	stty -F "$TTY" "$TTYG" 2>/dev/null
+	TTYG=
+}
+
+# cog, con sus datos en DIR (WebKit los pone bajo XDG_DATA_HOME y XDG_CACHE_HOME); las galletas en sqlite para que la sesion quede
+HOME=$DIR XDG_DATA_HOME=$DIR/datos XDG_CACHE_HOME=$DIR/cache XDG_CONFIG_HOME=$DIR/config XKB_DEFAULT_LAYOUT=$TECLADO \
+	"$COG" --platform=drm --cookie-jar="sqlite:$DIR/galletas.sqlite" "$URL" >> "$LOG" 2>&1 &
+cpid=$!
+echo "$cpid" > "$PIDF"
+echo "$(date '+%F %T') abierto (pid $cpid)" >> "$LOG"
+cierra() { kill "$cpid" 2>/dev/null; i=0; while kill -0 "$cpid" 2>/dev/null && [ $i -lt 30 ]; do sleep 0.1; i=$((i + 1)); done; kill -9 "$cpid" 2>/dev/null; }
+trap 'cierra' TERM INT HUP
+# si rocola-xp se cae, el navegador fuera (la rocola vuelve a necesitar la pantalla)
+VIG=
+if [ -n "$ROCOLA_NAVEGADOR_DUENO" ]; then
+	( while kill -0 "$ROCOLA_NAVEGADOR_DUENO" 2>/dev/null && kill -0 "$cpid" 2>/dev/null; do sleep 1; done
+	  kill -0 "$cpid" 2>/dev/null && { echo "$(date '+%F %T') rocola-xp ya no esta: se cierra" >> "$LOG"; kill "$cpid" 2>/dev/null; sleep 3; kill -9 "$cpid" 2>/dev/null; } ) &
+	VIG=$!
+fi
+# (wait vuelve antes de tiempo si llega una senal: se espera hasta que cog de verdad acabe)
+r=0
+while kill -0 "$cpid" 2>/dev/null; do wait "$cpid"; r=$?; done
+wait "$cpid" 2>/dev/null; r2=$?; [ "$r2" != 127 ] && r=$r2
+[ -n "$VIG" ] && kill "$VIG" 2>/dev/null
+rm -f "$PIDF"
+vuelve_tty
+recorta
+echo "$(date '+%F %T') cerrado (codigo $r)" >> "$LOG"
+exit "$r"
