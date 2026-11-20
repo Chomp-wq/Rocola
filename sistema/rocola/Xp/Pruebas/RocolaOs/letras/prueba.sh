@@ -100,6 +100,8 @@ for e in $escenas; do
     python3 "$G/hazmp3.py" "$o/mp3/solo.mp3" 2 "Solo del MP3" "Los Probados" "Disco Letras" "renglon inventado uno\nrenglon inventado dos\nrenglon inventado tres" >/dev/null
     python3 "$G/hazmp3.py" "$o/mp3/nada.mp3" 2 "Sin Letra" "Los Probados" "Disco Letras" - >/dev/null
     L="ROCOLA_LETRA_API=http://127.0.0.1:$P"
+    # el tope de /run: 405 letras viejas inventadas ya puestas; al poner la nueva quedan 300 y la nueva entre ellas
+    mkdir -p "$o/run/rocola-xp/letras"; for i in $(seq 1 405); do printf 'x\t0\t/viejo/%d\nrenglon\n' $i > "$o/run/rocola-xp/letras/viejo$i.lrc"; done; touch -d '2020-01-01' "$o/run/rocola-xp/letras/"viejo*.lrc
     orden "$o" env $L "${RX[@]}" --prueba-letra-cielo "Amor de Prueba" "Los Probados" "Disco Letras" 20 - -1 0 1.99 2 5.5 12.3 18 19.9 30 otra > "$o/sinc.txt" 2>&1
     sed 's/^/   /' "$o/sinc.txt"
     si "orden: LRCLIB sincronizada, 11 versos (con el vacio del final)" contiene "$o/sinc.txt" "vuelta=1 letra=sincronizada proveedor=LRCLIB versos=11 peticiones=1 fallidas=0"
@@ -114,6 +116,7 @@ for e in $escenas; do
     si "orden: otra vez la misma: de memoria (sigue 1 peticion)" contiene "$o/sinc.txt" "vuelta=2 letra=sincronizada proveedor=LRCLIB versos=11 peticiones=1"
     si "orden: la peticion con titulo, artista, disco y duracion" contiene "$f" "/api/get track_name=Amor de Prueba&artist_name=Los Probados&album_name=Disco Letras&duration=20 | ua=rocola-xp/1 (Rocola OS) | auth=no"
     si "orden: /run guarda la letra (rocola-xp/letras/*.lrc) y nada en los datos" bash -c "ls '$o/run/rocola-xp/letras/'*.lrc >/dev/null 2>&1 && [ -z \"\$(ls -A '$o/datos')\" ]"
+    si "orden: el tope de /run (405 viejas + la nueva -> 300, la nueva se queda)" bash -c "[ \$(ls '$o/run/rocola-xp/letras/'*.lrc | wc -l) = 300 ] && [ \$(ls '$o/run/rocola-xp/letras/'*.lrc | grep -vc '/viejo') = 1 ]"
     # otro arranque con el mismo /run: de /run, sin peticion
     orden "$o" env $L "${RX[@]}" --prueba-letra-cielo "Amor de Prueba" "Los Probados" "Disco Letras" 20 - 7 > "$o/run2.txt" 2>&1
     si "orden: otro arranque con el mismo /run: de /run, 0 peticiones, y el verso a 7 s es el 3" bash -c "grep -q 'vuelta=1 letra=sincronizada proveedor=LRCLIB versos=11 peticiones=0' '$o/run2.txt' && grep -q 'pos=7 verso=3 «verso inventado numero 3»' '$o/run2.txt'"

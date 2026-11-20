@@ -62,6 +62,7 @@ namespace Rocola
         internal const string UserAgent = "rocola-xp/1 (Rocola OS)";
         internal const int CacheMax = 64;
         internal const int FrenoRedMs = 120000;
+        internal const int RunMax = 400, RunQueda = 300;   // (/run es memoria: con mas de 400 letras se borran las mas viejas hasta 300)
         internal sealed class Pedido { internal string Ruta, Titulo, Artista, Disco, Mp3; internal int Duracion; }
         private static readonly Dictionary<string, RocolaOsLetra> cache = new Dictionary<string, RocolaOsLetra>(StringComparer.Ordinal);
         private static readonly Queue<string> orden = new Queue<string>();
@@ -337,6 +338,23 @@ namespace Rocola
                 Directory.CreateDirectory(d);
                 File.WriteAllText(f + ".t", sb.ToString(), new UTF8Encoding(false));
                 File.Move(f + ".t", f, true);
+                RecortaRun(d, f);
+            }
+            catch { }
+        }
+        // EL TOPE DE /run: una rocola prendida meses no llena la memoria con letras (se quitan las de fecha mas vieja; nunca la que se acaba de poner)
+        private static void RecortaRun(string d, string puesta)
+        {
+            try
+            {
+                string[] fs = Directory.GetFiles(d, "*.lrc");
+                if (fs.Length <= RunMax) return;
+                Array.Sort(fs, delegate (string a, string b) { return File.GetLastWriteTimeUtc(a).CompareTo(File.GetLastWriteTimeUtc(b)); });
+                for (int i = 0, sobran = fs.Length - RunQueda; i < fs.Length && sobran > 0; i++)
+                {
+                    if (string.Equals(fs[i], puesta, StringComparison.Ordinal)) continue;
+                    try { File.Delete(fs[i]); sobran--; } catch { }
+                }
             }
             catch { }
         }
