@@ -1,3 +1,5 @@
+> **Cambiado el 20-11-2026 por el dueño (AGENTS.md): NO se ordena por género.** La pared conserva el orden de XP (artista y disco, alfabético) y los discos del catálogo se intercalan en ese orden, hasta 500 páginas por letra contando los tuyos, entrando primero los artistas más famosos. Cada casilla lleva la pastilla del género de XP como dato extra (no en la cabecera). Lo de abajo sobre el orden por género y la pastilla en la cabecera queda sustituido.
+
 # Las letras por género con Spotify: hasta 500 páginas por letra (plan, 14-11-2026)
 
 Petición del dueño del 14-11-2026: «La meta es que al final, Spotify quede completamente integrado en la rocola, ahora en las letras de
