@@ -5,13 +5,14 @@ Una prueba chica, no la demo entera. Contesta dos preguntas con tu cuenta antes 
 1. ¿TIDAL deja tocar canciones **completas** desde una app propia, o solo **muestras de 30 s**?
 2. ¿En qué **calidad** llegan (FLAC, bits, kHz)?
 
-Usa el SDK oficial de TIDAL para la web **sin cambios** (`@tidal-music/auth` 1.7.0 y `@tidal-music/player` 0.20.1, licencia Apache-2.0, empaquetados en `src/tidal_sdk.js`). El sonido sale del navegador (Chrome o Edge), con el reproductor y el DRM de TIDAL.
+Usa el SDK oficial de TIDAL para la web (con un solo cambio: sus direcciones de la licencia de DRM y de la prueba de reloj pasan por el puente, ver abajo) (`@tidal-music/auth` 1.7.0 y `@tidal-music/player` 0.20.1, licencia Apache-2.0, empaquetados en `src/tidal_sdk.js`). El sonido sale del navegador (Chrome o Edge), con el reproductor y el DRM de TIDAL.
 
 ## Lo que se sabe antes de probar
 
 - El reproductor oficial pide FLAC y FLAC Hi-Res (`FLAC_HIRES`, hasta 24 bit / 192 kHz) y encadena canciones sin hueco (`setNext`).
 - La API de TIDAL contesta, para cada canción, si da la **completa** (`FULL`) o una **muestra** (`PREVIEW`) y por qué. Uno de los motivos es `FULL_REQUIRES_HIGHER_ACCESS_TIER`: hace falta un nivel de acceso de programador más alto.
 - A mediados de 2026 lo que se ha publicado (documentación del SDK, foros de TIDAL y de otros programas) dice que las apps normales de programador reciben solo muestras de 30 s. Esta prueba lo comprueba con tu cuenta.
+- El SDK tiene fijas tres direcciones de `api.tidal.com` (`/v2/widevine`, la licencia del DRM, y `/v1/ping`, dos veces); desde una página que no es de TIDAL el navegador las bloquearía por CORS, así que se cambiaron en `src/tidal_sdk.js` por `location.origin + "/tx/api/..."` (pasan por el puente). La lógica del SDK no cambia.
 - No se usan las llaves internas de las apps de TIDAL (eso hacen proyectos no oficiales y va contra sus condiciones).
 
 ## Cómo usarla
