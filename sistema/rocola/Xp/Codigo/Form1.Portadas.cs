@@ -346,7 +346,7 @@ namespace Rocola
                 false, 0,
 #endif
                 diskSlow, JpegActivo, CargaTrabajo.Procesadores);
-            for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); }
+            for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); } RocolaOsAdelantaLetras();   // ROCOLA OS g221: (XP) for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); } — con Rocola OS, despues de lo de XP, tambien la primera pagina de la letra de antes y de la de despues (a donde lleva REGRESAR con izquierda o derecha), en la fila baja (RocolaOs/RocolaOs.Caratulas.cs; sin el, nada)
         }
 
         // PAGINAS DE COLCHON (peticion del 13-10-2026: que los perfiles aprovechen el JPEG). Una miniatura JPEG pesa unas
