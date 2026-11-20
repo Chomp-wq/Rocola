@@ -90,6 +90,10 @@ ninguno; `junta-2` y `navegador-archivos` llegan a g101; `cielo-nucleo` usa g120
 | g110 | `Codigo/Form1.Biblioteca.cs:3515` (`RecomputeResults`) | `CuentaResultados(query, lastMatches != null ? lastMatches.Count : 0);` | `CuentaResultados(query, (lastMatches != null ? lastMatches.Count : 0) + RocolaOsLetrasResultados(query, res));`: lo de Genius delante y lo de L3 detrás en la misma lista de XP, antes de g40 (que mezcla lo de Spotify encima), y la casilla los cuenta |
 | g111 | `Codigo/Form1.Biblioteca.cs:3561` (`ChooseSearchResult`) | `MarkSearchActivity();` | `if (RocolaOsLetrasElige(it)) return; MarkSearchActivity();`: la tarjeta NO ESTÁ solo lo dice (después de g41 de Spotify) |
 
+Y en lo de otro grupo, lo mínimo: `RocolaOs.SpotifyCatalogo.cs` (catálogo) suma `rocolaOsLetrasMetidas` en sus dos `CuentaResultados`
+(con el modo Spotify, g40 vuelve a contar la casilla y sin esto decía «Sin resultados» con las tarjetas de la letra a la vista; lo vio la
+captura de la escena `genius`).
+
 Una línea cambiada en su sitio cada uno, con su CRLF (`Form1.Biblioteca.cs` mezcla CRLF y LF: cada línea conserva el suyo).
 `ganchos.py`: TODO BIEN (112 archivos comparados con 69e6547, 17 con ganchos).
 
@@ -111,7 +115,10 @@ teclas «c» y «s» son la moneda (67) y saltar (83) en esos datos, así que la
 | `sinllave` | Encendida sin llave: 0 peticiones, la bitácora lo dice, y la letra de tus MP3 sí |
 | `suena` | La rocola toca «Amor de Prueba» (21 s, LRC de 10 versos cada 2 s): UNA petición a LRCLIB con título, artista, disco y duración; la letra sincronizada de LRCLIB; los versos avanzan en orden; el siguiente es el que le sigue; al acabar, nada suena; la letra en `/run` y nada en los datos; el estado sin texto |
 
-RESULTADOS
+**Resultados (20-11-2026, en la máquina compartida):** JIT **68 BIEN, 0 MAL** (orden 22, apagado 5, cero 5, l3 10, tres 3, genius 12,
+sinllave 4, suena 7); NativeAOT: AOTRES. Compila sin avisos nuevos: los 13 de siempre en JIT y en NativeAOT (ninguno de `RocolaOs/`,
+ningún IL/AOT). `ganchos.py` TODO BIEN (51 ganchos en 19 archivos); `diff-xp.py --sin-ganchos`: 5 135 quitadas, 4 868 puestas, 229 sin marca
+(las de la base). Nivel 0 (sin `ROCOLA_OS`, contra la referencia congelada): NIVEL0RES.
 
 ## 4. Lo que falta o no se sabe
 
