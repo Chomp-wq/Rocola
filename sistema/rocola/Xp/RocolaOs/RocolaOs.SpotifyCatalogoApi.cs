@@ -181,7 +181,9 @@ namespace Rocola
         internal static void Calienta()
         {
             long ahora = Environment.TickCount64;
-            if (ahora - Interlocked.Read(ref ultimoCalentar) < 20000 || Frena) return;
+            if (ahora - Interlocked.Read(ref ultimoCalentar) < 20000) return;
+            Prepara();   // (antes de mirar Frena: lee el plazo de un 429 de antes de abrir, guardado en /run)
+            if (Frena) return;
             Config c = LeeConfig();
             if (c == null || !c.Listo) return;
             Interlocked.Exchange(ref ultimoCalentar, ahora);
@@ -193,7 +195,7 @@ namespace Rocola
             RocolaOs.Hilo("spotify_calienta", delegate
             {
                 foreach (string u in img == api ? new[] { api } : new[] { api, img })
-                    try
+                    if (!Frena) try
                     {
                         using (CancellationTokenSource cts = new CancellationTokenSource(8000))
                         using (HttpResponseMessage r = Http.Send(new HttpRequestMessage(HttpMethod.Head, u), HttpCompletionOption.ResponseHeadersRead, cts.Token)) { }
@@ -458,6 +460,7 @@ namespace Rocola
             if (p.Que == "pareja") return AtiendePareja(c, p.Clave, out error);   // (la sustitucion invisible: RocolaOs.CalidadApi.cs)
             if (p.Que == Calentar)
             {   // (rapido-spotify) la llave de la app, si falta o vence en menos de 5 min (no es una peticion a la API: es la de cuentas)
+                if (Frena) { error = "Spotify frena"; return null; }
                 string ll = Llave(c, false, MargenCalentarMs, out error);
                 return ll != null ? (object)Calentar : null;
             }

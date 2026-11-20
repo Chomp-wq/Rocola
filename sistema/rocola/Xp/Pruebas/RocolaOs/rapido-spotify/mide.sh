@@ -5,7 +5,7 @@
 # tarda en empezar). NUNCA el Soloist de verdad. No comprueba nada: MIDE (las comprobaciones son las baterias de cada grupo) y escribe una
 # linea por medida («MEDIDA escena nombre valor») en $W/medidas.txt, con mide.py.
 #   bash mide.sh PROGRAMA [escenas...]     PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT; para medir, SIEMPRE esta)
-#   escenas: busca disco artista pared suena arranque (de fabrica, todas)
+#   escenas: busca disco artista pared suena mezcla arranque (de fabrica, todas)
 #   LAT: la latencia de cada peticion a la API y de cada portada de Spotify (ms; 120 de fabrica); CONEX: lo que cuesta abrir una conexion
 #   (ms; 150 de fabrica: TCP y TLS); CAA: lo de cada portada del Cover Art Archive (ms; 400 de fabrica: sus dos redirecciones); LENTO: lo que
 #   tarda el Soloist falso en empezar una (s; 0.6 de fabrica)
@@ -13,7 +13,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: mide.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-busca disco artista pared suena arranque}"
+escenas="${*:-busca disco artista pared suena mezcla arranque}"
 T=${T:-/root/rocola-trabajo/fase11/rapido-spotify}
 API=${API:-$T/api-falsa}
 FALSO=${FALSO:-$T/falso}
@@ -105,6 +105,14 @@ for e in $escenas; do
     apifalsa $e; d=$(datos $e)
     abre $e "$d" "7:67,$(veces 14 5 38 4),34:40,37:40" 41 ROCOLA_OS=1 ROCOLA_PARED_VOLCADO="$W/$e/volcado"
     espera $e ;;
+  mezcla)
+    # una de XP (PONER en el primer disco: unos 3 s) y detras una de Spotify: el hueco entre las dos
+    apifalsa $e; d=$(datos $e)
+    mkdir -p "$W/$e/run/rocola-xp/spotify"
+    abre $e "$d" "7:67,9.5:13" 24 ROCOLA_OS=spotify,spotify-prueba
+    ( sleep 10.5; echo "pide spotify:track:f440d006aa|Prueba|Artista inventado|Disco inventado|6000" >> "$W/$e/run/rocola-xp/spotify/prueba-pide" ) &
+    espera $e
+    [ -f "$W/$e/sonado.raw" ] && python3 "$SX/frecuencias.py" "$W/$e/sonado.raw" "$W/$e/registro.txt" > "$W/$e/frec.txt" ;;
   arranque)
     # arrancar con el modo Spotify (la llave, el catalogo, el Soloist falso): cuando se conecta con Soloist y cuando estan las portadas de la
     # primera pagina de la A

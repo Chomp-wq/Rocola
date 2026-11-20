@@ -135,7 +135,7 @@ elif esc == 'pared':
             if falta: M('pagina%d_sin_pedir' % len(listas), len(falta))
         if listas: M('paginas_lista_en_disco_mediana', statistics.median(listas))
     except (FileNotFoundError, ValueError): pass
-elif esc == 'suena':
+elif esc in ('suena', 'mezcla'):
     # cuando se atendio cada pedido (hora de Unix)
     pedidos = []
     try:
@@ -184,6 +184,14 @@ elif esc == 'suena':
             if abs(f - hz) <= 15 and h - d >= 0.3: u = h
         return u
     a0 = primero(440); a1 = ultimo(440); b0 = primero(550)
+    if esc == 'mezcla':
+        # lo ultimo de XP (cualquier otro tono) antes de la de Spotify
+        xp = None
+        for d, h, f in fr:
+            if a0 is not None and d < a0 and f != 0 and abs(f - 440) > 15: xp = h
+        M('xp_a_spotify_hueco', (hora_de(a0) - hora_de(xp)) if xp is not None and a0 is not None and hora_de(xp) is not None and hora_de(a0) is not None else None)
+        M('oida_440_ms', sum(h - d for d, h, f in fr if abs(f - 440) <= 15) * 1000)
+        sys.exit(0)
     if pedidos and a0 is not None and hora_de(a0) is not None: M('pide_a_suena', hora_de(a0) - pedidos[0])
     else: M('pide_a_suena', None)
     if a1 is not None and b0 is not None and hora_de(a1) is not None and hora_de(b0) is not None: M('hueco_entre_dos', hora_de(b0) - hora_de(a1))

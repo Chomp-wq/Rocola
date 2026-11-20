@@ -122,6 +122,10 @@ namespace Rocola
         internal sealed class Siguiente { internal string Uri, Titulo; internal int DuracionMs; }
         private static Siguiente siguiente;
         internal static void PonSiguiente(Siguiente s) { Volatile.Write(ref siguiente, s); }
+        // DE UNA DE XP A UNA DE SPOTIFY: la pantalla lo pide cuando a la de XP que suena le quedan 2,5 s por leer (y la tarjeta guarda ~1,2 s mas);
+        // el hilo de Spotify lo atiende en su vuelta si no hay ninguna de Spotify viva (las de Spotify las adelanta Remata)
+        private static int adelantoDesdeXp;
+        internal static void PideAdelantoDesdeXp() { if (Interlocked.Exchange(ref adelantoDesdeXp, 1) == 0) despierta.Set(); }
         private static RocolaOsSpotifyPeticion adelantada;
         internal const int AdelantoMaxMs = 30000;
         internal static long Adelantadas, AdelantadasUsadas;
@@ -651,6 +655,11 @@ namespace Rocola
         internal const int FueraMs = 10000;
         private static void Peticiones(long ahora)
         {
+            if (Interlocked.Exchange(ref adelantoDesdeXp, 0) == 1)
+            {   // (rapido-spotify) solo si no hay ninguna de Spotify viva (ni sonando ni por rematar: una sustitucion invisible, por ejemplo)
+                RocolaOsSpotifyPeticion act = Actual;
+                if (act == null || act.Rematada) Adelanta(null);
+            }
             RocolaOsSpotifyPeticion n = Actual;
             if (n != null && !vivas.Contains(n) && !n.Rematada)
             {
@@ -759,12 +768,12 @@ namespace Rocola
         }
         // (rapido-spotify) EL PLAY ADELANTADO de la siguiente de la cola de XP, si es de Spotify, con Soloist dentro y si no hay ya una: lo mismo que
         // hace Peticiones con una nueva (la bocina activa, shuffle y repeat apagados, donde va el anillo, si Soloist tocaba otra cosa), pero sin
-        // fuente aun. true = se mando (y no hace falta la pausa).
+        // fuente aun. «acabada»: la de Spotify que acaba de acabar (null: viene de una de XP). true = se mando (y no hace falta la pausa).
         private static bool Adelanta(RocolaOsSpotifyPeticion acabada)
         {
             Siguiente sg = Volatile.Read(ref siguiente);
             RocolaOsSpotifyEstado st = Estado;
-            if (sg == null || sg.Uri == acabada.Uri || !st.Ws || !st.Sesion || Volatile.Read(ref adelantada) != null || parar || CerrandoLaRocola) return false;
+            if (sg == null || (acabada != null && sg.Uri == acabada.Uri) || !st.Ws || !st.Sesion || Volatile.Read(ref adelantada) != null || parar || CerrandoLaRocola) return false;
             foreach (RocolaOsSpotifyPeticion v in vivas) if (v.Uri == sg.Uri && Volatile.Read(ref v.Fase) != RocolaOsSpotifyPeticion.Acabada) return false;   // (ya la abrio XP)
             long ahora = Environment.TickCount64;
             RocolaOsSpotifyPeticion q = new RocolaOsSpotifyPeticion(sg.Uri, sg.Titulo, sg.DuracionMs) { Adelantada = true };
@@ -780,7 +789,7 @@ namespace Rocola
             vivas.Add(q);
             Volatile.Write(ref adelantada, q);
             Interlocked.Increment(ref Adelantadas);
-            Apunta("play adelantado " + q.Uri + " (" + q.Titulo + "): la siguiente de la cola, al acabar " + acabada.Uri);
+            Apunta("play adelantado " + q.Uri + " (" + q.Titulo + "): la siguiente de la cola, al acabar " + (acabada != null ? acabada.Uri : "la de XP que suena"));
             return true;
         }
 

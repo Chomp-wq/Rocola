@@ -92,7 +92,8 @@ namespace Rocola
         }
         // (rapido-spotify) LA TARJETA DE SPOTIFY EN QUE SE QUEDA EL BUSCADOR (dos latidos seguidos en la misma: 1 a 2 s), como g52 en la pared: lo
         // que abriria PONER se pide ya, para que al pulsarlo se abra al momento. Un disco: sus canciones (1 peticion, la misma que haria al
-        // abrirlo); un artista: la primera pagina de su pared (1 peticion de 10 y, si tiene mas de 10 discos, la 2a: las mismas que al abrirla).
+        // abrirlo); un artista, «mas en Spotify» o «Todos los discos de...»: la primera pagina de su pared (1 peticion de 10 y, si hay mas de 10,
+        // la 2a: las mismas que al abrirla).
         // Lo contestado se queda en la memoria de la sesion como siempre (abrirlo despues: 0 peticiones). Para la cuota: solo lo que alguien esta
         // mirando, una tarjeta como mucho cada 3 s, cada una una vez, nada con 429 ni sin la llave.
         private SearchItem rocolaOsSpTarjetaMirada;
@@ -117,6 +118,7 @@ namespace Rocola
             if (ahora - rocolaOsSpUltimoAdelantoMs < 3000) return;
             RocolaOsSpotifyCatalogoDisco d;
             RocolaOsSpotifyCatalogoArtista ar;
+            RocolaOsSpotifyParedQue q;
             if (it.Kind == 1 && rocolaOsSpDeDisco.TryGetValue(a, out d) && d.Tipo == "album" && d.Canciones == null && a.Tracks.Count == 0)
             {
                 rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++;
@@ -125,20 +127,29 @@ namespace Rocola
                     RocolaOs.Encarga("spotify_catalogo:adelanto", delegate { RocolaOsSpotifyCatalogoLlegoPrevisto(a, r as RocolaOsSpotifyCatalogoDisco); });
                 });
             }
-            else if (it.Kind == 0 && rocolaOsSpDeArtista.TryGetValue(a, out ar) && !string.IsNullOrEmpty(ar.Id)
-                && RocolaOsSpotifyCatalogoApi.PaginaYa(RocolaOsSpotifyCatalogoApi.ParedArtista, ar.Id, 0) == null)
-            {
-                rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++;
-                string id = ar.Id;
-                // (la respuesta se queda en la memoria del cliente; nada que hacer en la pantalla. La 2a pagina, solo si hace falta para las 18
-                // casillas de la primera pagina de la pared: «Canciones de» y 17 discos)
-                RocolaOsSpotifyCatalogoApi.PidePagina(RocolaOsSpotifyCatalogoApi.ParedArtista, id, 0, delegate (object r, string error)
-                {
-                    RocolaOsSpotifyCatalogoPagina pg = r as RocolaOsSpotifyCatalogoPagina;
-                    if (pg != null && pg.Total > RocolaOsSpotifyCatalogoApi.PorPaginaPared && pg.Crudos >= RocolaOsSpotifyCatalogoApi.PorPaginaPared && !RocolaOsSpotifyCatalogoApi.Frena)
-                        RocolaOsSpotifyCatalogoApi.PidePagina(RocolaOsSpotifyCatalogoApi.ParedArtista, id, RocolaOsSpotifyCatalogoApi.PorPaginaPared, null);
-                });
+            else if (rocolaOsSpParedDe != null && rocolaOsSpParedDe.TryGetValue(a, out q) && !string.IsNullOrEmpty(q.De))
+            {   // «ARTISTA · mas en Spotify» (la pared del artista) o «Todos los discos de «lo escrito»»
+                if (RocolaOsSpotifyCatalogoAdelantaPared(q.Tipo == "todos" ? RocolaOsSpotifyCatalogoApi.ParedTodos : RocolaOsSpotifyCatalogoApi.ParedArtista, q.De))
+                { rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; }
             }
+            else if (it.Kind == 0 && rocolaOsSpDeArtista.TryGetValue(a, out ar) && !string.IsNullOrEmpty(ar.Id))
+            {
+                if (RocolaOsSpotifyCatalogoAdelantaPared(RocolaOsSpotifyCatalogoApi.ParedArtista, ar.Id))
+                { rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; }
+            }
+        }
+        // la primera pagina de una pared del buscador: su 1er bloque de 10 y, si hay mas, el 2o (las 18 casillas de su primera pagina). La respuesta
+        // se queda en la memoria del cliente (al abrirla, PaginaYa: 0 peticiones); nada que hacer en la pantalla. false = ya estaba
+        private static bool RocolaOsSpotifyCatalogoAdelantaPared(string tipo, string de)
+        {
+            if (RocolaOsSpotifyCatalogoApi.PaginaYa(tipo, de, 0) != null) return false;
+            RocolaOsSpotifyCatalogoApi.PidePagina(tipo, de, 0, delegate (object r, string error)
+            {
+                RocolaOsSpotifyCatalogoPagina pg = r as RocolaOsSpotifyCatalogoPagina;
+                if (pg != null && pg.Total > RocolaOsSpotifyCatalogoApi.PorPaginaPared && pg.Crudos >= RocolaOsSpotifyCatalogoApi.PorPaginaPared && !RocolaOsSpotifyCatalogoApi.Frena)
+                    RocolaOsSpotifyCatalogoApi.PidePagina(tipo, de, RocolaOsSpotifyCatalogoApi.PorPaginaPared, null);
+            });
+            return true;
         }
         private static bool RocolaOsEsSpotify(Track t) { return t != null && t.Path != null && t.Path.StartsWith("spotify:track:", StringComparison.Ordinal); }
 
