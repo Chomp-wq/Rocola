@@ -6,8 +6,8 @@ using NAudio.Wave;
 
 // EL MODO NOCHE, DE VUELTA (decision del dueno del 7-11-2026: «nos aventaron piedras por tener musica a las 12 A.M»).
 //
-// De noche_desde= a noche_hasta= (22 a 7 de fabrica desde el 17-11-2026; antes 23 a 7) la rocola suena al noche_pct= % (de 70 a 90, 80 de
-// fabrica) de lo que se oye; «Probar» en Ctrl+F3 -> Sonido lo pone al momento hasta otro toque (antes 15 s). (Del 24-10 al 6-11-2026 esta bateria vigilaba que se
+// De noche_desde= a noche_hasta= (22 a 7 de fabrica desde el 17-11-2026; antes 23 a 7) la rocola suena al noche_pct= % (de 50 a 90 desde el
+// 20-11-2026, antes de 70 a 90; 80 de fabrica) de lo que se oye; «Probar» en Ctrl+F3 -> Sonido lo pone al momento hasta otro toque (antes 15 s). (Del 24-10 al 6-11-2026 esta bateria vigilaba que se
 // hubiera retirado.)
 //
 // 17-11-2026 (el dueno: «que empiece desde las 10, pero que vaya bajando extremadamente lento el volumen [...] que tarde una hora en
@@ -19,7 +19,8 @@ using NAudio.Wave;
 // LO QUE ESTA BATERIA VIGILA:
 //
 //  1) EL CRUCE DE LA MEDIANOCHE. «hora >= 23 && hora < 7» es siempre falso: tiene que ser un O. Si falla, el modo no ocurre nunca.
-//  2) EL PORCENTAJE ES DE LO QUE SE OYE: 70 % = -5,1 dB, 80 % = -3,2 dB, 90 % = -1,5 dB (10*log2), y la clave se acota a 70-90.
+//  2) EL PORCENTAJE ES DE LO QUE SE OYE: 50 % = -10 dB, 70 % = -5,1 dB, 80 % = -3,2 dB, 90 % = -1,5 dB (10*log2), y la clave se acota a 50-90
+//     (desde el 20-11-2026, el dueno: «El modo noche ahora tendra el slider desde 50 hasta 90%»; antes 70-90).
 //  3) LA RAMPA VA POR RELOJ (milisegundos, no vueltas) y no salta de golpe; «Probar» baja rapido y vuelve solo.
 //  4) EL VOLUMEN SALE POR DOS SITIOS: la cadena de cada cancion (la que se arma, la preparada y el ajuste en vivo) y los videos, en
 //     particular la rama del video YA MEDIDO, que se salta la ganancia general.
@@ -28,6 +29,8 @@ using NAudio.Wave;
 //     se ignoran sin error; el 23 guardado pasa a 22 una vez (noche_desde_22=).
 //  7) LA BAJADA DE UNA HORA, PAREJA EN dB, y el arranque ya de noche.
 //  8) LA SUBIDA DE LA MANANA (20 s), «PROBAR» RAPIDO, EL GRAVE DE NOCHE (N1) y SalaLocal bit a bit de dia.
+//  9) AL 50 % (20-11-2026): -10 dB en la hora pareja en dB, los videos con la perilla al 50 %, el grave de noche igual, la subida de la
+//     manana y «Probar» con su rampa (que de 50 a 65 % da un paso mayor para seguir llegando en 20 s y 1,5 s; de 66 a 90 %, el de antes).
 class FuenteN : ISampleProvider
 {
     readonly float[] x; int pos; readonly WaveFormat wf;
@@ -72,8 +75,10 @@ class Noche
         Func<int, float> db = p => { fPct.SetValue(null, p); return (float)mDb.Invoke(null, null); };
         Check(Math.Abs(db(70) + 5.15f) < 0.05f && Math.Abs(db(80) + 3.22f) < 0.05f && Math.Abs(db(90) + 1.52f) < 0.05f,
               string.Format("70 % = {0:0.00} dB, 80 % = {1:0.00} dB, 90 % = {2:0.00} dB", db(70), db(80), db(90)));
+        Check(Math.Abs(db(50) + 10f) < 0.0005f && Math.Abs(db(60) + 7.37f) < 0.05f,
+              string.Format("50 % = {0:0.000} dB (lo mas bajo desde el 20-11-2026: la misma cuenta, 10*log2(0,5)), 60 % = {1:0.00} dB", db(50), db(60)));
         fPct.SetValue(null, 80);
-        Check((int)TF.GetField("NochePctMin", T).GetValue(null) == 70 && (int)TF.GetField("NochePctMax", T).GetValue(null) == 90, "el deslizador va de 70 a 90");
+        Check((int)TF.GetField("NochePctMin", T).GetValue(null) == 50 && (int)TF.GetField("NochePctMax", T).GetValue(null) == 90, "el deslizador va de 50 a 90 (antes de 70 a 90)");
 
         Console.WriteLine("\n  3) LA RAMPA VA POR RELOJ\n");
         Func<float, float, int, int, float> rampa = (a, m, ms, r) => (float)mRampa.Invoke(null, new object[] { a, m, ms, r });
@@ -87,6 +92,34 @@ class Noche
         x = 1f; pasos = 0;
         while (x != lin80 && pasos < 10000) { x = rampa(x, lin80, 16, 1500); pasos++; }
         Check(pasos * 16 <= 1500, "«Probar» baja en " + (pasos * 16) + " ms (rampa rapida)");
+        // (20-11-2026) Al 50 % la noche baja de 1 a 0,316: mas de medio volumen, lo que la rampa recorria en rampaMs. De 50 a 65 % el paso
+        // crece a lo que baja la noche (sigue llegando en 20 s y en 1,5 s: sin eso, 27,4 s y 2,1 s); de 66 a 90 %, el paso de antes, bit a bit.
+        float lin50 = (float)Math.Pow(10, db(50) / 20); fPct.SetValue(null, 50);
+        x = 1f; pasos = 0;
+        while (x != lin50 && pasos < 10000) { x = rampa(x, lin50, 16, 20000); pasos++; }
+        Check(pasos * 16 <= 20016, "al 50 %, la rampa de 20 s llega en " + (pasos * 16 / 1000.0).ToString("0.00") + " s (sin el paso mayor, 27,4 s)");
+        x = 1f; pasos = 0;
+        while (x != lin50 && pasos < 10000) { x = rampa(x, lin50, 16, 1500); pasos++; }
+        Check(pasos * 16 <= 1516, "al 50 %, «Probar» baja en " + (pasos * 16) + " ms (sin el paso mayor, 2 064 ms)");
+        x = lin50; pasos = 0;
+        while (x != 1f && pasos < 10000) { x = rampa(x, 1f, 16, 1500); pasos++; }
+        Check(pasos * 16 <= 1516, "y vuelve en " + (pasos * 16) + " ms");
+        bool pasoAntes = true; string pasoMal = "";
+        foreach (int pc in new int[] { 66, 70, 75, 80, 85, 90 })
+        {
+            fPct.SetValue(null, pc); float li = (float)Math.Pow(10, db(pc) / 20); fPct.SetValue(null, pc);
+            foreach (int ms in new int[] { 1, 16, 500, 4000 })
+                foreach (int rm in new int[] { 1500, 20000 })
+                {
+                    float baja = 0.95f - (1f - 0.5f) * ms / rm; if (baja < li) baja = li;   // la cuenta de antes del 20-11-2026, tal cual
+                    float sube = li + (1f - 0.5f) * ms / rm; if (sube > 1f) sube = 1f;
+                    if (rampa(0.95f, li, ms, rm) != baja || rampa(li, 1f, ms, rm) != sube) { pasoAntes = false; pasoMal += " " + pc + "%/" + ms + "ms/" + rm; }
+                }
+        }
+        Check(pasoAntes, "de 66 a 90 % la rampa da el MISMO paso que antes, bit a bit" + pasoMal);
+        fPct.SetValue(null, 65); float lin65 = (float)Math.Pow(10, db(65) / 20); fPct.SetValue(null, 65);
+        Check(rampa(1f, lin65, 1000, 20000) < 1f - (1f - 0.5f) * 1000 / 20000, "y al 65 % (" + db(65).ToString("0.00") + " dB, mas de medio volumen) ya el paso mayor");
+        fPct.SetValue(null, 80);
 
         Console.WriteLine("\n  4) LA CADENA Y LOS VIDEOS\n");
         foreach (string n in new string[] { "ArmaCadena", "AplicaAPreparada", "ApplyNormNow" })
@@ -173,13 +206,28 @@ class Noche
             fDesde.SetValue(null, 22); fHasta.SetValue(null, 6);
             File.WriteAllText(Path.Combine(dir, "rocola_config.txt"), "noche_pct=40\r\n");
             TF.GetMethod("LoadConfigPrefs", T).Invoke(f, null);
-            Check((int)fPct.GetValue(null) == 70, "noche_pct=40 se acota a 70");
+            Check((int)fPct.GetValue(null) == 50, "noche_pct=40 se acota a 50 (antes, a 70)");
+            carga("noche_pct=50\r\n");
+            Check((int)fPct.GetValue(null) == 50, "noche_pct=50 se lee tal cual (antes se acotaba a 70)");
+            carga("noche_pct=63\r\n");
+            Check((int)fPct.GetValue(null) == 63, "noche_pct=63 tambien");
+            carga("noche_pct=95\r\n");
+            Check((int)fPct.GetValue(null) == 90, "noche_pct=95 se acota a 90");
+            carga("noche_pct=80\r\n");
+            Check((int)fPct.GetValue(null) == 80, "y un 80 guardado (el de fabrica) se conserva");
             fOn.SetValue(null, true); fPct.SetValue(null, 85);
             TF.GetMethod("SaveConfigPrefs", T).Invoke(f, null);
             Codigo.EsperaGuardado(TF, f);
             string nuevo = File.ReadAllText(Path.Combine(dir, "rocola_config.txt"));
             Check(nuevo.Contains("noche=1\r\n") && nuevo.Contains("noche_desde=22\r\n") && nuevo.Contains("noche_hasta=6\r\n") && nuevo.Contains("noche_pct=85\r\n")
                   && !nuevo.Contains("noche_db=") && !nuevo.Contains("noche_compensa="), "se guardan las cuatro (y las de antes ya no)");
+            fPct.SetValue(null, 50);
+            TF.GetMethod("SaveConfigPrefs", T).Invoke(f, null);
+            Codigo.EsperaGuardado(TF, f);
+            nuevo = File.ReadAllText(Path.Combine(dir, "rocola_config.txt"));
+            carga(nuevo);
+            Check(nuevo.Contains("noche_pct=50\r\n") && (int)fPct.GetValue(null) == 50, "un 50 se guarda como noche_pct=50 y se vuelve a leer igual");
+            fPct.SetValue(null, 85);
             Check(nuevo.Contains("noche_desde_22=1\r\n") && nuevo.Contains("noche_graves=0\r\n"), "y se guardan la marca noche_desde_22=1 y noche_graves=");
 
             Console.WriteLine("\n  7) LA BAJADA DE UNA HORA, PAREJA EN dB\n");
@@ -295,6 +343,47 @@ class Noche
             // La etapa esta SIEMPRE en la cadena (no depende de ningun ajuste del local): el grave de noche funciona con todo de fabrica.
             MethodInfo mArma = TF.GetMethod("ArmaCadena", T);
             Check(mArma != null && Codigo.Llama(Codigo.Llamadas(mArma), "SalaLocal..ctor"), "SalaLocal se arma SIEMPRE en la cadena (no depende de ningun ajuste del local)");
+
+            Console.WriteLine("\n  9) AL 50 % (20-11-2026: el deslizador de 50 a 90; 50 % = -10 dB)\n");
+            fPct.SetValue(null, 50); fGrav.SetValue(null, 4);
+            double db50 = db(50); fPct.SetValue(null, 50);
+            float lin50n = (float)Math.Pow(10, db50 / 20);
+            fDesde.SetValue(null, 3); fHasta.SetValue(null, 3); fOn.SetValue(null, true); fArr.SetValue(f, false); fHastaP.SetValue(f, 0);
+            vuelta(4000);
+            Check(factor() == 1f && grave() == 0f && (float)mVid.Invoke(f, null) == 1f, "al 50 %, de dia: el volumen 1, el grave de noche 0 y los videos 1");
+            fDesde.SetValue(null, 0); fHasta.SetValue(null, 24);
+            fallo = false; bajaSiempre = true; previo = 1f;
+            double e10 = 0, e20 = 0, e59 = 0, e60 = 0, h30 = 0, h60 = 0, v30 = 0;
+            for (k = 1; k <= 900; k++)
+            {
+                try { vuelta(4000); } catch (Exception e) { fallo = true; Console.WriteLine("    " + (e.InnerException ?? e).Message); break; }
+                float v = factor(); if (v > previo) bajaSiempre = false; previo = v;
+                if (k == 150) e10 = aDb(v); if (k == 300) e20 = aDb(v); if (k == 450) { h30 = grave(); v30 = (float)mVid.Invoke(f, null); } if (k == 885) e59 = aDb(v); if (k == 900) { e60 = aDb(v); h60 = grave(); }
+            }
+            Console.WriteLine("        a 10 min " + e10.ToString("0.000") + " dB, a 20 min " + e20.ToString("0.000") + " dB, a 59 min " + e59.ToString("0.000") + " dB, a 60 min " + e60.ToString("0.000") + " dB (objetivo " + db50.ToString("0.000") + ")");
+            Check(!fallo && bajaSiempre, "al 50 %, la bajada de una hora corre sin fallo y solo baja, vuelta a vuelta");
+            Check(e59 > db50 + 0.1 && Math.Abs(e60 - db50) < 0.002, "a los 59 minutos todavia no llega (le faltan " + (e59 - db50).ToString("0.000") + " dB) y a los 60 llega a los -10 dB (" + e60.ToString("0.000") + ")");
+            Check(Math.Abs(e10 - db50 / 6.0) < 0.01 && Math.Abs(e20 - db50 / 3.0) < 0.01, "PAREJO EN dB: a 10 y 20 min lleva 1/6 y 2/6 de los -10 dB (" + e10.ToString("0.000") + ", " + e20.ToString("0.000") + "; -0,167 dB por minuto)");
+            Check(Math.Abs(v30 - 0.75) < 1e-3 && Math.Abs((float)mVid.Invoke(f, null) - 0.50f) < 1e-3f, "los videos: a la media hora la perilla al " + (v30 * 100).ToString("0.0") + " % (la mitad del camino en dB) y al final al 50 %");
+            Check(Math.Abs(h30 - 2.0) < 0.02 && Math.Abs(h60 - 4.0) < 0.01, "el grave de noche no depende del porcentaje: " + h30.ToString("0.00") + " dB a la media hora y " + h60.ToString("0.00") + " al final");
+            fArr.SetValue(f, false); vuelta(4000);
+            Check(Math.Abs(factor() - lin50n) < 1e-6f && Math.Abs(grave() - 4f) < 0.01f, "al 50 %, prendida ya de noche: arranca en -10 dB al momento (" + aDb(factor()).ToString("0.000") + " dB)");
+            fDesde.SetValue(null, 3); fHasta.SetValue(null, 3);
+            TF.GetField("nocheAvisada", T).SetValue(f, false);
+            sube = true; pasosSube = 0;
+            for (k = 0; k < 80; k++)
+            {
+                try { vuelta(500); } catch (Exception e) { sube = false; Console.WriteLine("    " + (e.InnerException ?? e).Message); break; }
+                pasosSube++; if (factor() == 1f) break;
+            }
+            Check(sube && factor() == 1f && grave() == 0f && pasosSube * 0.5 >= 18 && pasosSube * 0.5 <= 24, "al 50 %, la subida de la manana llega en " + (pasosSube * 0.5).ToString("0.0") + " s (unos 20; sin el paso mayor, 28,5 s)");
+            mProb.Invoke(f, null);
+            pasosP = 0; for (k = 0; k < 12; k++) { vuelta(500); pasosP++; if (Math.Abs(factor() - lin50n) < 1e-6f && Math.Abs(grave() - 4f) < 0.01f) break; }
+            Check(Math.Abs(factor() - lin50n) < 1e-6f && pasosP * 0.5 <= 2.0, "al 50 %, «Probar» baja a -10 dB y el grave en " + (pasosP * 0.5) + " s (la rampa rapida de 1,5 s; sin el paso mayor, 2,5 s)");
+            fHastaP.SetValue(f, (Environment.TickCount - 10) | 1);
+            pasosV = 0; for (k = 0; k < 12; k++) { vuelta(500); pasosV++; if (factor() == 1f && grave() == 0f) break; }
+            Check(factor() == 1f && grave() == 0f && pasosV * 0.5 <= 2.0, "acabada la prueba, de dia, vuelve a 1 en " + (pasosV * 0.5) + " s");
+            fPct.SetValue(null, 80);
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
 
