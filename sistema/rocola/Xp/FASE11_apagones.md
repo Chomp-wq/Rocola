@@ -51,7 +51,7 @@ restaurar se suma a lo de antes (no lo pisa).
 | Reiniciar el programa (buzón), la consola Ctrl+Alt+F2, `rocola-sonido`, el reinicio de un sistema nuevo sin confirmar (`S99rocola`), reiniciar el equipo (buzón) | `SIGUSR1` (`cierra_xp`, nunca `SIGTERM`); a los 20 s `SIGKILL` (= apagón) | `TaskManagerClosing` | se conserva (espera a que lo encargado llegue al disco) | `usr1` |
 | `SIGHUP` (al morir el lanzador se cuelga tty1) | el lanzador la ignora (`trap '' HUP`) y rocola-xp la hereda ignorada | — | nada pasa | `hup` |
 | `SIGTERM`/`SIGUSR1` en los primeros instantes (antes de registrar los avisos) | la señal la corta en seco | — | se conserva (como en XP: sin ventana, Windows mata el proceso) | revisado en el código |
-| El lanzador vuelve a abrirla tras una caída | no toca el estado | — | se reanuda | `kill9`, `segv` (la segunda corrida) |
+| El lanzador vuelve a abrirla tras una caída | no toca el estado (`/usr/bin/rocola`: ni lo lee ni lo borra) | — | se reanuda | revisado; la reapertura, en `kill9` y `segv` (la abre la prueba, no el lanzador) |
 | `rocola-actualiza` | no reinicia: el sistema nuevo entra al siguiente encendido | — | — | revisado |
 | Apagar desde la consola (`poweroff`) | rocola-xp ya se cerró con `SIGUSR1` al cambiar de consola | `TaskManagerClosing` | se conserva (reinicio propio de Rocola OS) | revisado |
 | El importador de XP (`--importa-xp`) | no trae `rocola_estado.txt` de XP ni pisa el de rocola-xp | — | igual byte a byte | `importa` |
@@ -80,8 +80,8 @@ ext4 asiente su diario, el `loop` pide bajar `datos.img` y ntfs3 lo baja (`gener
   de nombre y borrar en `/rocola/datos` antes de volver de la llamada. Se eligió en el sistema y no en el programa porque: no toca `Codigo/`
   (XP no hace `fsync` de carpetas: sería lógica nueva, no traducción), cubre todo lo que se guarda ahí (lo de XP, lo de Rocola OS, los
   borrados del apagado a propósito) y entra con una compilación rápida (el initrd se rehace con el `init` nuevo). El costo: cada una de esas
-  operaciones espera al disco; en esta máquina el cambio de nombre del estado pasó de 0,05 ms a ~1 ms (strace, §4), en hilos de fondo, y en
-  18 s de uso la rocola hizo unas 40 (casi todas el estado). **En el A4 no se midió.**
+  operaciones espera al disco; en esta máquina el cambio de nombre del estado pasó de 0,05 ms a 1-4 ms de mediana (strace, §4), en hilos de fondo, y en
+  18 s de uso la rocola hizo unas 40 (casi todas del estado). **En el A4 no se midió.**
 - **El NTFS «sin revisar»**: escribir dentro de `datos.img` sin agrandarlo no marca el NTFS sucio (ntfs3 solo lo marca al crear, agrandar,
   reservar o borrar: `fs/ntfs3/file.c`, `frecord.c`, `inode.c`), así que guardar el estado no deja el disco para revisar tras un apagón. Lo
   demás que se escribe en `/rocola/disco` ya lo cuida el vigilante de `S99rocola` (un `sync` cada 15 s si está sucio). Sin cambios.
@@ -91,14 +91,55 @@ ext4 asiente su diario, el `loop` pide bajar `datos.img` y ntfs3 lo baja (`gener
 ## 4. Las pruebas (con números)
 
 **Fuera de pantalla** — `Pruebas/RocolaOs/apagones/prueba.sh PROGRAMA` (rocola-xp de verdad en JIT, la tarjeta con reloj que guarda lo que
-de verdad sonó, datos inventados con tres tonos de 30 s que cambian a la mitad para saber desde dónde vuelve a sonar). RESULTADOS_LOCALES
+de verdad sonó, datos inventados con tres tonos de 30 s que cambian a la mitad para saber desde dónde vuelve a sonar). 36 de 36 BIEN (corrida final, 20-11-2026, `local-jit-6.log`):
 
-**Spotify con el Soloist falso** — `Pruebas/RocolaOs/spotify-xp/prueba.sh PROGRAMA apagon` (nunca el Soloist de verdad). RESULTADOS_SPOTIFY
+| Escena | Qué se hace | Comprobaciones |
+|---|---|---|
+| `kill9` | 4 monedas (16 créditos), pide la 1 (suena), la 2 y la 3 (cola): 13 créditos; `kill -9` a los 9 s de la 1; se vuelve a abrir y al final `SIGTERM` | 8: salió con 137; el estado quedó con 13, la 1 sonando, la 2 y la 3; antes del corte sonaron de 5 a 12 s de la 1 y nada de su segunda mitad; al volver 13 créditos y cola de 2; suena la 1 **desde el principio** (sus 15 s de 440 Hz enteros antes de los 470 Hz); después la 2 en su turno; el `SIGTERM` final lo borró entero (ni `.bak` ni `.tmp`) |
+| `segv` | igual, con dos `SIGSEGV` (el primero lo toma .NET) | 3: salió con 139; el estado sobrevivió; al volver 13, la 1 y cola de 2 |
+| `sigterm` | igual, con `SIGTERM` (el apagado) | 5: salió con 0; cerró con `WindowsShutDown`; el estado borrado entero; al volver 0 créditos, nada, cola vacía; no suena nada |
+| `usr1` | igual, con `SIGUSR1` (reinicios de Rocola OS) | 4: salió con 0; cerró con `TaskManagerClosing`; el estado se conservó; al volver reanuda |
+| `hup` | `SIGHUP` con su acción de fábrica, y con `SIGHUP` ignorada como la deja el lanzador | 3: con la de fábrica muere (129) y el estado sobrevive; ignorada, sigue abierta hasta el `SIGKILL` de la prueba |
+| `inyecta` | strace mata la rocola (`SIGKILL`) justo en una llamada del guardado: `pwrite64` (sin hacerla), `fsync` (sin hacerla y hecha), `link` del `.bak` (sin hacerla y hecha), `rename` (sin hacerla y hecha), `unlink` del `.bak` | 8: cada vez murió ahí, el estado que quedó está entero (cabecera, `ts`, créditos: 8, 12 o 16 según el momento) y al volver la rocola leyó los mismos créditos |
+| `strace` | las llamadas de cada guardado; las opciones del `init` del repositorio; un ext4 en un archivo montado con ellas (y otro sin `dirsync`) y la rocola guardando allí | 3: de paso + `fsync` + `link` `.bak` + `rename` (7 guardados en 18 s); el `init` monta con `noatime,dirsync`; con `dirsync` el cambio de nombre tarda 4,3 ms de mediana (el más rápido 0,64 ms) frente a 0,05 ms sin él: espera al disco |
+| `importa` | `--importa-xp` con un estado del día en la carpeta de XP (5 créditos) y otro en la de rocola-xp (13 y su cola) | 2: importó (0); el de rocola-xp quedó igual byte a byte, sin `.bak` ni `.antes-xp` |
+
+Dos arreglos de la prueba en esta tanda (no del programa): `hup` pone la acción de fábrica de `SIGHUP` antes de abrir la rocola (corrida
+con `nohup`, la rocola la heredaba ignorada y no moría: 2 MAL en `local-jit-5.log`, por eso); y la escena `strace` mide `dirsync` en vez
+de buscar un `fsync` de la carpeta, que el arreglo no usa.
+
+**Spotify con el Soloist falso** — `Pruebas/RocolaOs/spotify-xp/prueba.sh PROGRAMA apagon` (nunca el Soloist de verdad). 4 de 4 BIEN: el estado guardado con la de Spotify sonando y otra en la cola y 2 créditos; al morir la rocola (`kill -9`) el vigilante y el
+Soloist falso se fueron solos; al volver, lo pagado de Spotify volvió como crédito (2 + 2 = 4) y no sonó nada de Spotify. Con `SIGUSR1`
+(se conserva) el camino es el mismo de XP (la ruta `spotify:` no está en la biblioteca: crédito devuelto); revisado en el código, no
+corrido.
 
 **El corte de luz de verdad, en QEMU** — `Pruebas/Qemu/apagones.py` sobre el sistema instalado de la prueba de Spotify
 (`/root/rocola-trabajo/act/qemu-spotify/xp.qcow2`, con una capa encima que se tira): QEMU se cierra en seco (`quit`: lo que la máquina no
-había bajado a su disco se pierde) sin `sync`, y al volver a prender se mira qué quedó. RESULTADOS_QEMU
+había bajado a su disco se pierde) sin `sync`, y al volver a prender se mira qué quedó. Primero se vio el fallo; después, el arreglo de verdad: el `init` del repositorio entra en un cpio aparte **pegado al final** del
+`initrd.gz` instalado (el núcleo desempaca los cpio seguidos y el último `init` manda; BusyBox no arma cpio, así que se arma aquí y entra
+por un segundo disco en bruto), se vuelve a prender y `/proc/mounts` dice `rw,dirsync,noatime`.
+
+| Prueba | Sin el arreglo (como está hoy) | Con el `init` del repositorio (`dirsync`) |
+|---|---|---|
+| `dd`: cinco guardados como los de XP (de paso con `fsync`, cambio de nombre), el corte 0,5 s después del 5.º | quedó el **4.º** y el de paso suelto (`v=4`, `prueba_apagon.txt.tmp`), las tres veces (17:08, 20:51 y 21:11) | quedó el 5.º y nada suelto |
+| `dd`, el corte al momento | — | quedó el 5.º |
+| `moneda`: rocola-xp de verdad, una moneda (13 → 17 créditos, visto en `rocola_estado.txt`), el corte 0,5 s después | al volver, **13** (la moneda perdida) | al volver, 17 |
+| `moneda`, el corte al momento de verlo | al volver, **13** | al volver, 17 |
+
+(La corrida de las 21:11 pedía `mount -o remount,dirsync`, que el núcleo no aplica al remontar —`dirsync` no está en `MS_RMT_MASK`—: medía
+sin `dirsync`; por eso el arreglo se prueba con el `init` de verdad. El modo quedó en el guion solo para verlo.)
 
 ## 5. Lo que queda
 
-PENDIENTES
+- **Nada en el A4.** Ni el corte de luz de verdad, ni cuánto tarda allí cada cambio de nombre con `dirsync` (en esta máquina 0,6 a 4 ms;
+  el A4 lleva un SSD, más el `loop` y ntfs3 debajo).
+- El arreglo llega con la siguiente compilación del sistema (la rápida rehace el `initrd.gz` con el `init` nuevo). No se compiló aquí.
+- En QEMU no se miró si el corte dejó el NTFS de `/rocola/disco` «sin revisar» (lo cuida `S99rocola` desde el 7-11-2026; guardar el
+  estado no lo marca, según el código de ntfs3).
+- Solo JIT: el programa no cambió (el arreglo es del sistema), así que no se compiló NativeAOT.
+- `SIGUSR1` con Spotify en la cola y el botón de encendido de verdad en QEMU (ACPI) no se corrieron en esta tanda: el primero es el mismo
+  camino que el apagón (§2); el segundo ya se probó en QEMU el 14-11-2026 (`Pruebas/Qemu/prueba.py`) y no cambió.
+- El reloj: si el de la placa está muy mal al prender (antes del NTP del primer minuto), la regla de las 7 AM puede descartar o conservar
+  un estado que no debía, igual que en XP. No se cambia.
+- En QEMU el puerto serie a veces no contesta en todo un arranque con la máquina cargada (dos veces en esta tanda); `apagones.py` ahora
+  vuelve a prender (hasta tres veces).
