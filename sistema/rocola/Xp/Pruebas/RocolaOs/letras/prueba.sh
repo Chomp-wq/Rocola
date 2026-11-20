@@ -7,11 +7,11 @@
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/letras/prueba; se rehace)
 # escenas: orden (la letra de lo que suena con la orden --prueba-letra-cielo: LRCLIB, el MP3, /run, sin red) apagado (sin ROCOLA_OS: nada
 #   de Rocola OS) l3 (la letra de tus MP3 en el buscador) tres (frases de 3 palabras: nada) genius (L1 con la llave falsa: las tres delante)
-#   sinllave (L1 encendida sin llave: ni una peticion) suena (la letra de la cancion que suena, en la rocola entera); todas, de fabrica
+#   cero (ROCOLA_OS=1 con las cuatro apagadas: la traza igual a la de apagado) sinllave (L1 encendida sin llave: ni una peticion) suena (la letra de la cancion que suena, en la rocola entera); todas, de fabrica
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-orden apagado l3 tres genius sinllave suena}"
+escenas="${*:-orden apagado cero l3 tres genius sinllave suena}"
 W=${W:-/root/rocola-trabajo/fase11/letras/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 CAT="$G/../catalogo"; SX="$G/../spotify-xp"
@@ -20,7 +20,7 @@ FALSO=${FALSO:-/root/rocola-trabajo/fase11/letras/soloist-falso}
 CAPTURAS=${CAPTURAS:-}
 LLAVE=llave-falsa-de-genius-0123456789
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
-rm -rf "$W"; mkdir -p "$W"
+rm -rf "$W"; mkdir -p "$W"; [ -n "$CAPTURAS" ] && mkdir -p "$CAPTURAS"
 bien=0; mal=0
 si() { local d="$1"; shift; if "$@"; then echo "BIEN  $d"; bien=$((bien + 1)); else echo "MAL   $d"; mal=$((mal + 1)); fi; }
 contiene() { grep -qF -- "$2" "$1" 2>/dev/null; }
