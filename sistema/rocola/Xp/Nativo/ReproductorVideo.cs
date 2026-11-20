@@ -191,6 +191,15 @@ namespace Rocola
             get { return volumen; }
             set { volumen = Math.Max(0, Math.Min(100, value)); AplicaVolumen(); }
         }
+        // El filtro de audio de mpv (su propiedad «af», una cadena de libavfilter; "" = ninguno). Lo pone Rocola OS de noche, al empezar cada video
+        // (RocolaOs/RocolaOs.NocheVideo.cs, gancho g102); en XP el WMP no tenia nada asi y sin Rocola OS nadie lo llama.
+        internal void FiltroAudio(string af)
+        {
+            IntPtr m = mpv;
+            if (m == IntPtr.Zero) return;
+            int r = Mpv.mpv_set_property_string(m, "af", af ?? "");
+            if (traza) Console.Error.WriteLine("video: af «" + (af ?? "") + "»" + (r < 0 ? " (mpv no lo acepto: " + r + ")" : ""));
+        }
         private void AplicaVolumen()
         {
             if (mpv == IntPtr.Zero) return;
