@@ -101,6 +101,11 @@ namespace Rocola
                 return Math.Sqrt(g * g + a * a);
             }
             internal const double GravesHz = 120.0, AgudosHz = 6000.0, TonoQ = 0.7071, TonoSeg = 0.05;   // TonoSeg: los 12 dB enteros
+            // N1, DE NOCHE MENOS GRAVE HACIA AFUERA (17-11-2026, Form1.Sonido.cs): los dB que el modo noche le quita al estante de graves,
+            // con decimales y en el avance de la bajada de la noche (0 de dia). Se RESTAN del objetivo del estante (el mismo filtro de
+            // «Graves del local»); lo pone AvanzaModoNoche y lo leen todas las cadenas, la que suena y la que se arma. Con 0 la etapa sale
+            // bit a bit como antes, y pasa tal cual si todo esta en 0 (Quieta).
+            internal static volatile float GravesNocheDb;
 
             private readonly ISampleProvider src;
             private readonly LevelTap tap;           // de donde se lee el volumen general (Master) para no medirlo
@@ -165,7 +170,7 @@ namespace Rocola
                 w = 2.0 * Math.PI * AgudosHz / tasa; tSenoA = Math.Sin(w); tCosA = Math.Cos(w);
                 gravesObj = Math.Max(-TonoMax, Math.Min(TonoMax, graves));
                 agudosObj = conAgudos ? Math.Max(-TonoMax, Math.Min(TonoMax, agudos)) : 0;
-                gravesDb = gravesObj; agudosDb = agudosObj;   // arrancan donde piden los mandos, sin rampa
+                gravesDb = gravesObj - (double)GravesNocheDb; agudosDb = agudosObj;   // arrancan donde piden los mandos (y la noche), sin rampa
                 recalculaTono = true;
                 aMedida = 1.0 - Math.Exp(-1.0 / (MedidaSeg * tasa));
                 aSube = 1.0 - Math.Exp(-1.0 / (SubeSeg * tasa));
@@ -238,7 +243,7 @@ namespace Rocola
             {
                 return !claridadOn && mezcla == 0.0 && !suavesOn && sube == 1.0
                     && tl == 1.0 && tr == 1.0 && gl == 1.0 && gr == 1.0
-                    && gravesDb == 0.0 && agudosDb == 0.0 && gravesObj == 0 && agudosObj == 0;
+                    && gravesDb == 0.0 && agudosDb == 0.0 && gravesObj == 0 && agudosObj == 0 && GravesNocheDb == 0f;
             }
 
             // CUADROS ENTEROS, como el grave en mono: en estereo se pide siempre un numero par. Si piden una sola muestra,
@@ -298,7 +303,7 @@ namespace Rocola
                 double pb0 = this.pb0, pb1 = this.pb1, pb2 = this.pb2, pa1 = this.pa1, pa2 = this.pa2;
                 bool pres = conPresencia;
                 int cnt = cuenta;
-                double tg = gravesObj, ta = agudosObj, gd = gravesDb, ad = agudosDb, ps = pasoTono;
+                double tg = gravesObj - (double)GravesNocheDb, ta = agudosObj, gd = gravesDb, ad = agudosDb, ps = pasoTono;   // (de noche, N1 resta del grave)
                 bool tono = gd != 0.0 || ad != 0.0 || tg != 0.0 || ta != 0.0;
                 double gb0 = this.gb0, gb1 = this.gb1, gb2 = this.gb2, ga1 = this.ga1, ga2 = this.ga2;
                 double hb0 = this.hb0, hb1 = this.hb1, hb2 = this.hb2, ha1 = this.ha1, ha2 = this.ha2;

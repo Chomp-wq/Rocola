@@ -32,6 +32,21 @@ namespace Rocola
             public void Invalidate() { caja.Invalidate(); }
         }
 
+        // LA CURVA DEL ECUALIZADOR DEL DUENO (Control en XP; Form1.EcualizadorDueno.cs, 17-11-2026): solo se ve, no se toca (TabStop = false)
+        private sealed partial class CurvaEqView
+        {
+            private readonly CajaPieza caja;
+            CajaPieza IPieza.Caja { get { return caja; } }
+            public void SetBounds(int x, int y, int width, int height) { caja.SetBounds(x, y, width, height); }
+            public Color BackColor { get { return caja.BackColor; } set { caja.BackColor = value; } }
+            public Rocola.Nativo.Letra Font { get { return caja.Font; } set { caja.Font = value; } }
+            public bool TabStop { get { return caja.TabStop; } set { caja.TabStop = value; } }
+            public int Width { get { return caja.Bounds.Width; } }
+            public int Height { get { return caja.Bounds.Height; } }
+            public string Name { get { return caja.Name; } set { caja.Name = value; } }
+            public void Invalidate() { caja.Invalidate(); }
+        }
+
         // EL INTERRUPTOR (Control en XP)
         private sealed partial class Interruptor
         {

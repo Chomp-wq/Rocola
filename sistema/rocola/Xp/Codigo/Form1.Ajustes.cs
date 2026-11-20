@@ -662,7 +662,7 @@ namespace Rocola
             bool wasMaint = maintMode;
             maintMode = true;   // el dialogo modal necesita quedarse al frente; se devuelve en el finally
             bool changed = false;
-            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkPreEco = quitaPreEco; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar; bool bkNoche = nocheOn; int bkNocheP = nochePct;   // por si se Cancela
+            float bkTarget = normTarget, bkStrength = normStrength, bkExc = excAmount, bkEq = eqAmount, bkBass = bassAmount; int bkVid = videoVol, bkDsk = perfilDisco; bool bkOn = normalizeOn, bkSbr = sbrOn, bkEqA = eqAuto, bkBassA = bassAuto, bkVidA = videoAuto, bkIaDat = iaHarvestOn, bkSil = saltaSilencios, bkEst = estereoEstrecho, bkSub = cortaSubgrave, bkCla = claridadLocal, bkSua = partesSuaves; int bkBal = balanceDb, bkFrec = frecuenciaSalida, bkGra = gravesLocalDb, bkAgu = agudosLocalDb; bool bkPre = presenciaSala, bkLoA = localAuto; bool bkMed = aLaMedida, bkSis = quitaSiseo, bkGen = dseePorGenero, bkMudo = canalMudo, bkDc = quitaContinua, bkZum = quitaZumbido, bkEses = suavizaEses, bkAuto = estereoAuto; bool bkPreEco = quitaPreEco; bool bkBom = bomboSinHundir, bkRet = retumbeDinamico, bkAta = ataqueClaro, bkAsp = asperezaDinamica; float[] bkAfiDb = (float[])afinadoDb.Clone(); int bkAfiP = afinadoPonderacion; bool bkAfiU = afinadoUsar; bool bkNoche = nocheOn; int bkNocheG = nocheGraves; int bkNocheP = nochePct; int[] bkEqN = (int[])eqDuenoNormal.Clone(), bkEqB = (int[])eqDuenoBillar.Clone();   // por si se Cancela
             try
             {
                 PantallaRocola.EnsenaFlecha();   // EN LINUX: Cursor.Show(): ShowCursor(TRUE), la cuenta de la flecha (Cursor.cs:611-614)
@@ -817,9 +817,9 @@ namespace Rocola
                     // sin medir). Las mismas claves y los mismos valores: solo cambian los nombres, el orden y lo que dicen.
                     // "SUBIR TODO" / "Extra para todas" SE RETIRO (25-10-2026, el dueno: «ya no cumple ninguna funcion»): con cada cancion
                     // al limite no quedaba nada que subir. La fila 2 ya no se crea (bar[2] es null) y la clave subir_db= se ignora.
-                    Fila(1, tVol, 76, "Cuanto se sube cada cancion", cFue, 0, 100, false);
-                    Fila(0, tVol, 156, "Videos y canciones aun sin medir", cVol, 0, 100, false);
-                    Fila(3, tVol, 236, "Volumen de los videos", cVid, 0, 100, true);
+                    Fila(1, tVol, 70, "Cuanto se sube cada cancion", cFue, 0, 100, false);
+                    Fila(0, tVol, 150, "Videos y canciones aun sin medir", cVol, 0, 100, false);
+                    Fila(3, tVol, 230, "Volumen de los videos", cVid, 0, 100, true);
                     bar[0].Value = TargetToPct(normTarget);
                     bar[1].Value = (int)Math.Round(normStrength * 100f);
                     bar[3].Value = videoVol; au[3].Checked = videoAuto;
@@ -827,15 +827,23 @@ namespace Rocola
                     // Debajo de los videos, en el hueco que quedaba en la tarjeta: interruptor, cuanto se oye de noche (70 a 90 %) y
                     // «Probar», que lo pone 15 s al momento para oir como quedaria y vuelve solo.
                     Interruptor swNoche = new Interruptor();
-                    swNoche.SetBounds(16, 318, 300, 26); swNoche.ForeColor = cTexto; swNoche.Font = fNom;
+                    swNoche.SetBounds(16, 310, 300, 26); swNoche.ForeColor = cTexto; swNoche.Font = fNom;
                     swNoche.Text = "Modo noche (de " + nocheDesde + " a " + nocheHasta + " h)"; swNoche.Acento = cVol; swNoche.Checked = nocheOn;
-                    Rotulo vNoche = new Rotulo(); vNoche.SetBounds(16 + anchoFila - 94, 318, 94, 20); vNoche.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    Rotulo vNoche = new Rotulo(); vNoche.SetBounds(16 + anchoFila - 94, 310, 94, 20); vNoche.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     vNoche.ForeColor = cVol; vNoche.Font = fVal; vNoche.TextAlign = AlineaTexto.TopRight;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
-                    Deslizador barNoche = new Deslizador(); barNoche.SetBounds(16, 354, 300, 22);
+                    Deslizador barNoche = new Deslizador(); barNoche.SetBounds(16, 340, 300, 22);
                     barNoche.Minimum = NochePctMin; barNoche.Maximum = NochePctMax; barNoche.Acento = cVol; barNoche.Value = nochePct;
-                    BotonPlano bNoche = new BotonPlano(); bNoche.SetBounds(330, 348, 110, 32); bNoche.Font = fBot; bNoche.Text = "Probar";
+                    BotonPlano bNoche = new BotonPlano(); bNoche.SetBounds(330, 336, 110, 30); bNoche.Font = fBot; bNoche.Text = "Probar";
                     bNoche.Name = "SonidoNocheProbar";   // EN LINUX: (XP) bNoche.AccessibleName = "Probar el modo noche"; bNoche.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
+                    // N1 «Graves de noche» (17-11-2026): cuantos dB de grave se quitan de noche (de 0 a 6; 0 = apagado), con la misma bajada lenta.
+                    Rotulo nGraN = new Rotulo(); nGraN.SetBounds(16, 371, 128, 18); nGraN.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    nGraN.ForeColor = cTexto; nGraN.Font = fNom; nGraN.Text = "Graves de noche";
+                    Rotulo vGraN = new Rotulo(); vGraN.SetBounds(16 + anchoFila - 94, 371, 94, 20); vGraN.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    vGraN.ForeColor = cVol; vGraN.Font = fVal; vGraN.TextAlign = AlineaTexto.TopRight;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
+                    Deslizador barGraN = new Deslizador(); barGraN.SetBounds(148, 368, 192, 22);
+                    barGraN.Minimum = 0; barGraN.Maximum = NocheGravesMax; barGraN.Acento = cVol; barGraN.Value = Math.Max(0, Math.Min(NocheGravesMax, nocheGraves));
                     tVol.Controls.Add(swNoche); tVol.Controls.Add(vNoche); tVol.Controls.Add(barNoche); tVol.Controls.Add(bNoche);
+                    tVol.Controls.Add(nGraN); tVol.Controls.Add(vGraN); tVol.Controls.Add(barGraN);
 
                     // ---------------- CALIDAD DEL SONIDO ----------------
                     Fila(4, tCal, 44, "EQ automatico", cCal, 0, 100, true);
@@ -906,9 +914,9 @@ namespace Rocola
                     Interruptor swEst = interLocal(90, "Estereo al " + Math.Round(anchoEstereo * 100f) + " %", cCal, estereoEstrecho);
                     Rotulo nEst = notaLocal(tLoc, 116, 18, "Con las bocinas por zonas, lo grabado a un lado se oye en todas.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Interruptor swCla = interLocal(140, "Claridad para el local", cBri, claridadLocal);
-                    Rotulo nCla = notaLocal(tLoc, 166, 18, "Menos retumbe (300 Hz) y la voz mas presente (3 kHz).");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    notaLocal(tLoc, 166, 18, "Menos retumbe (300 Hz) y la voz mas presente (3 kHz).");
                     Interruptor swSua = interLocal(190, "Que las partes suaves se oigan", cVol, partesSuaves);
-                    Rotulo nSua = notaLocal(tLoc, 216, 18, "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    notaLocal(tLoc, 216, 18, "Sube hasta 4 dB las intros y pasajes bajitos; lo fuerte, igual.");
                     Rotulo nBal = new Rotulo(); nBal.SetBounds(16, 244, 250, 18); nBal.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     nBal.ForeColor = cTexto; nBal.Font = fNom; nBal.Text = "Balance"; tLoc.Controls.Add(nBal);
                     Rotulo vBal = new Rotulo(); vBal.SetBounds(16 + 424 - 170, 242, 170, 20); vBal.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
@@ -949,11 +957,11 @@ namespace Rocola
                     Interruptor swEses = new Interruptor(); swEses.SetBounds(16, 240, 424, 26); swEses.ForeColor = cTexto; swEses.Font = fNom;
                     swEses.Text = "Suavizar las eses"; swEses.Acento = cBri; swEses.Checked = suavizaEses; swEses.Name = "SonidoEses";
                     tTono.Controls.Add(swEses);
-                    Rotulo nEses = notaLocal(tTono, 268, 32, "Baja solo la \"s\" chillona de la voz (5 a 9 kHz), en el instante\nen que suena. Apagado de fabrica; se oye al instante.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    notaLocal(tTono, 268, 32, "Baja solo la \"s\" chillona de la voz (5 a 9 kHz), en el instante\nen que suena. Apagado de fabrica; se oye al instante.");
                     Interruptor swPre = new Interruptor(); swPre.SetBounds(16, 40, 424, 26); swPre.ForeColor = cTexto; swPre.Font = fNom;
                     swPre.Text = "Presencia en sala ruidosa"; swPre.Acento = cVol; swPre.Checked = presenciaSala; swPre.Name = "SonidoPresencia";
                     tPre.Controls.Add(swPre);
-                    Rotulo nPreNota = notaLocal(tPre, 70, 96, "Aprieta un poco lo que pasa del volumen de siempre y se lo\ndevuelve a todo: la voz que baja en la estrofa y las intros se\nquedan mas cerca de lo fuerte (unos 3 dB), y el volumen\ntotal no cambia. Suave: 2 a 1, ataque 15 ms, suelta 250 ms.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    notaLocal(tPre, 70, 96, "Aprieta un poco lo que pasa del volumen de siempre y se lo\ndevuelve a todo: la voz que baja en la estrofa y las intros se\nquedan mas cerca de lo fuerte (unos 3 dB), y el volumen\ntotal no cambia. Suave: 2 a 1, ataque 15 ms, suelta 250 ms.");
                     notaLocal(tPre, 176, 64, "No toca el volumen de Windows ni el de la salida. Nunca\nsube la cancion mas alla del techo del limitador. Apagado\nde fabrica; se oye al instante en la cancion que suena.");
                     // EL MODO BILLAR (23-10-2026, LocalAuto.cs; desde el 27-10-2026 lleva la cadena entera, CadenaBillar.cs): ajusta por ti el
                     // sonido de cada cancion para las bocinas del billar. Va en la pagina de Sonido, con el boton de los ajustes al lado; con el
@@ -968,14 +976,13 @@ namespace Rocola
                     Rotulo lBil = notaLocal(tBil, 72, 80, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lBil.Name = "SonidoBillarTexto";
                     // Solo para este local (25-10-2026): se dice para que esta hecho.
-                    Rotulo lHecho = notaLocal(tPre, 248, 92, "Con el modo billar encendido (pagina de Sonido) esto lo decide\nel modo, hecho para tu billar: presencia en el tercio de\ncanciones que mas varia de tu biblioteca. Un disco seguido\ndecide igual en todas.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    Rotulo lHecho = notaLocal(tPre, 248, 92, "El modo billar ya no pone nada que suba o baje el volumen\nsolo: ni presencia, ni claridad, ni eses (van con su\ninterruptor, apagados de fabrica). Graves y agudos del\nlocal si los pone el modo en 0 (en gris).");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lHecho.Name = "SonidoLocalHecho";
                     string motivoAuto = "el modo billar apagado (pagina de Sonido)";
                     Func<bool> sinAuto = delegate { return !localAuto; };
                     Necesita(swSub, sinAuto, motivoAuto, nSub); Necesita(swEst, sinAuto, motivoAuto, nEst);
-                    Necesita(swCla, sinAuto, motivoAuto, nCla); Necesita(swSua, sinAuto, motivoAuto, nSua);
+                    // (las partes suaves, la presencia, la claridad y las eses ya no las decide el modo: 18-11-2026)
                     Necesita(barGra, sinAuto, motivoAuto, nGraNota); Necesita(barAgu, sinAuto, motivoAuto, nAguNota);
-                    Necesita(swPre, sinAuto, motivoAuto, nPreNota); Necesita(swEses, sinAuto, motivoAuto, nEses);
                     BotonPlano bVolverTono = new BotonPlano(); bVolverTono.SetBounds(16, 346, 424, 34); bVolverTono.Font = fBot;
                     bVolverTono.Text = "Volver al local y sus bocinas"; bVolverTono.Name = "SonidoTonoVolver"; tPre.Controls.Add(bVolverTono);
                     bool verTono = false;
@@ -1103,7 +1110,7 @@ namespace Rocola
                     pintaAfi();
                     // LAS MEJORAS CON IA (13-10-2026: I1, I2 e I3). Su propia hoja, como la del local: aqui ya no cabe nada. El
                     // boton comparte el renglon con el del local (cada uno con la mitad; los dos textos miden menos de 170 px).
-                    BotonPlano bIa = new BotonPlano(); bIa.SetBounds(16, 214, 424, 30); bIa.Font = fBot;
+                    BotonPlano bIa = new BotonPlano(); bIa.SetBounds(16, 196, 424, 30); bIa.Font = fBot;
                     bIa.Text = "Mejoras con IA..."; bIa.Name = "SonidoIaAbrir";
                     // EN LINUX: (XP) bIa.AccessibleName = "Mejoras con IA"; bIa.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tMas.Controls.Add(bIa);
@@ -1126,15 +1133,11 @@ namespace Rocola
                     swSis.Name = "SonidoIaSiseo";
                     Rotulo nSis = notaLocal(tIa, 136, 32, "Aprende el ruido fijo de cada cancion y lo baja hasta 6 dB\nen los agudos. Se nota desde la siguiente cancion.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Necesita(swSis, sinAuto, motivoAuto, nSis);
-                    Interruptor swGen = interIa(180, "Modelos del DSEE por genero", cBri, dseePorGenero);
-                    swGen.Name = "SonidoIaGenero";
-                    Rotulo lGenNota = notaLocal(tIa, 206, 32, "Cada cancion usa el modelo de su genero, si se entreno.\nSolo con el DSEE encendido; desde la siguiente cancion.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
-                    // A1: sin el DSEE encendido no hace nada. Gris, y la nota de abajo dice que le falta.
-                    NecesitaMotivo(swGen, delegate { return localAuto ? "Necesita: " + motivoAuto : (sbrOn && sbrAllowed ? null : "Necesita: el DSEE encendido (Ajustes del sonido)"); }, lGenNota);
+                    // I3 «Modelos del DSEE por genero» se quito el 18-11-2026 (el dueno, al limpiar Ctrl+F3): dsee_genero= se ignora.
                     notaLocal(tIa, 332, 48, "Apagados de fabrica: escuchalos en el local antes\nde dejarlos encendidos.");
                     Rotulo lEqIa = notaLocal(tMod, 40, 48, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     Rotulo lDsIa = notaLocal(tMod, 104, 64, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
-                    notaLocal(tMod, 184, 64, "En la carpeta IAS. Se entrenan en otra PC con lo que junta\nla rocola (carpeta ia: entrenar_dsee.bat; los de genero, con\ninstalar_dsee_genero.bat). Se buscan al abrir esta hoja.");
+                    notaLocal(tMod, 184, 64, "En la carpeta IAS. Se entrenan en otra PC con lo que junta\nla rocola (carpeta ia: entrenar_dsee.bat). Se buscan al abrir\nesta hoja.");
                     BotonPlano bVolverIa = new BotonPlano(); bVolverIa.SetBounds(16, 346, 424, 34); bVolverIa.Font = fBot;
                     bVolverIa.Text = "Volver a los ajustes del sonido"; bVolverIa.Name = "SonidoIaVolver"; tMod.Controls.Add(bVolverIa);
                     Action pintaIa = delegate
@@ -1142,9 +1145,7 @@ namespace Rocola
                         lEqIa.Text = EqNet.Loaded
                             ? "IA del EQ: cargada. \"A la medida\" la usa para el bajo\ny el brillo de cada cancion."
                             : "IA del EQ: sin modelo (IAS\\rocola_eq_ia.bin). Sin ella,\n\"a la medida\" no cambia nada: todo como siempre.";
-                        int nGen = ModelosPorGenero();
                         lDsIa.Text = (NeuralEnv.Loaded ? "DSEE: modelo general cargado." : "DSEE: sin modelo; usa la curva clasica.")
-                            + "\nPor genero: " + (nGen == 0 ? "ninguno todavia (IAS\\rocola_ia_genero_*)." : nGen + (nGen == 1 ? " modelo." : " modelos."))
                             + (sbrAllowed ? "" : "\nEl DSEE no esta disponible en este equipo.");
                     };
                     pintaIa();
@@ -1152,7 +1153,7 @@ namespace Rocola
 
                     // LO QUE SUENA AHORA (13-10-2026: S4 y S5, LoQueSuena.cs; S1, S2 y S3, ArreglosGrabacion.cs y GraveMono.cs).
                     // Su propia hoja, como las del local y la IA; el boton va en el renglon del subtitulo, que tenia sitio.
-                    BotonPlano bAhora = new BotonPlano(); bAhora.SetBounds(16, 156, 424, 30); bAhora.Font = fBot; tMas.Controls.Add(bAhora);
+                    BotonPlano bAhora = new BotonPlano(); bAhora.SetBounds(16, 144, 424, 30); bAhora.Font = fBot; tMas.Controls.Add(bAhora);
                     bAhora.Text = "Lo que suena ahora..."; bAhora.Name = "SonidoAhoraAbrir";
                     // EN LINUX: (XP) bAhora.AccessibleName = "Lo que suena ahora"; bAhora.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     Grupo pAhora = new Grupo(); pAhora.SetBounds(16, 100, 928, 398); pAhora.BackColor = dlg.BackColor;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
@@ -1175,11 +1176,9 @@ namespace Rocola
                     bGusta.Name = "SonidoCiegoGusta"; tAhora.Controls.Add(bGusta);
                     Rotulo lCiego = notaLocal(tAhora, 296, 48, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lCiego.Name = "SonidoCiegoTexto";
-                    // P1 (30-10-2026): la presencia del billar sin el grave en el detector, contra la de antes (CompararCiegas.cs).
-                    BotonPlano bCiegoPre = new BotonPlano(); bCiegoPre.SetBounds(16, 350, 208, 30); bCiegoPre.Font = fBot; bCiegoPre.Text = "Presencia nueva o antes";
-                    bCiegoPre.Name = "SonidoCiegoPresencia"; tAhora.Controls.Add(bCiegoPre);
+                    // «Presencia nueva o antes» se quito el 18-11-2026: el modo billar ya no pone la presencia (CompararCiegas.cs la conserva sin boton).
                     Rotulo nVer = notaLocal(tAhora, 350, 32, "Se mira cada medio segundo. Los\nvideos no pasan por la cadena.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
-                    nVer.SetBounds(232, 350, 208, 32);
+                    nVer.SetBounds(16, 350, 424, 32);
                     Func<int, string, Color, bool, Interruptor> interArr = delegate (int y, string texto, Color ac, bool on)
                     {
                         Interruptor sw = new Interruptor(); sw.SetBounds(16, y, 424, 26); sw.ForeColor = cTexto; sw.Font = fNom;
@@ -1220,27 +1219,31 @@ namespace Rocola
                         lCiego.Text = TextoCiego(); lCiego.ForeColor = ciegoActivo ? Color.FromArgb(255, 214, 120) : cTenue;
                         bCiego.Text = ciegoActivo && ciegoQue == CiegoBillar ? "Parar" : "Billar o fabrica"; bCiego.Invalidate();
                         bCiegoAfi.Text = ciegoActivo && ciegoQue == CiegoAfinacion ? "Parar" : "Con o sin afinar"; bCiegoAfi.Invalidate();
-                        bCiegoPre.Text = ciegoActivo && ciegoQue == CiegoPresencia ? "Parar" : "Presencia nueva o antes"; bCiegoPre.Invalidate();
                         bGusta.Enabled = ciegoActivo;
                     };
                     bSinMej.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); PonSinMejoras(!sinMejoras); pintaAhora(); };
                     bCiego.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(CiegoBillar); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
                     bCiegoAfi.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(CiegoAfinacion); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
-                    bCiegoPre.Click += delegate { if (ciegoActivo) TerminaCiego("Comparacion parada. "); else { string r = EmpiezaCiego(CiegoPresencia); if (r.Length > 0) ciegoResultado = r; } pintaAhora(); };
                     bGusta.Click += delegate { VotaCiego(); pintaAhora(); };
                     pintaAhora();
 
                     // ---------------- MAS AJUSTES DEL SONIDO (27-10-2026) ----------------
                     // Los botones de las hojas, uno debajo de otro, cada uno con lo que trae.
                     notaLocal(tMas, 72, 18, "Subgrave, estereo, claridad, partes suaves, balance, tono.");
-                    BotonPlano bVoz = new BotonPlano(); bVoz.SetBounds(16, 98, 424, 30); bVoz.Font = fBot;
+                    BotonPlano bVoz = new BotonPlano(); bVoz.SetBounds(16, 92, 424, 30); bVoz.Font = fBot;
                     bVoz.Text = "Voz, golpe y retumbe..."; bVoz.Name = "SonidoVozAbrir";
                     // EN LINUX: (XP) bVoz.AccessibleName = "Voz, golpe y retumbe"; bVoz.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
                     tMas.Controls.Add(bVoz);
-                    notaLocal(tMas, 130, 18, "Que el bombo no hunda la voz, el retumbe y el ataque.");
-                    notaLocal(tMas, 188, 18, "Escuchar sin mejoras y los arreglos de la grabacion.");
-                    notaLocal(tMas, 246, 18, "A la medida, quitar el siseo y el DSEE por genero.");
-                    Rotulo lMasModo = notaLocal(tMas, 276, 64, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    notaLocal(tMas, 124, 18, "Que el bombo no hunda la voz, el retumbe y el ataque.");
+                    notaLocal(tMas, 176, 18, "Escuchar sin mejoras y los arreglos de la grabacion.");
+                    notaLocal(tMas, 228, 18, "A la medida, quitar el siseo y el DSEE por genero.");
+                    // EL ECUALIZADOR DEL DUENO (17-11-2026; EcualizadorDueno.cs): su boton, debajo de los demas.
+                    BotonPlano bEq = new BotonPlano(); bEq.SetBounds(16, 248, 424, 30); bEq.Font = fBot;
+                    bEq.Text = "Ecualizador..."; bEq.Name = "SonidoEqAbrir";
+                    // EN LINUX: (XP) bEq.AccessibleName = "Ecualizador"; bEq.AccessibleRole = AccessibleRole.PushButton; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
+                    tMas.Controls.Add(bEq);
+                    notaLocal(tMas, 280, 18, "Tu curva encima de todo, normal y del billar.");
+                    Rotulo lMasModo = notaLocal(tMas, 304, 40, "");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     lMasModo.Name = "SonidoAjustesModo";
                     BotonPlano bVolverAju = new BotonPlano(); bVolverAju.SetBounds(16, 346, 424, 34); bVolverAju.Font = fBot;
                     bVolverAju.Text = "Volver a las canciones"; bVolverAju.Name = "SonidoAjustesVolver"; tMas.Controls.Add(bVolverAju);
@@ -1260,23 +1263,102 @@ namespace Rocola
                     };
                     Interruptor swRet = interVoz(40, "Retumbe dinamico", cGra, retumbeDinamico);
                     swRet.Name = "SonidoRetumbe";
-                    Rotulo nRet = notaLocal(tVoz, 66, 32, "Cuando el grave medio (260 Hz) se pasa de lo normal en la\ncancion, lo baja en ese instante y lo suelta despues.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    notaLocal(tVoz, 66, 32, "Cuando el grave medio (260 Hz) se pasa de lo normal en la\ncancion, lo baja en ese instante y lo suelta despues.");
                     Interruptor swAta = interVoz(110, "Ataque mas claro", cBri, ataqueClaro);
                     swAta.Name = "SonidoAtaque";
-                    Rotulo nAta = notaLocal(tVoz, 136, 32, "Menos cola detras de cada golpe: el ritmo se entiende mejor\nen un local que rebota. Sin subir el volumen.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    notaLocal(tVoz, 136, 32, "Menos cola detras de cada golpe: el ritmo se entiende mejor\nen un local que rebota. Sin subir el volumen.");
                     Interruptor swBom = interVoz(180, "Que el bombo no hunda la voz", cCal, bomboSinHundir);
                     swBom.Name = "SonidoBombo";
                     Rotulo nBom = notaLocal(tVoz, 206, 32, "Si el bombo pasaria del techo, baja solo el bajo y no toda la\ncancion: la voz no se hunde con cada golpe.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
                     // AGUDOS ASPEROS DINAMICOS (quinta tanda, AsperezaDinamica.cs): el cuarto de la hoja.
                     Interruptor swAsp = interVoz(250, "Agudos asperos dinamicos", cBri, asperezaDinamica);
                     swAsp.Name = "SonidoAspereza";
-                    Rotulo nAsp = notaLocal(tVoz, 276, 32, "Si unos platillos o trompetas \"gritan\" (2 a 4 kHz), baja esa\nfranja hasta 3 dB solo en ese instante. La voz no se toca.");   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    notaLocal(tVoz, 276, 32, "Si unos platillos o trompetas \"gritan\" (2 a 4 kHz), baja esa\nfranja hasta 3 dB solo en ese instante. La voz no se toca.");
                     notaLocal(tVoz, 332, 48, "Apagados de fabrica. Se oyen al instante en la cancion\nque suena.");
-                    Necesita(swRet, sinAuto, motivoAuto, nRet); Necesita(swAta, sinAuto, motivoAuto, nAta); Necesita(swBom, sinAuto, motivoAuto, nBom); Necesita(swAsp, sinAuto, motivoAuto, nAsp);
-                    notaLocal(tVozB, 40, 128, "Con el modo billar encendido, el retumbe, el ataque y los\nagudos asperos van siempre. El bombo no: con cada cancion\nsubida hasta su limite, el limitador casi no actua, y la\netapa le quitaba bajo a la cancion sin ayudar a la voz. Las\n\"s\" se suavizan siempre (Tono y presencia).");
+                    Necesita(swBom, sinAuto, motivoAuto, nBom);   // el retumbe, el ataque y los asperos ya no los decide el modo (18-11-2026)
+                    notaLocal(tVozB, 40, 128, "El modo billar ya no pone nada que suba o baje el volumen\nsolo: estas etapas van con su interruptor (apagadas de\nfabrica), tambien con el modo encendido. El bombo tampoco\nva. La claridad y las \"s\" tambien van con su interruptor.");
                     BotonPlano bVolverVoz = new BotonPlano(); bVolverVoz.SetBounds(16, 346, 424, 34); bVolverVoz.Font = fBot;
                     bVolverVoz.Text = "Volver a los ajustes del sonido"; bVolverVoz.Name = "SonidoVozVolver"; tVozB.Controls.Add(bVolverVoz);
                     bool verVoz = false;
+                    // ---------------- EL ECUALIZADOR DEL DUENO (17-11-2026; EcualizadorDueno.cs, Form1.EcualizadorDueno.cs) ----------------
+                    // Su propia hoja, como la de voz y golpe. Diez deslizadores (31 Hz a 16 kHz, de -12 a +12 dB a pasos de medio dB; el valor del
+                    // deslizador es el medio dB mas 24) que cambian la curva de la memoria EN USO (la del billar si el modo billar guardado esta
+                    // encendido, si no la normal) y se oyen al momento. A la derecha, lo que se esta usando y un dibujo de la curva.
+                    Grupo pEq = new Grupo(); pEq.SetBounds(16, 100, 928, 398); pEq.BackColor = dlg.BackColor;   // EN LINUX: Panel -> Grupo (Nativo/Rotulo.cs)
+                    pEq.Name = "SonidoEq"; pEq.Visible = false;
+                    Tarjeta tEq = new Tarjeta(); tEq.SetBounds(0, 0, 456, 398); tEq.Titulo = "ECUALIZADOR"; tEq.Acento = cBri;
+                    Tarjeta tEqC = new Tarjeta(); tEqC.SetBounds(472, 0, 456, 398); tEqC.Titulo = "LA CURVA"; tEqC.Acento = cCal;
+                    pEq.Controls.Add(tEq); pEq.Controls.Add(tEqC);
+                    string[] eqNom = { "31 Hz", "63 Hz", "125 Hz", "250 Hz", "500 Hz", "1 kHz", "2 kHz", "4 kHz", "8 kHz", "16 kHz" };
+                    Deslizador[] eqBar = new Deslizador[EcualizadorDueno.Bandas];
+                    Rotulo[] eqVal = new Rotulo[EcualizadorDueno.Bandas];   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    Func<double, string> eqTxt = delegate (double d)
+                    {
+                        string t = d == 0.0 ? "0" : d.ToString("+0.0;-0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',');
+                        if (t.EndsWith(",0")) t = t.Substring(0, t.Length - 2);
+                        return t + " dB";
+                    };
+                    Rotulo lEqUsa = new Rotulo(); lEqUsa.SetBounds(16, 40, 424, 20); lEqUsa.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    lEqUsa.ForeColor = cTexto; lEqUsa.Font = fNom; lEqUsa.Name = "SonidoEqUsando"; tEqC.Controls.Add(lEqUsa);
+                    notaLocal(tEqC, 62, 32, "Cada una se guarda aparte y cambia sola al prender o\napagar el modo billar.");
+                    CurvaEqView eqCurva = new CurvaEqView(); eqCurva.SetBounds(16, 98, 424, 168); eqCurva.Font = fDes; eqCurva.Acento = cBri;
+                    eqCurva.Name = "SonidoEqCurva"; tEqC.Controls.Add(eqCurva);
+                    Rotulo lEqMargen = notaLocal(tEqC, 270, 32, ""); lEqMargen.ForeColor = cVol; lEqMargen.Name = "SonidoEqMargen";   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                    notaLocal(tEqC, 304, 32, "Subir una banda baja un poco todo lo demas, segun cuanto\ntrae de esa banda la cancion: asi no se raspa.");
+                    BotonPlano bVolverEq = new BotonPlano(); bVolverEq.SetBounds(16, 346, 424, 34); bVolverEq.Font = fBot;
+                    bVolverEq.Text = "Volver a los ajustes del sonido"; bVolverEq.Name = "SonidoEqVolver"; tEqC.Controls.Add(bVolverEq);
+                    bool eqModoVisto = false;
+                    object eqCadenaVista = null;   // la cadena que sonaba la ultima vez que se pinto la hoja (su margen cambia con cada cancion)
+                    BotonPlano bEqSin = new BotonPlano();   // «Escuchar sin el ecualizador» (E1); se coloca junto a «Todo en 0»
+                    Func<double, string> eqComa = delegate (double d) { return d.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ','); };
+                    // Lee la memoria en uso y lo pone todo como esta: deslizadores, valores, el letrero, el margen y el dibujo.
+                    Action refrescaEq = delegate
+                    {
+                        bool bil = EqDuenoModoBillar; eqModoVisto = bil; eqCadenaVista = cadenaSonando;
+                        for (int i = 0; i < EcualizadorDueno.Bandas; i++)
+                        {
+                            double d = EqDuenoDb(bil, i);
+                            eqBar[i].Value = (int)Math.Round(d * 2.0) + 24;
+                            eqVal[i].Text = eqTxt(d);
+                        }
+                        string usa = bil ? "Usando: la del modo billar" : "Usando: la normal (modo billar apagado)";
+                        if (EqDuenoSinPuesto && TextoGdi.Mide(usa + " - quitado para comparar", lEqUsa.Font).Width <= 416) usa += " - quitado para comparar";   // EN LINUX: TextRenderer.MeasureText(texto, letra): la medida de GDI (Nativo/TextoGdi.cs; sin caja ni banderas, Bottom, como WinForms)
+                        lEqUsa.Text = usa;
+                        bEqSin.Text = EqDuenoSinPuesto ? "Ponerlo (" + EqDuenoSinSegundos + " s)" : "Sin ecualizador";
+                        double pg = EqDuenoPreganDb(bil), pgMax = EqDuenoPreganMaxDb(bil);
+                        // el margen de la que suena: lo que baja todo con la huella de tono de ESTA cancion (E3), y lo maximo de tu curva
+                        lEqMargen.Text = (pg > -0.05 && pgMax > -0.05) ? "Margen: nada (no subiste ninguna banda)"
+                            : (EqDuenoSuenaConHuella ? "Con la que suena todo baja " + eqComa(-pg) + " dB\n(lo maximo de tu curva: " + eqComa(-pgMax) + " dB)"
+                                                     : "Todo baja " + eqComa(-pg) + " dB (la que suena aun no\ntiene su tono medido)");
+                        double[] fj = EqDuenoFijoRespuesta(EqCurvaHz), du = EqDuenoRespuesta(bil, EqCurvaHz), su = new double[EqCurvaHz.Length];
+                        for (int i = 0; i < du.Length; i++) { du[i] += pg; su[i] = fj[i] + du[i]; }
+                        eqCurva.Pon(fj, du, su);
+                    };
+                    for (int i = 0; i < EcualizadorDueno.Bandas; i++)
+                    {
+                        int banda = i, y = 40 + i * 30;
+                        Rotulo n = new Rotulo(); n.SetBounds(16, y + 2, 64, 20); n.BackColor = Color.Transparent; n.ForeColor = cTexto; n.Font = fNom; n.Text = eqNom[i];   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                        Deslizador s = new Deslizador(); s.SetBounds(84, y, 270, 22); s.Minimum = 0; s.Maximum = 48; s.Acento = cBri;
+                        s.Name = "SonidoEqBanda" + i;   // EN LINUX: (XP) s.AccessibleName = "Banda " + eqNom[i]; s.AccessibleRole = AccessibleRole.Slider; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
+                        Rotulo v = new Rotulo(); v.SetBounds(362, y + 2, 78, 20); v.BackColor = Color.Transparent; v.ForeColor = cBri; v.Font = fVal;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
+                        v.TextAlign = AlineaTexto.TopRight;   // EN LINUX: ContentAlignment -> AlineaTexto, los mismos numeros
+                        eqBar[i] = s; eqVal[i] = v;
+                        s.Scroll += delegate
+                        {
+                            EqDuenoCambiaBanda(banda, (eqBar[banda].Value - 24) * 0.5);   // se oye al momento; no guarda (se guarda al soltar, como lo demas)
+                            changed = true;
+                            refrescaEq();
+                        };
+                        tEq.Controls.Add(n); tEq.Controls.Add(s); tEq.Controls.Add(v);
+                    }
+                    BotonPlano bEqCero = new BotonPlano(); bEqCero.SetBounds(16, 346, 204, 34); bEqCero.Font = fBot;
+                    bEqCero.Text = "Todo en 0"; bEqCero.Name = "SonidoEqCero"; tEq.Controls.Add(bEqCero);
+                    bEqCero.Click += delegate { EqDuenoCero(EqDuenoModoBillar); changed = true; refrescaEq(); };
+                    // E1: quita el ecualizador 15 s para oir la diferencia (no toca las memorias ni se guarda); otro toque, o mover algo, lo vuelve a poner.
+                    bEqSin.SetBounds(236, 346, 204, 34); bEqSin.Font = fBot; bEqSin.Text = "Sin ecualizador";
+                    bEqSin.Name = "SonidoEqSin"; tEq.Controls.Add(bEqSin);   // EN LINUX: (XP) bEqSin.AccessibleName = "Escuchar sin el ecualizador"; -- el nombre, el papel o la descripcion para los lectores de pantalla de Windows (MSAA): en Rocola OS no hay, y nada de XP los lee
+                    bEqSin.Click += delegate { EqDuenoSinCambia(); refrescaEq(); };
+                    bool verEq = false;
 
                     // ---------------- TU BIBLIOTECA ----------------
                     Rotulo lCal = new Rotulo(); lCal.SetBounds(16, 40, 896, 20); lCal.BackColor = Color.Transparent;   // EN LINUX: Label -> Rotulo (Nativo/Rotulo.cs)
@@ -1411,20 +1493,18 @@ namespace Rocola
                                     + ((nowPlaying != null && bEfe != bBase) ? ("   Esta: " + bEfe + "%.") : "");
                         val[6].Text = bar[6].Value + "%";
                         des[6].Text = "Devuelve el 'aire' que el MP3 apaga.\nSe le da mas a las canciones peor grabadas.";
-                        // EN EL MODO BILLAR estas tres las decide el modo (CadenaBillar.cs): en gris, con lo que hace y en el color del motivo.
+                        // EN EL MODO BILLAR el EQ y el realce (el bajo no, 18-11-2026) los decide el modo (CadenaBillar.cs): en gris, con lo que hace y en el color del motivo.
                         bool billar = localAuto;
                         if (billar)
                         {
                             val[4].Text = (int)Math.Round(EqFuerzaAuto() * 100f) + "%";
                             des[4].Text = "Lo decide el modo billar: en automatico y a la\nmedida de tus bocinas.";
-                            val[5].Text = (int)Math.Round(bassAutoBase * 100f) + "%";
-                            des[5].Text = "Lo decide el modo billar: en automatico, a cada\ncancion lo que le falta.";
                             val[6].Text = (int)Math.Round(RealceBillarCantidad * 100f) + "%";
                             des[6].Text = "Lo decide el modo billar: solo devuelve el aire que\nel MP3 corto (a una cancion completa, nada).";
                         }
-                        for (int k = 4; k <= 6; k++) { des[k].ForeColor = billar ? Interruptor.ColorNecesita : cTenue; if (au[k] != null) au[k].Enabled = !billar; }
+                        for (int k = 4; k <= 6; k++) { bool deModo = billar && k != 5; des[k].ForeColor = deModo ? Interruptor.ColorNecesita : cTenue; if (au[k] != null) au[k].Enabled = !deModo; }   // el bajo (5) va como lo dejes, tambien con el modo billar (18-11-2026)
                         lBil.Text = billar
-                            ? "Encendido: ajusta sola cada cancion a tus bocinas (EQ, grave,\nvoz, presencia, eses, retumbe...). Lo que decide, en gris.\n" + TextoBitacoraTarjeta()
+                            ? "Encendido: ajusta sola cada cancion a tus bocinas (EQ, grave,\nvoz...). Sin nada que mueva el volumen solo.\n" + TextoBitacoraTarjeta()
                             : "Apagado: el sonido sale como lo dejes en \"Ajustes del\nsonido\". Encendido, la rocola ajusta sola cada cancion a\nlas bocinas del billar (" + NombreLocal + ").";
                         lMasModo.Text = billar
                             ? "El modo billar esta encendido: lo que decide va en gris y\ndice por que. Lo guardado se conserva y vuelve al apagarlo."
@@ -1472,7 +1552,7 @@ namespace Rocola
                         des[0].ForeColor = des[1].ForeColor = en ? cTenue : cApagado;
                         bar[3].Enabled = !VideoAutoManda(au[3].Checked, swOn.Checked);   // en gris solo si el programa de verdad elige (si no, la barra manda)
                         bar[4].Enabled = !au[4].Checked && !localAuto;
-                        bar[5].Enabled = !au[5].Checked && !localAuto;
+                        bar[5].Enabled = !au[5].Checked;
                         bar[6].Enabled = !localAuto;
                         // ---------- EL LOCAL ----------
                         vBal.Text = TextoBalance(barBal.Value - SalaLocal.BalanceMax);
@@ -1482,9 +1562,13 @@ namespace Rocola
                         // ---------- EL MODO NOCHE ----------
                         int sNoche = SegundosPruebaNoche;
                         vNoche.Text = barNoche.Value + " %";
-                        bNoche.Text = sNoche > 0 ? ("Probando " + sNoche + " s") : "Probar";
+                        bNoche.Text = sNoche > 0 ? "Quitar prueba" : "Probar";   // hasta otro toque (o 30 min)
                         // La barra en gris con el modo apagado, salvo para probar (se puede oir antes de encenderlo).
                         vNoche.ForeColor = swNoche.Checked ? cVol : cApagado;
+                        vGraN.Text = barGraN.Value == 0 ? "apagado" : ("\u2212" + barGraN.Value + " dB");   // N1: graves de noche
+                        bool nocheViva = swNoche.Checked || sNoche > 0;
+                        barGraN.Enabled = nocheViva;   // en gris con el modo apagado (se puede ajustar mientras se prueba)
+                        vGraN.ForeColor = nocheViva ? cVol : cApagado; nGraN.ForeColor = nocheViva ? cTexto : cApagado;
                     };
                     EventHandler apply = delegate
                     {
@@ -1516,11 +1600,12 @@ namespace Rocola
                         presenciaSala = swPre.Checked;
                         nocheOn = swNoche.Checked;
                         nochePct = Math.Max(NochePctMin, Math.Min(NochePctMax, barNoche.Value));   // la rampa del reloj lo lleva sola al nuevo nivel
+                        nocheGraves = Math.Max(0, Math.Min(NocheGravesMax, barGraN.Value));        // N1: el grave de noche (lo recoge el reloj de la noche)
                         bool loAntes = localAuto;
                         localAuto = swAutoL.Checked;
                         AplicaBocinas();   // las bocinas del billar: al instante, en la que suena y en la siguiente
                         bool medAntes = aLaMedida;
-                        aLaMedida = swMed.Checked; quitaSiseo = swSis.Checked; dseePorGenero = swGen.Checked;
+                        aLaMedida = swMed.Checked; quitaSiseo = swSis.Checked;
                         if (aLaMedida != medAntes || localAuto != loAntes) AplicaALaMedida();   // (el modo billar tambien mide a la medida)   // I1: el bajo de la que suena y de la siguiente, ya con la vara nueva
                         changed = true;
                         updateLabels();
@@ -1530,12 +1615,12 @@ namespace Rocola
                     for (int k = 0; k < bar.Length; k++) { if (bar[k] == null) continue; bar[k].Scroll += apply; if (au[k] != null) au[k].CheckedChanged += apply; }
                     swOn.CheckedChanged += apply; swSbr.CheckedChanged += apply; swIa.CheckedChanged += apply;
                     swSil.CheckedChanged += apply;
-                    swNoche.CheckedChanged += apply; barNoche.Scroll += apply;
-                    bNoche.Click += delegate { PruebaNoche(); updateLabels(); };   // 15 s al nivel de la noche, al momento (Form1.Sonido.cs)
+                    swNoche.CheckedChanged += apply; barNoche.Scroll += apply; barGraN.Scroll += apply;
+                    bNoche.Click += delegate { PruebaNoche(); updateLabels(); };   // el nivel de la noche al momento, hasta otro toque (Form1.Sonido.cs)
                     swSub.CheckedChanged += apply; swEst.CheckedChanged += apply;
                     swCla.CheckedChanged += apply; swSua.CheckedChanged += apply; barBal.Scroll += apply;
                     barGra.Scroll += apply; barAgu.Scroll += apply; swPre.CheckedChanged += apply; swAutoL.CheckedChanged += apply;
-                    swMed.CheckedChanged += apply; swSis.CheckedChanged += apply; swGen.CheckedChanged += apply;
+                    swMed.CheckedChanged += apply; swSis.CheckedChanged += apply;
                     swMudo.CheckedChanged += apply; swDc.CheckedChanged += apply; swAuto.CheckedChanged += apply; swZum.CheckedChanged += apply; swEses.CheckedChanged += apply;
                     swBom.CheckedChanged += apply; swRet.CheckedChanged += apply; swAta.CheckedChanged += apply; swAsp.CheckedChanged += apply;
                     NecesitaMotivo(swSbr, delegate { return !sbrAllowed ? lSbrNo : (localAuto ? "Necesita: " + motivoAuto : null); }, lSbr);
@@ -1557,20 +1642,21 @@ namespace Rocola
                         if (swSbr.Enabled) swSbr.Checked = false;            // el espectral apagado: es experimental
                         swIa.Checked = true;                                 // juntar material para la IA: encendido de fabrica
                         swSil.Checked = true;                                // y saltar los silencios largos
-                        swNoche.Checked = true; barNoche.Value = 80;         // el modo noche: encendido, al 80 %
+                        swNoche.Checked = true; barNoche.Value = 80; barGraN.Value = 4;   // el modo noche: encendido, al 80 %, con 4 dB menos de grave
                         swSub.Checked = false; swEst.Checked = false;        // las bocinas del billar, apagadas: son para ese local
                         swCla.Checked = false; swSua.Checked = false;        // y la claridad y las partes suaves, igual
                         barBal.Value = SalaLocal.BalanceMax;                 // el balance, centrado
                         barGra.Value = SalaLocal.TonoMax; barAgu.Value = SalaLocal.TonoMax;   // graves y agudos del local, en 0 dB
                         swPre.Checked = false;                               // y la presencia en sala ruidosa, apagada
                         swAutoL.Checked = false;                             // y el modo automatico del local, apagado
-                        swMed.Checked = false; swSis.Checked = false; swGen.Checked = false;   // las mejoras con IA, apagadas
+                        swMed.Checked = false; swSis.Checked = false;   // las mejoras con IA, apagadas
                         swMudo.Checked = true; swDc.Checked = true; swAuto.Checked = false;   // S1 y S2 encendidos; S3, apagado
                         swZum.Checked = true;   // T6, encendido (solo actua con el defecto)
                         swEses.Checked = false;   // T9, apagado
                         bomboSinHundir = false; retumbeDinamico = false; ataqueClaro = false; asperezaDinamica = false;   // voz, golpe y retumbe (VozGolpeYRetumbe.cs): apagados
                         swBom.Checked = false; swRet.Checked = false; swAta.Checked = false; swAsp.Checked = false;   // (y sus mandos, en su hoja)
                         swAfi.Checked = false;   // la afinacion del local, sin usar (lo medido se guarda)
+                        EqDuenoCero(false); EqDuenoCero(true); refrescaEq();   // el ecualizador del dueno, plano en sus dos memorias
                         if (frecuenciaSalida != 0) { frecuenciaSalida = 0; pintaFrec(); }   // la tarjeta, como la cancion (A4)
                         if (perfilDisco != 0)                                // el tipo de disco, otra vez a medirlo sola
                         { perfilDisco = 0; lock (discoLock) { discoLento.Clear(); discoMediana.Clear(); } AplicaPerfilDisco(); pintaDsk(); }
@@ -1602,13 +1688,14 @@ namespace Rocola
                     Action pintaPag = delegate
                     {
                         if (f3Pagina < 0 || f3Pagina > 5) f3Pagina = 0;
+                        if (!(f3Pagina == 0 && verEq)) EqDuenoSinTermina();   // fuera de la hoja del ecualizador nunca queda quitado
                         // Se ensena o se esconde TODO lo que hay en la ventana menos el marco (titulo,
                         // pestanas y el boton de Listo, que se ven en las tres) y las paginas propias.
                         // Se hace asi y no con una lista de nombres a proposito: una lista se olvida de una
                         // tarjeta al agregarla -y en la rama del equipo potente hay una mas- y esa tarjeta se
                         // quedaria colgada encima de la pagina nueva.
                         foreach (IPieza cc in dlg.Controls)   // EN LINUX: Control -> IPieza: las piezas de la hoja (Nativo/Pieza.cs)
-                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pTono && cc != pIa && cc != pAhora && cc != pAju && cc != pVoz && cc != pAfi)
+                            if (cc != lTit && cc != bPagS && cc != bPagI && cc != bPagD && cc != bPagC && cc != bPagF && cc != bPagP && cc != bOk && cc != pImg && cc != pDet && cc != pCol && cc != pFon && cc != pPan && cc != pLoc && cc != pTono && cc != pIa && cc != pAhora && cc != pAju && cc != pVoz && cc != pEq && cc != pAfi)
                                 cc.Caja.Visible = (f3Pagina == 0);   // EN LINUX: Control.Visible -> Visible de la caja de la pieza
                         // La hoja del local va en el sitio de las dos tarjetas de arriba: o una, o las otras.
                         pLoc.Visible = (f3Pagina == 0 && verLocal && !verTono && !verAfi);
@@ -1617,9 +1704,10 @@ namespace Rocola
                         pIa.Visible = (f3Pagina == 0 && verIa && !verLocal);
                         pAhora.Visible = (f3Pagina == 0 && verAhora && !verLocal && !verIa);
                         // La hoja de los ajustes del sonido (27-10-2026) va debajo de las suyas: al volver de una, se vuelve a ella.
-                        pVoz.Visible = (f3Pagina == 0 && verVoz && !verLocal && !verIa && !verAhora);
-                        pAju.Visible = (f3Pagina == 0 && verAju && !verLocal && !verIa && !verAhora && !verVoz);
-                        tVol.Visible = tBil.Visible = (f3Pagina == 0 && !verAju && !verLocal && !verIa && !verAhora && !verVoz);
+                        pVoz.Visible = (f3Pagina == 0 && verVoz && !verLocal && !verIa && !verAhora && !verEq);
+                        pEq.Visible = (f3Pagina == 0 && verEq && !verLocal && !verIa && !verAhora && !verVoz);
+                        pAju.Visible = (f3Pagina == 0 && verAju && !verLocal && !verIa && !verAhora && !verVoz && !verEq);
+                        tVol.Visible = tBil.Visible = (f3Pagina == 0 && !verAju && !verLocal && !verIa && !verAhora && !verVoz && !verEq);
                         pImg.Visible = (f3Pagina == 1);
                         pDet.Visible = (f3Pagina == 2);
                         pCol.Visible = (f3Pagina == 3);
@@ -1660,9 +1748,11 @@ namespace Rocola
                     bVolverAhora.Click += delegate { verAhora = false; pintaPag(); };
                     bVolver.Click += delegate { verLocal = false; verTono = false; verAfi = false; pintaPag(); };
                     bAju.Click += delegate { verAju = true; updateLabels(); pintaPag(); };
-                    bVolverAju.Click += delegate { verAju = false; verLocal = false; verTono = false; verAfi = false; verIa = false; verAhora = false; verVoz = false; updateLabels(); pintaPag(); };
+                    bVolverAju.Click += delegate { verAju = false; verLocal = false; verTono = false; verAfi = false; verIa = false; verAhora = false; verVoz = false; verEq = false; updateLabels(); pintaPag(); };
                     bVoz.Click += delegate { verVoz = true; pintaPag(); };
                     bVolverVoz.Click += delegate { verVoz = false; pintaPag(); };
+                    bEq.Click += delegate { verEq = true; refrescaEq(); pintaPag(); };
+                    bVolverEq.Click += delegate { verEq = false; EqDuenoSinTermina(); pintaPag(); };
                     bPagI.Click += delegate { f3Pagina = 1; pintaPag(); };
                     bPagD.Click += delegate { f3Pagina = 2; pintaPag(); };
                     bPagC.Click += delegate { f3Pagina = 3; pintaPag(); };
@@ -1678,6 +1768,7 @@ namespace Rocola
                     dlg.Controls.Add(pIa); pIa.BringToFront();
                     dlg.Controls.Add(pAhora); pAhora.BringToFront();
                     dlg.Controls.Add(pVoz); pVoz.BringToFront();
+                    dlg.Controls.Add(pEq); pEq.BringToFront();
                     dlg.Controls.Add(pAfi); pAfi.BringToFront();
                     dlg.Controls.Add(pAju); pAju.BringToFront();
                     pintaPag();
@@ -1694,12 +1785,13 @@ namespace Rocola
                     RefrescaRequisitos();
                     // A2: lo tocado se guarda en cuanto se deja quieto medio segundo, no solo al cerrar.
                     EmpiezaGuardadoAlMomento();
-                    tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (verAfi) { string g = BandaGrande(); lAfiGrande.Text = g.Length > 0 ? "Suena: " + g : afiAviso; } GuardaAlMomento(); };
+                    tTrain.Tick += delegate { CiegoTick(); if (f3Pagina == 0) updateLabels(); if (verAhora || sinMejoras) pintaAhora(); if (eqDuenoSinHasta != 0 && !EqDuenoSinPuesto) EqDuenoSinTermina(); if (verEq && (EqDuenoModoBillar != eqModoVisto || !object.ReferenceEquals(cadenaSonando, eqCadenaVista) || eqDuenoSinHasta != 0 || bEqSin.Text != "Sin ecualizador")) refrescaEq(); if (verAfi) { string g = BandaGrande(); lAfiGrande.Text = g.Length > 0 ? "Suena: " + g : afiAviso; } GuardaAlMomento(); };
                     tTrain.Start();
                     updateLabels();
                     dlg.MuestraModal(this);   // EN LINUX: ShowDialog(this): modal, con la rocola de duena (sus relojes, encargos y la tarjeta siguen; ella no recibe teclas ni raton)
                     tTrain.Stop(); tTrain.Dispose();
                     OlvidaRequisitos();
+                    EqDuenoSinTermina();   // «Escuchar sin el ecualizador» tampoco: con la ventana cerrada nunca queda quitado
                     if (sinMejoras) PonSinMejoras(false);   // "Escuchar sin mejoras" no sobrevive a la ventana
                     if (ciegoActivo) TerminaCiego("Ventana cerrada: comparacion cortada. ");   // ni la comparacion a ciegas
                     ParaPruebaBocinas();   // la prueba de bocinas no sigue sonando con la ventana cerrada
@@ -1707,8 +1799,8 @@ namespace Rocola
                 if (changed || f3CambioGraf) { SaveConfigPrefs(); ShowToast(changed ? "Sonido actualizado" : "Imagen actualizada", Color.FromArgb(40, 130, 90)); }
                 f3CambioGraf = false;
             }
-            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; quitaPreEco = bkPreEco; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; nocheOn = bkNoche; nochePct = bkNocheP; sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
-            finally { try { PantallaRocola.EscondeFlecha(); } catch { } maintMode = wasMaint; ForceFocus(); }   // EN LINUX: Cursor.Hide(): ShowCursor(FALSE) (Cursor.cs:483-486)
+            catch { normTarget = bkTarget; normStrength = bkStrength; normalizeOn = bkOn; excAmount = bkExc; eqAmount = bkEq; bassAmount = bkBass; videoVol = bkVid; videoAuto = bkVidA; sbrOn = bkSbr; eqAuto = bkEqA; bassAuto = bkBassA; perfilDisco = bkDsk; iaHarvestOn = bkIaDat; AplicaPerfilDisco(); if (saltaSilencios != bkSil) { saltaSilencios = bkSil; try { SiguienteConElInterruptor(); } catch { } } estereoEstrecho = bkEst; cortaSubgrave = bkSub; claridadLocal = bkCla; partesSuaves = bkSua; balanceDb = bkBal; gravesLocalDb = bkGra; agudosLocalDb = bkAgu; presenciaSala = bkPre; localAuto = bkLoA; frecuenciaSalida = bkFrec; aLaMedida = bkMed; quitaSiseo = bkSis; dseePorGenero = bkGen; canalMudo = bkMudo; quitaContinua = bkDc; quitaZumbido = bkZum; quitaPreEco = bkPreEco; suavizaEses = bkEses; estereoAuto = bkAuto; bomboSinHundir = bkBom; retumbeDinamico = bkRet; ataqueClaro = bkAta; asperezaDinamica = bkAsp; Array.Copy(bkAfiDb, afinadoDb, 8); afinadoPonderacion = bkAfiP; afinadoUsar = bkAfiU; nocheOn = bkNoche; nochePct = bkNocheP; nocheGraves = bkNocheG; Array.Copy(bkEqN, eqDuenoNormal, eqDuenoNormal.Length); Array.Copy(bkEqB, eqDuenoBillar, eqDuenoBillar.Length); sinMejoras = false; try { AplicaBocinas(); ApplyNormNow(); } catch { } }   // si algo truena, deja los valores como estaban
+            finally { try { EqDuenoSinTermina(); } catch { } try { PantallaRocola.EscondeFlecha(); } catch { } maintMode = wasMaint; ForceFocus(); }   // EN LINUX: Cursor.Hide(): ShowCursor(FALSE) (Cursor.cs:483-486)
         }
 
         // =================== ASISTENTE DE CONFIGURACION DE BOTONES ===================

@@ -135,6 +135,7 @@ namespace Rocola
             if (c != null && c.Presencia != null) c.Presencia.Ajusta(lc.Presencia);
             if (p != null && p.Presencia != null) p.Presencia.Ajusta(lp.Presencia);
             AjustaVozGolpe(c); AjustaVozGolpe(p);   // bombo, retumbe y ataque (VozGolpeYRetumbe.cs)
+            AplicaEqDueno();   // y el ecualizador del dueno: la curva del modo puesto (EcualizadorDueno.cs)
         }
         private static float AnchoEstereo(string texto)
         {

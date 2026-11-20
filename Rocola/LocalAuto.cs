@@ -1,3 +1,7 @@
+// 18-11-2026 (el dueno, tras oir «Roundabout» con el modo billar: «el volumen da demasiados brincos, el volumen deberia ser constante»): lo de abajo
+// sobre la presencia, las partes suaves, el retumbe, el ataque y los agudos asperos YA NO RIGE. El modo billar no pone ninguna etapa que suba o baje
+// el volumen o la envolvente en tiempo real; esas cinco van con el interruptor del dueno (apagadas de fabrica), igual que con el modo apagado.
+// Se queda lo que no mueve el volumen: subgrave, estereo estrecho solo si hace falta, claridad, EQ del billar, bajo, parejo y limitador.
 // EL LOCAL EN AUTOMATICO (23 de octubre de 2026). Un solo interruptor que enciende y ajusta por ti las mejoras del local
 // (el subgrave, el estereo estrecho, la claridad, las partes suaves y la presencia en sala ruidosa) para que suene lo mejor
 // posible, sin tocar los mandos uno por uno. Sin microfono: decide con lo que el repaso midio de cada cancion.
@@ -65,24 +69,23 @@ namespace Rocola
         internal static AjusteLocal LocalAutomatico(float rangoDb, float lraLu, float umbralLu, float flacaDb)
         {
             AjusteLocal a = new AjusteLocal();
-            bool medida = rangoDb >= 0f && !float.IsNaN(rangoDb);
-            bool conLra = lraLu >= 0f && !float.IsNaN(lraLu) && !float.IsInfinity(lraLu);
-            if (float.IsNaN(umbralLu) || float.IsInfinity(umbralLu)) umbralLu = LraPresenciaLu;
-            a.Subgrave = true; a.Estrecho = true; a.EstrechoSoloSiHaceFalta = true; a.Claridad = true; a.Suaves = true;
-            a.Presencia = conLra ? lraLu >= umbralLu : (medida && rangoDb >= RangoMuyAltoDb);
+            // 18-11-2026 (el dueno, tras oir «Roundabout»: «el volumen da demasiados brincos, el volumen deberia ser constante»): el modo ya NO pone
+            // nada que suba o baje el volumen o la envolvente en tiempo real: ni la presencia (compresor), ni las partes suaves, ni el retumbe,
+            // el ataque o los agudos asperos. Esas cinco van con el interruptor del dueno (LocalDe), apagadas de fabrica. Por eso la regla de la
+            // presencia por LRA ya no decide (rangoDb, lraLu y umbralLu se conservan en la firma; UmbralPresencia y el histograma siguen en pie).
+            a.Subgrave = true; a.Estrecho = true; a.EstrechoSoloSiHaceFalta = true; a.Claridad = false; a.Suaves = false;   // (18-11-2026: la claridad tampoco; va con su interruptor)
+            a.Presencia = false;
             // Voz, golpe y retumbe (27-10-2026): el retumbe y el ataque, siempre en el billar. Cada etapa se frena sola por lo que oye (el retumbe solo
             // corta cuando el grave medio se pasa de su propia media; el ataque solo actua con la cola de un golpe, y sube solo con sitio bajo el techo):
             // ninguna necesita una medida de la cancion, asi que no hay regla por cancion.
-            a.Retumbe = true; a.Ataque = true; a.Aspereza = true;   // y los agudos asperos (quinta tanda)
+            a.Retumbe = false; a.Ataque = false; a.Aspereza = false;   // (18-11-2026: ya no; van con su interruptor)
             // LA CADENA DEL BILLAR (CadenaBillar.cs, 27-10-2026), medida con la cadena entera:
             //   - El BOMBO no va: con el nivelado al limite el limitador casi no actua (0,2 a 2 % del tiempo en masters normales) y la etapa
             //     quitaba ~1 dB de bajo sin mejorar la voz (reacciona despues del primer golpe, que el limitador ya bajo). Su interruptor sigue a mano.
-            //   - Las ESES si: la claridad (+1,5 dB a 3 kHz) acercaba la "s" a la voz hasta +1 dB; con la referencia del billar la etapa actua.
-            //   - A una cancion FLACA (le faltan 2,5 dB o mas de cuerpo frente a su objetivo) no se le pone la claridad, que le quitaria aun mas
-            //     cuerpo a 300 Hz, y el EQ del billar le devuelve cuerpo (mas cuerpo en voces).
-            a.Bombo = false; a.Eses = true;
+            //   - Las ESES y la CLARIDAD ya no (18-11-2026): van con el interruptor del dueno, como el bajo (su mando, Auto de fabrica).
+            //   - A una cancion FLACA (le faltan 2,5 dB o mas de cuerpo frente a su objetivo) el EQ del billar le devuelve cuerpo (mas cuerpo en voces).
+            a.Bombo = false; a.Eses = false;   // (18-11-2026: las eses tampoco; van con su interruptor)
             bool flaca = !float.IsNaN(flacaDb) && flacaDb >= CuerpoFlacaDb;
-            if (flaca) a.Claridad = false;
             a.Cuerpo = flaca;
             return a;
         }
@@ -245,8 +248,13 @@ namespace Rocola
             if (localAuto)
             {
                 int n;
-                return LocalAutomatico(t == null ? -1f : RangoDeCancion(t.Path), t == null ? -1f : LraParaDecidir(t), UmbralPresenciaAhora(out n),
-                                       t == null ? float.NaN : FaltaDeCuerpoParaDecidir(t));
+                AjusteLocal d = LocalAutomatico(t == null ? -1f : RangoDeCancion(t.Path), t == null ? -1f : LraParaDecidir(t), UmbralPresenciaAhora(out n),
+                                                t == null ? float.NaN : FaltaDeCuerpoParaDecidir(t));
+                // Las cinco etapas que mueven el volumen o la envolvente (18-11-2026) no las decide el modo: van como las dejo el dueno.
+                // Tampoco la claridad ni las eses (18-11-2026): van con su interruptor, apagados de fabrica.
+                d.Suaves = partesSuaves; d.Presencia = presenciaSala; d.Retumbe = retumbeDinamico; d.Ataque = ataqueClaro; d.Aspereza = asperezaDinamica;
+                d.Claridad = claridadLocal; d.Eses = suavizaEses;
+                return d;
             }
             AjusteLocal m = new AjusteLocal();
             m.Subgrave = cortaSubgrave; m.Estrecho = estereoEstrecho; m.EstrechoSoloSiHaceFalta = estereoAuto;
@@ -278,9 +286,9 @@ namespace Rocola
         {
             if (c == null) return LocalDe((Track)null);
             AjusteLocal a = LocalDe(c.Cancion);
-            if (!localAuto) return a;
-            if (!c.AutoFijo) { c.AutoFijo = true; c.AutoPresencia = a.Presencia; c.AutoSuaves = a.Suaves; }
-            a.Presencia = c.AutoPresencia; a.Suaves = c.AutoSuaves;
+            // 18-11-2026: la presencia y las partes suaves ya son los interruptores del dueno, no una decision por cancion: se toman vivas (un cambio
+            // en la ventana se oye al instante, como con el modo apagado); lo que se apunta en la cadena es lo que hay al armarla.
+            if (localAuto && !c.AutoFijo) { c.AutoFijo = true; c.AutoPresencia = a.Presencia; c.AutoSuaves = a.Suaves; }
             return a;
         }
         // L1, disco continuo: la que entra sin pausa sigue con lo que el automatico decidio para la que acaba, y se le pone ya.

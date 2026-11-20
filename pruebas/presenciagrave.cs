@@ -150,7 +150,7 @@ class PresenciaGravePrueba
         pon.Invoke(g, new object[] { true }); bool trasVerdad = (bool)TPre.GetProperty("SinGrave", T).GetValue(pc, null);
         Check(!trasFalso && trasVerdad && (bool)TF.GetField("presenciaSinGrave", T).GetValue(g), "cada tramo cambia en vivo la presencia de la cancion que suena, y al acabar vuelve la nueva");
         string aj = Texto("Form1.Ajustes.cs");
-        Check(aj.Contains("\"SonidoCiegoPresencia\"") && aj.Contains("EmpiezaCiego(CiegoPresencia)"), "el boton «Presencia nueva o antes» en Lo que suena ahora");
+        Check(!aj.Contains("\"SonidoCiegoPresencia\"") && !aj.Contains("EmpiezaCiego(CiegoPresencia)"), "el boton «Presencia nueva o antes» ya no esta (18-11-2026: el modo billar ya no pone la presencia)");
         Check(Texto("Form1.Sonido.cs").Contains("if (!presenciaSinGrave) c.Presencia.SinGrave = false;"), "una cancion armada en un tramo «de antes» nace como ese tramo");
 
         Console.WriteLine("\n  3) D1: LO QUE HIZO CADA ETAPA, EN LA BITACORA\n");

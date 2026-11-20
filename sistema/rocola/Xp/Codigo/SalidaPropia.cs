@@ -68,6 +68,15 @@ namespace Rocola
         private volatile bool parar, fin, deLaFuente;
         private int avisado;                                  // 1 = ya se aviso la parada (Interlocked: la pantalla y el hilo pueden llegar a la vez)
         private bool cerrada;
+        // VOLVER DE UN CORTE SIN CHASQUIDO (17-11-2026): si el equipo se atasca mas que el colchon, todos los bloques ya entregados a Windows
+        // terminan de sonar (la tarjeta se queda sin musica) y, cuando el hilo vuelve a escribir, la musica entraba a media onda: un chasquido
+        // encima del hueco. El hueco en si no se puede evitar (ya sono); lo que se evita es el golpe: el primer bloque tras un corte entra con
+        // media curva de coseno de 10 ms (todos los canales de cada cuadro; si el bloque es mas corto, sigue en el siguiente). Sin cortes no
+        // se toca ni una muestra (bit a bit como antes). Solo PCM de 16, 24 y 32 bits e IEEE float de 32; otro formato no se toca.
+        internal long EntradasSuaves;                         // cuantas veces se aplico (las pruebas)
+        private volatile int generacionPlay;                  // sube en cada Play() que arranca la salida (no en la vuelta de una pausa)
+        private int rampaLargo, rampaHecha;                   // cuadros de la rampa y cuantos van; rampaHecha >= rampaLargo = sin rampa
+        private int tipoMuestra;                              // 0 = no se reconoce, 1 = PCM 16, 2 = PCM 24, 3 = PCM 32, 4 = float 32
         // El ultimo aviso de parada con error fue de la propia salida (Windows o este codigo), no de la musica que le dan (la cancion o la
         // cadena, que se tratan como siempre). Lo mira Form1 para volver a la salida de siempre (SalidaSonido.cs).
         internal bool FalloPropio { get { return !deLaFuente; } } internal bool LaDeSiempre;   // EN LINUX: la salida «de siempre» de XP (el WaveOut de NAudio, con winmm) aqui tambien es una WaveOutPropio, sobre la misma ALSA: / esto la distingue, para que Form1 decida con ella lo mismo que con el WaveOut (SalidaSonido.cs, EsLaPropia)
@@ -92,7 +101,7 @@ namespace Rocola
         {
             if (waveProvider == null) throw new ArgumentNullException("waveProvider");
             if (salida != null) throw new InvalidOperationException("ya iniciada");
-            fuente = waveProvider; formato = waveProvider.WaveFormat;
+            fuente = waveProvider; formato = waveProvider.WaveFormat; tipoMuestra = TipoDe(formato);
             int n = Math.Max(2, NumberOfBuffers);
             int ms = Math.Max(10, DesiredLatency / n);
             largoBloque = (int)((long)formato.AverageBytesPerSecond * ms / 1000);
@@ -131,6 +140,7 @@ namespace Rocola
                 return;
             }
             estado = PlaybackState.Playing; parar = false; fin = false; Interlocked.Exchange(ref avisado, 0);
+            generacionPlay++;
             if (hilo == null || !hilo.IsAlive)
             {
                 hilo = new Thread(PrioridadHilo.Con(Bucle));   // EN LINUX: (new Thread(X)) con la prioridad que XP le pone antes de Start: en Linux .NET no la aplica (Nativo/PrioridadHilo.cs)
@@ -172,6 +182,7 @@ namespace Rocola
             HilosRocola.Nombra("audio (salida)");   // para el reparto por hilo del diagnostico completo
             int siguiente = 0;
             bool[] escrito = new bool[datos.Length];   // EN LINUX: (cabeceras.Length) los bloques
+            int generacion = -1; bool yaEscribio = false;   // si ya se escribio un bloque desde el ultimo Play() que arranco la salida
             try
             {
                 while (!parar)
@@ -179,18 +190,25 @@ namespace Rocola
                     aviso.WaitOne(EsperaMs(escrito), false);   // con el bool: WaitOne(Int32) solo no existe en el .NET del A4   // EN LINUX: (WaitOne(100, false)) hasta que acabe el bloque mas viejo, como mucho 100 ms
                     if (parar) break;
                     if (estado != PlaybackState.Playing) continue; long ya = Sonado();   // EN LINUX: lo que ya sono en la tarjeta (con eso se sabe que bloques acabaron: WHDR_DONE)
+                    if (generacion != generacionPlay) { generacion = generacionPlay; yaEscribio = false; rampaHecha = rampaLargo; }
                     // En orden: se escribieron 0, 1, 2... y en ese orden vuelven. Si el mas viejo aun suena, los de detras tambien.
                     for (int k = 0; k < datos.Length && !parar && !fin && estado == PlaybackState.Playing; k++)
                     {
                         int i = siguiente;
-                        if (escrito[i] && finDe[i] > ya) break; if (Libres() < largoBloque / Math.Max(1, formato.BlockAlign)) break;   // aun sonando   // EN LINUX: (WHDR_DONE sin poner) aun no sono hasta donde llega / EN LINUX: la tarjeta aun no tiene sitio para un bloque entero (si su bufer salio menor que todos los bloques)
+                        if (escrito[i] && finDe[i] > (ya = Sonado())) break; if (Libres() < largoBloque / Math.Max(1, formato.BlockAlign)) break;   // aun sonando   // EN LINUX: (WHDR_DONE sin poner) aun no sono hasta donde llega (mirado en ese momento, como la bandera que pone Windows: con lo de antes de un atasco, tras el corte se esperaba al unico bloque nuevo y la tarjeta se quedaba muda otra vez) / EN LINUX: la tarjeta aun no tiene sitio para un bloque entero (si su bufer salio menor que todos los bloques)
                         escrito[i] = false;
                         int n = Llena(i);
                         if (n <= 0) { fin = true; break; }
+                        // Despues de Llena (la espera del corte suele ser ahi dentro): si ningun otro bloque sigue sonando, la tarjeta se quedo muda.
+                        bool mudo = yaEscribio; long ahora = mudo ? Sonado() : 0;   // EN LINUX: lo que ya sono en la tarjeta tras Llena (con eso se sabe si algun bloque aun suena: WHDR_DONE sin poner)
+                        for (int j = 0; mudo && j < datos.Length; j++)   // EN LINUX: (cabeceras.Length) los bloques
+                            if (j != i && escrito[j] && finDe[j] > ahora) mudo = false;   // EN LINUX: (WHDR_DONE sin poner) aun no acaba de sonar
+                        if (mudo) { rampaLargo = Math.Max(1, formato.SampleRate * 10 / 1000); rampaHecha = 0; Interlocked.Increment(ref EntradasSuaves); }
+                        if (rampaHecha < rampaLargo && SuavizaEntrada(n)) Buffer.BlockCopy(lectura, 0, datos[i], 0, n);   // EN LINUX: (Marshal.Copy a la memoria del bloque) al arreglo del bloque
                         // EN LINUX: (so.Escribe: waveOutWrite; si falla, MmException) el bloque a la tarjeta (snd_pcm_writei; si falla, ErrorAlsa)
                         lock (cerrojo)
                         { if (parar || estado != PlaybackState.Playing) break; salida.Escribe(datos[i], largos[i]); finDe[i] = salida.Escritos; }
-                        escrito[i] = true;
+                        escrito[i] = true; yaEscribio = true;
                         siguiente = (i + 1) % datos.Length;
                     } ya = Sonado();
                     int enCola = 0;
@@ -209,6 +227,53 @@ namespace Rocola
                 estado = PlaybackState.Stopped;
                 if (!parar) Avisa(ex);
             }
+        }
+
+        // Sube de 0 a 1 (media curva de coseno) los cuadros de `lectura` que le falten a la rampa. False si no se reconoce el formato.
+        private bool SuavizaEntrada(int bytes)
+        {
+            int t = tipoMuestra, canales = Math.Max(1, (int)formato.Channels), tam = t == 1 ? 2 : t == 2 ? 3 : t == 0 ? 0 : 4;
+            if (t == 0) { rampaHecha = rampaLargo; return false; }
+            int cuadros = bytes / (tam * canales);
+            for (int c = 0; c < cuadros && rampaHecha < rampaLargo; c++, rampaHecha++)
+            {
+                double g = 0.5 - 0.5 * Math.Cos(Math.PI * rampaHecha / rampaLargo);
+                for (int ch = 0; ch < canales; ch++)
+                {
+                    int o = (c * canales + ch) * tam;
+                    switch (t)
+                    {
+                        case 1:
+                            { short v = (short)(lectura[o] | (lectura[o + 1] << 8)); int x = (int)Math.Round(v * g); lectura[o] = (byte)x; lectura[o + 1] = (byte)(x >> 8); break; }
+                        case 2:
+                            {
+                                int v = ((lectura[o] | (lectura[o + 1] << 8) | (lectura[o + 2] << 16)) << 8) >> 8;   // con signo
+                                int x = (int)Math.Round(v * g); lectura[o] = (byte)x; lectura[o + 1] = (byte)(x >> 8); lectura[o + 2] = (byte)(x >> 16); break;
+                            }
+                        case 3:
+                            { int v = BitConverter.ToInt32(lectura, o); int x = (int)Math.Round(v * g); lectura[o] = (byte)x; lectura[o + 1] = (byte)(x >> 8); lectura[o + 2] = (byte)(x >> 16); lectura[o + 3] = (byte)(x >> 24); break; }
+                        default:
+                            { float v = BitConverter.ToSingle(lectura, o) * (float)g; byte[] b = BitConverter.GetBytes(v); Buffer.BlockCopy(b, 0, lectura, o, 4); break; }
+                    }
+                }
+            }
+            return true;
+        }
+
+        // Cual de los formatos que se suavizan es (0 = ninguno: no se toca nada). Extensible: por su SubFormat.
+        private static int TipoDe(WaveFormat f)
+        {
+            WaveFormatEncoding e = f.Encoding;
+            WaveFormatExtensible x = f as WaveFormatExtensible;
+            if (x != null)
+            {
+                if (x.SubFormat == new Guid("00000001-0000-0010-8000-00aa00389b71")) e = WaveFormatEncoding.Pcm;
+                else if (x.SubFormat == new Guid("00000003-0000-0010-8000-00aa00389b71")) e = WaveFormatEncoding.IeeeFloat;
+                else return 0;
+            }
+            if (e == WaveFormatEncoding.IeeeFloat) return f.BitsPerSample == 32 ? 4 : 0;
+            if (e != WaveFormatEncoding.Pcm) return 0;
+            return f.BitsPerSample == 16 ? 1 : f.BitsPerSample == 24 ? 2 : f.BitsPerSample == 32 ? 3 : 0;
         }
 
         // Llena el bloque i desde la fuente (lo que falte para un bloque entero, en orden) y fija su largo. Devuelve los bytes.

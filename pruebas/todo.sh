@@ -25,7 +25,7 @@ NLAYER="$RAIZ/packages/NLayer.1.12.0/lib/net35/NLayer.dll"
 # no compilan nada. Estan aqui porque el .csproj los incluye: si faltaran en esta lista, la tanda estaria
 # probando un programa SIN el panel de reposo, sin la vineta y sin las nebulosas naturales, mientras que en
 # Windows se instala uno que si los trae. Una prueba que mira otro programa no prueba nada.
-FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Biblioteca.cs ../Rocola/Form1.Buscador.cs ../Rocola/Form1.Datos.cs ../Rocola/Form1.Fondo.cs ../Rocola/Form1.Ia.cs ../Rocola/Form1.Pared.cs ../Rocola/Form1.Portadas.cs ../Rocola/Form1.Sonido.cs ../Rocola/Form1.Video.cs ../Rocola/Form1.Vistas.cs ../Rocola/Form1.Designer.cs ../Rocola/Program.cs ../Rocola/D3D9Star.cs ../Rocola/Rendimiento.cs ../Rocola/EstadoReposoGpu.cs ../Rocola/AcabadoGpu.cs ../Rocola/CieloNaturalGpu.cs $RAIZ/Rocola/AperturaAudio.cs $RAIZ/Rocola/CargaTrabajo.cs $RAIZ/Rocola/EscaneoMemo.cs $RAIZ/Rocola/LunaGpu.cs $RAIZ/Rocola/Optimizaciones.cs $RAIZ/Rocola/RespuestaGpu.cs"
+FUENTES="../Rocola/Form1.cs ../Rocola/Form1.Ajustes.cs ../Rocola/Form1.Biblioteca.cs ../Rocola/Form1.Buscador.cs ../Rocola/Form1.Datos.cs ../Rocola/Form1.Fondo.cs ../Rocola/Form1.Ia.cs ../Rocola/Form1.Pared.cs ../Rocola/Form1.Portadas.cs ../Rocola/Form1.Sonido.cs ../Rocola/Form1.Video.cs ../Rocola/Form1.Vistas.cs ../Rocola/Form1.Designer.cs ../Rocola/Program.cs ../Rocola/D3D9Star.cs ../Rocola/Rendimiento.cs ../Rocola/EstadoReposoGpu.cs ../Rocola/AcabadoGpu.cs ../Rocola/CieloNaturalGpu.cs $RAIZ/Rocola/AperturaAudio.cs $RAIZ/Rocola/NoEsMp3.cs $RAIZ/Rocola/CargaTrabajo.cs $RAIZ/Rocola/EscaneoMemo.cs $RAIZ/Rocola/LunaGpu.cs $RAIZ/Rocola/Optimizaciones.cs $RAIZ/Rocola/RespuestaGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/EstrellaGpu.cs $RAIZ/Rocola/Estrella3dGpu.cs $RAIZ/Rocola/RelojPantallaGpu.cs $RAIZ/Rocola/AuroraFinaGpu.cs $RAIZ/Rocola/PantallaVivaGpu.cs $RAIZ/Rocola/DiscoVivoGpu.cs $RAIZ/Rocola/SuenaVivoGpu.cs $RAIZ/Rocola/AtraccionGpu.cs $RAIZ/Rocola/EstiloGpu.cs $RAIZ/Rocola/DibujoLigeroGpu.cs $RAIZ/Rocola/PerformanceGpu.cs $RAIZ/Rocola/AjustesVivos.cs $RAIZ/Rocola/UnDisparo.cs $RAIZ/Rocola/PulidoGpu.cs $RAIZ/Rocola/LoQueSuena.cs $RAIZ/Rocola/ArreglosGrabacion.cs $RAIZ/Rocola/BuscadorLigeroGpu.cs $RAIZ/Rocola/FranjaLigeraGpu.cs $RAIZ/Rocola/BuscadorPortadasGpu.cs $RAIZ/Rocola/PrecargaPaginaGpu.cs $RAIZ/Rocola/PaletaCaratulaGpu.cs $RAIZ/Rocola/CreditosServicio.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TextoMovilGpu.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/TexturasCompatiblesGpu.cs"
@@ -44,6 +44,7 @@ FUENTES="$FUENTES $RAIZ/Rocola/AudioControles.cs $RAIZ/Rocola/Sonoridad.cs $RAIZ
 FUENTES="$FUENTES $RAIZ/Rocola/GraveMono.cs $RAIZ/Rocola/SalaLocal.cs $RAIZ/Rocola/CieloVivoGpu.cs $RAIZ/Rocola/Zumbido.cs $RAIZ/Rocola/PreEco.cs $RAIZ/Rocola/Eses.cs"
 # Voz, golpe y retumbe (27-10-2026): que el bombo no hunda la voz, el retumbe dinamico y el ataque mas claro.
 FUENTES="$FUENTES $RAIZ/Rocola/EtapaPorCuadros.cs $RAIZ/Rocola/BomboSinHundir.cs $RAIZ/Rocola/RetumbeDinamico.cs $RAIZ/Rocola/AtaqueClaro.cs $RAIZ/Rocola/VozGolpeYRetumbe.cs"
+FUENTES="$FUENTES $RAIZ/Rocola/EcualizadorDueno.cs $RAIZ/Rocola/Form1.EcualizadorDueno.cs"
 FUENTES="$FUENTES $RAIZ/Rocola/SinPausa.cs $RAIZ/Rocola/Form1.SinPausa.cs $RAIZ/Rocola/SalidaSonido.cs $RAIZ/Rocola/SalidaPropia.cs $RAIZ/Rocola/RecorridoRapido.cs"
 # La presencia en sala ruidosa (22-10-2026): el compresor suave detras del local.
 FUENTES="$FUENTES $RAIZ/Rocola/PresenciaSala.cs $RAIZ/Rocola/LocalAuto.cs $RAIZ/Rocola/CadenaBillar.cs $RAIZ/Rocola/AfinarLocal.cs $RAIZ/Rocola/VolumenParejo.cs $RAIZ/Rocola/AsperezaDinamica.cs $RAIZ/Rocola/BitacoraBillar.cs $RAIZ/Rocola/CompararCiegas.cs"
@@ -63,7 +64,7 @@ C_GPU="$TMP_PRUEBAS/c_rocola_gpu.txt"
 
 # Las que miran cosas que solo existen con tarjeta grafica (la aurora, el barrido de luz) van
 # contra el perfil de GPU; las demas contra el normal.
-CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero franjas dsee noche salir carpeta carpetas miniaturas pared sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera usando escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer turno cara vuelta respira orden detalles calienta sola duerme teclea palomito moneda nebulosa pedidas tiron cielo fondocoste fugaces luna descompresor pestanas nebfuerza vigia aperturaaudio efectoslayout eqpreparado escaneomemo precarga medidas arranque apollo iaparidad iaorigen"
+CPU="ajustes bajo eqauto bajoauto calidad eqia nivel titulo duracion prueba prueba2 prueba3 prueba4 neon fps abc barrido2 espacio busca buscaigual bolsa genero pagina busmov parcial disco ssd etiqueta sala hojea cosecha resol letrero franjas dsee noche salir carpeta carpetas miniaturas pared sobras gasto historial estrellas limite vacias videos franja colores carriles indice proyecto primera usando escribe reposo cambio apagon unasola entrar iadatos entrenador corta deriva ligera simbolos leer turno cara vuelta respira orden detalles calienta sola duerme teclea palomito moneda nebulosa pedidas tiron cielo fondocoste fugaces luna descompresor pestanas nebfuerza vigia aperturaaudio efectoslayout eqpreparado escaneomemo precarga medidas arranque apollo iaparidad iaorigen nomp3"
 # 'turno' no va contra el perfil de tarjeta grafica: la cuenta de cuanto falta para tu cancion vive
 # en dos funciones puras -reciben numeros y devuelven un numero-, asi que se le pueden dar casos a
 # mano sin encender nada.
@@ -95,6 +96,8 @@ GPU="$GPU segundatanda"
 # 'terceratanda': las canciones danadas no se vuelven a poner, el motivo del fallo primero y la biblioteca vacia.
 CPU="$CPU terceratanda"
 GPU="$GPU terceratanda"
+# 'nomp3': un M4A/OGG/FLAC/WMA/WAV con nombre .mp3 se reconoce por su cabecera (NoEsMp3.OtroFormato) y se rechaza antes de abrir;
+# los MP3 de verdad (con o sin etiqueta ID3v2) y el MP3 dentro de un WAV (formato 0x55) dan null.
 # 'cuartatanda': F5/F12 ceden ante un boton de la rocola, el archivo de teclas sin botones repetidos y la cancion que
 # se rompe a media cancion.
 CPU="$CPU cuartatanda"
@@ -238,6 +241,12 @@ CPU="$CPU localauto"
 # 'cadenabillar': la cadena del modo billar (27-10-2026; CadenaBillar.cs): el EQ del billar banda por banda, EqCorrFor con una huella
 # (encendido y apagado), lo que el modo decide del realce, el DSEE, los arreglos y el bajo, el codigo y la ventana.
 CPU="$CPU cadenabillar"
+# 'billarparejo': el modo billar ya no mueve el volumen solo (18-11-2026): con el modo encendido y los interruptores de fabrica, un tono de -30 a -6 dBFS
+# y vuelta sale de la cadena entera sin presencia, partes suaves, retumbe, ataque ni asperos, y con la misma ganancia antes del limitador.
+CPU="$CPU billarparejo"
+# 'billar18': las cuatro mejoras del modo billar del 18-11-2026: el volumen parejo desde cero (marca parejo_v2, sin borrar nada), la claridad y las eses
+# del dueno, el bajo a su mando, y lo mas que bajo el limitador en 10 s (sin segundo lector de lo que se pone a cero).
+CPU="$CPU billar18"
 # 'presenciagrave': P1, D1 y D2 (30-10-2026; AUDIO_PROPUESTAS_MODEST_2026-10-29.md): la presencia del billar sin el grave en el detector
 # (menos vaiven de la voz, sin el billar bit a bit, en vivo sin chasquido), su comparacion a ciegas, lo que hizo cada etapa en la
 # bitacora y Recoger_sonido_XP.cmd.
@@ -272,6 +281,9 @@ CPU="$CPU eses"
 # pasa de su media, con el presupuesto del EQ automatico y la claridad) y el ataque mas claro (menos cola, mas ataque con sitio bajo el techo): apagadas,
 # bit a bit; lo que hacen, tiempos, sin chasquidos, disco continuo, lecturas partidas, coste y enchufe en la cadena. Tonos y ruido sinteticos en Mono.
 CPU="$CPU bombosinhundir retumbedinamico ataqueclaro"
+# ecualizador: el ecualizador del dueno (17-11-2026; EcualizadorDueno.cs, Form1.EcualizadorDueno.cs): todo en 0 pasa tal cual, +6 dB en 63 Hz con su
+# preganancia, -6 dB en 1 kHz, los cambios en vivo sin escalon, el disco continuo, los estantes de 31 Hz y 16 kHz, la configuracion y la curva fija del billar.
+CPU="$CPU ecualizador"
 # 'salidapropia': T5 (25-10-2026), la salida de sonido con su propio hilo (SalidaPropia.cs) con un Windows imitado: suena todo en orden, el
 # reloj, la pantalla parada 3 s sin quedarse sin musica, pausa y parada, los fallos (del aparato, de Windows y de la musica), la parada en
 # el hilo de la pantalla, nada de .NET 2.0 SP2 en todo el ejecutable, y que Form1 la usa y sabe volver a la de siempre.

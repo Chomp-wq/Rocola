@@ -125,6 +125,33 @@ class SalidaPropia
         }
     }
 
+    // Un tono de 1 kHz (amplitud 0,8) en 16 bits o float de 32, estereo 44100; a partir de AtoraEn bytes se queda sin dar datos `AtoraMs`, una vez.
+    sealed class Tono : IWaveProvider
+    {
+        public readonly byte[] D; int p; readonly WaveFormat wf; public int AtoraEn = -1, AtoraMs = 900;
+        public Tono(double seg, bool flotante)
+        {
+            wf = flotante ? WaveFormat.CreateIeeeFloatWaveFormat(44100, 2) : new WaveFormat(44100, 16, 2);
+            int tam = flotante ? 4 : 2, cuadros = (int)(seg * 44100); D = new byte[cuadros * 2 * tam];
+            for (int i = 0; i < cuadros; i++)
+            {
+                double v = 0.8 * Math.Sin(2 * Math.PI * 1000.0 * i / 44100);
+                for (int c = 0; c < 2; c++)
+                {
+                    int o = (i * 2 + c) * tam;
+                    if (flotante) Array.Copy(BitConverter.GetBytes((float)v), 0, D, o, 4);
+                    else { short x = (short)Math.Round(v * 32767); D[o] = (byte)x; D[o + 1] = (byte)(x >> 8); }
+                }
+            }
+        }
+        public WaveFormat WaveFormat { get { return wf; } }
+        public int Read(byte[] b, int o, int c)
+        {
+            if (AtoraEn >= 0 && p >= AtoraEn) { AtoraEn = -1; Thread.Sleep(AtoraMs); }   // el atasco: mas que todo el colchon (300 ms)
+            int n = Math.Min(c, D.Length - p); Array.Copy(D, p, b, o, n); p += n; return n;
+        }
+    }
+
     static object Nueva(Imitado im)
     {
         object so = im.GetTransparentProxy();
@@ -296,6 +323,67 @@ class SalidaPropia
               "si falla por si misma a media cancion, Output_PlaybackStopped la cambia por la de siempre para la sesion");
     }
 
+    // Amplitud del cuadro `cuadro` (canal izquierdo) de lo que sono.
+    static double Amp(List<byte> s, int cuadro, bool flotante)
+    {
+        int o = cuadro * (flotante ? 8 : 4);
+        return flotante ? BitConverter.ToSingle(s.GetRange(o, 4).ToArray(), 0) : (short)(s[o] | (s[o + 1] << 8)) / 32768.0;
+    }
+    // Maxima amplitud absoluta entre los cuadros [a, b) de lo que sono.
+    static double Pico(List<byte> s, int a, int b, bool flotante)
+    {
+        double m = 0; for (int i = a; i < b; i++) m = Math.Max(m, Math.Abs(Amp(s, i, flotante))); return m;
+    }
+
+    static void VueltaDelCorte(bool flotante)
+    {
+        Console.WriteLine("\n  9) VOLVER DE UN CORTE SIN CHASQUIDO (" + (flotante ? "float de 32" : "16 bits") + ")\n");
+        Imitado im = new Imitado(TI); Tono f = new Tono(2.0, flotante); f.AtoraEn = 44100 * (flotante ? 8 : 4) / 2;   // a los 0,5 s
+        object w = Nueva(im); int paradas = 0;
+        P(w).PlaybackStopped += delegate { paradas++; };
+        P(w).Init(f); P(w).Play();
+        Espera(delegate { return paradas > 0; }, 8000);
+        long n = (long)TW.GetField("EntradasSuaves", T).GetValue(w);
+        int bytesCuadro = flotante ? 8 : 4, total = f.D.Length / bytesCuadro;
+        Check(im.Sonado.Count == f.D.Length, "sono todo lo que dio la fuente (" + im.Sonado.Count + " de " + f.D.Length + " bytes)");
+        Check(n == 1, "con el atasco, EntradasSuaves == 1 (" + n + ")");
+        // El bloque que vuelve: el primero cuyo contenido ya no es el de la fuente.
+        int ini = -1; byte[] d = f.D;
+        for (int i = 0; i < im.Sonado.Count && ini < 0; i++) if (im.Sonado[i] != d[i]) ini = i / bytesCuadro;
+        // Los cuadros con g muy chica pueden coincidir con la fuente (cuadro 0 vale 0 y el tono tambien); se busca desde el medio
+        // del colchon: el corte esta en ~0,5 s = cuadro 22050.
+        Check(ini >= 22050 - 3000 && ini <= 22050 + 4000, "lo cambiado empieza donde volvio la musica (cuadro " + ini + ", ~22050)");
+        if (ini >= 0)
+        {
+            // Se mira el pico por tramo respecto de la fuente: a g = 0,5 (5 ms = 220 cuadros) la mitad, a los 10 ms entero.
+            double pAl = Pico(im.Sonado, ini, ini + 20, flotante), fAl = Pico(new List<byte>(f.D), ini, ini + 20, flotante);
+            double pMed = Pico(im.Sonado, ini + 200, ini + 240, flotante), fMed = Pico(new List<byte>(f.D), ini + 200, ini + 240, flotante);
+            Check(pAl < 0.05 * Math.Max(fAl, 0.01) + 0.01, "los primeros cuadros entran muy bajos (pico " + pAl.ToString("0.0000") + " contra " + fAl.ToString("0.000") + ")");
+            double r = pMed / Math.Max(1e-9, fMed);
+            Check(r > 0.35 && r < 0.65, "a los 5 ms entra a la mitad, aprox (" + r.ToString("0.00") + ")");
+            Check(Pico(im.Sonado, ini + 441, ini + 441 + 400, flotante) >= 0.99 * Pico(new List<byte>(f.D), ini + 441, ini + 441 + 400, flotante)
+                  && im.Sonado.GetRange((ini + 450) * bytesCuadro, (total - ini - 450) * bytesCuadro).ToArray().Length > 0
+                  && Igual(im.Sonado.GetRange((ini + 450) * bytesCuadro, (total - ini - 450) * bytesCuadro), Sub(f.D, (ini + 450) * bytesCuadro)),
+                  "a los 10 ms ya esta entero: lo demas es identico a la fuente");
+        }
+        P(w).Dispose();
+    }
+    static byte[] Sub(byte[] a, int desde) { byte[] r = new byte[a.Length - desde]; Array.Copy(a, desde, r, 0, r.Length); return r; }
+
+    static void SinAtasco()
+    {
+        Console.WriteLine("\n  10) SIN ATASCO NO SE TOCA NI UN BYTE\n");
+        Imitado im = new Imitado(TI); Tono f = new Tono(1.5, false);
+        object w = Nueva(im); int paradas = 0;
+        P(w).PlaybackStopped += delegate { paradas++; };
+        P(w).Init(f); P(w).Play();
+        Espera(delegate { return paradas > 0; }, 6000);
+        long n = (long)TW.GetField("EntradasSuaves", T).GetValue(w);
+        Check(Igual(im.Sonado, f.D), "lo que sono es identico, byte a byte, a lo que dio la fuente (" + im.Sonado.Count + " bytes)");
+        Check(n == 0, "EntradasSuaves == 0 (" + n + ")");
+        P(w).Dispose();
+    }
+
     static int Main(string[] args)
     {
         Assembly asm = Assembly.LoadFrom(args.Length > 0 ? args[0] : "rocola.exe");
@@ -309,6 +397,9 @@ class SalidaPropia
         try { CierreAtorado(); } catch (Exception e) { Check(false, "cierre atorado: " + e); }
         try { EnLaPantalla(); } catch (Exception e) { Check(false, "en la pantalla: " + e); }
         try { SinWaitOneDeSp2(asm); } catch (Exception e) { Check(false, "sin SP2: " + e); }
+        try { VueltaDelCorte(false); } catch (Exception e) { Check(false, "vuelta del corte 16: " + e); }
+        try { SinAtasco(); } catch (Exception e) { Check(false, "sin atasco: " + e); }
+        try { VueltaDelCorte(true); } catch (Exception e) { Check(false, "vuelta del corte float: " + e); }
         try { EnForm1(); } catch (Exception e) { Check(false, "en Form1: " + e); }
         Console.WriteLine(fallos == 0 ? "\n  TODO BIEN (" + oks + " comprobaciones)" : "\n  FALLOS: " + fallos);
         return fallos;

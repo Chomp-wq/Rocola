@@ -272,7 +272,7 @@ class AtaqueClaroPrueba
             MethodInfo auto = TF.GetMethod("LocalAutomatico", T, null, new Type[] { typeof(float), typeof(float), typeof(float) }, null);
             object aj = auto.Invoke(null, new object[] { 8f, 5f, 10f }), aj2 = auto.Invoke(null, new object[] { -1f, -1f, 10f });
             Type tAj = aj.GetType();
-            Check((bool)tAj.GetField("Ataque").GetValue(aj) && (bool)tAj.GetField("Ataque").GetValue(aj2), "el modo automatico del local la enciende (siempre, en el billar)");
+            Check(!(bool)tAj.GetField("Ataque").GetValue(aj) && !(bool)tAj.GetField("Ataque").GetValue(aj2), "18-11-2026: el modo automatico del local YA NO la enciende (va con su interruptor, apagado de fabrica)");
         }
 
         Console.WriteLine();

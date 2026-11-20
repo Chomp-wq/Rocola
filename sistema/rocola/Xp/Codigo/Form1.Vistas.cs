@@ -2292,7 +2292,7 @@ namespace Rocola
             // "Sonando:", el color por genero y el buscador.
             public override string ToString()
             {
-                try { return RocolaOsSpotifyCatalogoNombre(Path) ?? System.IO.Path.GetFileNameWithoutExtension(Path); }   // ROCOLA OS g48: (XP) try { return System.IO.Path.GetFileNameWithoutExtension(Path); } — una cancion de Spotify se ve en la lista del disco con su numero y su titulo, como el archivo de una de XP (RocolaOs/RocolaOs.SpotifyCatalogo.cs; de XP, null)
+                try { return System.IO.Path.GetFileNameWithoutExtension(Path); }
                 catch { return Title; }
             }
 

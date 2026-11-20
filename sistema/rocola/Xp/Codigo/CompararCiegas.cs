@@ -65,7 +65,7 @@ namespace Rocola
             {
                 CadenaCancion cp = cadenaSonando;
                 if (cp == null || cp.Presencia == null || !cp.Presencia.Encendido)
-                    return "En esta cancion el modo billar no puso la presencia\n(su rango es chico): prueba con otra.";
+                    return "La presencia esta apagada: enciendela en Tono y presencia\ndel local para comparar.";
             }
             if (sinMejoras) PonSinMejoras(false);
             CadenaCancion cs = cadenaSonando; if (cs != null && cs.Margen != null) cs.Margen.Descarta = true;   // (1) esta vuelta no se aprende

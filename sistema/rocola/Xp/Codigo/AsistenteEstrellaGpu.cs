@@ -173,7 +173,7 @@ namespace Rocola
         {
             if (!(alfa > .02f) || panel.Width < 64 || panel.Height < 64) return;
             double ahora = cuadroMs >= 0 ? cuadroMs : AhoraMs();
-            int sel = Math.Max(0, Math.Min(Form1.RocolaOsAsistenteOpciones - 1, asistenteEstado.Seleccion));   // ROCOLA OS g73: (XP) int sel = Math.Max(0, Math.Min(Form1.AsistenteOpciones - 1, asistenteEstado.Seleccion)); — el latido del VERDE llega a la cuarta opcion (RocolaOs/RocolaOs.Asistente.cs; sin Spotify, las tres de XP)
+            int sel = Math.Max(0, Math.Min(Form1.AsistenteOpciones - 1, asistenteEstado.Seleccion));
             asistenteSelVis = AsistenteSigueSeleccion(asistenteSelVis, sel, (ahora - asistenteSelMs) / 1000.0, asistenteEstado.Animada);
             asistenteSelMs = ahora;
             RectangleF v = AsistenteVerdeEn(panel.Width, panel.Height, asistenteSelVis);
@@ -198,8 +198,8 @@ namespace Rocola
         internal static RectangleF AsistenteVerdeEn(int w, int h, float pos)
         {
             if (float.IsNaN(pos) || float.IsInfinity(pos)) return RectangleF.Empty;
-            pos = Math.Max(0f, Math.Min(Form1.RocolaOsAsistenteOpciones - 1, pos));   // ROCOLA OS g74: (XP) pos = Math.Max(0f, Math.Min(Form1.AsistenteOpciones - 1, pos)); — el VERDE que se desliza llega a la cuarta opcion (RocolaOs/RocolaOs.Asistente.cs; sin Spotify, las tres de XP)
-            int i0 = (int)Math.Floor(pos), i1 = Math.Min(Form1.RocolaOsAsistenteOpciones - 1, i0 + 1);   // ROCOLA OS g75: (XP) int i0 = (int)Math.Floor(pos), i1 = Math.Min(Form1.AsistenteOpciones - 1, i0 + 1); — entre la tercera y la cuarta opcion (RocolaOs/RocolaOs.Asistente.cs; sin Spotify, las tres de XP)
+            pos = Math.Max(0f, Math.Min(Form1.AsistenteOpciones - 1, pos));
+            int i0 = (int)Math.Floor(pos), i1 = Math.Min(Form1.AsistenteOpciones - 1, i0 + 1);
             float f = pos - i0;
             Rectangle o0 = Form1.AsistenteOpcionRect(w, h, i0), o1 = Form1.AsistenteOpcionRect(w, h, i1);
             Rectangle a, b, v0, v1;
