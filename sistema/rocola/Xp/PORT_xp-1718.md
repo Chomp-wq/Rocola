@@ -83,3 +83,43 @@ arriba. `ventanaf3.cs` es de WinForms: no se corrió.
 No se corrió `nivel0.sh` entero: la copia congelada de la referencia (aef2211) es la XP de antes, y Ctrl+F3 -> Sonido (el modo noche con
 sus graves, el botón del ecualizador, sin «Presencia nueva o antes» ni I3) y el sonido de fábrica a partir de las 22 h ya no son los suyos
 a propósito. Nada probado en el A4.
+
+## El modo noche de 50 a 90 % (20-11-2026)
+
+Rama `noche-50`, sobre la rama principal (4d03d6c). El cambio de XP (`687af49`; AGENTS.md, la entrada del 20-11-2026;
+`AUDIO_NOCHE_Y_MEJORAS_XP_MODEST_2026-11-17.md`, sección 4 ter): `NochePctMin` 50 (50 % = −10 dB con la misma cuenta), un `noche_pct=`
+guardado entre 50 y 90 se respeta y fuera se acota, y la rampa (`AvanzaRampa`) con el paso mayor entre medio volumen y lo que baja la
+noche (de 66 a 90 % el de antes, bit a bit; de 50 a 65 % la noche entera sigue en 20 s y en 1,5 s).
+
+- Pasado a `Codigo/` línea por línea: las mismas seis líneas (cinco en `Form1.Sonido.cs`, un comentario en `Form1.Ajustes.cs`), en su
+  sitio y con su fin de línea (CRLF), sin nada que traducir. Ninguna línea se añade ni se quita: los ganchos y los avisos no se mueven
+  (`GANCHOS.tsv` y `avisos-base.txt` sin cambio de líneas).
+- La base de los ganchos pasa de 69e6547 a **ebdb272**: 69e6547 con esas seis líneas (`Codigo/` sin los ganchos; g21 y g22, de
+  `Nativo/`, con su línea de antes). El commit siguiente (`effbc05`) vuelve a poner los 49 ganchos. La nombran `ganchos.py`, `nivel0.sh`,
+  `GANCHOS.tsv` y `Pruebas/RocolaOs/LEEME.md`. Si la rama se rebasa, ese número cambia: `--base` / `BASE=`.
+- Los videos en rocola-xp: no hay un filtro de mpv para la noche (el `@noche` era del programa retirado, `Consola`). Bajan por la cuenta de
+  XP (`VideoVolumeFor` → `FactorVideoNoche`: la perilla al pct %), y `Nativo/ReproductorVideo.cs` lleva esa perilla, que es de amplitud,
+  al volumen cúbico de mpv. Al 50 %: perilla 50, mpv 79,37, amplitud 0,5 (−6 dB; la música, −10 dB). Ya era así al 80 % (−1,9 contra
+  −3,2 dB); no cambió.
+- `Nativo/ImportaXp.cs` copia `noche_pct=` tal cual (solo traduce `dir=` y quita `respaldo_dir=`); rocola-xp lo acota al leerlo, a 50-90.
+  `Pruebas/Importa` lleva ahora `noche_pct=50` en la XP falsa.
+- La escena «noche» de `Pruebas/RocolaOs/spotify-xp/prueba.sh` medía solo el 80 % de fábrica; ahora, dos corridas más con
+  `noche_pct=50` (en un `rocola_config.txt` de los datos), con la de Spotify y con la de XP: prendida ya de noche y «Probar».
+- Ctrl+F3 → Sonido, el mismo 80 % con el rango nuevo: comparada la captura de rocola-xp de antes (la de este documento, arriba) con la
+  nueva (`corre.sh`, Ctrl+F3 a los 26 s), dentro de la ventana solo cambian 917 puntos, los del deslizador del modo noche (el botón pasa
+  de la mitad a tres cuartos del riel).
+
+### Pruebas (20-11-2026, en la máquina de 4 núcleos compartida y muy cargada)
+
+| Qué | Resultado |
+|---|---|
+| Baterías de XP con Mono (`pruebas/todo.sh`) | `noche` 86/86 (antes 65; contra la rocola de antes, 12 fallos); en verde también `ajustes`, `ajustesvivos`, `ventanaf3`, `pestanas`, `sala`, `salalocal`, `compatvieja`, `videos`, `detalles`, `moneda`, `arreglos` y `cadenaentera`; la rocola compila a 0 avisos en los dos perfiles |
+| Compilar JIT | 0 errores, los 13 avisos de `avisos-base.txt` (0 nuevos) |
+| `ganchos.py` | TODO BIEN (49 ganchos en 19 archivos; 112 archivos comparados con ebdb272, 17 con ganchos) |
+| `clasifica.py codigo` (el paso `codigo` de `nivel0.sh`) | 112 archivos con las mismas líneas, CRLF y último byte que en ebdb272 |
+| `diff-xp.py --sin-ganchos` | 5 135 quitadas, 4 868 puestas, 229 sin marca: las mismas de antes (las seis líneas son iguales en `Rocola/` y `Codigo/`) |
+| Batería `noche` de XP sobre rocola-xp.dll (JIT) | 86/86 |
+| Publicar NativeAOT (`-p:PublishAot=true`, el código de `effbc05`) | sale con 0, los 13 avisos de `avisos-base.txt` (0 nuevos), 0 de IL/AOT |
+| `Pruebas/Importa` (JIT) | TODO BIEN (145) |
+| spotify-xp, escena «noche» (JIT) | las 14 nuevas del 50 % BIEN: prendida ya de noche −10,02 dB (Spotify) y −10,00 (XP), quieta; «Probar» −10,02 y −10,00 dB, rampa 1,5 s, 14,5 y 14,4 s abajo y vuelve en 1,4 y 1,5 s; Spotify contra XP, 0,015 y 0,02 dB. Las de XP al 80 % BIEN (−0,0536 dB/min, salto 0,0005 dB, −3,22 dB, rampa 0,9 s). 8 MAL en las dos corridas de Spotify al 80 % y sus cruces: huecos de la fuente falsa con la máquina cargada (tramos a −17 y −24 dB a los 3-7 s y a los 32-36 s, sin XRUN en la tarjeta); en «Probar» la bajada sí estuvo (−3,24 dB de los 12 a los 26 s), pero el análisis tomó el hueco de los 3 s por su principio |
+| spotify-xp, escena «noche» (NativeAOT) | 40 de 44: las del 50 % BIEN (prendida ya de noche −10,02 / −10,00 dB, quieta; «Probar» −10,02 / −10,00 dB, rampa 1,5 s, 14,5 y 14,6 s abajo, vuelve en 1,5 y 1,4 s; Spotify contra XP 0,015 y 0,02 dB); las de XP al 80 % BIEN (−0,0536 dB/min, salto 0,0005 dB, −3,22 dB, «Probar» 0,9 s); «yanoche» y «probar» de Spotify al 80 % BIEN esta vez (−3,24 dB, 0,9 s). 4 MAL, todas de la corrida de Spotify que cruza las 22 h: huecos de la fuente falsa (tramos a −19/−22 dB a los 7, 10, 27, 42-47 s), que dan 0,2586 dB/min antes de las 22 h, −0,0768 después y un salto de 7,1 dB |
