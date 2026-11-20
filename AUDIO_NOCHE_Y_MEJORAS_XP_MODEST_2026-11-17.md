@@ -164,6 +164,29 @@ noche —frecuencias— para no molestar a los vecinos, va aparte y como propues
   `ajustes`, `ajustesvivos`, `ventanaf3`, `pestanas`, `sala`, `salalocal`, `compatvieja`, `videos`, `detalles`, `moneda`, `arreglos` y
   `cadenaentera`. Nada oído ni probado en el A4.
 
+## 4 quater. El modo noche para los vecinos (20-11-2026)
+
+Decisión del dueño: «Del modo noche haz lo que me recomiendes» (las propuestas y sus medidas: `AUDIO_NOCHE_VECINOS_MODEST_2026-11-20.md`;
+lo recomendado era NV3, NV4 y NV5). Lo de la rocola de XP:
+
+- **NV1, «Graves de noche» de 0 a 12 dB, 8 de fábrica** (antes 0 a 6 y 4). El 4 guardado pasa a 8 una vez (marca `noche_graves_8=1`).
+- **NV2, «Cortar el grave más hondo»** (`noche_corte=`, 80 Hz de fábrica, de 40 a 120 a pasos de 10; 0 lo apaga): de noche se quita lo de
+  debajo con la curva del subgrave en fase lineal, en una etapa aparte (`GraveMono.DeNoche`, detrás del grave en mono y delante del local),
+  con la misma bajada de una hora (la mezcla, pareja en dB a 0,7 veces el corte). De día no lee por delante y pasa bit a bit.
+- **NV4, «Más bajo de madrugada»** (`noche_madrugada=1`, `noche_madrugada_desde=1`, `noche_madrugada_pct=70`): desde la 1 otra bajada de
+  una hora hasta el 70 % (nunca más alto que la noche), con graves de noche 12 dB y el corte; a las 7 todo sube en 20 s.
+- **NV5a**: los videos bajan los mismos dB que la música (`FactorVideoNoche` = `FactorNoche`); la perilla del reproductor de Windows Media
+  se toma por lineal en amplitud, como ya suponía la cuenta (en XP no se midió cómo responde).
+- **«Probar»** pone la noche entera con sus graves y su corte; **«Probar la madrugada»**, la madrugada entera.
+- **La hoja «Graves, corte y madrugada...»** (Ctrl+F3 → Sonido, el botón de la tarjeta del volumen en el sitio del renglón de «Graves de
+  noche», que pasó a la hoja): a la izquierda «Graves de noche» (0 a 12), «Cortar el grave más hondo» (apagado, 40 a 120 Hz) y «Probar la
+  noche»; a la derecha «Más bajo de madrugada», su porcentaje, «Desde las» (22 a 6 h), «Probar la madrugada» y «Volver al volumen». **Se
+  tiene que ver en pantalla** (comprobado solo por la batería de la ventana con las letras de Linux).
+- El volumen parejo del billar ya no aprende de una canción que sonó con la noche puesta (aprendía a subirla de día).
+- Pruebas: `noche` 136 de 136 (tramo 10 nuevo), `compara-cadena` 16 iguales de 16, `cadenaentera` 91, `billar18` 35, `billarparejo` 8,
+  `gravemono` 55 (con el corte de noche en el orden de la cadena), `subgrave` 68, `todojunto` 13, `transiciones` 46, `ventanaf3` 9 405,
+  `ajustes` 4 y `videoaudio` 10, con Mono. Nada oído ni probado en el A4.
+
 ## 5. Propuestas que necesitan tu decisión (no se hizo nada)
 
 - ~~N1~~ hecho (sección 3). **N1. «De noche, menos grave hacia afuera».** Lo que más sale del local y atraviesa paredes es el grave, no el volumen general. La

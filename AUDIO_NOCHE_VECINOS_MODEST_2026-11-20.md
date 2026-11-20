@@ -3,7 +3,10 @@
 Petición del dueño: «El modo noche ahora tendrá el slider desde 50 hasta 90% y busca si hay más cosas que se puedan bajar durante la
 noche (frecuencias) que causen que el sonido moleste a los vecinos».
 
-Este documento es **solo la búsqueda y las medidas: no cambia nada del programa.** Tú eliges. El deslizador de 50 a 90 % va aparte;
+**Ya elegiste (20-11-2026, «Del modo noche haz lo que me recomiendes»): se hicieron NV3 (NV1 + NV2), NV4 y NV5 (a y b).** Qué quedó y
+cómo se probó, en la sección 7 de abajo. Lo de la búsqueda sigue como estaba.
+
+Este documento era **solo la búsqueda y las medidas: no cambiaba nada del programa.** El deslizador de 50 a 90 % va aparte;
 aquí se mide lo que da su 50 %. Todo lo medido es con **canciones sintéticas** pasadas por la **cadena de sonido de verdad** de la
 rocola de XP (`Rocola.exe` por dentro, con el modo billar puesto, en Linux con Mono), más un modelo de muro. **Nada se oyó en el billar
 ni se midió en el A4.**
@@ -320,6 +323,49 @@ El deslizador de 50 a 90 % sirve igual con todo esto: el porcentaje sigue siendo
   sus guías de 1999 como lo conozco; conviene comprobarlo en el documento. Los valores del umbral de audición son los de la ISO 226:2003.
 
 Para repetir las medidas: `sh pruebas/nochevecinos.sh /una/carpeta/de/trabajo` (unos 5 minutos; deja `analisis.json` y las tablas).
+
+## 7. Lo que se hizo (20-11-2026: «Del modo noche haz lo que me recomiendes»)
+
+Lo recomendado de la sección 5, en la rocola de XP (`Rocola/`) y en rocola-xp (`sistema/rocola/Xp`, pasado línea por línea:
+`sistema/rocola/Xp/PORT_noche-nv.md`). NV6, NV7 y NV8 no son del programa o no se hacen. **De día la cadena sale bit a bit como antes**
+y **nada sube ni baja el volumen solo a media canción**: todo son filtros fijos y volúmenes que entran con la misma bajada lenta.
+
+| | qué | clave (de fábrica) | dónde |
+|---|---|---|---|
+| NV1 | «Graves de noche» de **0 a 12 dB**, **8 de fábrica** (antes 0 a 6 y 4). Un `noche_graves=4` guardado —el de fábrica de antes, que se escribía siempre— pasa a 8 **una vez** (marca `noche_graves_8=1`, como la de las 22 h); un 4 puesto después a mano, y cualquier otro valor, se respetan | `noche_graves=8` | Ctrl+F3 → Sonido → «Graves, corte y madrugada...» |
+| NV2 | «Cortar el grave más hondo»: de noche, lo de debajo de **80 Hz** con la curva del subgrave (Butterworth de cuarto orden en **fase lineal**: no mueve los picos), en una etapa aparte detrás del grave en mono (`GraveMono.DeNoche`). Entra con la misma bajada de una hora, **pareja en dB** donde el corte ya quita de verdad (a 0,7 veces el corte: `MezclaDeCorte`). Deslizador de 40 a 120 Hz a pasos de 10; a la izquierda, apagado. El corte nuevo vale desde la siguiente canción | `noche_corte=80` (0 lo apaga) | la misma hoja |
+| NV4 | «Más bajo de madrugada»: desde la **1** otra bajada de una hora, pareja en dB, hasta el **70 %** (nunca más alto que la noche), con los graves de noche a **12 dB** (o los del mando, si son más) y el corte (el del mando; con el mando apagado, 80 Hz). A las 7 todo sube junto en los 20 s de siempre. Prendida ya de madrugada, arranca en la madrugada | `noche_madrugada=1`, `noche_madrugada_desde=1` (de las 22 a las 6), `noche_madrugada_pct=70` (50 a 90) | la misma hoja, con «Probar la madrugada» |
+| NV5a | Los videos bajan **los mismos dB** que la música (antes, la perilla al % del deslizador: al 50 %, −6 dB frente a −10) | (con `noche=`) | los dos programas |
+| NV5b | Solo rocola-xp: de noche, al **empezar** cada video, a mpv el mismo estante de 120 Hz y el mismo corte (dos `highpass` de Butterworth: fase mínima, sin limitador detrás) con el avance de ese momento; de día, nada | función `noche_video` de Rocola OS (encendida) | `RocolaOs/RocolaOs.NocheVideo.cs` (gancho g102) |
+
+Además:
+
+- **«Probar»** pone la noche entera (volumen, graves y corte) y **«Probar la madrugada»** la madrugada entera, hasta otro toque (o 30 min).
+- **El volumen parejo del billar ya no aprende** de una canción que sonó con la noche puesta: mide delante del limitador y con la noche
+  más baja aprendía a subirla de día (pasaba también antes de esto, con el volumen de la noche).
+- En la tarjeta del volumen, el renglón de «Graves de noche» pasó a ser el botón **«Graves, corte y madrugada...»**, que abre su hoja
+  (a la izquierda NV1 y NV2 con «Probar la noche»; a la derecha NV4 y «Volver al volumen»).
+- La bajada y la subida de los graves y del corte siguen a su meta con la misma rampa (en la bajada de una hora van pegados a ella; con un
+  mando, «Probar» o la mañana, el recorrido entero en 20 s o 1,5 s): sin escalones.
+
+**Cómo se probó** (todo en Linux, con canciones y videos sintéticos; **nada oído en el bar ni probado en el A4**):
+
+- `pruebas/noche.cs` (XP con Mono, y la misma sobre rocola-xp.dll con .NET 10): **136 de 136**. Lo nuevo (tramo 10): la configuración y
+  la marca del 8; las horas de la madrugada (las 0:59 no, la 1:00 sí, las 6:59 sí, las 7:00 no; desde las 23 y desde las 22); la mezcla
+  pareja en dB (a 0,1, 0,25, 0,5, 0,75 y 0,9 del avance quita esa parte de los −12,6 dB a 0,7 veces el corte); la etapa del corte de día
+  **bit a bit** leída a trozos de 4096, 1, 777, 2 y 3000; con la noche entera −22,2 dB a 40 Hz (la curva de verdad da −24: el filtro de
+  3,5 periodos se queda en −22 a la mitad del corte, igual que el subgrave), −11,9 a 56 Hz, −3,25 a 80 Hz, −0,02 a 160 Hz y 0,0000 a
+  1 kHz; entrar y salir a media canción sin perder ni repetir muestras y sin chasquido (el mayor salto entre muestras, 0,0156, igual que
+  la música sin tocar); el disco continuo sin escalón en el cambio; la noche en una hora (a la media hora −1,61 dB, 4 dB de graves y el
+  corte a la mitad; al final −3,22, 8 dB y el corte entero); la madrugada en otra hora (de −3,22 a −5,15: −3,54 a los 10 min, −4,18 a los
+  30; los graves de 8 a 12); prendida ya de madrugada; a las 7 todo vuelve en 21 s; «Probar» en 1,5 s y «Probar la madrugada» en 0,5 s;
+  NV5a; y que el volumen parejo no aprende de noche.
+- `compara-cadena` (la cadena de día contra la de antes): **16 iguales bit a bit, 0 distintas** (XP con Mono y rocola-xp con .NET 10).
+  `cadenaentera` 91/91, `billar18` 35/35, `billarparejo` 8/8, `gravemono` 55/55 (en rocola-xp 54/55: el que falla, «leer no reserva
+  memoria», falla igual con la rocola-xp de antes: lo reserva el adaptador de la lectura de NAudio 3 de la prueba, no la rocola).
+- NV5b, `sistema/rocola/Xp/Pruebas/RocolaOs/noche-video/prueba.sh`: la rocola entera con un video de 50 Hz y 1 kHz: de noche sin Rocola
+  OS el video sale como el archivo; con `noche_video` el 50 Hz baja **24,15 dB** frente al 1 kHz (lo mismo que mpv suelto con el mismo
+  filtro) y el 1 kHz no cambia; de día, sin filtro.
 
 ## Fuentes
 
