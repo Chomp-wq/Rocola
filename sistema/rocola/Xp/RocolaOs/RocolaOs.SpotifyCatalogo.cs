@@ -270,7 +270,7 @@ namespace Rocola
         // g47 (Form1.Biblioteca.cs, RefreshAlbums): LA CABECERA de la letra de Spotify dice «SPOTIFY» (como «VIDEOS» o «LO MAS SONADO»)
         private string RocolaOsSpotifyCatalogoSeccion(char letra, string deXp)
         {
-            RocolaOsPgRefresco();   // (pared-generos) la pastilla y las portadas de la pagina que se mira
+            RocolaOsPgRefresco();   // (pared-generos) las portadas de la pagina que se mira
             if (letra == RocolaOsSpotifyParedMarca && rocolaOsSpPared != null && RocolaOsSpotifyCatalogoVa) return RocolaOsSpotifyParedMira();
             return letra == RocolaOsSpotifyMarca && RocolaOsSpotifyCatalogoVa ? "SPOTIFY" : deXp;
         }

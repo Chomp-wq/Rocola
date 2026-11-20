@@ -1720,7 +1720,7 @@ namespace Rocola
                 if (headerView != null)
                 {
                     Color acCab = headerView.Accent;   // a una local: es un tipo por valor dentro de un Control
-                    sb = Mix(sb, RocolaOsParedGenerosFirma(headerView.Section)); sb = Mix(sb, headerView.Page);   // ROCOLA OS g93: (XP) sb = Mix(sb, headerView.Section); sb = Mix(sb, headerView.Page); — la imagen de arriba se rehace si cambia la pastilla del genero (RocolaOs/RocolaOs.ParedGeneros.cs; sin ella, la misma cadena de XP)
+                    sb = Mix(sb, RocolaOsParedGenerosFirma(headerView.Section)); sb = Mix(sb, headerView.Page);   // ROCOLA OS g93: (XP) sb = Mix(sb, headerView.Section); sb = Mix(sb, headerView.Page); — devuelve la misma cadena; solo mide lo que tarda cada cuadro con la pared delante (RocolaOs/RocolaOs.ParedGeneros.cs)
                     sb = Mix(sb, headerView.Total); sb = Mix(sb, acCab.ToArgb());
                 }
                 sb = Mix(sb, lblStatus != null ? lblStatus.Text : "");

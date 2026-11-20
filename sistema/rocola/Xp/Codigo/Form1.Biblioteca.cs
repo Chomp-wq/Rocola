@@ -2385,7 +2385,7 @@ namespace Rocola
             if (currentLetter == TopMark) return topDiscs ?? new List<Album>();
             List<Album> list;
             if (!byLetter.TryGetValue(currentLetter, out list)) list = RocolaOsSpotifyCatalogoLista(currentLetter);   // ROCOLA OS g44: (XP) if (!byLetter.TryGetValue(currentLetter, out list)) list = new List<Album>(); — los discos de la letra de Spotify (RocolaOs/RocolaOs.SpotifyCatalogo.cs; de cualquier otra, una lista vacia, como XP)
-            return RocolaOsParedGenerosLista(list);   // ROCOLA OS g90: (XP) return list; — con el modo Spotify y el catalogo, la letra por genero, artista y de cada artista lo tuyo antes que lo del catalogo, hasta 500 paginas (RocolaOs/RocolaOs.ParedGeneros.cs; sin ellos, la lista de XP)
+            return RocolaOsParedGenerosLista(list);   // ROCOLA OS g90: (XP) return list; — con el modo Spotify y el catalogo, la letra con los discos del catalogo intercalados en el orden de XP (artista y disco), hasta 500 paginas, primero los de los artistas mas famosos (RocolaOs/RocolaOs.ParedGeneros.cs; sin ellos, la lista de XP)
         }
 
         private void RefreshAlbums()
@@ -2814,7 +2814,7 @@ namespace Rocola
             //
             // El cambio de PAGINA y el de LETRA siguen repintando todo, que ahi si cambian las 18 casillas.
             Rectangle r = albumView.RectSeleccion();
-            if (r.Width > 0 && r.Height > 0) albumView.Invalidate(r); else albumView.Invalidate(); RocolaOsParedGenerosMovio();   // ROCOLA OS g94: (XP) if (r.Width > 0 && r.Height > 0) albumView.Invalidate(r); else albumView.Invalidate(); — al moverse dentro de la pagina, la pastilla del genero de la cabecera dice el del disco elegido (RocolaOs/RocolaOs.ParedGeneros.cs; sin ella, nada)
+            if (r.Width > 0 && r.Height > 0) albumView.Invalidate(r); else albumView.Invalidate();
         }
 
         private int PageDiscCount()

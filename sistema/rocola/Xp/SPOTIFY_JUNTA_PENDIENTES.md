@@ -36,7 +36,9 @@
      pared, apagado = XP tal cual.
 5. **El modo noche también con Spotify** (pregunta del dueño del 15-11-2026): comprobar con una escena que una canción de Spotify (la
    fuente de `RocolaOs.SpotifyFuente.cs` por `ArmaCadena`) baja al `noche_pct` de noche y con «Probar», con su rampa, igual que una de XP.
-6. **Las letras por género** (`PLAN_PARED_GENEROS.md`): HECHO en la rama `pared-generos` (`FASE11_pared-generos.md`, ganchos g90-g94; 53 de 53
-   en JIT y NativeAOT con la API falsa y un catálogo de prueba inventado). **No entra en la compilación del cumpleaños**: se junta después. Al
-   juntar: la prueba del catálogo (`Pruebas/RocolaOs/catalogo/prueba.sh`) ya le pasa `ROCOLA_CATALOGO_URL` a la API falsa (si no, con el modo
-   encendido y la llave, a los 45 s se miraría GitHub); y el formato del .txt del catálogo, con lo que escriba el grupo catalogo-datos.
+6. **Las letras con el catálogo** (`PLAN_PARED_GENEROS.md`, con la decisión del dueño del 20-11-2026: el orden de XP con los discos del
+   catálogo intercalados y la pastilla del género en cada casilla, no el orden por género): HECHO en la rama `pared-generos`
+   (`FASE11_pared-generos.md`, ganchos g90-g98). **No entra en la compilación del cumpleaños**: se junta después. Al juntar: la prueba del
+   catálogo (`Pruebas/RocolaOs/catalogo/prueba.sh`) ya le pasa `ROCOLA_CATALOGO_URL` a la API falsa (si no, con el modo encendido y la llave,
+   a los 45 s se miraría GitHub); los ganchos g94-g98 tocan `CaratulasSeparadasGpu.cs` (la casilla de la tarjeta) y g91-g92 `Form1.Pared.cs`:
+   si otro grupo tocó esas líneas, se renumera en la junta.

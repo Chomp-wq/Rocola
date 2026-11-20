@@ -49,10 +49,10 @@ for L in ["#", "A", "B", "C", "L", "M", "O", "Q"]:
             bloque.append("A\tAlma Norteña\tRegional\t99998\tcatart02\tMX\tw")
             for k, x in enumerate(["Corridos Bravos", "Otros Corridos Bravos"]):
                 bloque.append(disco(x, 1995 + k)); dis += 1
-            bloque.append("A\tArtista Raro de Prueba\tRock\t99997\t\tMX\tw")
+            bloque.append("A\tAbeja Rara de Prueba\tRock\t99997\t\tMX\tw")
             bloque.append(disco("Disco Que No Esta", 2001, idfijo="catno0001")); dis += 1
             bloque.append(disco("Disco Sin Spotify", 2002, conid=False)); dis += 1
-            bloque.append(disco("Disco Por Nombre", 2003, conid=False)); dis += 1
+            bloque.append(disco("Disco Uno Por Nombre", 2003, conid=False)); dis += 1
             arts += 3
         i = 0
         while dis < grande:

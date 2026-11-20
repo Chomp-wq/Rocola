@@ -1080,7 +1080,7 @@ namespace Rocola
                 // que el sitio que le toca cambia con la pantalla. Y lo que quepa se pega a la DERECHA, para
                 // que no quede colgando en medio de un hueco.
                 float pw0 = Math.Max(3f, h * 0.13f);
-                float anchoNombre = pw0 + h * 0.32f + AnchoTexto(ajuste, Section, fSec) + 4f + RocolaOsParedGenerosAncho(h, fPag);   // ROCOLA OS g91: (XP) float anchoNombre = pw0 + h * 0.32f + AnchoTexto(ajuste, Section, fSec) + 4f; — la cabecera cuenta el sitio de la pastilla del genero junto a LETRA A (RocolaOs/RocolaOs.ParedGeneros.cs; sin ella, 0)
+                float anchoNombre = pw0 + h * 0.32f + AnchoTexto(ajuste, Section, fSec) + 4f;   // EN LINUX: AnchoTexto(g, t, f) (Form1.Ajustes.cs, ya traducida), directo: del Graphics solo mira su modo de letra, el del que llama; la Letra en vez de la Font
                 int pag0 = Page; if (pag0 < 0) pag0 = 0; else if (Total > 0 && pag0 >= Total) pag0 = Total - 1;
 
                 // LA RAYITA SEPARADORA se dibuja SIEMPRE que detras del nombre venga algo, lleve puntitos o no.
@@ -1163,7 +1163,7 @@ namespace Rocola
                 brocha.Color = ac.Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
                 TextoGdiPlus.Escribe(g, sec, fUsar, ajuste, brocha, new RectangleF(x, 0, tope, h), sfIzq, copia, medio);   // EN LINUX: g.DrawString
                 if (fApreta != null) fApreta.Dispose();
-                x += anchoSec; x += RocolaOsParedGenerosPinta(g, x, h, w, fPag, medio, copia);   // ROCOLA OS g92: (XP) x += anchoSec; — la pastilla del genero de XP del disco elegido, detras de LETRA A (RocolaOs/RocolaOs.ParedGeneros.cs; sin ella, nada y 0)
+                x += anchoSec;
 
                 if (!algoDetras) return;   // una sola pagina, o no cabe nada mas
                 int pag = pag0;
