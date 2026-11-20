@@ -194,11 +194,25 @@ namespace Rocola
                 catch (Exception ex) { return Falla(4, "no se pudo leer " + fcfg + " (" + ex.Message + ")"); }
                 foreach (string l in cfgXp) { string s = l.Trim(); if (s.StartsWith("dir=", StringComparison.Ordinal) && EsRutaWindows(s.Substring(4).Trim())) rutas.Add(s.Substring(4).Trim()); }
             }
+            // EL VOLUMEN PAREJO DE XP (18-11-2026, VolumenParejo.cs): lo aprendido antes de la marca parejo_v2=1 se midio con la presencia
+            // puesta y ya no vale. Si la configuracion de XP no la trae, su rocola_billar_nivel.txt NO se importa (rocola-xp empieza de
+            // cero igual que XP; la carpeta de XP no se toca): sin esto, una rocola-xp que ya tiene la marca (y la conserva al juntar las
+            // configuraciones) tomaria por bueno lo aprendido con la presencia.
+            bool xpParejoV2 = false;
+            if (cfgXp != null) foreach (string l in cfgXp) if (l.Trim() == "parejo_v2=1") xpParejoV2 = true;
+            string parejoFuera = null;
+            int iNivel = nombres.IndexOf("rocola_billar_nivel.txt");
+            if (iNivel >= 0 && !xpParejoV2)
+            {
+                parejoFuera = "rocola_billar_nivel.txt: no se importa (la configuracion de XP no trae parejo_v2=1: se aprendio con la presencia puesta)\r\n";
+                nombres.RemoveAt(iNivel); contenidos.RemoveAt(iNivel); deDonde.RemoveAt(iNivel);
+            }
             Traductor tr = new Traductor(discos, xp);
             tr.Vota(rutas);
 
             // 2. Cada tabla, traducida, a la carpeta de paso.
             StringBuilder informe = new StringBuilder();
+            if (parejoFuera != null) informe.Append(parejoFuera);
             List<string> hechos = new List<string>();   // rutas relativas de lo que hay en la carpeta de paso
             int totTraducidas = 0, totFuera = 0, totRutas = 0;
             for (int t = 0; t < nombres.Count; t++)
