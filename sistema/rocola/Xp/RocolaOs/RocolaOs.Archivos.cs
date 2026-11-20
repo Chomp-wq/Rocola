@@ -17,7 +17,7 @@
 // LAS LLAVES: un archivo cuyo nombre lleve llave, key, api, token, secret, clave, password, contrasena, credencial o credential, o .pem, o los
 // conocidos (rocola_github.txt, rocola_buzon.txt, rocola_genius.txt, rocola_spotify_llave.txt, rocola_spotify_api.txt), o que este dentro de
 // una carpeta soloist/ o spotify/ (las sesiones), es una LLAVE: se guarda (y se copia) con permisos 0600 y en la pantalla se ve TAPADA (cada
-// renglon, salvo sus 3 primeros y sus 3 ultimos caracteres, con «•»; los renglones de 6 o menos, enteros tapados), salvo con «Mostrar», que
+// renglon, salvo sus 3 primeros y sus 3 ultimos caracteres, con «•»; los renglones de menos de 16, enteros tapados), salvo con «Mostrar», que
 // pide confirmar y vale hasta cerrar el archivo. rocola_spotify.txt de una USB (la llave de Soloist, como la trae el dueno: SPOTIFY_SOLOIST.md)
 // se copia como rocola_spotify_llave.txt (en los datos, rocola_spotify.txt es la bitacora de Spotify, que el buzon SI sube).
 // Donde las esperan las ordenes que ya existen: las de Spotify (rocola_spotify_llave.txt y rocola_spotify_api.txt) aqui mismo, donde «spotify
@@ -73,6 +73,18 @@ namespace Rocola
             string r = Real(ruta);
             return r != null && raizReal != null && (r == raizReal || r.StartsWith(raizReal.TrimEnd('/') + "/", StringComparison.Ordinal));
         }
+        // ¿es un archivo normal (siguiendo los enlaces)? Una tuberia (FIFO), un aparato o un socket NO: abrir una tuberia deja colgada la
+        // pantalla (open espera a quien escriba) y un aparato de bloques mide 0 y se leeria entero (una USB de ext4 puede traerlos; nodev no
+        // vale para una ya montada por otro). stat de glibc (2.33 o mas nueva, la de Rocola OS); st_mode en el byte 24 de struct stat en x86-64.
+        [DllImport("libc", EntryPoint = "stat", SetLastError = true)] private static extern int stat_([MarshalAs(UnmanagedType.LPUTF8Str)] string ruta, byte[] st);
+        internal static bool EsArchivoNormal(string ruta)
+        {
+            if (RuntimeInformation.ProcessArchitecture != Architecture.X64) return File.Exists(ruta);
+            byte[] st = new byte[256];
+            try { if (stat_(ruta, st) != 0) return false; } catch { return false; }
+            uint modo = BitConverter.ToUInt32(st, 24);
+            return (modo & 0xF000) == 0x8000;   // S_IFMT, S_IFREG
+        }
         internal static bool EsEnlace(string ruta)
         {
             try { FileSystemInfo i = new FileInfo(ruta); if (!i.Exists) i = new DirectoryInfo(ruta); return i.Exists && i.LinkTarget != null; }
@@ -107,12 +119,14 @@ namespace Rocola
             }
             return false;
         }
-        // un renglon tapado: los 3 primeros y los 3 ultimos, lo de en medio «•» (con 6 o menos, todo); la misma cantidad de caracteres
+        // un renglon tapado: los 3 primeros y los 3 ultimos, lo de en medio «•» (con menos de 16, todo: en una contrasena de 7 a 15 los 3 y 3
+        // dejarian ver casi toda); la misma cantidad de caracteres
+        internal const int TapaEntero = 16;
         internal static string Tapa(string s)
         {
             if (string.IsNullOrEmpty(s)) return s;
             char[] c = s.ToCharArray();
-            if (c.Length <= 6) { for (int i = 0; i < c.Length; i++) c[i] = '•'; return new string(c); }
+            if (c.Length < TapaEntero) { for (int i = 0; i < c.Length; i++) c[i] = '•'; return new string(c); }
             for (int i = 3; i < c.Length - 3; i++) c[i] = '•';
             return new string(c);
         }
@@ -305,6 +319,7 @@ namespace Rocola
             error = null;
             try
             {
+                if (!EsArchivoNormal(ruta)) { error = "No es un archivo normal (una tubería, un aparato...): no se abre."; return null; }
                 FileInfo i = new FileInfo(ruta);
                 if (i.Length > MaxTexto) { error = "Mide " + Medida(i.Length) + ": aquí solo se abren los de texto de hasta 64 KB."; return null; }
                 byte[] b = File.ReadAllBytes(ruta);
@@ -370,6 +385,7 @@ namespace Rocola
             if (origen == null || !Dentro(origen.Ruta, ruta)) return "Ese archivo no es de la USB.";
             if (datos == null || !datos.Escribe || !Dentro(datos.Ruta, dirDestino)) return "Esa carpeta no es de los datos.";
             if (Directory.Exists(ruta)) return "Aquí solo se copian archivos, no carpetas.";
+            if (!EsArchivoNormal(ruta)) return "No es un archivo normal (una tubería, un aparato...): no se copia.";
             if (EsEnlace(destino)) return "En los datos hay un enlace con ese nombre: no se escribe.";
             if (Directory.Exists(destino)) return "En los datos hay una carpeta con ese nombre.";
             if (File.Exists(destino) && !reemplaza) return "YA_HAY";

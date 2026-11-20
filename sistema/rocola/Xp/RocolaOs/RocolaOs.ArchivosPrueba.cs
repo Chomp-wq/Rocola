@@ -125,7 +125,22 @@ namespace Rocola
                 && RocolaOsArchivos.EsLlave(dr + "/MI_API_KEY.txt", dr) && RocolaOsArchivos.EsLlave(dr + "/claude_token", dr) && RocolaOsArchivos.EsLlave(dr + "/soloist/sesion.json", dr));
             Si("EsLlave: rocola_config.txt y rocola_spotify.txt (la bitacora) no", !RocolaOsArchivos.EsLlave(dr + "/rocola_config.txt", dr) && !RocolaOsArchivos.EsLlave(dr + "/rocola_spotify.txt", dr));
             Si("Tapa: «client_secret=SECRETO123» -> «cli•••••••••••••••••123» (misma medida)", RocolaOsArchivos.Tapa("client_secret=SECRETO123") == "cli" + new string('•', 18) + "123");
-            Si("Tapa: 6 o menos, todo tapado", RocolaOsArchivos.Tapa("abcdef") == "••••••" && RocolaOsArchivos.Tapa("") == "");
+            Si("Tapa: menos de 16, todo tapado (una contrasena de 8 no deja ver 6)", RocolaOsArchivos.Tapa("abcdef") == "••••••" && RocolaOsArchivos.Tapa("") == ""
+                && RocolaOsArchivos.Tapa("pass1234") == new string('•', 8) && RocolaOsArchivos.Tapa("abcdefghijklmno") == new string('•', 15)
+                && RocolaOsArchivos.Tapa("abcdefghijklmnop") == "abc" + new string('•', 10) + "nop");
+            // una tuberia (FIFO) en la USB: ni se abre ni se copia (abrirla dejaba colgada la pantalla esperando a quien escriba)
+            string fifo = Path.Combine(u0, "tuberia.txt");
+            bool hayFifo = false;
+            try { using (System.Diagnostics.Process p = System.Diagnostics.Process.Start("mkfifo", fifo)) { p.WaitForExit(5000); hayFifo = p.ExitCode == 0; } } catch { }
+            if (hayFifo)
+            {
+                Si("EsArchivoNormal: un archivo si, una tuberia, una carpeta y uno que no esta NO", RocolaOsArchivos.EsArchivoNormal(Path.Combine(ur, "leeme.txt"))
+                    && !RocolaOsArchivos.EsArchivoNormal(fifo) && !RocolaOsArchivos.EsArchivoNormal(ur) && !RocolaOsArchivos.EsArchivoNormal(Path.Combine(ur, "no-esta")));
+                Si("LeeTexto: una tuberia no se abre (y no se queda esperando)", RocolaOsArchivos.LeeTexto(fifo, out err) == null && err != null);
+                Si("Copia: una tuberia NO", RocolaOsArchivos.Copia(usb, fifo, datos, dr, false, out dest) != null && !File.Exists(Path.Combine(dr, "tuberia.txt")));
+                try { File.Delete(fifo); } catch { }
+            }
+            else Si("mkfifo para probar la tuberia", false);
             Si("NombreNoVale: los que no valen", RocolaOsArchivos.NombreNoVale("a/b") != null && RocolaOsArchivos.NombreNoVale(".") != null && RocolaOsArchivos.NombreNoVale(" x") != null
                 && RocolaOsArchivos.NombreNoVale("x\ty") != null && RocolaOsArchivos.NombreNoVale(new string('a', 256)) != null && RocolaOsArchivos.NombreNoVale("rocola_genius.txt") == null);
             Si("Lo de fuera, intacto al final", File.ReadAllText(Path.Combine(f0, "secreto.txt")) == "lo de fuera\n" && Directory.GetFileSystemEntries(f0).Length == 1);

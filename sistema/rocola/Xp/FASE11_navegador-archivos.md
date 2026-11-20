@@ -56,8 +56,8 @@ la sesión: `archivos-capturas/` (`archivos-datos.png`, `archivos-usb.png`, `arc
 - **Las llaves**: un archivo cuyo nombre lleva llave, key, api, token, secret, clave, password, contrasena/contraseña, credencial o
   credential, o termina en .pem, o es uno de los conocidos (`rocola_github.txt`, `rocola_buzon.txt`, `rocola_genius.txt`,
   `rocola_spotify_llave.txt`, `rocola_spotify_api.txt`), o está dentro de una carpeta `soloist/` o `spotify/`, **se guarda y se copia con
-  permisos 0600** y **en la pantalla se ve TAPADO**: cada renglón con sus 3 primeros y sus 3 últimos caracteres y «•» en medio (6 o menos,
-  todo tapado; la misma cantidad de caracteres, para que el cursor caiga donde va). **«Mostrar»** pide confirmar («Se verá entera en la
+  permisos 0600** y **en la pantalla se ve TAPADO**: cada renglón con sus 3 primeros y sus 3 últimos caracteres y «•» en medio (con menos de
+  16, todo tapado —revisión: con 6 una contraseña de 8 dejaba ver 6—; la misma cantidad de caracteres, para que el cursor caiga donde va). **«Mostrar»** pide confirmar («Se verá entera en la
   pantalla: cualquiera que la mire la puede copiar») y vale hasta cerrar el archivo («Tapar» la vuelve a tapar). La bitácora dice «llave a la
   vista: NOMBRE» y «guardado: NOMBRE (llave, 0600)», nunca lo de dentro.
 - **`rocola_spotify.txt` de una USB se copia como `rocola_spotify_llave.txt`**: así trae el dueño la llave de Soloist (SPOTIFY_SOLOIST.md), y
@@ -71,7 +71,7 @@ la sesión: `archivos-capturas/` (`archivos-datos.png`, `archivos-usb.png`, `arc
 | `RocolaOs/RocolaOs.Archivos.cs` | La función «archivos» (de fábrica encendida), las raíces (los datos y las USB: detectarlas y montarlas de solo lectura), la regla de no salir (realpath), las llaves, leer y guardar el texto, copiar, renombrar, borrar |
 | `RocolaOs/RocolaOs.ArchivosPiezas.cs` | Las dos piezas propias de la hoja nativa: la lista (`RocolaOsListaArchivos`) y el editor (`RocolaOsEditor`), pintadas con SkiaSharp como las de Ctrl+F3 |
 | `RocolaOs/RocolaOs.ArchivosHoja.cs` | La hojita «Archivos», pedir un nombre y la hoja del editor |
-| `RocolaOs/RocolaOs.ArchivosPrueba.cs` | La orden `rocola-xp --prueba-archivos DATOS USB FUERA` (52 comprobaciones de la regla de no salir, las llaves, copiar, guardar...) |
+| `RocolaOs/RocolaOs.ArchivosPrueba.cs` | La orden `rocola-xp --prueba-archivos DATOS USB FUERA` (55 comprobaciones de la regla de no salir, las llaves, copiar, guardar...) |
 | `board/rocola/rootfs_overlay/usr/bin/rocola-navegador` | El guion: `hay`, `abre [URL]`, `olvida`, `cuanto` (BusyBox ash, sin `stat`) |
 | `board/rocola/rootfs_overlay/usr/share/rocola/navegador/inicio.html` | La página de inicio |
 | `configs/rocola_a4_defconfig` | Los paquetes del navegador |
@@ -179,7 +179,8 @@ página de inicio y el programa, pero no cog: la hoja lo dice y el botón queda 
 - **Nunca fuera**: cada ruta se resuelve con `realpath` de libc (los «..» y los enlaces, hasta el final) y tiene que quedar dentro de su raíz
   (la raíz misma o «raíz/...»: una raíz que empieza igual, `datos2`, no vale). Un enlace que sale **no se lista** (se cuenta: «1 enlace sale de
   la carpeta: no se muestra») ni se sigue; uno que se queda dentro sí. Un nombre nuevo es un nombre solo (sin «/», ni «.», ni «..», sin
-  caracteres de control, ni espacios al principio o al final, hasta 255 bytes). Lo que se escribe va a un archivo de paso en la misma carpeta
+  caracteres de control, ni espacios al principio o al final, hasta 255 bytes). Solo se abren y se copian **archivos normales** (`stat`: ni tuberías
+  ni aparatos ni sockets; revisión del 20-11-2026). Lo que se escribe va a un archivo de paso en la misma carpeta
   (creado ya con sus permisos), `fsync` y cambio de nombre; un destino que es un enlace no se escribe; un enlace se borra él, no a donde apunta.
 - **Dónde las esperan las órdenes que ya existen**: las de Spotify (`rocola_spotify_llave.txt`, `rocola_spotify_api.txt`) van en
   `/rocola/datos/xp`, donde ya las leen `spotify llave`, `rocola-soloist`, el buzón y rocola-xp: nada que cambiar. Las de GitHub, del buzón y
@@ -212,7 +213,7 @@ un cog de mentira y una USB de mentira; datos y llaves inventados. Nada en el A4
 | `make rocola_a4_defconfig` + `make show-info` (Buildroot del proyecto) | todo resuelto (arriba) |
 
 `prueba.sh`, por partes (las mismas en JIT y AOT):
-- **orden** (1, con 52 dentro): `rocola-xp --prueba-archivos`: los «..» que salen, los enlaces a una carpeta y a un archivo de fuera, el
+- **orden** (1, con 55 dentro desde la revisión; 52 antes): `rocola-xp --prueba-archivos`: los «..» que salen, los enlaces a una carpeta y a un archivo de fuera, el
   relativo con «..», un archivo de dentro por el enlace de fuera y una raíz que empieza igual: NO; el enlace que se queda dentro: sí; la
   lista sin los enlaces que salen (contados); leer: CRLF, más de 64 KB no, un byte 0 no; guardar: conserva CRLF, una llave nueva 0600, por un
   enlace NO (y lo de fuera sigue igual), por «fuga/x.txt» y por «sub/../../FUERA/y.txt» NO, en la USB NO, un archivo que no es llave conserva
@@ -267,3 +268,40 @@ probar cog de verdad; el traspaso de DRM master con un programa de mentira en QE
 - **Los archivos de XP abiertos con la rocola andando**: editar `rocola_config.txt` u otro de XP mientras la rocola corre puede no servir (XP lo
   reescribe al guardar lo suyo); para lo de XP, Ctrl+F3 y Ctrl+F2. Archivos es para las llaves y lo de Rocola OS.
 - **Al juntar**: los números de los ganchos (g100-g101) y `GANCHOS.tsv`; las dos líneas de la prueba de la hoja Pantalla (dos `Tab` más).
+
+## Revisión independiente (20-11-2026)
+
+Revisión con ojo adversarial de 5e12441 (seguridad del gestor, el traspaso de la pantalla, sin `ROCOLA_OS`, los paquetes). Arreglado:
+
+1. **Una tubería (FIFO) o un aparato en una USB colgaba la rocola**: `LeeTexto` y `Copia` abrían cualquier cosa que no fuera carpeta. Una
+   tubería mide 0 y `open` se queda esperando a quien escriba: la hoja (el hilo de la pantalla) se congelaba y con ella la cola de la música
+   al acabar la canción. Un aparato de bloques (una USB de ext4 puede traerlos; `nodev` no vale para una que ya montó otro) también mide 0 y
+   se habría leído o copiado entero. Ahora solo archivos normales (`RocolaOsArchivos.EsArchivoNormal`, `stat` de glibc 2.33+ —la de Rocola
+   OS la exporta—, `st_mode` en x86-64). 3 comprobaciones nuevas en `--prueba-archivos` (con `mkfifo`).
+2. **Tapar las llaves cortas**: con «3 primeros y 3 últimos» una contraseña de 8 caracteres dejaba ver 6. Ahora los renglones de menos de 16
+   caracteres van enteros tapados (`TapaEntero`); los largos, como antes. 1 comprobación más.
+
+Comprobado sin cambiar: la regla de no salir (realpath; «..», enlaces, nombres con «/», el renglón «..» no se renombra ni se borra, un enlace
+se borra él, `chmod` nunca sigue un enlace), nada se escribe en la USB, 0600 de las llaves, ninguna llave en bitácoras; el traspaso (si
+`Lanza` falla, `finally` retoma; el guion cierra cog con su trampa en ≤3 s, antes del SIGKILL de 5 s; si la rocola se cae, el vigilante del
+guion cierra cog); sin `ROCOLA_OS` g100 da `false` y g101 solo guarda; `make rocola_a4_defconfig` con el Buildroot del proyecto deja
+WPEWEBKIT, COG, COG_PLATFORM_DRM, LIBSOUP3_SSL, XKEYBOARD_CONFIG, LIBINPUT y HAS_UDEV puestos (y `COG_USE_SYSTEM_DBUS` sin poner: cog sin bus
+de sesión sigue como aplicación no única); `rapida.sh` pide la completa por `configs/`.
+
+Los dos `Tab` de `Pruebas/RocolaOs/pantalla/prueba.sh` («teclado»: `7.15:9` y `7.45:9`, uno por cada pestaña nueva, Navegador y Archivos,
+entre la pestaña Pantalla y la barra de la resolución) están bien: con ellos 71 de 71; sin ellos fallan las 3 de «teclado» (comprobado).
+**Al juntar**: el número de `Tab` depende de cuántas hojitas tenga Ctrl+F4; si otro grupo añade una, otro `Tab` más.
+
+Pruebas de la revisión (máquina compartida): compilar JIT 0 errores, 13 avisos de siempre; NativeAOT sin avisos IL/AOT (13,9 MB);
+`ganchos.py` TODO BIEN; `navegador-archivos/prueba.sh` JIT 51 de 51 (antes del arreglo) y, con el arreglo, «orden» y «archivos» 12 de 12 en
+JIT y todo 51 de 51 en AOT (`--prueba-archivos` 55 de 55); `pantalla/prueba.sh` JIT 71 de 71.
+
+Queda señalado, sin tocar (no es un fallo claro o pide decidir):
+- **cog corre como root y sin el sandbox de bubblewrap**: un fallo de WebKit explotado desde una página sería root en la rocola. Lo prudente
+  es entrar solo a páginas de confianza (claude.ai, GitHub); hacerlo correr con otro usuario pide darle la tarjeta y la entrada (grupos
+  `video` e `input`) y que el DRM master funcione sin root (por ser el primero en abrir): para probar en el A4.
+- `Kms.Recupera` no mira si `drmSetMaster` falló (si un cog quedara vivo, pantalla negra sin aviso). Hoy no pasa: el guion no acaba mientras
+  cog viva; solo si el guion se matara con SIGKILL antes de su trampa.
+- Al escribir una llave, lo último tecleado se ve (los 3 últimos del renglón): quien mire mientras se escribe la va viendo pasar.
+- `/run/rocola-navegador.pid` viejo de un pid que reusó otro proceso: «Ya hay un navegador abierto» (raro: /run se borra al prender).
+- Una USB que se monta mientras se cierra la ventana puede quedar montada (de solo lectura) hasta la siguiente vez.

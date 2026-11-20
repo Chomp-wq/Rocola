@@ -314,7 +314,7 @@ namespace Rocola
                 q.BackColor = x.CFondo; q.Font = x.FSub;
                 Rotulo lT = new Rotulo(); lT.SetBounds(22, 10, 876, 28); lT.BackColor = Color.Transparent; lT.ForeColor = Color.FromArgb(232, 238, 255); lT.Font = x.FTit; lT.Text = nom; lT.UseMnemonic = false;
                 Rotulo lD = new Rotulo(); lD.SetBounds(24, 42, 876, 36); lD.BackColor = Color.Transparent; lD.ForeColor = x.CTenue; lD.Font = x.FDes; lD.UseMnemonic = false;
-                lD.Text = ruta + (nuevo ? " (nuevo)" : "") + "\n" + (solo ? (t.Aviso ?? "Solo se ve (memoria USB).") : llave ? "Es una llave: se ve tapada (los 3 primeros y los 3 últimos de cada renglón) y se guarda con permisos 0600." : "Texto. Guardar (o Ctrl+S) lo guarda; Escape cierra.");
+                lD.Text = ruta + (nuevo ? " (nuevo)" : "") + "\n" + (solo ? (t.Aviso ?? "Solo se ve (memoria USB).") : llave ? "Es una llave: se ve tapada (de cada renglón, los 3 primeros y los 3 últimos; los cortos, enteros) y se guarda con permisos 0600." : "Texto. Guardar (o Ctrl+S) lo guarda; Escape cierra.");
                 RocolaOsEditor ed = new RocolaOsEditor(); ed.SetBounds(22, 84, 876, 486); ed.Letra = fm; ed.TabIndex = 0;
                 ed.SoloLeer = solo; ed.Tapado = llave; ed.Texto = t.Contenido;
                 Rotulo lE = new Rotulo(); lE.SetBounds(24, 576, 600, 22); lE.BackColor = Color.Transparent; lE.ForeColor = x.CTenue; lE.Font = x.FDes; lE.UseMnemonic = false;
