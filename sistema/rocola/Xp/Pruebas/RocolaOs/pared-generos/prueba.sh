@@ -227,14 +227,15 @@ PY
   portadas)
     # LAS PORTADAS DEL CATALOGO: al verse (la pagina 1 y luego la 2), del Cover Art Archive (falso), a su cache en el disco de la rocola; sin
     # portada (404), la casilla de XP sin caratula; a la 2a vez, del disco (ninguna peticion). (rapido-spotify) Y por adelantado las de las
-    # paginas de al lado y la que sigue hacia donde se va: con la 1 y la 2 vistas, de la 1 a la 4 (72 casillas como mucho)
+    # paginas de al lado y la que sigue hacia donde se va: con la 1 y la 2 vistas, de la 1 a la 4 (72 casillas), y la primera pagina de las
+    # dos letras de al lado (36): 108 como mucho
     apifalsa $e "$CAT"; d=$(datos $e encendido)
     abre $e "$d" "$BASE,14:38,18:40" 22 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/disco-portadas/ia-xp"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; n1=$(grep -c 'GET /release-group/' $a)
     pc="$W/disco-portadas/catalogo/portadas"
     echo "   portadas: $n1 pedidas ($(grep -c 'release-group.* 404' $a) sin portada), $(ls $pc/*.jpg 2>/dev/null | wc -l) en la cache, $(ls $pc/miniaturas 2>/dev/null | wc -l) miniaturas"
     si "portadas: sale con 0" test "$(cat $o/salio)" = 0
-    si "portadas: solo las de 2 paginas vistas y las 2 de al lado por adelantado (de 72 casillas): $n1" test "$n1" -le 72 -a "$n1" -ge 20
+    si "portadas: solo las de 2 paginas vistas, las 2 de al lado y la 1a de las 2 letras de al lado, por adelantado (de 108 casillas): $n1" test "$n1" -le 108 -a "$n1" -ge 20
     si "portadas: las 404 son las de los mbid que acaban en 0 (el falso) y no se guardan" bash -c "! ls '$pc' | grep -q '0\.jpg$'"
     si "portadas: las miniaturas de XP de estas portadas van a su cache (no a rocola_miniaturas)" bash -c "[ \$(ls '$pc/miniaturas' | wc -l) -ge 1 ]"
     si "portadas: la previa de 32 px no va a previews32 (nada de la cache del catalogo en el indice de XP)" bash -c "! grep -qa 'disco-portadas/catalogo' '$d'/rocola_miniaturas/previews32* 2>/dev/null"

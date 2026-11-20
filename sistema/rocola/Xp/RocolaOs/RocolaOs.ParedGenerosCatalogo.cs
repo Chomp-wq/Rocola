@@ -422,6 +422,22 @@ namespace Rocola
             // AL VERSE: una pagina se pide cuando lleva 300 ms a la vista (como el asentamiento de las portadas de XP); al hojear deprisa
             // (mantener ARRIBA: unas 15-30 paginas por segundo) no se pide ninguna de las que pasan
             internal const int AsientaMs = 300;
+            // (rapido-spotify, revision) EL ADELANTO (las paginas de al lado y la primera de las letras de al lado) solo con la pagina QUIETA de
+            // verdad: la pantalla la dio por quieta (Quieta: QuietaCuadros cuadros pintados seguidos y QuietaMs sin cambiar de pagina). Al hojear,
+            // un tiron de la pantalla (armar la letra siguiente al pasar de la ultima pagina, o la maquina cargada) deja la pagina mas de 300 ms
+            // sin cambiar sin que nadie la mire: la de la pagina se pide como antes (como XP), pero el adelanto (4 paginas mas) no, porque en un
+            // tiron no se pinta ningun cuadro. Lo de las de al lado espera en la cola (no se deja) hasta que la pagina este quieta o cambie.
+            internal const int QuietaMs = 600, QuietaCuadros = 6;
+            private static char quietaLetra; private static int quietaPagina = -1;
+            internal static void Quieta(char letra, int pagina)
+            {
+                lock (cerrojo)
+                {
+                    if (letra == quietaLetra && pagina == quietaPagina) return;
+                    quietaLetra = letra; quietaPagina = pagina;
+                    Monitor.PulseAll(cerrojo);
+                }
+            }
             private static bool arrancado;
             private static string carpeta, carpetaBarra;
             private static long bytesEnDisco, desdeQueSeMidio;
@@ -544,9 +560,11 @@ namespace Rocola
                             // la de la pagina que se mira primero y, si no queda ninguna de ella, la de su turno (rapido-spotify: las de al lado, por
                             // adelantado); en cada turno, en el orden en que se pidieron
                             int mejor = -1, mejorTurno = int.MaxValue;
+                            bool quieta = quietaLetra == visLetra && quietaPagina == visPagina;   // (el adelanto, solo con la pagina quieta)
                             for (int i = 0; i < cola.Count; i++)
                             {
                                 int tu = Turno(cola[i]);
+                                if (tu > 0 && !quieta) continue;
                                 if (tu >= 0 && tu < mejorTurno) { mejor = i; mejorTurno = tu; if (tu == 0) break; }
                             }
                             if (mejor >= 0) { p = cola[mejor]; cola.RemoveAt(mejor); }

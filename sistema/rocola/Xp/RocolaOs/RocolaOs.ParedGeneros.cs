@@ -110,6 +110,7 @@ namespace Rocola
         // lo que se mide (para el estado y las pruebas)
         private long rocolaOsPgArmadas, rocolaOsPgArmadasMsMax, rocolaOsPgCambios, rocolaOsPgCambiosPagina, rocolaOsPgMemMax, rocolaOsPgGcMax;
         private long rocolaOsPgUltimoCuadro, rocolaOsPgUltimoCambio;
+        private int rocolaOsPgCuadrosQuieta;   // (rapido-spotify) cuadros pintados desde que cambio la pagina (la pagina quieta: el adelanto)
         private int[] rocolaOsPgCuadros, rocolaOsPgCuadrosHojeo;
         private long rocolaOsPgApiAlEmpezar = -1;
         private static long rocolaOsPgHorneadas;                          // casillas horneadas con pastilla (estado)
@@ -506,7 +507,7 @@ namespace Rocola
             if (!rocolaOsPgArrancada) return;
             RocolaOsPgLetra e = RocolaOsPgVa ? RocolaOsPgMirada() : null;
             string sig = currentLetter + "|" + page.ToString(CultureInfo.InvariantCulture);
-            if (sig != rocolaOsPgUltimaPagina) { rocolaOsPgUltimaPagina = sig; rocolaOsPgUltimoCambio = Stopwatch.GetTimestamp(); if (e != null) rocolaOsPgCambiosPagina++; }
+            if (sig != rocolaOsPgUltimaPagina) { rocolaOsPgUltimaPagina = sig; rocolaOsPgUltimoCambio = Stopwatch.GetTimestamp(); rocolaOsPgCuadrosQuieta = 0; if (e != null) rocolaOsPgCambiosPagina++; }
             if (e == null) return;
             // (rapido-spotify) las letras de al lado (las de REGRESAR+izq/der, que llegan a su primera pagina): su primera pagina tambien se baja
             // por adelantado, detras de todo lo de esta letra (solo al disco: XP la lee al llegar)
@@ -768,6 +769,18 @@ namespace Rocola
                 }
             }
             rocolaOsPgUltimoCuadro = t;
+            // (rapido-spotify) LA PAGINA QUIETA: QuietaCuadros cuadros pintados y QuietaMs sin cambiar de pagina (en un tiron de la pantalla no se
+            // pinta nada: no cuenta). Entonces el hilo de las portadas puede bajar por adelantado las de al lado (RocolaOsPgPortadas.Quieta).
+            if (!rocolaOsPgSoloMide && rocolaOsPgArrancada && rocolaOsPgCuadrosQuieta >= 0 && rocolaOsPgUltimaPagina != null)
+            {
+                if (rocolaOsPgCuadrosQuieta < RocolaOsPgPortadas.QuietaCuadros) rocolaOsPgCuadrosQuieta++;
+                if (rocolaOsPgCuadrosQuieta >= RocolaOsPgPortadas.QuietaCuadros && (t - rocolaOsPgUltimoCambio) * 1000 / Stopwatch.Frequency >= RocolaOsPgPortadas.QuietaMs
+                    && RocolaOsPgVa && RocolaOsPgMirada() != null)
+                {
+                    RocolaOsPgPortadas.Quieta(currentLetter, page);
+                    rocolaOsPgCuadrosQuieta = -1;   // (una vez por pagina: hasta que cambie)
+                }
+            }
             return seccion;
         }
 
