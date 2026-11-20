@@ -448,7 +448,7 @@ namespace Rocola
         {
             mensajes.Clear();
             mensajes.AddRange(MensajesAtraccion(attractView != null ? attractView.SongCount : 0, CreditsPerCoin,
-                topNoche && topFilas.Count > 0 ? topFilas[0].Titulo : null));
+                topNoche && topFilas.Count > 0 ? topFilas[0].Titulo : null)); RocolaOsMensajesEscaparate(mensajes);   // ROCOLA OS g136: (XP) topNoche && topFilas.Count > 0 ? topFilas[0].Titulo : null)); — los mensajes del escaparate entre los que XP turna: la fecha (FI5), el cumpleanos (FI6), el clima (CL5); sin ROCOLA_OS no hace nada
         }
         internal static List<string> MensajesAtraccion(int canciones, int porMoneda, string favorita)
         {
