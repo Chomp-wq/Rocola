@@ -80,4 +80,8 @@ IL/AOT (13 avisos de C#, los mismos).
 
 - `ganchos.py --base 69e6547`: TODO BIEN; 63 ganchos en 25 archivos; `Codigo/` devolviendo los ganchos: 112 archivos iguales a `69e6547`.
 - `diff-xp.py --sin-ganchos` (112 archivos): 5 135 líneas quitadas, 4 868 puestas y 229 sin marca, las de la base.
-- falta: las baterías y el nivel 0 (se corren).
+- Baterías de `Pruebas/RocolaOs` ya corridas (pasadas/total): pantalla 71/71 JIT y AOT; navegador-archivos 51/51 JIT y AOT; pared-generos
+  69/69 JIT y AOT; catálogo 156/156 JIT y AOT; andamio 101/101 JIT (tras `58f5824`) y AOT; asistente 29/29 JIT (tras `0c7584a`) y AOT;
+  sustitución 97/97 JIT y AOT; spotify-xp 160/160 JIT. falta: spotify-xp AOT (la corrida con carga 7 a 12 dio 136/140, ver abajo).
+- Nivel 0 (JIT y AOT de arriba): lo de antes del corte y las escenas JIT, ver abajo. falta: escenas AOT, cierre, importa, otra vez el
+  recorrido ctrlf3 y las escenas que salen MAL corridas con la base.
