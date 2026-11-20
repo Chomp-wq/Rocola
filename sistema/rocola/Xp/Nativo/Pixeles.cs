@@ -6,6 +6,7 @@
 // aqui. OJO: un mapa que XP crea Format32bppArgb guarda en GDI+ el color tal cual y aqui premultiplicado (diferencia (a) de PORT_DIBUJO.md).
 using System;
 using System.Drawing;
+using System.Runtime.Intrinsics;
 using SkiaSharp;
 
 namespace Rocola.Nativo
@@ -42,7 +43,10 @@ namespace Rocola.Nativo
                     if (bpp == 4)
                     {
                         uint* tt = (uint*)t;
-                        for (int x = 0; x < r.Width; x++)
+                        // (rapido-caratulas) de cuatro en cuatro mientras los cuatro son opacos o del todo transparentes (casi todo en una
+                        // portada o en la interfaz): esos van tal cual (con el alfa a 255 en Rgb32), lo mismo que la tabla; los demas, uno a uno
+                        int x = Vector128.IsHardwareAccelerated ? CuatroTalCual(s, tt, r.Width, rgb) : 0;
+                        for (; x < r.Width; x++)
                         {
                             uint v = s[x], a = v >> 24;
                             if (a != 255 && a != 0) { byte* qa = q + (a << 8); v = (a << 24) | ((uint)qa[(v >> 16) & 255] << 16) | ((uint)qa[(v >> 8) & 255] << 8) | qa[v & 255]; }
@@ -71,7 +75,8 @@ namespace Rocola.Nativo
                     if (bpp == 4)
                     {
                         uint* ss = (uint*)s;
-                        for (int x = 0; x < r.Width; x++)
+                        int x = Vector128.IsHardwareAccelerated ? CuatroOpacos(ss, t, r.Width, rgb) : 0;   // (rapido-caratulas) los opacos, tal cual
+                        for (; x < r.Width; x++)
                         {
                             uint v = ss[x]; if (rgb) v |= 0xFF000000u;
                             uint a = v >> 24;
@@ -83,6 +88,48 @@ namespace Rocola.Nativo
                         for (int x = 0; x < r.Width; x++) t[x] = 0xFF000000u | ((uint)s[x * 3 + 2] << 16) | ((uint)s[x * 3 + 1] << 8) | s[x * 3];
                 }
             b.NotifyPixelsChanged();
+        }
+        // (rapido-caratulas, 20-11-2026) LOS PUNTOS QUE LA TABLA DEJA IGUAL, DE CUATRO EN CUATRO. Sin premultiplicar (Lee): un punto con alfa
+        // 255 o 0 sale tal cual (la tabla ni se mira); premultiplicar (Escribe): uno con alfa 255 sale tal cual (con alfa 0 la tabla lo deja en
+        // 0: ese no). Se copian de cuatro en cuatro los grupos en que los cuatro lo cumplen; los demas puntos, con la tabla: los mismos bytes que
+        // punto a punto (Pruebas/RapidoCaratulas/PixelesIgual). Cada una hace los grupos de cuatro enteros de la fila y devuelve hasta donde
+        // llego (lo que queda, menos de cuatro, lo hace el bucle de siempre).
+        private static int CuatroTalCual(uint* s, uint* t, int ancho, bool rgb)
+        {
+            int x = 0;
+            Vector128<uint> alfa = Vector128.Create(0xFF000000u), pon = rgb ? alfa : Vector128<uint>.Zero;
+            fixed (byte* q = tablaQuita)
+                while (x + 4 <= ancho)
+                {
+                    Vector128<uint> v = Vector128.Load(s + x), a = v & alfa;
+                    if ((Vector128.Equals(a, alfa) | Vector128.Equals(a, Vector128<uint>.Zero)) == Vector128<uint>.AllBitsSet) { (v | pon).Store(t + x); x += 4; continue; }
+                    for (int k = 0; k < 4; k++, x++)
+                    {
+                        uint u = s[x], au = u >> 24;
+                        if (au != 255 && au != 0) { byte* qa = q + (au << 8); u = (au << 24) | ((uint)qa[(u >> 16) & 255] << 16) | ((uint)qa[(u >> 8) & 255] << 8) | qa[u & 255]; }
+                        t[x] = rgb ? u | 0xFF000000u : u;
+                    }
+                }
+            return x;
+        }
+        private static int CuatroOpacos(uint* s, uint* t, int ancho, bool rgb)
+        {
+            int x = 0;
+            Vector128<uint> alfa = Vector128.Create(0xFF000000u), pon = rgb ? alfa : Vector128<uint>.Zero;
+            fixed (byte* pp = tablaPon)
+                while (x + 4 <= ancho)
+                {
+                    Vector128<uint> v = Vector128.Load(s + x) | pon;
+                    if (Vector128.EqualsAll(v & alfa, alfa)) { v.Store(t + x); x += 4; continue; }
+                    for (int k = 0; k < 4; k++, x++)
+                    {
+                        uint u = s[x]; if (rgb) u |= 0xFF000000u;
+                        uint au = u >> 24;
+                        if (au != 255) { byte* pa = pp + (au << 8); u = (au << 24) | ((uint)pa[(u >> 16) & 255] << 16) | ((uint)pa[(u >> 8) & 255] << 8) | pa[u & 255]; }
+                        t[x] = u;
+                    }
+                }
+            return x;
         }
         // lo de siempre de XP: LockBits(ReadOnly o WriteOnly, Format32bppArgb)
         public static void LeeSinPremultiplicar(SKBitmap b, Rectangle zona, IntPtr destino, int paso) { Lee(b, zona, FormatoPuntos.Argb32, destino, paso); }
