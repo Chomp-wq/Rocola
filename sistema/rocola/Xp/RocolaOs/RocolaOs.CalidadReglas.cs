@@ -1,14 +1,15 @@
 // LA SUSTITUCION INVISIBLE (fase 11, funcion «calidad_spotify»; FASE11_sustitucion.md): LAS REGLAS, sin estado (las prueba la orden
 // «rocola-xp --prueba-calidad [mp3...]»). Las tres decisiones del dueno del 7-11-2026 para el programa anterior («A, B y C»), traidas a rocola-xp:
 //
-//  A  CUANDO TU CANCION SUENA PEOR que la version de Spotify (Ogg Vorbis a 320 kbps, agudos hasta ~20 kHz). Con lo que XP YA MIDE de cada
+//  A  CUANDO TU CANCION SUENA CLARAMENTE PEOR que la version de Spotify (decision del dueno del 20-11-2026, AGENTS.md: Soloist suena en «Alta»,
+//     Ogg Vorbis a 160 kbps, y no se puede subir; «Spotify solo se tomara si la version en la rocola es peor»). Con lo que XP YA MIDE de cada
 //     cancion -el corte de agudos del repaso (rocola_eq.txt, EqCut) y el pre-eco (rocola_sonoridad.txt, algoritmo 7)- y lo que dice la
 //     cabecera del propio MP3 (su tasa: CBR, Xing/Info o VBRI; y su frecuencia):
 //       - el corte medido bajo 16 kHz;
 //       - menos de 128 kbps en CBR;
-//       - grabada a menos de 44,1 kHz;
-//       - 128 kbps (CBR) con el corte medido bajo 17,5 kHz;
-//       - pre-eco medido, 192 kbps o menos (CBR) y el corte medido bajo 19 kHz.
+//       - grabada a menos de 44,1 kHz.
+//     (Desde el 20-11-2026 ya NO cuentan «128 kbps con el corte bajo 17,5 kHz» ni «pre-eco con 192 kbps o menos y el corte bajo 19 kHz»:
+//     esas suenan como el Vorbis 160 de Soloist o mejor.)
 //     En VBR solo cuenta el corte, y la frecuencia (su tasa media sale de la musica, no de la calidad). SIN MEDIDA NO SE SUSTITUYE: lo que pide el corte y no lo
 //     hay, no cuenta.
 //  B  LA PAREJA, ESTRICTA: con el ISRC del MP3 (TSRC), la que tenga ESE ISRC; si no lo trae (o no hay), regla 2: el titulo base igual (sin lo de
@@ -37,7 +38,7 @@ namespace Rocola
 
     internal static partial class RocolaOsCalidad
     {
-        internal const float CorteMalHz = 16000f, Corte128Hz = 17500f, CortePreEcoHz = 19000f;
+        internal const float CorteMalHz = 16000f;
         internal const int DuracionTolMs = 2000;
         internal const int DuracionIsrcTolMs = 3000;   // (revision «invisible-y-reglas») por el ISRC, la duracion a 3 s, como el programa anterior (SpotifyMas.cs)
         internal const double TramoSeg = 0.5;
@@ -57,8 +58,6 @@ namespace Rocola
             if (i.Hz > 0 && i.Hz < 44100) { motivo = "grabada a " + i.Hz.ToString(CultureInfo.InvariantCulture) + " Hz"; return true; }
             if (i.Vbr) return false;   // en VBR solo cuenta el corte (y la frecuencia, arriba)
             if (i.Kbps > 0 && i.Kbps < 128) { motivo = i.Kbps.ToString(CultureInfo.InvariantCulture) + " kbps"; return true; }
-            if (i.Kbps == 128 && conCorte && corteHz < Corte128Hz) { motivo = "128 kbps y agudos hasta " + ((int)corteHz).ToString(CultureInfo.InvariantCulture) + " Hz"; return true; }
-            if (preEco && i.Kbps > 0 && i.Kbps <= 192 && conCorte && corteHz < CortePreEcoHz) { motivo = "pre-eco, " + i.Kbps.ToString(CultureInfo.InvariantCulture) + " kbps y agudos hasta " + ((int)corteHz).ToString(CultureInfo.InvariantCulture) + " Hz"; return true; }
             return false;
         }
 
@@ -355,10 +354,10 @@ namespace Rocola
             ok(SuenaPeor(0, false, vbr22, out mo), "A: VBR grabada a 22 kHz, sin medir el corte: si, la frecuencia vale tambien en VBR (" + mo + ")");
             ok(!SuenaPeor(16500, true, vbr44, out mo), "A: VBR de 90 kbps de media, con pre-eco y corte 16,5 kHz: no (en VBR la tasa y el pre-eco no cuentan)");
             ok(!SuenaPeor(0, false, new RocolaOsCalidadMp3 { EsMp3 = false, Hz = 22050 }, out mo), "A: lo que no es MP3, sin el corte: no");
-            ok(SuenaPeor(17000, false, cbr128, out mo), "A: 128 kbps y corte 17 kHz (" + mo + ")");
+            ok(!SuenaPeor(17000, false, cbr128, out mo), "A: 128 kbps y corte 17 kHz: no (20-11-2026: como el Vorbis 160 de Soloist)");
             ok(!SuenaPeor(0, false, cbr128, out mo), "A: 128 kbps sin corte medido: no (sin medida no se sustituye)");
             ok(!SuenaPeor(18000, false, cbr128, out mo), "A: 128 kbps y corte 18 kHz: no");
-            ok(SuenaPeor(18500, true, cbr192, out mo), "A: pre-eco, 192 kbps y corte 18,5 kHz (" + mo + ")");
+            ok(!SuenaPeor(18500, true, cbr192, out mo), "A: pre-eco, 192 kbps y corte 18,5 kHz: no (20-11-2026)");
             ok(!SuenaPeor(18500, false, cbr192, out mo), "A: 192 kbps y corte 18,5 kHz sin pre-eco: no");
             ok(!SuenaPeor(19500, true, cbr192, out mo), "A: pre-eco con corte 19,5 kHz: no");
             ok(!SuenaPeor(0, false, cbr320, out mo), "A: 320 kbps sin medir: no");

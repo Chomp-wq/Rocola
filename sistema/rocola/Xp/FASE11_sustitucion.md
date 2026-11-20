@@ -34,9 +34,11 @@ y el pre-eco (`rocola_sonoridad.txt`, algoritmo 7, `PreEcoDe`)— y lo que dice 
 frecuencia, la duración):
 - el corte medido bajo 16 kHz;
 - menos de 128 kbps en CBR;
-- grabada a menos de 44,1 kHz;
-- 128 kbps (CBR) con el corte medido bajo 17,5 kHz;
-- pre-eco medido, 192 kbps o menos (CBR) y el corte medido bajo 19 kHz.
+- grabada a menos de 44,1 kHz.
+
+(Decisión del dueño del 20-11-2026, al saberse que Soloist suena en «Alta», Ogg Vorbis 160 kbps, sin poder subirla: «Spotify solo se
+tomará si la versión en la rocola es peor». Se quitaron «128 kbps con el corte bajo 17,5 kHz» y «pre-eco con 192 kbps o menos y el corte
+bajo 19 kHz».)
 
 En VBR solo cuentan el corte y la frecuencia (revisión «invisible-y-reglas», I1); en lo que no es MP3, solo el corte. **Sin medida no se sustituye**: una regla que pide el corte y no lo hay no cuenta (un
 MP3 de 128 kbps aún sin repasar no se sustituye; uno de 96 kbps CBR sí, porque la cabecera ya lo dice).
