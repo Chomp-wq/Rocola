@@ -134,6 +134,9 @@ if [[ " $partes " == *" importa "* ]]; then
 	si "rocola_config.txt: la carpeta que no esta (E:\\Nada), fuera" nocontiene "$T/rocola_config.txt" "Nada"
 	si "rocola_config.txt: respaldo_dir= quitada" nocontiene "$T/rocola_config.txt" "respaldo_dir="
 	si "rocola_config.txt: lo demas tal cual (noche_pct=50, lo mas bajo del deslizador desde el 20-11-2026)" contiene "$T/rocola_config.txt" "noche_pct=50"
+	for k in noche_graves=10 noche_graves_8=1 noche_corte=100 noche_madrugada=0 noche_madrugada_desde=2 noche_madrugada_pct=60; do   # (20-11-2026, lo de los vecinos)
+		si "rocola_config.txt: $k tal cual (el modo noche para los vecinos, 20-11-2026)" contiene "$T/rocola_config.txt" "$k"
+	done
 	si "el modelo de IAS/, tal cual" igual "$T/IAS/rocola_ia.bin" "$XPC/IAS/rocola_ia.bin"
 	si "y su copia anterior" igual "$T/IAS/rocola_ia.bin.anterior-1" "$XPC/IAS/rocola_ia.bin.anterior-1"
 	si "el suelto «Rocola_EQ_IA.bin», como rocola_eq_ia.bin (rocola-xp lo pasa a IAS/)" igual "$T/rocola_eq_ia.bin" "$XPC/Rocola_EQ_IA.bin"

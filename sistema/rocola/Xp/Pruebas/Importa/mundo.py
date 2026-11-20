@@ -52,7 +52,7 @@ escribe("rocola_stats.txt", ["ROCOLA-STATS v1", "total-reproducciones=9", "total
 escribe("rocola_billar_nivel.txt", ["1.5|" + alto, "-0.75|" + la, "2|" + BORRADO])
 escribe("rocola_billar_bitacora.txt", ["fecha\tarchivo\tentera\tsegundos", "2026-11-01 22:10:00\t02 Tono Alto.mp3\tsi\t6"])
 escribe("rocola_teclas.txt", ["arriba=38", "abajo=40", "izquierda=37", "derecha=39", "poner=13", "regresar=27", "moneda=77", "saltar=83"])
-escribe("rocola_config.txt", ["gpu=1", "diagnostico=1", "noche=1", "noche_pct=50", "dir=D:\\MUSICA EXTRA", "dir=E:\\Nada", "respaldo_dir=D:\\Respaldos", "ia_datos=1"])
+escribe("rocola_config.txt", ["gpu=1", "diagnostico=1", "noche=1", "noche_pct=50", "noche_graves=10", "noche_graves_8=1", "noche_corte=100", "noche_madrugada=0", "noche_madrugada_desde=2", "noche_madrugada_pct=60", "dir=D:\\MUSICA EXTRA", "dir=E:\\Nada", "respaldo_dir=D:\\Respaldos", "ia_datos=1"])
 # lo que NO se trae
 escribe("rocola_estado.txt", ["ROCOLA-ESTADO v1", "ts=639296995223737626", "creditos=5"])
 escribe("rocola_noche.txt", ["noche=2026-11-13", "2|" + la])

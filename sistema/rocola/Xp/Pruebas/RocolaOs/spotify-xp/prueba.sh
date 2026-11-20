@@ -503,6 +503,11 @@ fi
 # Desde el 20-11-2026 (el deslizador de 50 a 90 %, antes de 70 a 90) dos corridas mas con noche_pct=50 (-10 dB) en un rocola_config.txt de
 # los datos: (4) prendida ya de noche y (5) «Probar», con su rampa (de 50 a 65 % la rampa da un paso mayor: sigue en 1,5 s; con el de antes,
 # 2,1 s).
+# Y desde el 20-11-2026 (lo de los vecinos, AUDIO_NOCHE_VECINOS_MODEST_2026-11-20.md: NV4 «Mas bajo de madrugada», de fabrica desde la 1 y al
+# 70 %) una corrida mas: (6) cruzando la 1 de la manana a media cancion (la zona a las 00:59:30), ya con la noche entera (-3,22 dB) y desde la
+# 1 la segunda bajada de una hora, pareja en dB, hasta el 70 % (-5,15 dB: -1,93 dB en 60 min, -0,0321 dB por minuto; los graves de noche de 8
+# a 12 dB y el corte a 80 Hz casi no tocan los tonos de 440 y 1000 Hz: -0,04 dB), sin escalon. (Los graves de noche a 8 dB de fabrica bajan
+# el tono de 440 Hz 0,05 dB, antes 0,02: dentro de lo que ya se admitia.)
 if [[ " $partes " == *" noche "* ]]; then
   echo "== noche (el modo noche de XP con una de Spotify y una de XP: al cruzar las 22 h, prendida de noche y con «Probar», con sus rampas)"
   ZI="$W/zonas"; mkdir -p "$ZI"
@@ -515,7 +520,7 @@ if [[ " $partes " == *" noche "* ]]; then
   enelsegundo() { while [ "$(date -u +%S)" != "$1" ]; do sleep 0.2; done; }   # (para que las 22:00 caigan a los 30 s de abrir)
   [ -f "$W/tono1000.mp3" ] || ffmpeg -loglevel error -y -f lavfi -i "aevalsrc=0.25*sin(2*PI*1000*t)|0.25*sin(2*PI*1000*t):s=44100:d=80" -c:a libmp3lame -b:a 192k "$W/tono1000.mp3"
   for c in sp xp; do
-    for m in noche yanoche probar yanoche50 probar50; do
+    for m in noche yanoche probar yanoche50 probar50 madrugada; do
       d=$(datos noche-$m-$c)
       case $m in *50) printf 'noche_pct=50\r\n' > "$d/rocola_config.txt" ;; esac   # (20-11-2026) lo mas bajo del deslizador
       [ $c = xp ] && for f in "$d"/musica/*/*/*.mp3; do cp "$W/tono1000.mp3" "$f"; done
@@ -526,6 +531,7 @@ if [[ " $partes " == *" noche "* ]]; then
         probar) z=$(zona dia-$c 12:00); pide="20:noche-probar;35:noche-probar"; fin=48 ;;
         yanoche50) z=$(zona ya50-$c 23:30); pide=""; fin=40 ;;
         probar50) z=$(zona dia50-$c 12:00); pide="20:noche-probar;35:noche-probar"; fin=48 ;;
+        madrugada) enelsegundo 30; z=$(zona mad-$c 00:59); cruce=$(( ($(date +%s) / 60 + 1) * 60 )); pide=""; fin=72; largo=75000 ;;   # (20-11-2026, NV4)
       esac
       [ $c = sp ] && pide="9:pide spotify:track:f440d050aa|$P|$largo${pide:+;$pide}"
       T0=$(date +%s.%N)
@@ -569,7 +575,17 @@ if [[ " $partes " == *" noche "* ]]; then
     si "probar50 $c: con la rampa rapida de 1,5 s (el paso mayor de 50 a 65 %; con el de antes, 2,1 s: $(nv probar50-$c rampa) s)" entre "$(nv probar50-$c rampa)" 1.2 1.85
     si "probar50 $c: se queda hasta el otro toque ($(nv probar50-$c abajo) s abajo) y vuelve a lo de antes ($(nv probar50-$c antes) -> $(nv probar50-$c vuelve) dB, en $(nv probar50-$c subida) s)" \
       bash -c "echo '$(nv probar50-$c abajo) > 13.9 && $(nv probar50-$c abajo) < 16.2 && $(nv probar50-$c vuelve) - $(nv probar50-$c antes) < 0.15 && $(nv probar50-$c antes) - $(nv probar50-$c vuelve) < 0.15 && $(nv probar50-$c subida) > 1.2 && $(nv probar50-$c subida) < 1.9' | bc | grep -q 1"
+    # (20-11-2026) NV4: la madrugada, cruzando la 1
+    o="$W/noche-madrugada-$c"
+    si "madrugada $c: sale con 0" test "$(cat $o/salio)" = 0
+    si "madrugada $c: el cruce de la 1 cae con la cancion sonando ($(nv madrugada-$c cruce) s de lo sonado)" entre "$(nv madrugada-$c cruce)" 8 50
+    si "madrugada $c: antes de la 1 ya suena la noche entera (-3,22 dB: $(nv madrugada-$c mediana) - $(nv probar-$c antes) dB) y quieta ($(nv madrugada-$c pend_antes) dB/min)" \
+      bash -c "echo '$(nv madrugada-$c mediana) - $(nv probar-$c antes) > -3.45 && $(nv madrugada-$c mediana) - $(nv probar-$c antes) < -3.05 && $(nv madrugada-$c pend_antes) > -0.012 && $(nv madrugada-$c pend_antes) < 0.012' | bc | grep -q 1"
+    si "madrugada $c: desde la 1 baja PAREJO, una hora del 80 al 70 % (-1,93 dB: -0,0321 dB/min: $(nv madrugada-$c pend_despues) dB/min)" entre "$(nv madrugada-$c pend_despues)" -0.045 -0.020
+    si "madrugada $c: sin escalon ($(nv madrugada-$c salto) dB entre dos tramos de 100 ms)" entre "$(nv madrugada-$c salto)" 0 0.005
   done
+  dp=$(echo "$(nv madrugada-sp pend_despues) - $(nv madrugada-xp pend_despues)" | bc)
+  si "madrugada: la de Spotify baja igual que la de XP (la pendiente: $dp dB/min de diferencia)" bash -c "echo '$dp < 0.012 && $dp > -0.012' | bc | grep -q 1"
   dp=$(echo "$(nv noche-sp pend_despues) - $(nv noche-xp pend_despues)" | bc)
   si "noche: la de Spotify baja igual que la de XP (la pendiente: $dp dB/min de diferencia)" bash -c "echo '$dp < 0.015 && $dp > -0.015' | bc | grep -q 1"
   db=$(echo "$(nv yanoche-sp mediana) - $(nv probar-sp antes) - $(nv yanoche-xp mediana) + $(nv probar-xp antes)" | bc)
