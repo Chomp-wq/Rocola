@@ -66,11 +66,22 @@ GENEROS_WD = {
     'Q900013': ('hip hop music', 'hip hop'), 'Q900014': ('mariachi', 'mariachi'), 'Q900015': ('bachata', 'bachata'),
     'Q900016': ('Latin ballad', 'balada romántica'), 'Q900017': ('art song', 'canción artística'),  # -> Otros
     'Q900018': ('electronic music', 'música electrónica'), 'Q900019': ('country music', 'country'),
+    # trampas para GenreLabel: las corrige el pre-mapeo del armador (PREMAPEO_EXACTO y PREMAPEO_FRASE)
+    'Q900020': ('New Romantic', 'nuevo romanticismo'), 'Q900021': ('synth-pop', 'synth pop'),      # Bolero y Electronica -> Pop
+    'Q900022': ('classic rock', 'rock clásico'), 'Q900023': ('garage rock', 'garage rock'),         # Clasica y DnB -> Rock
+    'Q900024': ('dancehall', 'dancehall'), 'Q900025': ('soundtrack', 'banda sonora'),               # Electronica -> Reggae; Regional -> Soundtrack
+    'Q900026': ('hardcore punk', 'hardcore punk'), 'Q900027': ('folk-pop', 'folk-pop'),             # Metal -> Punk; K-Pop -> Folk
+    'Q900028': ('dubstep', 'dubstep'), 'Q900029': ('tropical house', 'house tropical'),             # Reggae y Tropical -> Electronica
+    'Q900030': ('Latin jazz', 'jazz latino'), 'Q900031': ('contemporary worship music', 'música cristiana contemporania'),  # Jazz; Cristiana
+    'Q900032': ('pornographic film', 'cine pornográfico'), 'Q900033': ('hardcore', 'hardcore techno'),  # Otros (Hip-Hop por «rap»); Electronica
 }
 G = {'regional': 'Q900001', 'norteno': 'Q900002', 'banda': 'Q900003', 'cumbia': 'Q900004', 'salsa': 'Q900005',
      'bolero': 'Q900006', 'latinpop': 'Q900007', 'reggaeton': 'Q900008', 'rock': 'Q900009', 'pop': 'Q900010',
      'metal': 'Q900011', 'jazz': 'Q900012', 'hiphop': 'Q900013', 'mariachi': 'Q900014', 'bachata': 'Q900015',
-     'balada': 'Q900016', 'otros': 'Q900017', 'electro': 'Q900018', 'country': 'Q900019'}
+     'balada': 'Q900016', 'otros': 'Q900017', 'electro': 'Q900018', 'country': 'Q900019',
+     'newromantic': 'Q900020', 'synthpop': 'Q900021', 'classicrock': 'Q900022', 'garagerock': 'Q900023', 'dancehall': 'Q900024',
+     'soundtrack': 'Q900025', 'hardcorepunk': 'Q900026', 'folkpop': 'Q900027', 'dubstep': 'Q900028', 'tropicalhouse': 'Q900029',
+     'latinjazz': 'Q900030', 'worship': 'Q900031', 'porno': 'Q900032', 'hardcoretechno': 'Q900033'}
 
 SILABAS_A = ['Tol', 'Mira', 'Cara', 'Bel', 'Quin', 'Ros', 'Dal', 'Fer', 'Gua', 'Hor', 'Ixta', 'Jaru', 'Kel', 'Lun', 'Mor', 'Nava',
              'Ore', 'Pal', 'Rival', 'Sol', 'Tama', 'Ulu', 'Vel', 'Wal', 'Xala', 'Yuri', 'Zam']
@@ -121,11 +132,13 @@ def main():
         T.fila('l_area_area', id=k + 1, link=enlace, entity0=padre, entity1=hijo, edits_pending=0, link_order=0,
                entity0_credit='', entity1_credit='')
     # ---- generos de MusicBrainz y etiquetas (las de respaldo)
-    for i, n in enumerate(['cumbia', 'salsa', 'rock', 'pop', 'regional mexican', 'jazz'], 1):
+    for i, n in enumerate(['cumbia', 'salsa', 'rock', 'pop', 'regional mexican', 'jazz', 'new romantic', 'dubstep'], 1):
         T.fila('genre', id=i, gid=mbid('genre', i), name=n, comment='', edits_pending=0)
-    for i, n in enumerate(['cumbia', 'salsa', 'rock', 'pop', 'regional mexican', 'jazz', 'seen live', 'mexican'], 1):
+    for i, n in enumerate(['cumbia', 'salsa', 'rock', 'pop', 'regional mexican', 'jazz', 'seen live', 'mexican', 'new romantic',
+                           'dubstep'], 1):
         T.fila('tag', id=i, name=n, ref_count=1)
-    tag_id = {'cumbia': 1, 'salsa': 2, 'rock': 3, 'pop': 4, 'regional mexican': 5, 'jazz': 6, 'seen live': 7, 'mexican': 8}
+    tag_id = {'cumbia': 1, 'salsa': 2, 'rock': 3, 'pop': 4, 'regional mexican': 5, 'jazz': 6, 'seen live': 7, 'mexican': 8,
+              'new romantic': 9, 'dubstep': 10}
 
     estado = {'artist': 0, 'credit': 0, 'rg': 0, 'release': 0, 'url': 0, 'lau': 0, 'lru': 0, 'caa': 0}
     wd_sp, wd_art, lb_art, lb_rg = [], [], [], []
@@ -286,6 +299,24 @@ def main():
         x = artista(nombre, area=areas[idx % len(areas)], generos=gg, wikipedias=(idx * 13) % 60,
                     escuchas=(idx * 7919) % 5000000, oyentes=(idx * 104729) % 90000)
         discos_varios(x, nombre, 1 + idx % 7, (idx * 31337) % 800000 + 10, 1960 + idx % 50)
+
+    # ---- las trampas de GenreLabel con los nombres de Wikidata y MusicBrainz (el pre-mapeo del armador): (nombre, generos, sale)
+    for nombre, gg, area in (('A Flock of Inventadas', ['newromantic', 'synthpop'], 5),     # como A Flock of Seagulls: Pop, no Bolero
+                             ('Clasicos del Garage', ['classicrock', 'garagerock'], 5),     # Rock, no Clasica ni DnB
+                             ('Dancehall Inventado', ['dancehall'], 6),                    # Reggae, no Electronica
+                             ('Bandas Sonoras Inventadas', ['soundtrack'], 5),             # Soundtrack, no Regional
+                             ('Hardcore Inventado', ['hardcorepunk'], 5),                  # Punk, no Metal
+                             ('Folk Pop Inventado', ['folkpop'], 5),                       # Folk, no K-Pop
+                             ('Dubstep Tropical', ['dubstep', 'tropicalhouse'], 5),        # Electronica, no Reggae ni Tropical
+                             ('Jazz Latino Inventado', ['latinjazz'], 2),                  # Jazz, no Latino
+                             ('Alabanza Inventada', ['worship'], 1),                       # Cristiana, no Hip-Hop
+                             ('Gabber Inventado', ['hardcoretechno'], 5),                  # Electronica, no Metal
+                             ('Cine Raro Nomas', ['porno'], 5)):                           # sin genero (no Hip-Hop): fuera
+        x = artista(nombre, area=area, generos=gg, wikipedias=20, escuchas=10 ** 6, oyentes=10 ** 4)
+        discos_varios(x, nombre.split()[0], 2, 50000, 1983)
+    x = artista('Etiquetas Trampa', area=5, generos=['otros'], etiquetas=[('new romantic', 4), ('dubstep', 2), ('seen live', 30)],
+                escuchas=30000, oyentes=900)                                   # por etiquetas de MusicBrainz: Pop (no Bolero)
+    disco(x, 'Trampa Uno', ano=1984, escuchas=40)
 
     T.escribe(salida)
     cache = os.path.join(salida, 'cache')
