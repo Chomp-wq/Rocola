@@ -10,7 +10,7 @@
 #   AOTMIO:   el programa en NativeAOT, para «reloj» (aot:CARPETA; de fabrica /root/rocola-trabajo/fase11/cielo-nucleo/aot)
 #   W:        la carpeta de trabajo (de fabrica /root/rocola-trabajo/fase11/cielo-nucleo/prueba; se rehace); CAPTURAS (de fabrica $W/capturas)
 #   PY:       donde estan brotli y astral (pip install --target PY brotli astral==3.2; de fabrica /root/rocola-trabajo/fase11/cielo-nucleo/py)
-# partes (de fabrica todas): ganchos orden clima apagado noche escenas medio reloj
+# partes (de fabrica todas): ganchos orden clima apagado noche calma escenas medio reloj
 #   ganchos  ganchos.py TODO BIEN y diff-xp.py --sin-ganchos con las cuentas de la base (5135 / 4868 / 229)
 #   orden    `rocola-xp --prueba-cielo` (las cuentas: TODO BIEN), las salidas y puestas del sol contra la NOAA (astral) a +-3 min, el calendario
 #            de §6 dia por dia (2026) y el tercer domingo de junio
@@ -20,6 +20,7 @@
 #            ROCOLA_OS=1 y todas sus claves en 0: los degradados del cielo byte a byte y la forma de los cuadros, iguales a los de BASE; y el
 #            control (DN1 a las 13:00): distintas. Sin ROCOLA_OS no se escribe nada de Rocola OS.
 #   noche    DE NOCHE = XP: ROCOLA_CIELO_FECHA a las 23:30 de un dia sin fiesta, todo encendido y sin clima: la cinta igual a la de BASE
+#   calma    la calma de verdad (ROCOLA_CIELO_CALMA): una tecla la baja a 0,35 en 0,4 s y vuelve a 1 en 3 s a los 15 s sin tocar
 #   escenas  capturas a las 6:50, 9:30, 13:00, 17:40, 18:35 y 22:00 (con «Ver como se veria» por el buzon: /run/rocola-cielo-ver) de la pared
 #            casi vacia (con la regla 3 medida), y del escaparate, la pared llena, el disco abierto y el reposo con musica (DATOSM)
 #   medio    el cielo a media resolucion (cielo_media=1) da el mismo degradado que el directo
@@ -27,7 +28,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-ganchos orden clima apagado noche escenas medio reloj}"
+partes="${*:-ganchos orden clima apagado noche calma escenas medio reloj}"
 T0=/root/rocola-trabajo/fase11/cielo-nucleo
 W=${W:-$T0/prueba}
 BASE=${BASE:-$T0/base-jit}
@@ -230,15 +231,41 @@ if [[ " $partes " == *" escenas "* ]]; then
   # el disco, bajo la portada y a la izquierda de la lista (x 0-430, y 560-650); el reposo con musica, sobre la franja clara del horizonte
   # (que ahi esta en 525: hasta 0,848/0,868 de 525 = 513). La pared llena no deja cielo libre bastante (la mide la pared vacia).
   for h in $HORAS; do
-    for z in "escaparate --solo 560,560,1000,650" "disco --solo 0,560,430,650" "reposo --hasta 0.668 --solo 0,100,1024,513"; do
+    for z in "escaparate --solo 560,560,1000,650" "disco --solo 0,560,430,650"; do
       set -- $z; e=$1; shift; f=$CAPTURAS/$e-${h/:/}.png
       [ -f "$f" ] || continue
       contraste "$f" "$@" > "$W/contraste-$e-$h.txt" 2>&1
       si "regla 3 en $e a las $h: $(cat "$W/contraste-$e-$h.txt")" contiene "$W/contraste-$e-$h.txt" "regla 3 (<= 0,17): BIEN"
     done
+    # el reposo: DATO, no comprobacion (no hay texto en el cielo: los textos van en el panel, bajo el horizonte; la raya y su resplandor de
+    # 34 px suben con el panel hasta 491)
+    f=$CAPTURAS/reposo-${h/:/}.png; [ -f "$f" ] && echo "   DATO reposo $h: $(contraste "$f" --hasta 0.668 --solo 0,100,1024,513)"
   done
   si "las fases de las capturas (bitacora de la pared vacia): amanecer, manana, mediodia, atardecer, anochecer y noche" \
      bash -c "for x in amanecer manana mediodia atardecer anochecer noche; do grep -q \"fase del dia: \$x\" '$(bit vacia)' || exit 1; done"
+fi
+
+# ---------------------------------------------------------------- calma
+if [[ " $partes " == *" calma "* ]]; then
+  echo "== calma"
+  # al arrancar XP cuenta como si se acabara de tocar (lastInput = ahora): calmado 15 s. Una tecla (ABAJO) a los 25 s: la calma baja a 0,35
+  # (en 0,4 s) y, a los 15 s sin tocar, vuelve a 1 (en 3 s)
+  corre calma "$prog" 48 "$DATOS0" ROCOLA_OS=1 ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED ROCOLA_PULSA="25:40" ROCOLA_CIELO_CALMA="$W/calma/calma.txt"; espera calma
+  python3 - "$W/calma/calma.txt" > "$W/calma/calma.res" 2>&1 <<'PY'
+import sys
+m = [l.split() for l in open(sys.argv[1])]
+t = [(float(x[0]), float(x[1]), len(x) > 2) for x in m]
+ini = [c for (s, c, e) in t if 21 <= s < 24.5]
+pri = next((s for (s, c, e) in t if e and s > 20), None)
+baja = next((s for (s, c, e) in t if pri is not None and s >= pri and c <= 0.351), None)
+fin = next((s for (s, c, e) in t if pri is not None and s > pri and not e), None)
+vuelve = next((s for (s, c, e) in t if fin is not None and s >= fin and c >= 0.999), None)
+print(f"antes de la tecla {min(ini) if ini else '?'}..{max(ini) if ini else '?'}; elige desde {pri}; en 0,35 a los {None if baja is None else round(baja - pri, 2)} s; deja de elegir a los {None if fin is None else round(fin - pri, 1)} s; en 1 a los {None if vuelve is None else round(vuelve - fin, 2)} s")
+ok = ini and min(ini) >= 0.999 and pri and 24.5 <= pri <= 26.5 and baja is not None and baja - pri <= 0.6 and fin is not None and 14 <= fin - pri <= 16.5 and vuelve is not None and 2.6 <= vuelve - fin <= 3.4
+sys.exit(0 if ok else 1)
+PY
+  r=$?
+  si "la calma de verdad (Form1: la tecla de los 25 s): $(cat "$W/calma/calma.res")" test $r = 0
 fi
 
 # ---------------------------------------------------------------- medio

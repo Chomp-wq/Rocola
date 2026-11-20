@@ -189,6 +189,19 @@ namespace Rocola
             using (JsonDocument d = JsonDocument.Parse("{\"city\":\"Puebla\",\"latitude\":\"19.04\",\"longitude\":\"-98.20\"}"))
             { RocolaOsLugar g = RocolaOsLugar.DeJson(d.RootElement, ahora); Si("el lugar de get.geojs.io (numeros en texto)", g != null && g.Ciudad == "Puebla" && Math.Abs(g.Lat - 19.04) < 1e-6); }
             using (JsonDocument d = JsonDocument.Parse("{\"success\":false}")) Si("una respuesta sin lugar no vale", RocolaOsLugar.DeJson(d.RootElement, ahora) == null);
+            // ---- la calma (regla 5): a 60 cuadros por segundo, baja a 0,35 en 0,4 s y vuelve a 1 en 3 s, sin saltos ----
+            {
+                double paso = 1; float c = 1, antes = 1, mx = 0; int n = 0;
+                while (c > 0.3501f && n < 1000) { c = PasoCalma(ref paso, true, 1 / 60.0); mx = Math.Max(mx, Math.Abs(c - antes)); antes = c; n++; }
+                double baja = n / 60.0;
+                int m = 0;
+                while (c < 0.9999f && m < 1000) { c = PasoCalma(ref paso, false, 1 / 60.0); mx = Math.Max(mx, Math.Abs(c - antes)); antes = c; m++; }
+                double sube = m / 60.0;
+                Si("la calma baja a 0,35 en " + baja.ToString("0.00", ci) + " s y vuelve a 1 en " + sube.ToString("0.00", ci) + " s; lo mas que cambia de un cuadro a otro: "
+                    + mx.ToString("0.000", ci), Math.Abs(baja - 0.4) < 0.05 && Math.Abs(sube - 3.0) < 0.05 && mx < 0.05f);
+                double p2 = 1; float a1 = PasoCalma(ref p2, true, 0.2), a2 = PasoCalma(ref p2, false, 0.2);
+                Si("si deja de elegir a medias, vuelve desde ahi (" + a1.ToString("0.000", ci) + " y luego " + a2.ToString("0.000", ci) + ")", a2 > a1 && a1 > 0.35f && a1 < 1f);
+            }
             // ---- la ciudad elegida: las 41 de la lista ----
             Si("41 ciudades y la automatica (con las coordenadas de la Ciudad de Mexico)", RocolaOsCiudades.Nombres.Length == 42 && RocolaOsCiudades.Lat.Length == 42 && RocolaOsCiudades.Lon.Length == 42
                 && RocolaOsCiudades.Lat[0] == 19.43 && RocolaOsCiudades.Nombres[8] == "Ciudad de México" && RocolaOsCiudades.Nombres[23] == "Monterrey");

@@ -333,10 +333,8 @@ namespace Rocola
             Form1 r = RocolaOs.LaRocola;
             bool eligiendo = r != null && r.RocolaOsCieloEligiendo();
             if (r != null && verHasta > 0 && !verDesdeLaHoja && r.RocolaOsUltimaTecla() != verTecla) QuitaVerComo("se toco un boton");
-            calmaPaso += eligiendo ? -dt / CalmaBajaS : dt / CalmaSubeS;
-            if (calmaPaso < 0) calmaPaso = 0; else if (calmaPaso > 1) calmaPaso = 1;
-            double s = calmaPaso * calmaPaso * (3 - 2 * calmaPaso);
-            escena.Calma = (float)(CalmaMinima + (1 - CalmaMinima) * s);
+            escena.Calma = PasoCalma(ref calmaPaso, eligiendo, dt);
+            if (calmaLog != null && ms - calmaLogMs >= 100) { calmaLogMs = ms; calmaLog.Append((ms / 1000).ToString("0.00", CultureInfo.InvariantCulture)).Append(' ').Append(escena.Calma.ToString("0.000", CultureInfo.InvariantCulture)).Append(eligiendo ? " elige\n" : "\n"); }
             escena.Eligiendo = eligiendo;
             // lo de la foto, interpolado en 1 s (1,5 s si salta)
             if (fotoDesdeMs < 0) fotoDesdeMs = ms;
@@ -355,6 +353,15 @@ namespace Rocola
             { horizonteApuntado = horizonte; horizonteApuntadoMs = ms; RocolaOs.Apunta("cielo", "el horizonte de la escena: " + horizonte.ToString("0", CultureInfo.InvariantCulture) + " de " + alto + " px (modo " + modo + ")"); }
         }
         internal const double CalmaMinima = 0.35, CalmaBajaS = 0.4, CalmaSubeS = 3.0;
+        // UN PASO DE LA CALMA (regla 5): 'paso' va de 1 (normal) a 0 (calmado) en 0,4 s mientras alguien elige y vuelve en 3 s; lo que da sigue una
+        // curva suave de 1 a 0,35. Pura (la prueba la recorre).
+        internal static float PasoCalma(ref double paso, bool eligiendo, double dt)
+        {
+            paso += eligiendo ? -dt / CalmaBajaS : dt / CalmaSubeS;
+            if (paso < 0) paso = 0; else if (paso > 1) paso = 1;
+            double s = paso * paso * (3 - 2 * paso);
+            return (float)(CalmaMinima + (1 - CalmaMinima) * s);
+        }
         internal const int EligiendoSegundos = 15;
         // Ctrl+F4 (y lo que abra otra hoja del dueno de Rocola OS) lo dice aqui mientras esta abierta: cuenta como «alguien elige» (regla 5)
         internal static int HojasAbiertas;
@@ -432,12 +439,21 @@ namespace Rocola
         private static double[] relojMs; private static int relojN; private static double relojDesde = -1;
         private static void RelojCuadro(double ms)
         {
-            if (!relojLeido) { relojLeido = true; relojArchivo = Environment.GetEnvironmentVariable("ROCOLA_CIELO_RELOJ"); if (!string.IsNullOrEmpty(relojArchivo)) relojMs = new double[200000]; }
+            if (!relojLeido)
+            {
+                relojLeido = true; relojArchivo = Environment.GetEnvironmentVariable("ROCOLA_CIELO_RELOJ"); if (!string.IsNullOrEmpty(relojArchivo)) relojMs = new double[200000];
+                calmaArchivo = Environment.GetEnvironmentVariable("ROCOLA_CIELO_CALMA"); if (!string.IsNullOrEmpty(calmaArchivo)) calmaLog = new StringBuilder(1 << 16);
+            }
         }
+        // (pruebas: ROCOLA_CIELO_CALMA=archivo) la calma cada 0,1 s («segundos calma [elige]»), al cerrar
+        private static string calmaArchivo; private static StringBuilder calmaLog; private static double calmaLogMs = -1e9;
         // (lo llama el gancho con lo que tardo el cuadro anterior; desde los 8 s, para no medir el arranque)
+        private static double relojEscritoMs;
         internal static void TomaReloj(double trabajoMs, double ms)
         {
+            if (!relojLeido) RelojCuadro(ms);
             if (relojMs == null) return;
+            if (ms - relojEscritoMs >= 5000 && relojN > 0) { relojEscritoMs = ms; EscribeReloj(); }   // (cada 5 s: con las funciones apagadas no hay AlCerrar)
             if (relojDesde < 0) relojDesde = ms;
             if (ms - relojDesde < 8000 || relojN >= relojMs.Length || !(trabajoMs > 0)) return;
             relojMs[relojN++] = trabajoMs;
@@ -445,8 +461,13 @@ namespace Rocola
         private static bool relojGuardado;
         internal static void GuardaReloj()
         {
-            if (relojMs == null || relojN == 0 || relojGuardado) return;
+            if (calmaLog != null && !relojGuardado) try { File.WriteAllText(calmaArchivo, calmaLog.ToString()); } catch { }
+            if (relojMs == null || relojN == 0 || relojGuardado) { relojGuardado = true; return; }
             relojGuardado = true;
+            EscribeReloj();
+        }
+        private static void EscribeReloj()
+        {
             double[] v = new double[relojN]; Array.Copy(relojMs, v, relojN); Array.Sort(v);
             Func<double, double> p = q => v[Math.Min(v.Length - 1, (int)Math.Floor(q * (v.Length - 1) + 0.5))];
             string s = "cuadros=" + v.Length + " p50=" + p(0.5).ToString("0.00", CultureInfo.InvariantCulture) + " p95=" + p(0.95).ToString("0.00", CultureInfo.InvariantCulture)

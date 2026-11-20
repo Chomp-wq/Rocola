@@ -242,9 +242,10 @@ namespace Rocola
         // g120 (RenderFrame, antes de abrir el cuadro): la escena de este cuadro, la calma, lo interpolado de la foto
         private void RocolaOsCieloCuadro()
         {
-            if (!RocolaOs.Activo || !RocolaOsCielo.Va || stars == null) return;
+            if (!RocolaOs.Activo || stars == null) return;
             double ms = AhoraMs();
-            RocolaOsCielo.TomaReloj(lastFrameWork, ms);
+            RocolaOsCielo.TomaReloj(lastFrameWork, ms);   // (pruebas: ROCOLA_CIELO_RELOJ; tambien con las cuatro funciones apagadas, para comparar)
+            if (!RocolaOsCielo.Va) return;
             RocolaOsCielo.Cuadro(stars, Width, Height, auCuadro.BaseY - AurLineaAlza, StatusTopY, sceneMode, ShowAlbum, idleBlend, ms);
             RocolaOsCielo.Prepara(this);
         }
