@@ -70,7 +70,9 @@ Genius ni LRCLIB de verdad, ni con la biblioteca real, ni en el A4**: todo con M
   sus tiempos y sus versos; `RocolaOsLetra.En(pos)` da el verso de cualquier posición) y `RocolaOsLetraSuena.Verso` (la pone cada latido con
   la posición de lo que suena, `PosicionActual` de XP: **el verso que se canta y el siguiente que dice algo**). El LRC se lee con uno o
   varios tiempos por renglón, `[offset:±ms]` y sin las demás etiquetas.
-- **Las letras no se guardan**: en memoria (64 canciones) y en `/run/rocola-xp/letras/*.lrc` (lo vivo: se va al apagar). El estado,
+- **Las letras no se guardan**: en memoria (64 canciones) y en `/run/rocola-xp/letras/*.lrc` (lo vivo: se va al apagar; `/run` es
+  memoria, así que con **más de 400** letras se quitan las de fecha más vieja hasta **300**, nunca la que se acaba de poner: una rocola
+  prendida meses no la llena). El estado,
   `/run/rocola-xp/letras/estado`, lleva **solo números** (qué hay, el proveedor, cuántos versos, el de ahora y el siguiente, las
   peticiones y las fallidas), sin texto de la letra.
 - **El tope**: una petición por canción y por sesión (ninguna repetida si falló); un fallo de la red, un 429 o un 5xx frena **2 minutos**
@@ -107,7 +109,7 @@ teclas «c» y «s» son la moneda (67) y saltar (83) en esos datos, así que la
 
 | Escena | Qué comprueba |
 |---|---|
-| `orden` | `--prueba-letra-cielo` (sin la rocola): LRCLIB sincronizada y el verso a −1, 0, 1,99, 2, 5,5, 12,3, 18, 19,9 y 30 s (y el siguiente); de memoria sin otra petición; la petición con título, artista, disco, duración y el User-Agent genérico; `/run` sí y los datos no; otro arranque con el mismo `/run`: 0 peticiones; `[offset:+500]` y dos tiempos en un renglón; sin disco ni duración; LRCLIB 404 → la USLT del MP3; solo `plainLyrics`; ninguna en ningún lado tres veces = 1 petición; sin red = nada, 1 petición en tres vueltas, y con USLT, la del MP3 |
+| `orden` | `--prueba-letra-cielo` (sin la rocola): el tope de `/run` (405 viejas inventadas puestas antes: quedan 300 con la nueva); LRCLIB sincronizada y el verso a −1, 0, 1,99, 2, 5,5, 12,3, 18, 19,9 y 30 s (y el siguiente); de memoria sin otra petición; la petición con título, artista, disco, duración y el User-Agent genérico; `/run` sí y los datos no; otro arranque con el mismo `/run`: 0 peticiones; `[offset:+500]` y dos tiempos en un renglón; sin disco ni duración; LRCLIB 404 → la USLT del MP3; solo `plainLyrics`; ninguna en ningún lado tres veces = 1 petición; sin red = nada, 1 petición en tres vueltas, y con USLT, la del MP3 |
 | `l3` | El repaso (5 MP3, 3 con letra); «luna de papel brillante»: lo exacto de XP (el título de la 03) primero y la 04 (por su letra) la última; «perro viento frio tarde» (3 de 4) la encuentra; «perro azul viento frio» (2 de 4) no; el archivo solo con palabras sueltas en orden alfabético, sin acentos ni vacías; Genius apagado de fábrica: 0 peticiones |
 | `tres` | «viento frio tarde» está entera en la letra de la 05, pero son 3 palabras: no sale |
 | `apagado`, `cero` | Sin `ROCOLA_OS`, y con `ROCOLA_OS=1` y las cuatro apagadas: ni el archivo, ni `/run`, ni una petición, nada en la traza; y en `cero`, la traza igual a la de `apagado` quitando lo de RocolaOs (`compara_trazas.py --ignora RocolaOs: --holgura 80`) |
@@ -115,10 +117,17 @@ teclas «c» y «s» son la moneda (67) y saltar (83) en esos datos, así que la
 | `sinllave` | Encendida sin llave: 0 peticiones, la bitácora lo dice, y la letra de tus MP3 sí |
 | `suena` | La rocola toca «Amor de Prueba» (21 s, LRC de 10 versos cada 2 s): UNA petición a LRCLIB con título, artista, disco y duración; la letra sincronizada de LRCLIB; los versos avanzan en orden; el siguiente es el que le sigue; al acabar, nada suena; la letra en `/run` y nada en los datos; el estado sin texto |
 
-**Resultados (20-11-2026, en la máquina compartida):** JIT **68 BIEN, 0 MAL** (orden 22, apagado 5, cero 5, l3 10, tres 3, genius 12,
-sinllave 4, suena 7); NativeAOT: AOTRES. Compila sin avisos nuevos: los 13 de siempre en JIT y en NativeAOT (ninguno de `RocolaOs/`,
-ningún IL/AOT). `ganchos.py` TODO BIEN (51 ganchos en 19 archivos); `diff-xp.py --sin-ganchos`: 5 135 quitadas, 4 868 puestas, 229 sin marca
-(las de la base). Nivel 0 (sin `ROCOLA_OS`, contra la referencia congelada): NIVEL0RES.
+**Resultados (20-11-2026, en la máquina compartida, carga de 10 a 13 en 4 núcleos), con el programa de `88b0e80`:**
+
+| Qué | Resultado |
+|---|---|
+| Compila (JIT, `dotnet build -c Release`) | 0 errores; los **13 avisos de siempre** (SYSLIB0054, SYSLIB0050, CA2022, CA2014; todos de `Codigo/` y `Plataforma/`), ninguno de `RocolaOs/` |
+| NativeAOT (`dotnet publish -p:PublishAot=true`) | 0 errores; los mismos 13 avisos; **0 avisos IL/AOT**; el ejecutable de 13,8 MB |
+| Batería `letras` en JIT | **69 BIEN, 0 MAL** (orden 23, apagado 5, cero 5, l3 10, tres 3, genius 11, sinllave 4, suena 8) |
+| Batería `letras` en NativeAOT | **69 BIEN, 0 MAL** (los mismos). Una corrida anterior (el programa de `4c58187`, sin el tope de `/run`) dio 67 BIEN y 1 MAL en `cero`: solo la cuenta del reloj de 42 ms (`Form1.cs:724`, 354 frente a 450 con holgura 80, con la carga a 13) y un error de sintaxis al final porque `prueba.sh` se editó mientras corría; con el programa nuevo y la misma escena, IGUALES |
+| `ganchos.py` | TODO BIEN: 51 ganchos en 19 archivos; `Codigo/` devolviendo los ganchos, 112 archivos iguales a 69e6547 (17 con ganchos) |
+| `diff-xp.py --sin-ganchos` | 5 135 quitadas, 4 868 puestas, 229 sin marca: las de la base (49 ganchos devueltos en 17 archivos) |
+| Nivel 0 (`nivel0.sh`, sin `ROCOLA_OS`, alternando con la referencia congelada) | previo, código (112 archivos con sus líneas, CRLF y último byte), ganchos y diff-xp **BIEN**; **escena buscador IGUAL en JIT y en NativeAOT**; arranque IGUAL; captura IGUAL (a la segunda: la primera, solo las cuentas del reloj de 42 ms, 336 frente a 306); **moneda MAL por la base, no por esta rama**: la hoja Sonido de Ctrl+F3 trae el botón «Ecualizador...» de los cambios de XP del 17 y 18-11 (69e6547), que la referencia congelada (aef2211) no tiene (`PORT_xp-1718.md` ya lo dice); ningún gancho de esta rama corre sin `ROCOLA_OS` |
 
 ## 4. Lo que falta o no se sabe
 
