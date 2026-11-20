@@ -225,3 +225,36 @@ de gamma ni CTM**. Todo con las teclas de la máquina (`sendkey`), como se manej
   (K11: Internet, Spotify, Al día, La rocola, En casa...), que son de lo visual del final.
 - El recordatorio «Rocola OS: Ctrl+F4» en la barra de Ctrl+F3 (decisión 2 del plan) no se puso: es un gancho en `Nativo/Hoja.Pinta.cs`
   y cambia lo que se ve de Ctrl+F3; queda para la presentación de lo visual.
+
+## Revisión independiente (20-11-2026)
+
+Revisado en el código (no en el informe del grupo): `RocolaOs.Pantalla.cs`, `RocolaOs.VentanaPantalla.cs`, `RocolaOs.Ventana.cs`,
+`RocolaOs.PantallaRocola.cs`, `Kms.cs` (lo nuevo), los ganchos g80-g82 y `rocola-pantalla`.
+
+- **Seguridad, bien**: el modo de la prueba nunca se escribe (solo `GuardaModoPantalla` al confirmar, y no si la rocola se está cerrando):
+  un apagón o una caída a media prueba arrancan con lo guardado antes. La vuelta sola va por el reloj (`TickCount64`), no por los avisos.
+  `sin_confirmar` se escribe ANTES de poner el modo y solo se pone a 0 a los 60 s en pie (un cierre a propósito no lo pone a 0: si la
+  pantalla está a oscuras y el dueño apaga dos veces antes del minuto, el tercero ya es lo automático; es a propósito). Con
+  `drmModeSetCrtc` rechazado, lo automático al momento. `rocola-pantalla auto` borra el archivo, su `.bak` y su `.tmp`, cierra con SIGUSR1
+  y la marca `rocola-xp-reinicio` (las mismas que usa `/usr/bin/rocola`) y vuelve a borrar después del cierre. Los colores no pueden
+  dejar la pantalla negra (lo peor, brillo −50 con contraste 50 %, deja el blanco al 50 %).
+- **KMS, bien**: la radeon del A4 no es atómica; todo va por la vía legacy (`drmModeSetCrtc`, `drmModeCrtcSetGamma` con 256), y
+  `GAMMA_LUT`/`CTM` solo se usan si el CRTC las enseña (no hace falta la capacidad atómica para verlas). La tabla de «fábrica» (`i<<8`) es la
+  que pone el núcleo y, tras el `>>6` de `dce5_crtc_load_lut`, la misma que pone radeon al arrancar (`i<<2`). `CambiaModo`: con la misma
+  medida no rehace superficies; con otra, la nueva y, si el controlador no la acepta, la de antes al frente antes de soltar la nueva; los
+  buffers de GBM y los fb se sueltan una sola vez en cada camino (mirado camino por camino). Lo de `Suelta`/`Recupera` (DRM master para un
+  video) no lo usa rocola-xp (el video va por libmpv dentro del mismo OpenGL), así que el `UltimoFallo` del latido solo puede salir del
+  primer cuadro.
+- **Arreglado**: a ciegas (sin monitor al prender) o con un conector sin modos, `Kms` no llama a `EligeModo` y la clave del automático
+  quedaba en `null`: la hoja decía «Sin guardar» en lo automático, «Volver a lo automático» guardaba `modo=1024x768@60` como si fuera un
+  modo elegido, y con un fallo al presentar el latido intentaba volver a lo automático en cada latido. Ahora `AbreLaPantalla` la toma del
+  modo automático de la pantalla si nadie la dio.
+- **Ganchos y XP**: `ganchos.py` TODO BIEN (37 en 17 archivos; `Codigo/` = `fc7b667` al devolverlos); `diff-xp.py --sin-ganchos` sobre
+  los 109: 5 095 / 4 828 / 229, las de la base, 33 devueltos en 13 archivos.
+- **Para la junta / abierto**: con dos modos de la misma medida y los mismos hercios redondeados (59,94 y 60 dan los dos «@60»), la clave
+  guardada se queda con el primero de la lista del controlador; no es peligroso (los dos los da el monitor), pero puede no ser el mismo
+  que se probó. El ritmo del reloj en QEMU (19 s) sigue abierto; en el A4 hay que verlo.
+- **Pruebas de la revisión (con el arreglo)**: `dotnet build -c Release` 0 errores y los 13 avisos de siempre; `dotnet publish` NativeAOT 0
+  avisos IL/AOT; `prueba.sh` entera: **JIT 71 de 71, NativeAOT 71 de 71** (vuelta sola a los 15,1 s en AOT; la escena «sin» IGUAL a la
+  referencia en los dos). No se repitió QEMU ni el nivel 0 (el arreglo solo corre con la función y una pantalla de KMS a ciegas, que ni la
+  prueba simulada ni QEMU dan): **el caso a ciegas no tiene prueba**. Nada en el A4 ni con un monitor de verdad.

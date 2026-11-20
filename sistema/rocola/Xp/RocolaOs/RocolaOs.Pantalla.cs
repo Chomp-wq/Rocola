@@ -180,6 +180,10 @@ namespace Rocola
             }
             if (cambio) try { GuardaPantallaYa(a); } catch (Exception ex) { pantallaAvisos.Add("no se pudo guardar " + ArchivoPantalla + ": " + ex.Message); }
             laPantalla = s;
+            // (REVISION 20-11-2026: sin monitor al prender -a ciegas- o sin modos del monitor, Kms no pregunta a EligeModo y la clave del
+            // automatico quedaba sin saber: la hoja guardaba lo automatico como un modo y el latido, con un fallo al presentar, intentaba
+            // «volver a lo automatico» en cada latido. Se toma del modo automatico de la pantalla.)
+            if (m != null && pantallaAutomatica == null) { ModoPantalla[] vm0 = m.Modos; int ia = m.Automatico; if (ia >= 0 && ia < vm0.Length) pantallaAutomatica = vm0[ia].Clave; }
             if (m != null)
             {
                 pantallaAvisos.Add("pantalla " + m.Actual.Clave + (pantallaConModoGuardado ? " (la guardada; arranque " + a.SinConfirmar + " sin confirmar)" : " (automatica)")
