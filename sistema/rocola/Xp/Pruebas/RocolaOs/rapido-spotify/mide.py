@@ -55,15 +55,15 @@ if esc == 'busca':
         f = en('Form1.Portadas.cs:653', u, fin)
         M('busqueda%d_ultima_en_pantalla' % (i + 1), (f[-1] - u) if f else None)
 elif esc == 'disco':
-    k = [t for t in teclas(13) if t > 15000]
+    k = [t for t in teclas(13) if t > 17000]
     if k:
         d = en('RocolaOs:spotify_catalogo:disco', k[0])
         M('abrir_disco', (d[0] - k[0]) if d else None)
         f = en('Form1.Portadas.cs:653', k[0], k[0] + 4000)
         M('disco_ultima_en_pantalla', (f[-1] - k[0]) if f else None)
 elif esc == 'artista':
-    k = [t for t in teclas(13) if t > 16000]
-    a = [t for t in teclas(0x26) if t > 20000]
+    k = [t for t in teclas(13) if t > 18000]
+    a = [t for t in teclas(0x26) if t > 23000]
     if k:
         fin = a[0] if a else 10**12
         pa = en('RocolaOs:spotify_catalogo:pared', k[0], fin)
@@ -94,7 +94,47 @@ elif esc == 'pared':
         if f: v_pant.append(f[-1] - t)
     pe = [x for x in peticiones() if x[3].startswith('/release-group/')]
     M('caa_pedidas', len(pe))
+    # los cuadros con la pared delante (lo mide la pared: g93, el estado de /run): que bajar por adelantado no los haga mas lentos
+    try:
+        es = dict(l.rstrip('\n').split('=', 1) for l in open(os.path.join(car, 'run/rocola-xp/pared/estado')) if '=' in l)
+        for k in ('todos_p50_ms', 'todos_p95_ms', 'todos_p99_ms', 'todos_max_ms'):
+            if k in es and es[k].isdigit(): M('cuadros_' + k[6:], int(es[k]))
+    except FileNotFoundError: pass
     if v_pant: M('paginas_en_pantalla_mediana', statistics.median(v_pant))
+    # CUANDO ESTUVO EN EL DISCO LA ULTIMA PORTADA DE CADA PAGINA QUE SE MIRO (o se supo que no tiene: 404), desde la tecla: de la lista volcada
+    # (ROCOLA_PARED_VOLCADO: casilla -> mbid) y de cuando contesto el Cover Art Archive falso a cada una (tiempos.txt, hora de Unix); 0 si ya
+    # estaban todas antes de llegar a la pagina (bajadas por adelantado)
+    try:
+        ini = int(open(os.path.join(car, 'inicio_ms')).read().strip())
+        # (las que el catalogo dice que tienen portada: las demas ni se piden, como en XP una carpeta sin caratula)
+        import gzip
+        conp = set()
+        cat = sys.argv[4] if len(sys.argv) > 4 else ''
+        if cat:
+            for l in gzip.open(cat, 'rt', encoding='utf-8'):
+                c = l.rstrip('\n').split('\t')
+                if c[0] == 'D' and len(c) > 5 and c[5] == '1': conp.add(c[4])
+        mb = {}
+        for l in open(os.path.join(car, 'volcado', 'letra-A.tsv'), encoding='utf-8'):
+            c = l.rstrip('\n').split('\t')
+            if len(c) >= 6 and c[2] == 'catalogo' and len(c[5]) == 36 and (not cat or c[5] in conp): mb[int(c[0])] = c[5]
+        llego = {}
+        for x in pe:
+            m = x[3].split('/')[2]
+            llego[m] = min(llego.get(m, 10**15), x[1])
+        pag = 0; listas = []
+        for t in ks:
+            pag += 1 if t in teclas(0x26) else -1
+            if pag < 0: pag = 0
+            tk = ini + t
+            ms = [mb[i] for i in range(pag * 18, pag * 18 + 18) if i in mb]
+            falta = [m for m in ms if m not in llego]
+            v = max([0] + [llego[m] - tk for m in ms if m in llego])
+            listas.append(v)
+            M('pagina%d_lista_en_disco' % len(listas), v if not falta else None)
+            if falta: M('pagina%d_sin_pedir' % len(listas), len(falta))
+        if listas: M('paginas_lista_en_disco_mediana', statistics.median(listas))
+    except (FileNotFoundError, ValueError): pass
 elif esc == 'suena':
     # cuando se atendio cada pedido (hora de Unix)
     pedidos = []
@@ -151,3 +191,25 @@ elif esc == 'suena':
     M('oida_440_ms', sum(h - d for d, h, f in fr if abs(f - 440) <= 15) * 1000)
     M('oida_550_ms', sum(h - d for d, h, f in fr if abs(f - 550) <= 15) * 1000)
     M('oida_990_ms', sum(h - d for d, h, f in fr if abs(f - 990) <= 15) * 1000)
+elif esc == 'arranque':
+    # del Soloist falso (sus ms desde que arranco): cuando escucho y cuando se conecto la rocola
+    esc_ms = con_ms = None
+    try:
+        for l in open(os.path.join(car, 'falso.txt'), encoding='utf-8', errors='replace'):
+            p = l.rstrip('\n').split('\t')
+            if len(p) < 3: continue
+            if p[1] == 'soloist' and p[2].startswith('ws en') and esc_ms is None: esc_ms = int(p[0])
+            if p[1] == 'ws' and 'conecta' in p[2] and con_ms is None: con_ms = int(p[0])
+    except FileNotFoundError: pass
+    M('soloist_escucha_a_conectada', (con_ms - esc_ms) if esc_ms is not None and con_ms is not None else None)
+    # la primera pagina de la A: su ultima portada en el disco, desde que arranco la rocola
+    try:
+        ini = int(open(os.path.join(car, 'inicio_ms')).read().strip())
+        mb = set()
+        for i, l in enumerate(open(os.path.join(car, 'volcado', 'letra-A.tsv'), encoding='utf-8')):
+            c = l.rstrip('\n').split('\t')
+            if len(c) >= 6 and c[2] == 'catalogo' and len(c[5]) == 36 and int(c[0]) < 18: mb.add(c[5])
+        ll = [x[1] for x in peticiones() if x[3].startswith('/release-group/') and x[3].split('/')[2] in mb]
+        M('pagina1_A_lista_desde_que_arranca', (max(ll) - ini) if ll else None)
+        M('caa_pedidas', len([x for x in peticiones() if x[3].startswith('/release-group/')]))
+    except (FileNotFoundError, ValueError): pass

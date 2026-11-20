@@ -5,7 +5,7 @@
 # tarda en empezar). NUNCA el Soloist de verdad. No comprueba nada: MIDE (las comprobaciones son las baterias de cada grupo) y escribe una
 # linea por medida («MEDIDA escena nombre valor») en $W/medidas.txt, con mide.py.
 #   bash mide.sh PROGRAMA [escenas...]     PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT; para medir, SIEMPRE esta)
-#   escenas: busca disco artista pared suena (de fabrica, todas)
+#   escenas: busca disco artista pared suena arranque (de fabrica, todas)
 #   LAT: la latencia de cada peticion a la API y de cada portada de Spotify (ms; 120 de fabrica); CONEX: lo que cuesta abrir una conexion
 #   (ms; 150 de fabrica: TCP y TLS); CAA: lo de cada portada del Cover Art Archive (ms; 400 de fabrica: sus dos redirecciones); LENTO: lo que
 #   tarda el Soloist falso en empezar una (s; 0.6 de fabrica)
@@ -13,7 +13,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: mide.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-busca disco artista pared suena}"
+escenas="${*:-busca disco artista pared suena arranque}"
 T=${T:-/root/rocola-trabajo/fase11/rapido-spotify}
 API=${API:-$T/api-falsa}
 FALSO=${FALSO:-$T/falso}
@@ -89,20 +89,27 @@ for e in $escenas; do
     abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(veces 15 8 8 0.1),$(escribe 16 mentira)" 22 ROCOLA_OS=1
     espera $e ;;
   disco)
-    # un disco de Spotify del buscador: «mentira», a su tarjeta (la 2a), PONER lo abre (1 peticion)
+    # un disco de Spotify del buscador: «mentira», a su tarjeta (la 2a; se llega a los 15,5 s y se queda ahi 3 s, como quien lee), PONER lo
+    # abre (1 peticion, o ninguna si ya se pidio mientras se miraba)
     apifalsa $e; d=$(datos $e)
-    abre $e "$d" "$BASE,$(escribe 9.5 mentira),$(veces 13.5 14 39),16.5:13" 21 ROCOLA_OS=1
+    abre $e "$d" "$BASE,$(escribe 9.5 mentira),$(veces 13.5 14 39),18.5:13" 23 ROCOLA_OS=1
     espera $e ;;
   artista)
-    # la pared de un artista que solo esta en Spotify (Banda Interminable, 40 discos): PONER la abre; ARRIBA, su 2a pagina
+    # la pared de un artista que solo esta en Spotify (Banda Interminable, 40 discos): en su tarjeta 3 s, PONER la abre; ARRIBA, su 2a pagina
     apifalsa $e; d=$(datos $e)
-    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(veces 14 14 39),17:13,22:38" 26 ROCOLA_OS=1
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(veces 14 14 39),19:13,24:38" 28 ROCOLA_OS=1
     espera $e ;;
   pared)
     # la letra A con el catalogo (9 000 discos): sus portadas del Cover Art Archive (CAA ms cada una); ARRIBA (la siguiente) cada 4 s, 5 paginas; luego
     # ABAJO 2 (las ya vistas)
     apifalsa $e; d=$(datos $e)
-    abre $e "$d" "7:67,$(veces 14 5 38 4),34:40,37:40" 41 ROCOLA_OS=1
+    abre $e "$d" "7:67,$(veces 14 5 38 4),34:40,37:40" 41 ROCOLA_OS=1 ROCOLA_PARED_VOLCADO="$W/$e/volcado"
+    espera $e ;;
+  arranque)
+    # arrancar con el modo Spotify (la llave, el catalogo, el Soloist falso): cuando se conecta con Soloist y cuando estan las portadas de la
+    # primera pagina de la A
+    apifalsa $e; d=$(datos $e)
+    abre $e "$d" "" 14 ROCOLA_OS=1 ROCOLA_PARED_VOLCADO="$W/$e/volcado"
     espera $e ;;
   suena)
     # dos de Spotify seguidas con la rocola callada (el doble del catalogo las pide: «spotify-prueba»); el Soloist falso tarda LENTO s en
@@ -115,6 +122,6 @@ for e in $escenas; do
     espera $e
     [ -f "$W/$e/sonado.raw" ] && python3 "$SX/frecuencias.py" "$W/$e/sonado.raw" "$W/$e/registro.txt" > "$W/$e/frec.txt" ;;
   esac
-  python3 "$G/mide.py" "$e" "$W/$e" "$ETIQUETA" | tee -a "$W/medidas.txt"
+  python3 "$G/mide.py" "$e" "$W/$e" "$ETIQUETA" "$CAT/rocola_catalogo.tsv.gz" | tee -a "$W/medidas.txt"
   rm -f "$W/$e/sonado.raw"
 done
