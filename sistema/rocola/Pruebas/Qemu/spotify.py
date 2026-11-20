@@ -349,8 +349,9 @@ def pide():
     P.si("el buscador pregunta a la API falsa: «entira»", ok and "q=entira" in pet, (pet.splitlines() or [""])[-1])
     cat = P.orden("cat /run/rocola-xp/spotify/catalogo")
     P.si("el catalogo con la llave de la API que llego por la USB (sin reiniciar la rocola): api=bien, llave=si", "api=bien" in cat and "llave=si" in cat, cat.replace("\n", " ")[:200])
-    # 3) a las tarjetas: DERECHA hasta salir del teclado y a la ultima (el disco); PONER lo abre en la vista de disco de XP
-    flecha("right", 14)
+    # 3) a las tarjetas: DERECHA hasta salir del teclado y a la ultima, y ARRIBA una: el disco (la ultima tarjeta de los discos de Spotify es
+    # «Todos los discos de «entira»», de las paredes del buscador: FASE11_paredes-buscador.md); PONER lo abre en la vista de disco de XP
+    flecha("right", 14); flecha("up")
     captura("21b-buscador-elegido.png")
     P.c.tecla("ret", 1.0)
     fin = time.time() + 120
@@ -377,7 +378,8 @@ def pide():
     est = P.estado()
     P.si("en rocola_estado.txt, en la cola, con su ruta spotify: (lo pagado: vuelve tras un apagon)", "spotify:track:can0000" in est and "spotify:track:can0001" in est,
          " ".join(l for l in est.splitlines() if l.startswith(("sonando=", "cola=")))[:300])
-    # 5) REGRESAR: la pared en la letra de Spotify (♫), con ese disco
+    # 5) REGRESAR: la pared en la letra de Spotify (♫), con ese disco (el disco ya esta en la letra ♫: como XP, vuelve a la pared y no al
+    # buscador -lo que hace un disco que no esta en la pared: las paredes del buscador, FASE11_paredes-buscador.md-)
     P.c.tecla("esc", 1.0); P.c.espera_cuadros(2, 120)
     captura("23-pared-letra-spotify.png")
     # 6) otra de XP: dos veces REGRESAR+IZQUIERDA (la de antes de ♫ es VIDEO; la de antes, una de canciones: un video ocupa la pantalla
