@@ -33,6 +33,12 @@
 //   (pared-generos) GET /v1/albums/catID         un disco del catalogo (4 canciones inventadas); los «catno...», 404 (Spotify no lo tiene)
 //   (pared-generos) search con q=album:"NOMBRE" artist:"ARTISTA" (type=album): un disco con ese nombre (id «catb...»); si el nombre dice
 //                                            «Sin Spotify», ninguno
+//   (rapido-spotify, para MEDIR) GET /control/imglento?ms=N    cada portada de Spotify (/img/) tarda N ms mas
+//   (rapido-spotify) GET /control/llavelento?ms=N               cada POST /api/token tarda N ms mas
+//   (rapido-spotify) GET /control/conexion?ms=N                 la PRIMERA peticion de cada conexion nueva (otro puerto de origen) tarda
+//                                            N ms mas: lo que cuesta abrirla de verdad (TCP y TLS: 2 o 3 viajes) y que aqui no se ve
+//   (rapido-spotify) CARPETA/tiempos.txt: una linea por peticion «llego_ms contesto_ms metodo ruta codigo [nueva]» (ms de Unix), aparte
+//                                            de peticiones.txt (cuyo formato leen las pruebas)
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -63,9 +69,15 @@ internal static class ApiFalsa
     static int lento, miente, nImg, caaLento; static bool muchos; static readonly List<Disco> extraInter = new List<Disco>();   // (revision cuota-hilos-y-fallos; caaLento: pared-generos)
     static readonly Dictionary<string, Disco> delCatalogo = new Dictionary<string, Disco>();   // (pared-generos) los discos del catalogo inventados
     static readonly object cerrojo = new object();
+    // (rapido-spotify) la latencia de las portadas de Spotify, de las llaves y de abrir una conexion; y cuando llego cada peticion
+    static int imgLento, llaveLento, conexionMs;
+    static readonly HashSet<string> conexiones = new HashSet<string>(StringComparer.Ordinal);
+    [ThreadStatic] static long llegoMs;
+    [ThreadStatic] static bool nuevaConexion;
 
     static int Main(string[] a)
     {
+        ThreadPool.SetMinThreads(64, 64);   // (rapido-spotify: muchas a la vez que esperan su latencia, sin que el ThreadPool las ponga en fila)
         int puerto = int.Parse(a[0], CultureInfo.InvariantCulture);
         carpeta = a[1];
         if (a.Length > 4) { clientId = a[2]; secreto = a[3]; refresco = a[4]; }
@@ -164,6 +176,14 @@ internal static class ApiFalsa
     static void Atiende(HttpListenerContext c)
     {
         string ruta = c.Request.Url.AbsolutePath;
+        llegoMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); nuevaConexion = false;
+        if (!ruta.StartsWith("/control/", StringComparison.Ordinal))
+        {
+            int cm; bool nueva;
+            lock (cerrojo) { cm = conexionMs; nueva = conexiones.Add(c.Request.RemoteEndPoint.ToString()); }
+            nuevaConexion = nueva;
+            if (nueva && cm > 0) Thread.Sleep(cm);
+        }
         string auth = c.Request.Headers["Authorization"] ?? "";
         string tipoLlave = auth.StartsWith("Bearer ", StringComparison.Ordinal) ? (llavesCuenta.Contains(auth.Substring(7)) ? "cuenta" : llavesApp.Contains(auth.Substring(7)) ? "app" : "vencida") : auth.StartsWith("Basic ", StringComparison.Ordinal) ? "basic" : "nada";
         int cod = 200; string cuerpo; string ctype = "application/json";
@@ -182,6 +202,9 @@ internal static class ApiFalsa
                 else if (ruta == "/control/miente") miente = int.Parse(q["total"] ?? "1000", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/imgfalla") nImg = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/caalento") caaLento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
+                else if (ruta == "/control/imglento") imgLento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
+                else if (ruta == "/control/llavelento") llaveLento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
+                else if (ruta == "/control/conexion") conexionMs = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
             }
             Contesta(c, 200, "{}", ctype, null, extra); return;
         }
@@ -190,6 +213,7 @@ internal static class ApiFalsa
             bool falla; lock (cerrojo) { falla = nImg > 0; if (falla) nImg--; }
             if (falla) { Apunta(c, ruta, "img", 503); Contesta(c, 503, "{}", ctype, null, extra); return; }
         }
+        if (ruta.StartsWith("/img/", StringComparison.Ordinal)) { int il; lock (cerrojo) il = imgLento; if (il > 0) Thread.Sleep(il); }
         if (ruta.StartsWith("/img/", StringComparison.Ordinal)) { binario = Portada(Path.GetFileNameWithoutExtension(ruta)); ctype = "image/jpeg"; cuerpo = null; Apunta(c, ruta, "img", 200); Contesta(c, 200, null, ctype, binario, extra); return; }
         if (ruta.StartsWith("/catalogo/", StringComparison.Ordinal))
         {
@@ -210,6 +234,7 @@ internal static class ApiFalsa
         }
         if (ruta == "/api/token" && c.Request.HttpMethod == "POST")
         {
+            { int ll; lock (cerrojo) ll = llaveLento; if (ll > 0) Thread.Sleep(ll); }
             string form; using (StreamReader r = new StreamReader(c.Request.InputStream)) form = r.ReadToEnd();
             var f = System.Web.HttpUtility.ParseQueryString(form);
             string esperado = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(clientId + ":" + secreto));
@@ -457,7 +482,12 @@ internal static class ApiFalsa
         var qs = System.Web.HttpUtility.ParseQueryString(c.Request.Url.Query);
         string qq = ruta == "/v1/search" ? " q=" + (qs["q"] ?? "") : "";
         if (qs["offset"] != null) qq += " t=" + (qs["type"] ?? qs["include_groups"] ?? "") + " off=" + qs["offset"];
-        lock (cerrojo) File.AppendAllText(Path.Combine(carpeta, "peticiones.txt"), c.Request.HttpMethod + " " + ruta + " " + llave + " " + cod.ToString(CultureInfo.InvariantCulture) + qq + "\n");
+        lock (cerrojo)
+        {
+            File.AppendAllText(Path.Combine(carpeta, "peticiones.txt"), c.Request.HttpMethod + " " + ruta + " " + llave + " " + cod.ToString(CultureInfo.InvariantCulture) + qq + "\n");
+            File.AppendAllText(Path.Combine(carpeta, "tiempos.txt"), llegoMs.ToString(CultureInfo.InvariantCulture) + " " + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)
+                + " " + c.Request.HttpMethod + " " + ruta + " " + cod.ToString(CultureInfo.InvariantCulture) + (nuevaConexion ? " nueva" : "") + "\n");
+        }
     }
     static void Contesta(HttpListenerContext c, int cod, string cuerpo, string ctype, byte[] bin, Dictionary<string, string> extra)
     {

@@ -7,7 +7,8 @@
 //   portada URI|TITULO|ARTISTA|DISCO|MS|PORTADA_URL[|DISCO_URI]   RocolaOsSpotifyPortada (como el catalogo al ensenarla)
 //   noche-probar                                                   el boton «Probar» del modo noche de XP (Ctrl+F3 -> Sonido: PruebaNoche),
 //                                                                  para comparar con una de XP que una de Spotify baja igual (la junta)
-// y apunta lo que paso en prueba-pide.log (con RocolaOsSpotifyListo y los creditos de XP antes y despues).
+// y apunta lo que paso en prueba-pide.log (con RocolaOsSpotifyListo y los creditos de XP antes y despues; y, al final, «t=» los ms de Unix en
+// que se atendio: rapido-spotify mide desde ahi hasta que se oye).
 using System;
 using System.Globalization;
 using System.IO;
@@ -66,7 +67,8 @@ namespace Rocola
                 bool entro = RocolaOsSpotifyPide(p, que == "busca");
                 log.Append(que).Append(' ').Append(p.Uri).Append(" listo=").Append(listo ? 1 : 0).Append(" entro=").Append(entro ? 1 : 0)
                    .Append(" creditos ").Append(antes.ToString(CultureInfo.InvariantCulture)).Append("->").Append(credits.ToString(CultureInfo.InvariantCulture))
-                   .Append(" cola=").Append(queue.Count.ToString(CultureInfo.InvariantCulture)).Append('\n');
+                   .Append(" cola=").Append(queue.Count.ToString(CultureInfo.InvariantCulture))
+                   .Append(" t=").Append(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)).Append('\n');   // (rapido-spotify: cuando se atendio, para medir del pedido al sonido)
             }
             try { File.AppendAllText(ruta + ".log", log.ToString()); } catch { }
         }
