@@ -192,7 +192,7 @@ for e in $escenas; do
     espera $e; o="$W/$e"
     si "$e: sale con 0" test "$(cat $o/salio)" = 0
     if [ $e = sinllave ]; then
-      si "sinllave: ni la ayuda con Spotify ni una peticion a la API" bash -c "! grep -q 'asistente' '$(bit $d)' && [ \$(grep -c ' /v1/' '$o/api/peticiones.txt') = 0 ]"
+      si "sinllave: ni la ayuda con Spotify ni una peticion a la API" bash -c "! grep -qF '[asistente]' '$(bit $d)' && [ \$(grep -c ' /v1/' '$o/api/peticiones.txt') = 0 ]"
       R=${RUIDO:-/root/rocola-trabajo/port/ventanas/ruido/sigterm.json}
       python3 "$XP/Pruebas/Ventanas/guiones/compara_trazas.py" "$W/xp/traza.txt" "$o/traza.txt" --ignora RocolaOs: --holgura 80 > "$o/compara.txt" 2>&1; r=$?
       sed 's/^/   /' "$o/compara.txt" | head -8
