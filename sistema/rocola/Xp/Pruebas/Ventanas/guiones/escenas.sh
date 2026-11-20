@@ -51,6 +51,7 @@
 #             de la maquina y de lo medido: MEDIR_ESPERA, 115 de fabrica, son los segundos que la escena espera desde que lo pulsa);
 #             «Comparar perfiles» abre el historial de caratulas (otra hoja encima), la moneda con el abierto, Escape lo cierra y Escape
 #             cierra Ctrl+F3. Se compara con compara_medir.py (lo medido sale distinto en dos corridas del mismo programa)
+#   f3ecualizador  (20-11-2026) la hoja «Ecualizador...» (XP del 17-11-2026; la referencia no la tiene: se mira con bateria_eq.py)
 #   f3diag    «Diagnostico completo» (Imagen): la hoja se cierra, empieza el diagnostico y una tecla lo corta (la hoja no vuelve)
 #   f3raton   (revision del paso C) la rueda y las teclas con Ctrl, Alt y Mayus en un deslizador; el doble clic de XP en un interruptor, en
 #             un boton plano y en un boton que cambia de hoja; el raton que entra y sale; y con el modo billar, clics, Tab y el raton en lo gris
@@ -105,7 +106,7 @@ for e in $esc; do
     f12fallo)  [ -f "$W/gl-falla/libGLESv2.so.2" ] || "$G/gl_falla.sh" > /dev/null; fl="$W/gl-falla/falla.flag"; rm -f "$fl"; ( sleep 8.2; touch "$fl" ) &
                ESTADO="9.8:aviso,12.2:cerrada,15.8:aviso2,17.6:cerrada2" "$G/corre.sh" "$prog" "$et-$e" "8.7:123,11:13,14:123,16.2:27" "10:fa,12.5:fb,16:fc,18:fd" 20 ROCOLA_CAPTURA_CAPAS=1 LD_LIBRARY_PATH="$W/gl-falla" F12_FALLA_FLAG="$fl"
                wait; rm -f "$fl" ;;
-    f3vistas|f3grises|f3billar|f3teclas|f3requisitos|f3diag|f3medir|f3guarda|f3raton|f3histsigterm)
+    f3vistas|f3grises|f3billar|f3teclas|f3requisitos|f3diag|f3medir|f3guarda|f3raton|f3histsigterm|f3ecualizador)
                v=$(python3 "$G/vistas_f3.py" ${e#f3} ${MEDIR_ESPERA:-}); [ $e = f3guarda ] && export SALE=0 SENAL=KILL; [ $e = f3histsigterm ] && export SALE=0 SENAL=TERM
                ESTADO="$(echo "$v" | sed -n 4p)" "$G/corre.sh" "$prog" "$et-$e" "$(echo "$v" | sed -n 1p)" "$(echo "$v" | sed -n 2p)" "$(echo "$v" | sed -n 3p)" ROCOLA_CAPTURA_CAPAS=1
                unset SALE SENAL ;;
