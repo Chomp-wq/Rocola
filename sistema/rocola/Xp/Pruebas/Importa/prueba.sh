@@ -133,7 +133,7 @@ if [[ " $partes " == *" importa "* ]]; then
 	si "rocola_config.txt: dir=D:\\MUSICA EXTRA traducida a su carpeta" contiene "$T/rocola_config.txt" "dir=$D/sdb1/Musica Extra"
 	si "rocola_config.txt: la carpeta que no esta (E:\\Nada), fuera" nocontiene "$T/rocola_config.txt" "Nada"
 	si "rocola_config.txt: respaldo_dir= quitada" nocontiene "$T/rocola_config.txt" "respaldo_dir="
-	si "rocola_config.txt: lo demas tal cual" contiene "$T/rocola_config.txt" "noche_pct=80"
+	si "rocola_config.txt: lo demas tal cual (noche_pct=50, lo mas bajo del deslizador desde el 20-11-2026)" contiene "$T/rocola_config.txt" "noche_pct=50"
 	si "el modelo de IAS/, tal cual" igual "$T/IAS/rocola_ia.bin" "$XPC/IAS/rocola_ia.bin"
 	si "y su copia anterior" igual "$T/IAS/rocola_ia.bin.anterior-1" "$XPC/IAS/rocola_ia.bin.anterior-1"
 	si "el suelto «Rocola_EQ_IA.bin», como rocola_eq_ia.bin (rocola-xp lo pasa a IAS/)" igual "$T/rocola_eq_ia.bin" "$XPC/Rocola_EQ_IA.bin"
