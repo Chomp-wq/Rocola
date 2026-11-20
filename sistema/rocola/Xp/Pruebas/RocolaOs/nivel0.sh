@@ -44,8 +44,8 @@
 #             XP del 17 y 18-11-2026, PORT_xp-1718.md, el modo noche de 50 a 90 % y el de los vecinos del 20-11-2026, PORT_noche-nv.md; antes ebdb272)
 #   REPITE    1: una escena que sale distinta solo en cuentas (o un recorrido que no da lo de siempre) se repite una vez; 0: no
 #   GUARDA_BIN  1: deja los programas compilados y publicados ($TRABAJO/jit, aot); de fabrica se borran al acabar
-#   Lo que se espera (lo de la junta de N7; mas, si un grupo amplia una prueba, tambien vale): AVISOS (13), DIFFXP («5135 4868 229»: lineas
-#   quitadas, puestas y sin marca de diff-xp.py en los 112 archivos; 5095 4828 229 en los 109 antes de PORT_xp-1718.md), ACABADO (6603), VISTASB (3108), AJUSTES (545), FRONTERA (106 lineas,
+#   Lo que se espera (lo de la junta de N7; mas, si un grupo amplia una prueba, tambien vale): AVISOS (13), DIFFXP («5147 4880 229»: lineas
+#   quitadas, puestas y sin marca de diff-xp.py en los 112 archivos; 5135 4868 229 antes de PORT_noche-nv.md, y 5095 4828 229 en los 109 antes de PORT_xp-1718.md), ACABADO (6603), VISTASB (3108), AJUSTES (545), FRONTERA (106 lineas,
 #   153 texturas), CINTAS (29), HOJA (86), PANTALLA (32), VISTAS (78), CIERRE (43), IMPORTA (145)
 set -u
 AQUI=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
@@ -69,7 +69,7 @@ ESCENAS=${ESCENAS:-arranque moneda video tab buscador cierreq altf4 sigterm f3si
 ESCENAS_AOT=${ESCENAS_AOT:-arranque cierreq kill9 buscador f3vistas f3teclas f12}
 RECORRIDOS=${RECORRIDOS:-}   # (vacio: todos los que tienen salida de referencia en CMPREF)
 BASE=${BASE:-ca9802f}; REPITE=${REPITE:-1}; GUARDA_BIN=${GUARDA_BIN:-0}
-AVISOS=${AVISOS:-13}; DIFFXP=${DIFFXP:-5135 4868 229}; ACABADO=${ACABADO:-6603}; VISTASB=${VISTASB:-3108}; AJUSTES=${AJUSTES:-545}
+AVISOS=${AVISOS:-13}; DIFFXP=${DIFFXP:-5147 4880 229}; ACABADO=${ACABADO:-6603}; VISTASB=${VISTASB:-3108}; AJUSTES=${AJUSTES:-545}
 FRONTERA=${FRONTERA:-106 153}; CINTAS=${CINTAS:-29}; HOJA=${HOJA:-86}; PANTALLA=${PANTALLA:-32}; VISTAS=${VISTAS:-78}; CIERRE=${CIERRE:-43}
 IMPORTA=${IMPORTA:-145}
 # las letras y la referencia que los doce arnes.sh de Vistas* leen siempre de estos sitios (fijos en sus guiones)
