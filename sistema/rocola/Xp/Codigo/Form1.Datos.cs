@@ -521,7 +521,7 @@ namespace Rocola
             try
             {
                 if (!File.Exists(ConfigFile)) return;
-                bool vioEspectro = false;
+                bool vioEspectro = false, vioNoche22 = false;
                 foreach (string line in File.ReadAllLines(ConfigFile))
                 {
                     string s = line.Trim();
@@ -644,6 +644,9 @@ namespace Rocola
                     else if (s.StartsWith("noche_desde=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheDesde = v; }
                     else if (s.StartsWith("noche_hasta=")) { int v; if (int.TryParse(s.Substring(12).Trim(), out v) && v >= 0 && v <= 23) nocheHasta = v; }
                     else if (s.StartsWith("noche_pct=")) { int v; if (int.TryParse(s.Substring(10).Trim(), out v)) nochePct = Math.Max(NochePctMin, Math.Min(NochePctMax, v)); }
+                    else if (s.StartsWith("parejo_v2=")) parejoV2 = s.Substring(10).Trim() == "1";   // la marca del volumen parejo desde cero (18-11-2026): una sola vez (VolumenParejo.cs)
+                    else if (s.StartsWith("noche_desde_22=")) vioNoche22 = s.Substring(15).Trim() == "1";   // la marca del paso de las 23 a las 22 h (17-11-2026): una sola vez
+                    else if (s.StartsWith("noche_graves=")) { int v; if (int.TryParse(s.Substring(13).Trim(), out v)) nocheGraves = Math.Max(0, Math.Min(NocheGravesMax, v)); }   // N1: cuanto grave se quita de noche (0 = apagado)
                     else if (s.StartsWith("noche")) { }   // noche_db=, noche_compensa=: de la version de antes, se ignoran
                     else if (s.StartsWith("saltar_silencios=")) saltaSilencios = s.Substring(17).Trim() != "0";   // saltar los silencios largos (SinSilencios.cs)
                     else if (s.StartsWith("turno=")) turnoOn = s.Substring(6).Trim() != "0";   // el letrero de cuando suena tu cancion
@@ -679,6 +682,8 @@ namespace Rocola
                     else if (s.StartsWith("balance=")) balanceDb = BalanceDb(s.Substring(8));                       // dB que se baja un canal (-6..6)
                     else if (s.StartsWith("graves_local=")) gravesLocalDb = TonoLocalDb(s.Substring(13), gravesLocalDb);   // graves del local en dB (-6..6; 0 de fabrica)
                     else if (s.StartsWith("agudos_local=")) agudosLocalDb = TonoLocalDb(s.Substring(13), agudosLocalDb);   // agudos del local en dB (-6..6; 0 de fabrica)
+                    else if (s.StartsWith("eq_dueno_billar=")) EqDuenoLee(s.Substring(16), eqDuenoBillar);   // ecualizador del dueno, modo billar (EcualizadorDueno.cs)
+                    else if (s.StartsWith("eq_dueno=")) EqDuenoLee(s.Substring(9), eqDuenoNormal);           // ecualizador del dueno, sonido normal: 10 dB separados por ;
                     else if (s.StartsWith("local_auto=")) localAuto = s.Substring(11).Trim() == "1";   // el modo automatico del local (LocalAuto.cs)
                     else if (s.StartsWith("afinado_local=")) LeeAfinado(s.Substring(14));                          // afinar el local con el celular (AfinarLocal.cs)
                     else if (s.StartsWith("afinado_ponderacion=")) afinadoPonderacion = PonderacionDe(s.Substring(20));
@@ -687,7 +692,7 @@ namespace Rocola
                     else if (s.StartsWith("presencia_sala=")) presenciaSala = s.Substring(15).Trim() == "1";   // interruptor: presencia en sala ruidosa (compresor suave)
                     else if (s.StartsWith("a_la_medida=")) aLaMedida = s.Substring(12).Trim() == "1";              // I1: bajo y brillo a la medida de cada cancion
                     else if (s.StartsWith("quita_siseo=")) quitaSiseo = s.Substring(12).Trim() == "1";             // I2: quitar el siseo de las grabaciones viejas
-                    else if (s.StartsWith("dsee_genero=")) dseePorGenero = s.Substring(12).Trim() == "1";          // I3: el modelo del DSEE del genero de la cancion
+                    else if (s.StartsWith("dsee_genero=")) { }   // I3 quitado de Ctrl+F3 el 18-11-2026: la clave se ignora
                     // subir_db= ("Subir TODO"): retirado el 25-10-2026, se ignora (el nivelado ya sube cada cancion hasta su limite)
                     else if (s.StartsWith("fundido=")) { float v; if (float.TryParse(s.Substring(8).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) crossfadeSec = Clampf(v, 0f, 3f); }   // FUNDIDO entre canciones (segundos)
                     else if (s.StartsWith("declip=")) declipOn = s.Substring(7).Trim() != "0";   // des-recorte de picos aplastados (por defecto si)
@@ -706,6 +711,9 @@ namespace Rocola
                         if (d.Length > 0 && !extraMusicDirs.Contains(d)) extraMusicDirs.Add(d);
                     }
                 }
+                // La hora de fabrica del modo noche pasa de las 23 a las 22 h (17-11-2026). Las rocolas que guardaron 23 -el valor de fabrica que
+                // se escribia siempre- pasan a 22 UNA sola vez (la marca noche_desde_22=1 se guarda siempre); un 23 puesto despues, a mano, se respeta.
+                if (!vioNoche22 && nocheDesde == 23) nocheDesde = 22;
             }
             catch { }
             if (!sbrAllowed) sbrOn = false;   // la maquina no cumple los requisitos del NIVEL 2: apagado si o si
@@ -814,6 +822,9 @@ namespace Rocola
             sb.Append("noche_desde=").Append(nocheDesde).Append("\r\n");
             sb.Append("noche_hasta=").Append(nocheHasta).Append("\r\n");
             sb.Append("noche_pct=").Append(nochePct).Append("\r\n");
+            sb.Append("parejo_v2=").Append(parejoV2 ? "1" : "0").Append("\r\n");   // el volumen parejo ya empezo de cero (CargaParejo)
+            sb.Append("noche_desde_22=1\r\n");   // ya paso de 23 a 22 h (se lee en LoadConfigPrefs)
+            sb.Append("noche_graves=").Append(nocheGraves).Append("\r\n");   // N1: de noche, menos grave hacia afuera
             sb.Append("letra_lejos=").Append(letraLejos ? "1" : "0").Append("\r\n");
             sb.Append("guia_rojo=").Append(guiaRojo ? "1" : "0").Append("\r\n");
             sb.Append("asistente_animado=").Append(asistenteAnimado ? "1" : "0").Append("\r\n");
@@ -864,6 +875,8 @@ namespace Rocola
             sb.Append("balance=").Append(balanceDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("graves_local=").Append(gravesLocalDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("agudos_local=").Append(agudosLocalDb.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
+            sb.Append("eq_dueno=").Append(EqDuenoTexto(eqDuenoNormal)).Append("\r\n");
+            sb.Append("eq_dueno_billar=").Append(EqDuenoTexto(eqDuenoBillar)).Append("\r\n");
             sb.Append("presencia_sala=").Append(presenciaSala ? "1" : "0").Append("\r\n");
             sb.Append("local_auto=").Append(LocalAutoAGuardar ? "1" : "0").Append("\r\n");   // durante «Comparar a ciegas», el de antes (CompararCiegas.cs)
             sb.Append("afinado_local=").Append(TextoAfinado()).Append("\r\n");
@@ -871,7 +884,6 @@ namespace Rocola
             sb.Append("afinado_usar=").Append(AfinadoUsarAGuardar ? "1" : "0").Append("\r\n");   // (y el de antes durante «Con o sin afinar»)
             sb.Append("a_la_medida=").Append(aLaMedida ? "1" : "0").Append("\r\n");
             sb.Append("quita_siseo=").Append(quitaSiseo ? "1" : "0").Append("\r\n");
-            sb.Append("dsee_genero=").Append(dseePorGenero ? "1" : "0").Append("\r\n");
             sb.Append("fundido=").Append(crossfadeSec.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append("\r\n");
             sb.Append("declip=").Append(declipOn ? "1" : "0").Append("\r\n");
             sb.Append("ia_datos=").Append(iaHarvestOn ? "1" : "0").Append("\r\n");
@@ -2480,7 +2492,7 @@ namespace Rocola
         // config, mapa de botones y el modelo de IA. Se copia a respaldo\<fecha>\ (y a respaldo_dir= si se
         // configuro, idealmente OTRO disco), guardando los 3 dias mas recientes. Las tablas/modelos pueden ocupar MB:
         // solo se capturan handles y longitudes aqui; copia, hashes y Flush ceden en un trabajador de baja prioridad.
-        private string BackupBaseDir() { return DatosGrandes.Ruta("respaldo"); }   // EN LINUX: (XP) RutaDatos(...): con ROCOLA_IA_DATOS, en el disco de la rocola: tres copias de las tablas son hasta unos 150 MB con 20 000 canciones, y una copia dentro de lo aprendido (datos.img) se perderia con el (Nativo/DatosGrandes.cs)
+        private string BackupBaseDir() { return DatosGrandes.Ruta("respaldo"); }   // ROCOLA OS g06: (XP) private string BackupBaseDir() { return RutaDatos("respaldo"); } — con ROCOLA_IA_DATOS, en el disco de la rocola: tres copias de las tablas son hasta unos 150 MB con 20 000 canciones, y una copia dentro de lo aprendido (datos.img) se perderia con el (Nativo/DatosGrandes.cs)
         private void BackupLearnedData()
         {
             string sp = CarpetaDatos, second = backupDir, baseDir = BackupBaseDir();
@@ -2875,7 +2887,7 @@ namespace Rocola
         // Registra una reproduccion pedida (algo que entro a la cola con exito).
         private void RecordPlay(PlayItem it)
         {
-            if (it == null) return;
+            if (it == null || RocolaOsSpotifyNoCuenta(it)) return;   // ROCOLA OS g20: (XP) if (it == null) return; — lo de Spotify no cuenta para lo mas sonado ni las estadisticas (regla del 6-11-2026; RocolaOs/RocolaOs.SpotifyPide.cs); apagado, false
             statsTotal++;
             if (it.IsVideo)
             {

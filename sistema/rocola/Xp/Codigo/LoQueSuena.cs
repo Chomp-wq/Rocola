@@ -20,6 +20,31 @@ namespace Rocola
         internal const int SinMejorasSeg = 15;
         private static readonly float[] EqPlana = new float[8];
         private bool sinMejoras;
+        // El maximo de lo que bajo el limitador en los ultimos 10 s: lo llevan las propias lecturas de la ventana (cada 500 ms), sin leer nada mas del limitador.
+        internal sealed class MaximoReciente
+        {
+            internal const int VentanaMs = 10000;
+            private readonly int[] cuando = new int[64]; private readonly float[] valor = new float[64]; private int n, cabeza;
+            internal void Limpia() { n = 0; cabeza = 0; }
+            internal void Anota(int tickMs, float db)
+            {
+                int i = (cabeza + n) % 64;
+                if (n == 64) { cabeza = (cabeza + 1) % 64; } else n++;
+                cuando[i] = tickMs; valor[i] = db;
+            }
+            internal float Maximo(int tickMs)
+            {
+                float m = 0f;
+                for (int k = 0; k < n; k++)
+                {
+                    int i = (cabeza + k) % 64;
+                    if (unchecked(tickMs - cuando[i]) <= VentanaMs && valor[i] > m) m = valor[i];
+                }
+                return m;
+            }
+        }
+        private readonly MaximoReciente bajadaReciente = new MaximoReciente();
+        private CadenaCancion bajadaCadena;
         private DateTime sinMejorasHasta;
 
         // Enciende o apaga «Escuchar sin mejoras» y lo aplica ya en la que suena y en la siguiente.
@@ -74,9 +99,14 @@ namespace Rocola
             sb.Append(t).Append("\n");
             if (c.Limitador != null)
             {
-                float nivel = c.Limitador.TomaNivelDb(), baja = c.Limitador.TomaBajadaDb();
+                float nivel = c.Limitador.TomaNivelDb(), baja = c.Limitador.TomaBajadaDb();   // (esta es la UNICA que lee estas dos: se ponen a cero al leer)
+                // 18-11-2026: lo mas que bajo en los ultimos 10 s, con las mismas lecturas de arriba (nada nuevo se lee del limitador).
+                if (!object.ReferenceEquals(bajadaCadena, c)) { bajadaCadena = c; bajadaReciente.Limpia(); }
+                bajadaReciente.Anota(Environment.TickCount, baja > -0.05f ? 0f : -baja);
+                float mas10 = bajadaReciente.Maximo(Environment.TickCount);
                 sb.Append("Sale a ").Append(nivel <= -100f ? "silencio" : Math.Round(nivel).ToString("0") + " dB")
-                  .Append(".   El limitador baja: ").Append(baja > -0.05f ? "nada" : (-baja).ToString("0.0") + " dB").Append("\n");
+                  .Append(".   El limitador baja: ").Append(baja > -0.05f ? "nada" : (-baja).ToString("0.0") + " dB")
+                  .Append(mas10 >= 0.05f ? " (10 s: " + mas10.ToString("0.0") + " dB)" : "").Append("\n");
             }
             if (sinMejoras) { sb.Append("SIN MEJORAS: solo el volumen, las bocinas y el limitador."); return sb.ToString(); }
             sb.Append("Des-recorte: ").Append(c.Declip == null ? "no hace falta" : (c.Declip.Reparados > 0 ? "reparando picos" : "vigilando"));

@@ -43,6 +43,8 @@ namespace Rocola
             internal AtaqueClaro Ataque;         // el ataque mas claro (AtaqueClaro.cs)
             internal AsperezaDinamica Aspereza;  // los agudos asperos dinamicos (AsperezaDinamica.cs)
             internal BomboSinHundir Hundir;      // que el bombo no hunda la voz (BomboSinHundir.cs)
+            internal EcualizadorDueno EqDueno;   // el ecualizador del dueno (EcualizadorDueno.cs): justo antes del limitador
+            internal float[] EqDuenoPesos;       // la huella de tono de la cancion (8 amplitudes) para su margen, o null (EqDuenoPesosDe)
             internal MideMargen Margen;          // en el billar: lo que le llega al limitador, para el volumen parejo (VolumenParejo.cs)
             internal QuitaSiseo Siseo;           // el quitasiseo, si esta encendido (Siseo.cs)
             internal ArreglaGrabacion Arreglo;   // el canal mudo y la continua (ArreglosGrabacion.cs)
@@ -340,6 +342,7 @@ namespace Rocola
             if (nueva.Ataque != null) nueva.Ataque.Sigue(vieja.Ataque);
             if (nueva.Aspereza != null) nueva.Aspereza.Sigue(vieja.Aspereza);
             if (nueva.Hundir != null) nueva.Hundir.Sigue(vieja.Hundir);
+            if (nueva.EqDueno != null) nueva.EqDueno.Sigue(vieja.EqDueno);
             if (nueva.Bajo != null) nueva.Bajo.Sigue(vieja.Bajo);
             if (nueva.Limitador != null) nueva.Limitador.Sigue(vieja.Limitador);
             if (nueva.Siseo != null) nueva.Siseo.Sigue(vieja.Siseo);

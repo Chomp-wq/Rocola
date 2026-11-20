@@ -34,7 +34,7 @@
     <Compile Include="$(ComunDir)/Modos.cs" />
     <Compile Include="$(ComunDir)/PruCapa.cs" Condition="'$(EsReferencia)' == 'true'" />
     <Compile Include="$(ComunDir)/PruNativo.cs" Condition="'$(EsReferencia)' != 'true'" />
-    <Compile Include="$(Fuente)/Codigo/**/*.cs;$(Fuente)/Plataforma/**/*.cs;$(Fuente)/Nativo/**/*.cs" Exclude="$(Fuente)/**/bin/**;$(Fuente)/**/obj/**" />
+    <Compile Include="$(Fuente)/Codigo/**/*.cs;$(Fuente)/Plataforma/**/*.cs;$(Fuente)/Nativo/**/*.cs;$(Fuente)/RocolaOs/**/*.cs" Exclude="$(Fuente)/**/bin/**;$(Fuente)/**/obj/**" />
     <Compile Include="$(Fuente)/../Consola/Pantalla/Gl.cs;$(Fuente)/../Consola/Pantalla/Kms.cs;$(Fuente)/../Motor/Botones.cs" />
   </ItemGroup>
 </Project>

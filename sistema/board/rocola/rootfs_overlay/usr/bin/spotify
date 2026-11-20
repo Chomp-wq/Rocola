@@ -1,0 +1,241 @@
+#!/bin/sh
+# «spotify»: LA ORDEN DEL DUENO EN LA CONSOLA DE MANTENIMIENTO (Ctrl+Alt+F2, usuario root) para el modo Spotify de la rocola (decision del
+# 14-11-2026: «Lo de Spotify sera todo en la rocola, nada en el celular»; el celular o la laptop solo se usan UNA vez, para emparejar).
+# Detalle para el dueno en sistema/SPOTIFY_SOLOIST.md. Escribir solo «spotify» dice lo que hay.
+#
+# Encender y apagar es la clave spotify= de /rocola/datos/xp/rocola_os.txt (de fabrica ENCENDIDO: sin la clave, o con un valor que no sea
+# 0 ni 1, la rocola lo enciende, decision del dueno del 15-11-2026; solo spotify=0 lo apaga) (el formato de RocolaOs.Ajustes.cs: «clave=valor», LF; la
+# primera que salga se cambia en su sitio, las repetidas se quitan; lo demas se queda como estaba). La rocola es la duena de ese archivo
+# mientras esta abierta; en la consola de mantenimiento esta cerrada, y lo que se cambie vale al volver a ella (Ctrl+Alt+F1).
+# Las llaves (la de Soloist y la de la API web) NUNCA se ensenan: solo se dice si estan.
+# Para probarlo fuera de la rocola (sistema/rocola/Pruebas/Soloist): ROCOLA_RUN, ROCOLA_XP_DATOS, ROCOLA_SOLOIST_DATOS, ROCOLA_PULSO_DIR,
+# ROCOLA_SPOTIFY_ANILLO, SOLOIST_URL y ROCOLA_SPOTIFY_APRESOLVE (a donde se pregunta por internet), ROCOLA_SPOTIFY_ESPERA.
+RUN=${ROCOLA_RUN:-/run}
+XPD=${ROCOLA_XP_DATOS:-/rocola/datos/xp}
+OSF=$XPD/rocola_os.txt
+APAGADO=$XPD/rocola_os_apagado
+LLAVE=$XPD/rocola_spotify_llave.txt
+APIF=$XPD/rocola_spotify_api.txt
+SDATOS=${ROCOLA_SOLOIST_DATOS:-$XPD/soloist}
+PULSO=${ROCOLA_PULSO_DIR:-/usr/lib/rocola-pulso}
+ANILLO=${ROCOLA_SPOTIFY_ANILLO:-$RUN/rocola-xp/spotify/sonido.anillo}
+XPEST=$RUN/rocola-xp/spotify/estado
+SOLEST=$RUN/rocola-soloist/estado
+URL=${SOLOIST_URL:-https://soloist-builds.spotifycdn.com/soloist_release_x86_64.tar.gz}
+APRESOLVE=${ROCOLA_SPOTIFY_APRESOLVE:-https://apresolve.spotify.com/?type=accesspoint}
+
+clave() { [ -f "$OSF" ] || return 0; tr -d '\r' < "$OSF" | awk 'NR == 1 { sub(/^\357\273\277/, "") } 1' | sed -n "s/^[ \t]*$1[ \t]*=[ \t]*\(.*\)/\1/p" | sed 's/[ \t]*$//' | tail -1; }
+# (como RocolaOs.Ajustes.cs: solo «0» lo apaga; sin la clave o con otra cosa vale el de fabrica, encendido)
+modo() { [ "$(clave spotify)" = 0 ] && echo apagado || echo encendido; }
+si_no() { case "$1" in 1|si|true) echo si ;; 0|no|false) echo no ;; "") echo "?" ;; spotify:*) echo "si ($1)" ;; *) echo "$1" ;; esac; }
+# el rocola-xp abierto como rocola (no el importador)
+rocola_pid() {
+	for p in $(pidof rocola-xp); do
+		tr '\0' '\n' 2>/dev/null < "/proc/$p/cmdline" | grep -qx -- --importa-xp && continue
+		echo "$p"; return
+	done
+}
+# la rocola es la duena de rocola_os.txt mientras esta abierta: se espera a que se cierre (al entrar en la consola se cierra sola, hasta 20 s)
+rocola_cerrada() {
+	[ -z "$(rocola_pid)" ] && return 0
+	echo "La rocola esta abierta: esperando a que se cierre (al entrar en la consola de mantenimiento se cierra sola)..."
+	i=0; while [ -n "$(rocola_pid)" ] && [ $i -lt "${ROCOLA_SPOTIFY_ESPERA:-25}" ]; do sleep 1; i=$((i + 1)); done
+	[ -z "$(rocola_pid)" ] && return 0
+	echo "La rocola sigue abierta. Escribe esta orden en la consola de mantenimiento (Ctrl+Alt+F2): al entrar ahi la rocola se cierra."
+	return 1
+}
+# pon_clave CLAVE VALOR: en rocola_os.txt, de un tiron (el de paso y el cambio de nombre; el de antes queda como .bak, como lo guarda la
+# rocola). Si el archivo no esta (o esta vacio) y hay .bak, se parte del .bak (lo que la rocola leeria); si no hay nada, solo esa linea.
+pon_clave() {
+	mkdir -p "$XPD" || return 1
+	base=$OSF; [ -s "$OSF" ] || base=$OSF.bak
+	n=$XPD/.rocola_os.txt.n
+	if [ -s "$base" ]; then
+		awk -v k="$1" -v v="$2" '
+			NR == 1 { sub(/^\357\273\277/, "") }
+			{ sub(/\r$/, ""); i = index($0, "="); kk = (i > 1) ? substr($0, 1, i - 1) : ""; gsub(/^[ \t]+|[ \t]+$/, "", kk) }
+			kk == k { if (!hecho) { print k "=" v; hecho = 1 }; next }
+			{ print }
+			END { if (!hecho) print k "=" v }' "$base" > "$n" || { rm -f "$n"; return 1; }
+	else printf '%s=%s\n' "$1" "$2" > "$n" || { rm -f "$n"; return 1; }; fi
+	chmod 644 "$n"
+	[ -s "$OSF" ] && cp -p "$OSF" "$OSF.bak"
+	mv -f "$n" "$OSF" && sync
+}
+# lo que Soloist guarda en su carpeta de datos (la identidad de la bocina y la sesion de la cuenta), sin lo que deja mientras corre
+guardado() { ls -A "$SDATOS" 2>/dev/null | grep -v -x -e soloist.pid -e ws.addr -e ws.port | grep -q .; }
+llave_ok() { v=$(head -n 1 "$LLAVE" 2>/dev/null | tr -d ' \t\r\n'); [ -n "$v" ] && case "$v" in *[!A-Za-z0-9._~+/=:-]*) false ;; *) true ;; esac; }
+api_ok() { grep -q '^client_id=.' "$APIF" 2>/dev/null && grep -q '^client_secret=.' "$APIF" 2>/dev/null; }
+lee() { sed -n "s/^$1=//p" "$2" 2>/dev/null | head -1; }
+# el host de una direccion (sin esquema, puerto ni ruta)
+host_de() { echo "$1" | sed -e 's|^[a-z]*://||' -e 's|[/?].*||' -e 's|:[0-9]*$||'; }
+es_ip() { echo "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; }
+# dns HOST: «si» si se resuelve
+dns() { es_ip "$1" && return 0; nslookup "$1" 2>/dev/null | sed '1,/^Name:/d' | grep -qE 'Address( [0-9]+)?:'; }
+http() { curl -s -o /dev/null -w '%{http_code}' --connect-timeout 8 --max-time 15 "$@" 2>/dev/null; }
+red() {   # red NOMBRE URL [HEAD]: dice si llega (DNS y HTTPS)
+	h=$(host_de "$2")
+	if ! dns "$h"; then echo "  $1 ($h): NO se encuentra (DNS): ¿hay internet? ¿el cable?"; return 1; fi
+	if [ -n "$3" ]; then c=$(http -I "$2"); else c=$(http "$2"); fi
+	case "$c" in 2??|3??) echo "  $1 ($h): llega (HTTP $c)"; return 0 ;;
+		000) echo "  $1 ($h): NO llega (no contesta: ¿internet cortado o bloqueado?)"; return 1 ;;
+		*) echo "  $1 ($h): contesta, pero con HTTP $c"; return 1 ;; esac
+}
+ultimos_problemas() {
+	for f in "$XPD/rocola_soloist.txt" "$XPD/rocola_spotify.txt"; do
+		[ -f "$f" ] || continue
+		l=$(grep -i -E 'error|fallo|falla|no se pudo|caduc|frena|salio con|no abrio|falta|no parece|devuel' "$f" 2>/dev/null | tail -n "${1:-5}")
+		[ -n "$l" ] && { echo "  $(basename "$f"):"; echo "$l" | cut -c1-200 | sed 's/^/    /'; }
+	done
+}
+# el anillo de sonido (rocola-pulso -> rocola-xp): su cabecera (I1). «no» si no esta o no vale.
+anillo() {
+	[ -f "$ANILLO" ] || { echo "  El anillo de sonido ($ANILLO): todavia no existe (lo crea la rocola o Soloist al sonar)."; return 2; }
+	set -- $(od -v -An -tu4 -N 32 "$ANILLO" 2>/dev/null)   # (-v: sin -v, od pone «*» en las lineas repetidas -los ceros- y el «*» se volvia nombres de archivo)
+	if [ "$1" != 1330402640 ] || [ "$2" != 1 ] || [ "$3" != 65536 ] || [ "$4" != 2 ]; then echo "  El anillo de sonido: NO vale (magia o version distintas)."; return 1; fi
+	fr=$5; tap=$7
+	set -- $(od -v -An -tu8 -j 32 -N 40 "$ANILLO" 2>/dev/null); esc=$1; lei=$2; le=$4; ll=$5
+	up=$(awk '{printf "%d", $1 * 1000}' /proc/uptime)   # (ms; los latidos son CLOCK_MONOTONIC en ns)
+	de=$(( (up - le / 1000000) / 1000 )); dl=$(( (up - ll / 1000000) / 1000 ))
+	echo "  El anillo de sonido: vale; $([ "$fr" = 0 ] && echo 'sin flujo' || echo "flujo a $fr Hz, $([ "$tap" = 1 ] && echo 'en pausa' || echo sonando)"); escritos $esc cuadros, leidos $lei."
+	[ "$le" != 0 ] && echo "    Soloist (rocola-pulso) escribio hace $de s; $([ "$ll" = 0 ] && echo 'la rocola no lo ha leido' || echo "la rocola lo leyo hace $dl s")."
+	return 0
+}
+ws() {   # el WebSocket de Soloist (ws.port de su carpeta de datos)
+	p=$(cat "$SDATOS/ws.port" 2>/dev/null); a=$(cat "$SDATOS/ws.addr" 2>/dev/null)
+	[ -n "$p" ] || { echo "  El WebSocket de Soloist: no esta abierto (Soloist no corre)."; return 1; }
+	c=$(http "http://${a:-127.0.0.1}:$p/")
+	[ "$c" = 000 ] && { echo "  El WebSocket de Soloist (${a:-127.0.0.1}:$p): NO contesta."; return 1; }
+	echo "  El WebSocket de Soloist (${a:-127.0.0.1}:$p): contesta."
+	b=${RUN}/rocola-soloist/bin/soloist; [ -x "$b" ] || return 0
+	s=$(timeout 10 "$b" ctl status -D "$SDATOS" 2>&1 | head -n 12)
+	[ -n "$s" ] && echo "$s" | sed 's/^/    soloist ctl status: /'
+	return 0
+}
+lo_de_la_rocola() {
+	if [ -f "$XPEST" ]; then
+		echo "Lo que dice la rocola (rocola-xp):"
+		echo "  WebSocket con Soloist: $(si_no "$(lee ws "$XPEST")"); cuenta (sesion): $(si_no "$(lee sesion "$XPEST")"); bocina activa: $(si_no "$(lee activa "$XPEST")")"
+		so=$(lee sonando "$XPEST")   # (la uri de la que suena; vacio: nada)
+		echo "  Sonando de Spotify: $([ -n "$so" ] && si_no "$so" || echo no); en la cola: $(lee en_cola "$XPEST"); esperando credito: $(si_no "$(lee esperando_credito "$XPEST")")"
+		echo "  Cobradas: $(lee cobradas "$XPEST"); devueltas: $(lee devueltas "$XPEST")"
+		e=$(lee error "$XPEST"); [ -n "$e" ] && echo "  Ultimo problema: $e"
+	elif [ -n "$(rocola_pid)" ]; then echo "La rocola esta abierta, pero no ha dicho nada de Spotify (el modo apagado, o una version sin Spotify)."
+	else echo "La rocola esta cerrada (en la consola de mantenimiento se cierra sola): lo de la cuenta y la bocina activa se ve con ella abierta."; fi
+}
+
+ayuda() {
+	cat <<EOF
+spotify: el modo Spotify de la rocola (para reuniones, con creditos como siempre). Ahora: $(modo).
+
+  spotify apagar        apaga el modo (de fabrica va encendido; vale al volver a la rocola con Ctrl+Alt+F1;
+                        lo pagado de Spotify que no sono vuelve como credito)
+  spotify encender      lo vuelve a encender
+  spotify estado        todo de un vistazo: el modo, las llaves, el programa y cuantos dias le quedan, la cuenta, internet...
+  spotify llave         pone las llaves de la memoria USB (rocola_spotify.txt y rocola_spotify_api.txt en su raiz),
+                        o pide la de Soloist escrita (no se ve al escribirla)
+  spotify llave api     pide escrita la de la API web (client_id y client_secret de tu app; refresh_token si lo tienes)
+  spotify emparejar     guarda la cuenta: se elige la bocina «$(clave spotify_nombre | grep . || echo Rocola)» UNA vez desde la app de
+                        Spotify (celular o laptop) en la red del bar
+  spotify prueba        revision corta: internet hasta Spotify, el programa, las llaves, el sonido y el WebSocket
+  spotify bajar         baja ahora (o pone al dia) el programa de Spotify
+  spotify nombre NOMBRE el nombre de la bocina en la app de Spotify (de fabrica «Rocola»)
+  spotify olvidar       la rocola olvida la cuenta (hay que emparejar otra vez)
+
+Todo lo demas se hace EN LA ROCOLA: buscar, elegir, pagar y oir, con sus botones y su pantalla.
+Lo que alguien ponga desde un celular NO suena. Guia completa: SPOTIFY_SOLOIST.md (en el repositorio, carpeta sistema).
+EOF
+	[ -f "$APAGADO" ] && echo "OJO: Rocola OS esta APAGADO de emergencia ($APAGADO): mientras exista, no corre nada de Rocola OS (Spotify tampoco)."
+	return 0
+}
+
+case "$1" in
+""|ayuda|-h|--help) ayuda ;;
+encender|apagar)
+	rocola_cerrada || exit 1
+	v=1; [ "$1" = apagar ] && v=0
+	pon_clave spotify "$v" || { echo "No se pudo escribir $OSF."; exit 1; }
+	if [ "$v" = 1 ]; then
+		echo "Modo Spotify ENCENDIDO (spotify=1 en $OSF). Se aplica al volver a la rocola (Ctrl+Alt+F1)."
+		llave_ok || echo "Falta la llave de Soloist: pon la memoria USB con rocola_spotify.txt y escribe «spotify llave» (o la rocola la toma sola de la USB en 30 s)."
+		api_ok || echo "Falta la llave de la API web (rocola_spotify_api.txt): sin ella la rocola no puede buscar en Spotify."
+		guardado || echo "Falta emparejar la cuenta una vez: «spotify emparejar» (o, con la rocola abierta, elige «$(clave spotify_nombre | grep . || echo Rocola)» en la app de Spotify)."
+	else echo "Modo Spotify APAGADO (spotify=0 en $OSF). Se aplica al volver a la rocola (Ctrl+Alt+F1): lo pagado de Spotify que no sono vuelve como credito."; fi
+	[ -f "$APAGADO" ] && echo "OJO: Rocola OS esta APAGADO de emergencia ($APAGADO): mientras exista, no corre nada de Rocola OS (Spotify tampoco)."
+	exit 0 ;;
+nombre)
+	shift; n=$(printf '%s' "$*" | tr -d '\000-\037=' | sed 's/^[ \t]*//; s/[ \t]*$//' | cut -c1-40)
+	[ -n "$n" ] || { echo "uso: spotify nombre NOMBRE (el de la bocina en la app de Spotify; de fabrica «Rocola»)"; exit 2; }
+	rocola_cerrada || exit 1
+	pon_clave spotify_nombre "$n" && echo "La bocina se llamara «$n» (vale al volver a la rocola). Si ya estaba emparejada, en la app saldra con el nombre nuevo." ;;
+estado)
+	echo "=== Spotify en la rocola ($(date '+%Y-%m-%d %H:%M')) ==="
+	[ -f "$APAGADO" ] && echo "Rocola OS: APAGADO de emergencia ($APAGADO): no corre nada de Rocola OS, Spotify tampoco."
+	echo "Modo Spotify: $(modo) (spotify= en $OSF; de fabrica encendido). Bocina: «$(clave spotify_nombre | grep . || echo Rocola)»."
+	rocola-soloist estado
+	lo_de_la_rocola
+	echo "Internet hasta Spotify:"
+	red "Programas de Spotify" "$URL" head
+	red "Servidores de Spotify" "$APRESOLVE"
+	p=$(ultimos_problemas 4); [ -n "$p" ] && { echo "Ultimos problemas apuntados:"; echo "$p"; }
+	exit 0 ;;
+llave)
+	if [ "$2" = api ]; then
+		[ -t 0 ] && echo "La llave de la API web: la de TU app en el panel de desarrolladores de Spotify (Settings: Client ID y Client Secret). No se ve al escribir."
+		printf 'client_id: '; read -rs ci; echo
+		printf 'client_secret: '; read -rs cs; echo
+		printf 'refresh_token (si no tienes, ENTER): '; read -rs rt; echo
+		{ echo "client_id=$ci"; echo "client_secret=$cs"; [ -n "$rt" ] && echo "refresh_token=$rt"; } | rocola-soloist pon-api
+		r=$?; ci=; cs=; rt=; exit $r
+	fi
+	rocola-soloist llave; r=$?
+	if [ $r = 2 ] || ! llave_ok; then
+		[ -t 0 ] || exit 1
+		echo "Escribe la llave de Soloist (la del panel de desarrolladores de Spotify; no se vera al escribirla). ENTER sin nada: no se cambia."
+		read -rs v; echo
+		[ -n "$v" ] || { echo "No se cambio nada."; exit 1; }
+		printf '%s\n' "$v" | rocola-soloist pon-llave; r=$?; v=
+	fi
+	exit $r ;;
+emparejar)
+	llave_ok || { echo "Primero la llave de Soloist: «spotify llave»."; exit 1; }
+	[ "$(modo)" = encendido ] || echo "(El modo esta apagado: emparejar sirve igual; para usarlo en la rocola, «spotify encender».)"
+	exec rocola-soloist emparejar ;;
+bajar) exec rocola-soloist baja ;;
+olvidar)
+	printf 'La rocola olvidara la cuenta de Spotify y habra que emparejar otra vez. Escribe SI para seguir: '; read -r s
+	[ "$s" = SI ] || { echo "No se hizo nada."; exit 1; }
+	exec rocola-soloist olvidar ;;
+prueba)
+	bien=0; mal=0
+	b() { echo "  BIEN: $*"; bien=$((bien + 1)); }
+	m() { echo "  MAL:  $*"; mal=$((mal + 1)); }
+	echo "=== Revision de Spotify ($(date '+%Y-%m-%d %H:%M')) ==="
+	echo "Internet:"
+	if red "Programas de Spotify" "$URL" head; then bien=$((bien + 1)); else mal=$((mal + 1)); fi
+	if red "Servidores de Spotify" "$APRESOLVE"; then bien=$((bien + 1)); else mal=$((mal + 1)); fi
+	echo "En la rocola:"
+	o=$(rocola-soloist version 2>&1); r=$?
+	ver=$(echo "$o" | sed -n 's/^version=//p'); cad=$(echo "$o" | sed -n 's/^caduca=//p'); d=$(echo "$o" | sed -n 's/^dias=//p')
+	if [ $r = 0 ]; then
+		b "el programa de Spotify contesta${ver:+ (version $ver)}${cad:+; caduca el $cad: quedan $d dias}"
+		[ -n "$d" ] && [ "$d" -lt 7 ] 2>/dev/null && m "el programa caduca en menos de 7 dias: «spotify bajar»"
+	elif echo "$o" | grep -q 'no hay programa'; then m "el programa de Spotify no esta bajado («spotify bajar», con internet)"
+	else m "el programa de Spotify no contesta a --version ($(echo "$o" | sed -n 's/^codigo=//p'))"; fi
+	if llave_ok; then b "la llave de Soloist esta puesta"; else m "falta la llave de Soloist («spotify llave»)"; fi
+	if api_ok; then b "la llave de la API web esta puesta"; else m "falta la llave de la API web (sin ella no se puede buscar en Spotify)"; fi
+	if [ -s "$PULSO/libpulse.so.0" ]; then b "el puente de sonido (rocola-pulso) esta en $PULSO"; else m "falta el puente de sonido: $PULSO/libpulse.so.0 (el sistema no lo trae)"; fi
+	anillo; r=$?; [ $r = 0 ] && bien=$((bien + 1)); [ $r = 1 ] && mal=$((mal + 1))
+	case "$(lee sesion "$XPEST")" in
+		1|si|true) b "la cuenta esta emparejada (lo dice la rocola)" ;;
+		0|no|false) m "Soloist no tiene cuenta: falta emparejar («spotify emparejar», o elegir la bocina en la app de Spotify)" ;;
+		*) if guardado; then echo "  --    hay datos guardados de Soloist (si la cuenta esta, se ve con la rocola abierta)"
+		   else m "Soloist nunca se ha emparejado: falta hacerlo una vez («spotify emparejar»)"; fi ;;
+	esac
+	if [ -s "$SDATOS/ws.port" ]; then if ws; then bien=$((bien + 1)); else mal=$((mal + 1)); fi
+	else echo "  --    Soloist no esta en marcha (corre solo con el modo encendido y la rocola abierta): su WebSocket no se puede probar."; fi
+	[ -f "$XPEST" ] && lo_de_la_rocola
+	echo "=== $bien BIEN, $mal MAL ==="
+	[ $mal = 0 ] ;;
+*) echo "No conozco «spotify $1»."; ayuda; exit 2 ;;
+esac

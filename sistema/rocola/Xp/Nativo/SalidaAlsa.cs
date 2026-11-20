@@ -75,6 +75,7 @@ namespace Rocola
         [DllImport(Lib)] private static extern nint snd_pcm_writei(IntPtr pcm, byte* datos, nuint cuadros);
         [DllImport(Lib)] private static extern nint snd_pcm_avail(IntPtr pcm);
         [DllImport(Lib)] private static extern int snd_pcm_delay(IntPtr pcm, out nint cuadros);
+        [DllImport(Lib)] private static extern int snd_pcm_state(IntPtr pcm);
         [DllImport(Lib)] private static extern int snd_pcm_recover(IntPtr pcm, int error, int callado);
         [DllImport(Lib)] private static extern int snd_pcm_drop(IntPtr pcm);
         [DllImport(Lib)] private static extern int snd_pcm_prepare(IntPtr pcm);
@@ -184,16 +185,20 @@ namespace Rocola
             if (r < 0) throw new ErrorAlsa(r, funcion);
         }
         // Los cuadros que ya sonaron desde el ultimo Vacia: lo escrito menos lo que la tarjeta aun tiene por delante. Si se quedo sin nada
-        // (XRUN), ya sono todo.
+        // (XRUN), ya sono todo: lo dice snd_pcm_delay con -EPIPE (la tarjeta de verdad) o, si no (un plugin de ALSA, como los de ioplug, que
+        // al ver el XRUN en el delay cambia el estado pero contesta 0 con lo que tenia antes), el estado (17-11-2026: la entrada de 10 ms
+        // tras un corte de Codigo/SalidaPropia.cs mira con esto si la tarjeta se quedo muda).
         internal long Sonado()
         {
             nint d;
             int r = snd_pcm_delay(pcm, out d);
             if (r == -ErrorAlsa.EPIPE || r == -ErrorAlsa.ESTRPIPE) return escritos;
+            if (r >= 0 && snd_pcm_state(pcm) == EstadoXrun) return escritos;
             if (r < 0) throw new ErrorAlsa(r, "snd_pcm_delay");
             return Math.Max(0, escritos - Math.Max(0, (long)d));
         }
         internal long Escritos { get { return escritos; } }
+        private const int EstadoXrun = 4;   // SND_PCM_STATE_XRUN
         // Lo que no sono se tira y la cuenta vuelve a 0 (waveOutReset)
         internal void Vacia()
         {
