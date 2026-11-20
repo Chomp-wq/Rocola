@@ -547,8 +547,10 @@ if [[ " $partes " == *" noche "* ]]; then
     si "probar $c: sale con 0" test "$(cat $o/salio)" = 0
     si "probar $c: «Probar» la baja al 80 % (-3,22 dB: $(nv probar-$c baja) dB)" entre "$(nv probar-$c baja)" -3.40 -3.05
     si "probar $c: con la rampa rapida (0,93 s: $(nv probar-$c rampa) s)" entre "$(nv probar-$c rampa)" 0.6 1.4
+    # (20-11-2026) los dos toques llegan por prueba-pide, que el doble lee en su latido de 1 s (RocolaOs.LatidoMs): cada uno puede entrar
+    # hasta 1 s tarde, asi que lo de abajo va de unos 14 a 16 s (con la maquina cargada se vio 15,9 dos veces y 13,9 una); antes 14,4-15,8
     si "probar $c: se queda hasta el otro toque, 15 s despues ($(nv probar-$c abajo) s abajo), y vuelve a lo de antes ($(nv probar-$c antes) -> $(nv probar-$c vuelve) dB, en $(nv probar-$c subida) s)" \
-      bash -c "echo '$(nv probar-$c abajo) > 14.4 && $(nv probar-$c abajo) < 15.8 && $(nv probar-$c vuelve) - $(nv probar-$c antes) < 0.15 && $(nv probar-$c antes) - $(nv probar-$c vuelve) < 0.15 && $(nv probar-$c subida) > 0.5 && $(nv probar-$c subida) < 1.4' | bc | grep -q 1"
+      bash -c "echo '$(nv probar-$c abajo) > 13.9 && $(nv probar-$c abajo) < 16.2 && $(nv probar-$c vuelve) - $(nv probar-$c antes) < 0.15 && $(nv probar-$c antes) - $(nv probar-$c vuelve) < 0.15 && $(nv probar-$c subida) > 0.5 && $(nv probar-$c subida) < 1.4' | bc | grep -q 1"
   done
   dp=$(echo "$(nv noche-sp pend_despues) - $(nv noche-xp pend_despues)" | bc)
   si "noche: la de Spotify baja igual que la de XP (la pendiente: $dp dB/min de diferencia)" bash -c "echo '$dp < 0.015 && $dp > -0.015' | bc | grep -q 1"
