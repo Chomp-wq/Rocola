@@ -195,7 +195,7 @@ namespace Rocola
             private static void MiraLlave()
             {
                 bool hay = LeeLlave() != null;
-                if (hay != hayLlave) RocolaOs.Apunta("busca_letra", hay ? "con la llave de Genius" : "sin la llave de Genius (" + ArchivoLlave + "): no se pregunta nada");
+                if (hay != hayLlave || Volatile.Read(ref estado) == "sin_mirar") RocolaOs.Apunta("busca_letra", hay ? "con la llave de Genius" : "sin la llave de Genius (" + ArchivoLlave + "): no se pregunta nada");
                 hayLlave = hay;
                 if (Volatile.Read(ref estado) == "sin_mirar" || Volatile.Read(ref estado) == "sin_llave" || Volatile.Read(ref estado) == "lista")
                     Volatile.Write(ref estado, hay ? "lista" : "sin_llave");

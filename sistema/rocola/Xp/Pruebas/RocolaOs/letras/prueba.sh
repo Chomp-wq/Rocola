@@ -239,7 +239,7 @@ for e in $escenas; do
     si "suena: la letra sincronizada de LRCLIB (11 versos)" contiene "$o/muestras.txt" "letra=sincronizada proveedor=LRCLIB versos=11"
     vs=$(grep -o ' verso=[0-9]*' "$o/muestras.txt" | cut -d= -f2 | uniq | tr '\n' ' ')
     si "suena: los versos avanzan en orden ($vs) y se vieron al menos 7 distintos" bash -c "echo '$vs' | awk '{ for (i = 2; i <= NF; i++) if (\$i < \$(i-1)) exit 1; exit (NF >= 7 ? 0 : 1) }'"
-    si "suena: con cada verso, el siguiente es el que le sigue (hasta el 8)" bash -c "! grep -oE ' verso=[0-8] siguiente=[-0-9]+' '$o/muestras.txt' | awk -F'[= ]' '{ if (\$5 != \$3 + 1) bad = 1 } END { exit bad }' | grep -q ."
+    si "suena: con cada verso, el siguiente es el que le sigue (hasta el 8)" bash -c "grep -oE 'verso=[0-8] siguiente=[-0-9]+' '$o/muestras.txt' | awk -F'[= ]' '{ n++; if (\$4 != \$2 + 1) bad = 1 } END { exit (bad || n < 7) }'"
     si "suena: al acabar, nada suena (letra=nada_suena)" bash -c "tail -1 '$o/muestras.txt' | grep -q 'letra=nada_suena'"
     si "suena: la letra en /run (su .lrc) y nada de ella en los datos" bash -c "grep -lq 'verso inventado' '$o/run/rocola-xp/letras/'*.lrc && ! grep -rlF 'verso inventado' '$d' | grep -q ."
     si "suena: el estado sin texto de la letra" nocontiene "$est" "verso inventado" ;;
