@@ -824,7 +824,7 @@ namespace Rocola
                     bar[1].Value = (int)Math.Round(normStrength * 100f);
                     bar[3].Value = videoVol; au[3].Checked = videoAuto;
                     // ---------------- EL MODO NOCHE (volvio el 7-11-2026; Form1.Sonido.cs) ----------------
-                    // Debajo de los videos, en el hueco que quedaba en la tarjeta: interruptor, cuanto se oye de noche (70 a 90 %) y
+                    // Debajo de los videos, en el hueco que quedaba en la tarjeta: interruptor, cuanto se oye de noche (50 a 90 %; antes 70 a 90) y
                     // «Probar», que lo pone 15 s al momento para oir como quedaria y vuelve solo.
                     Interruptor swNoche = new Interruptor();
                     swNoche.SetBounds(16, 310, 300, 26); swNoche.ForeColor = cTexto; swNoche.Font = fNom;

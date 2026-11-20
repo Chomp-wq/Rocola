@@ -60,7 +60,7 @@ namespace Rocola
         // «El otro dia nos aventaron piedras por tener musica a las 12 A.M, asi que volveremos a poner el modo noche, con un slider desde
         // el 70 al 90% del audio, y con un boton para probar como se escucharia cuando se active.» (Se habia retirado el 24-10-2026.)
         //
-        // De las 10 de la noche a las 7 de la manana (noche_desde=, noche_hasta=) la rocola suena al nochePct % (noche_pct=, de 70 a 90,
+        // De las 10 de la noche a las 7 de la manana (noche_desde=, noche_hasta=) la rocola suena al nochePct % (noche_pct=, de 50 a 90 desde el 20-11-2026, antes de 70 a 90;
         // 80 de fabrica; interruptor noche=, ENCENDIDO de fabrica), musica y videos.
         // 17-11-2026 (el dueno: «haz que el modo noche empiece desde las 10, pero que vaya bajando extremadamente lento el volumen hasta
         // llegar al objetivo, para que asi los clientes no lo noten, que se vaya bajando tan lento que tarde una hora en llegar al
@@ -70,7 +70,7 @@ namespace Rocola
         //
         // EL PORCENTAJE ES DE LO QUE SE OYE, NO DE LA SENAL. Lo que se aprendio la primera vez: multiplicar la senal por 0,8 son -1,9 dB, y
         // eso casi no se nota (el ajuste parecia roto). El oido percibe el doble de fuerte con +10 dB, asi que «al 70 %» es 10*log2(0,70) =
-        // -5,1 dB; al 80 %, -3,2 dB; al 90 %, -1,5 dB.
+        // -5,1 dB; al 80 %, -3,2 dB; al 90 %, -1,5 dB; y al 50 %, lo mas bajo desde el 20-11-2026 («el slider desde 50 hasta 90%»), -10 dB.
         //
         // Y BAJA POCO A POCO. La noche (de dia a noche, con la rocola encendida) baja en 60 minutos exactos (NocheBajadaMs, el «avance»
         // va de 0 a 1 por reloj y el volumen es 10^(NocheDb * avance / 20)); la subida de la manana, el deslizador y el interruptor usan
@@ -84,8 +84,8 @@ namespace Rocola
         private static bool nocheOn = true;                        // "noche=" en config (0 lo apaga del todo)
         private static int nocheDesde = 22;                        // "noche_desde=" (22 de fabrica desde el 17-11-2026; antes 23)
         private static int nocheHasta = BusinessDayStartHour;      // "noche_hasta=" (las 7: cuando empieza el dia del negocio)
-        private static int nochePct = 80;                          // "noche_pct=": de 70 a 90 (lo que se oye)
-        internal const int NochePctMin = 70, NochePctMax = 90;
+        private static int nochePct = 80;                          // "noche_pct=": de 50 a 90 (lo que se oye; hasta el 20-11-2026, de 70 a 90)
+        internal const int NochePctMin = 50, NochePctMax = 90;   // 50 desde el 20-11-2026 (antes 70; el dueno: «El modo noche ahora tendra el slider desde 50 hasta 90%»)
         private const int NocheRampaMs = 20000, NochePruebaRampaMs = 1500, NochePruebaMs = 30 * 60 * 1000;   // la prueba se queda hasta otro toque; si se olvida, 30 min
         internal const int NocheBajadaMs = 3600000;                // la bajada de la noche: una hora
         private static int nocheGraves = 4;                        // "noche_graves=": dB de grave que se quitan de noche (0 a 6; 0 = apagado)
@@ -148,7 +148,7 @@ namespace Rocola
         {
             if (actual == meta) return meta;
             if (msPasados <= 0) return actual;
-            float paso = (1f - 0.5f) * msPasados / rampaMs;   // recorre medio volumen en rampaMs: la noche (70 a 90 %) en menos que eso
+            float paso = Math.Max(1f - 0.5f, 1f - NocheLin()) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si la noche baja mas que eso (de 50 a 65 %, desde el 20-11-2026), lo que baja: la noche entera siempre en rampaMs o menos
             if (actual < meta) { actual += paso; if (actual > meta) actual = meta; }
             else { actual -= paso; if (actual < meta) actual = meta; }
             return actual;
@@ -1331,7 +1331,7 @@ namespace Rocola
         {
             // La comparacion a ciegas se acaba antes de armar otra cancion: si no, se armaria con lo del tramo que suene (CompararCiegas.cs).
             if (ciegoActivo) TerminaCiego("Se acaba la cancion: comparacion cortada. ");
-            CadenaCancion c = new CadenaCancion(); t = RocolaOsCalidadCancion(t, source);   // ROCOLA OS g61: (XP) CadenaCancion c = new CadenaCancion(); — si el lector es la version de Spotify de una cancion tuya, la cadena se arma con una copia de tu cancion con la ruta de Spotify (sus medidas, ninguna de tu MP3); lo que se ve sigue siendo tu cancion (RocolaOs/RocolaOs.Calidad.cs; de XP, la misma t)
+            CadenaCancion c = new CadenaCancion();
             c.Cancion = t; c.Lector = source; c.IaMejorada = iaMejorada;
             OlvidaSiEsOtroArchivo(t.Path, source);   // en esa ruta hay hoy otro archivo: lo aprendido del de antes no vale
             c.Fuente = FuenteDeLector(t.Path, source);
@@ -1339,7 +1339,7 @@ namespace Rocola
             // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
             // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
             // De una cancion retomada a medias no se aprende nada: seria la medida de un trozo.
-            bool entera = saltadoSeg <= 0 && !iaMejorada && RocolaOsSpotifyAprende(t.Path);   // ROCOLA OS g23: (XP) bool entera = saltadoSeg <= 0 && !iaMejorada; — de una de Spotify no se aprende ni su sonoridad ni su EQ: suena como una sin medir (R7; RocolaOs/RocolaOs.SpotifyPide.cs); sin Rocola OS o con una de XP, true
+            bool entera = saltadoSeg <= 0 && !iaMejorada;
             c.MedidaRuta = (entera && normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
             c.EqRuta = (entera && EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
             // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
@@ -1509,7 +1509,7 @@ namespace Rocola
             // pasar por BuildCleanMp3 (sus cuadros falsos sonaban a ruido). AudioStartFailed devuelve el credito, la marca danada y la anota en
             // rocola_incompatibles.txt. Los MP3 de verdad (y el MP3 dentro de un WAV) pasan igual que antes. Ver NoEsMp3.cs.
             NoEsMp3.Rechaza(path);
-            { IAudioSource rocolaOsSpotify = RocolaOsSpotifyAbre(path); if (rocolaOsSpotify != null) return rocolaOsSpotify; } string original = RutaOriginalDe(path);   // ROCOLA OS g13: (XP) string original = RutaOriginalDe(path); — con el modo Spotify (spotify=1), una ruta «spotify:track:» se abre con la fuente de Spotify, que lee el anillo de Soloist (RocolaOs/RocolaOs.SpotifyFuente.cs); apagado, null y lo de XP
+            string original = RutaOriginalDe(path);
             FuenteMedida inicio = CapturaFuente(original);
             try { return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, ComoEstereo(new FileAudioSource(path))))); }   // sin el hueco del codificador ni los silencios largos
             catch
