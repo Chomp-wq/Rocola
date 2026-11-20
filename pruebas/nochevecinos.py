@@ -313,7 +313,7 @@ def tablas(carpeta):
                 print(p + " | " + " | ".join("%+.1f" % (todo["rosa"][p]["bandas"][i] - todo["rosa"][ref]["bandas"][i]) for i in idx))
     print("\n## 8. LUFS por cancion (dia, noche de hoy, 50 %)")
     for c in musica:
-        print("  %s: dia %.1f, noche80 %.1f, noche50 %.1f; pico de la salida de dia %s" % (c, todo[c]["dia"]["lufs"], todo[c]["noche80"]["lufs"], todo[c]["noche50"]["lufs"], "-"))
+        print("  %s: dia %.1f, noche80 %.1f, noche50 %.1f" % (c, todo[c]["dia"]["lufs"], todo[c]["noche80"]["lufs"], todo[c]["noche50"]["lufs"]))
 
 
 if __name__ == "__main__":
