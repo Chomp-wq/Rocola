@@ -77,3 +77,16 @@ Soloist de verdad.** Resultados: `sistema/ACT_qemu_spotify.md`.
 - Fases (`python3 spotify.py [FASE...]`): `prepara` (el `.tar.gz`, la memoria y los dos servidores, que quedan corriendo), `limpia` (la
   rocola instalada sin nada de Spotify y sin créditos), `sinllave`, `red`, `pide`, `noche`, `kill`, `sonido` y `fin`. Deja
   `$Q/spotify.txt`, `$Q/spotify/` (lo que dijeron las órdenes, las bitácoras, los tramos) y las capturas (también en `$CAPTURAS` si se da).
+
+## La hoja Pantalla de Ctrl+F4 (20-11-2026): `pantalla.py`
+
+Sobre un sistema ya instalado por `prueba.py` (de fábrica el de la junta de Spotify, `BASE=/root/rocola-trabajo/act/qemu-spotify/xp.qcow2`,
+con una capa qcow2 propia encima en `Q=/root/rocola-trabajo/act/qemu-pantalla`: lo de `BASE` no se toca). El `rocola-xp` de la rama (perfil
+`qemu`) y `rocola-pantalla` van en `Q/pantalla.img` (MBR y ext2, como `a4.img`) y se copian encima. Con las teclas de la máquina:
+`rocola-pantalla modos` y `estado`, Ctrl+F4, probar 1280x768 y dejar que vuelva sola, probar y «Sí», el arranque con lo guardado y
+`rocola-pantalla auto`. La VGA de bochs cambia de modo por KMS de verdad y no tiene tabla de gamma. Resultados: `Xp/FASE11_pantalla.md`.
+
+```sh
+cd sistema/rocola/Xp && dotnet publish RocolaXp.csproj -c Release -r linux-x64 -p:PublishAot=true -p:RocolaPerfil=qemu -o $Q/aot-qemu
+cd ../Pruebas/Qemu && Q=$Q python3 pantalla.py $Q/aot-qemu      # (unos 7 minutos)
+```

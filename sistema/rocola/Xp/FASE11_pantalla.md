@@ -1,6 +1,7 @@
 # Fase 11, grupo pantalla-ctrlf4: la ventana de Rocola OS (Ctrl+F4) con la hoja «Pantalla»
 
-15-11-2026. Rama `pantalla-ctrlf4`, sobre `junta-spotify` (a744bf4). Es la petición del dueño del 15-11-2026 (AGENTS.md: «en la ventana
+15-11-2026 (y 20-11-2026: juntada `junta-spotify` 30c31d4, lo que quedó a medias, el arreglo de los rótulos y la prueba en QEMU). Rama
+`pantalla-ctrlf4`, sobre `junta-spotify`. Es la petición del dueño del 15-11-2026 (AGENTS.md: «en la ventana
 de ctrl f3 (o ... ctrl f4) pon para configurar elementos mas de GPU, como la resolucion, los hertz del monitor, y los colores del
 monitor, todas esas cosas quedandose guardadas para siempre») y el punto 9 de `SPOTIFY_JUNTA_PENDIENTES.md`. **No entra en la
 compilación del cumpleaños: se junta después** (un modo de pantalla mal puesto deja la rocola a oscuras). **Nada de esto está probado en
@@ -44,6 +45,17 @@ gris), `sin-rocola-os.png`.
 | `board/rocola/rootfs_overlay/usr/bin/rocola-pantalla` | La orden de la consola de mantenimiento |
 | `Pruebas/RocolaOs/pantalla/prueba.sh` | La prueba |
 
+Lo añadido el 20-11-2026 (lo que quedó a medias al pausar el grupo, revisado y probado):
+- La cuenta atrás de «¿Se ve bien?» va **por el reloj** (`Environment.TickCount64` desde que se pregunta), no por cuántos avisos de 1 s
+  llegaron: si con el modo nuevo la rocola pinta a tirones (cuadros de segundos, como en QEMU), la vuelta sola no se alarga a minutos.
+- Con el teclado, tras «Probar» o «Volver a lo automático» el foco se queda en la barra de la resolución (si no, se iba solo a la otra
+  tarjeta porque el botón queda en gris).
+- La bitácora dice al arrancar los modos que da el monitor («modos del monitor (N): ...», el automático con «*»), para verlos desde la
+  bitácora o desde casa.
+- `Kms.CambiaModo`: si el controlador no acepta el modo con otra medida, primero se pone otra vez al frente la superficie de antes y
+  después se suelta la nueva (antes al revés).
+- Los rótulos de la hoja, a prueba de letras más anchas (lo visto en QEMU, arriba en «Las pruebas»).
+
 ### Los ganchos (g80-g82)
 
 | Id | Dónde | Qué | Sin `ROCOLA_OS` |
@@ -52,7 +64,8 @@ gris), `sin-rocola-os.png`.
 | g81 | `Nativo/Anfitrion.cs:30` | `new Kms()` → `RocolaOs.AbreLaPantalla()` | `new Kms()` (sin la función tampoco se lee nada). Solo se llega con la pantalla de verdad (con `ROCOLA_PANTALLA=fuera...` no) |
 | g82 | `Nativo/CompositorPantalla.cs:46` | `ancho`/`alto` de solo lectura → la medida de la superficie en cada cuadro | la misma medida (nunca cambia) |
 
-`ganchos.py`: TODO BIEN (29 ganchos). `diff-xp.py --sin-ganchos`: 5 095 / 4 828 / 229, las de la base.
+`ganchos.py`: TODO BIEN (37 ganchos tras juntar `junta-spotify` 30c31d4: g53-g57 y g60-g62 de la junta, g80-g82 de este grupo).
+`diff-xp.py --sin-ganchos`: 5 095 / 4 828 / 229, las de la base (33 ganchos devueltos en 13 archivos).
 
 ### Lo guardado: `/rocola/datos/xp/rocola_pantalla.txt`
 
@@ -114,16 +127,17 @@ sus modos de `/sys/class/drm/*/modes` (sin repetir; los hercios se ven en Ctrl+F
 
 ## Las pruebas
 
-15-11-2026, en la máquina de pruebas compartida (carga 5 a 11: otros agentes compilando). JIT = `dotnet build -c Release`; AOT =
+15-11-2026 y otra vez el 20-11-2026 (tras juntar `junta-spotify` 30c31d4 y lo que quedó a medias al pausar), en la máquina de pruebas compartida (carga 5 a 11: otros agentes compilando). JIT = `dotnet build -c Release`; AOT =
 `dotnet publish -p:PublishAot=true -r linux-x64`. **Todo fuera de pantalla con el KMS simulado; nada en el A4 ni con un monitor de verdad.**
 
 | Prueba | Resultado |
 |---|---|
 | Compilar, JIT | 0 errores, los 13 avisos de siempre |
 | Publicar NativeAOT | sale con 0, 0 avisos IL/AOT |
-| `ganchos.py` | TODO BIEN (29 ganchos; `Codigo/` = `fc7b667` devolviéndolos) |
-| `diff-xp.py --sin-ganchos` (109 archivos) | 5 095 / 4 828 / 229, las de la base; 25 ganchos de `Codigo/` devueltos en 10 archivos |
-| `Pruebas/RocolaOs/pantalla/prueba.sh` | **JIT 65 de 65; AOT 65 de 65** (abajo, por partes) |
+| `ganchos.py` | TODO BIEN (37 ganchos en 17 archivos; `Codigo/` = `fc7b667` devolviéndolos) |
+| `diff-xp.py --sin-ganchos` (109 archivos) | 5 095 / 4 828 / 229, las de la base; 33 ganchos de `Codigo/` devueltos en 13 archivos |
+| `Pruebas/RocolaOs/pantalla/prueba.sh` | 15-11: JIT 65 de 65, AOT 65 de 65. **20-11: JIT 71 de 71; AOT 71 de 71** (con la parte «teclado»); tras el arreglo de los rótulos, ventana, teclado, lista y apagada otra vez: JIT 26 de 26, AOT 26 de 26 |
+| `Pruebas/Qemu/pantalla.py` (QEMU, bochs-drm, KMS de verdad) | **18 de 18** (abajo) |
 | nivel 0 (sin `ROCOLA_OS`, contra la referencia congelada) | NIVEL0_PENDIENTE |
 
 `prueba.sh`, por partes (las mismas en JIT y en AOT):
@@ -139,6 +153,10 @@ sus modos de `/sys/class/drm/*/modes` (sin repetir; los hercios se ven en Ctrl+F
   nada; una moneda con la pregunta abierta cuenta; otra vez y «Sí»: `modo=1920x1080@60` guardado; brillo y temperatura con el ratón: la
   última tabla que llega a la «tarjeta» es exactamente la de brillo 25 y temperatura −25 (las 768 cifras) y se guarda; sin CTM no se pide
   la matriz; Escape cierra; al cerrarse la rocola, los colores de fábrica; la bitácora; el apagado de siempre; `rocola_error.txt` limpio.
+- **teclado** (6, 20-11): lo mismo sin ratón, como se maneja en QEMU: Ctrl+F4 (el foco en la pestaña), Tab, Tab (la barra de la
+  resolución), Fin (la más grande), Tab, Tab («Probar»), Intro: la prueba de 1920x1080@60; en la pregunta Tab e Intro («Sí»): guardado y no
+  vuelve; el foco vuelve a la barra de la resolución; Tab hasta el brillo y tres veces la flecha derecha: `brillo=3` y su tabla en la
+  «tarjeta»; la bitácora dice los modos del monitor al arrancar («modos del monitor (7): 1920x1080@60 ... 1024x768@75* ...»).
 - **arranque** (7): con `modo=1920x1080@60` y colores guardados, **el primer modo puesto es el guardado** (ni un cuadro en 1024x768) y la
   tabla va justo después; `sin_confirmar=1` a los 10 s; **a los 60 s se confirma** (desaparece) y lo desconocido del archivo sigue.
 - **caidas** (5): dos arranques matados con `kill -9` a los 8 s (`sin_confirmar` 1 y 2, en 1920x1080) y el tercero **arranca ya en lo
@@ -153,7 +171,38 @@ sus modos de `/sys/class/drm/*/modes` (sin repetir; los hercios se ven en Ctrl+F
   «cierreq»): IGUAL** con `compara_escena.py` y el ruido medido, en JIT y en AOT. (Con SIGTERM la referencia en JIT y este en AOT no
   cierran igual en el mismo segundo: por eso no se usó; el nivel 0 tampoco corre «sigterm» en AOT.)
 
-**No se hizo la prueba en QEMU** (la de la junta de Spotify estaba corriendo: un `qemu-system` en marcha todo el tiempo). Ni en el A4.
+### En QEMU, con un KMS de verdad (20-11-2026)
+
+`sistema/rocola/Pruebas/Qemu/pantalla.py` (se corrió cuando ya no había ningún `qemu-system` en marcha): sobre el sistema que dejó
+instalado la junta de Spotify (`act/qemu-spotify/xp.qcow2`, con una capa qcow2 propia encima: no se toca), el `rocola-xp` de esta rama
+(perfil `qemu`, NativeAOT) y `rocola-pantalla` en un disco aparte (`pantalla.img`, ext2), copiados encima y la rocola reabierta como
+«reiniciar ya». La tarjeta es la VGA de bochs (`bochs-drm`, núcleo 6.12.47 del sistema): **cambia de modo por KMS de verdad y no tiene tabla
+de gamma ni CTM**. Todo con las teclas de la máquina (`sendkey`), como se manejaría con un teclado. Corrida final: **18 de 18**
+(`/root/rocola-trabajo/act/qemu-pantalla/salida.log`; capturas en `pantalla-capturas/qemu/` del scratchpad de la sesión):
+- `rocola-pantalla modos` con el sistema de verdad: `card0-Virtual-1 (conectada)` con 1024x768, 1920x1080, 1600x1200...; `estado` sin
+  nada guardado: automática.
+- La bitácora: `pantalla 1024x768@75 (automatica); controlador bochs-drm; gamma no; CTM no` y `modos del monitor (15): 1024x768@75*
+  1920x1080@60 1920x1080@50 1600x1200@60 ...`.
+- Ctrl+F4, Tab, Tab, derecha (1280x768, que solo tiene 60 Hz: la barra de los hercios va en gris y el tabulador la salta), Tab, Intro:
+  **QEMU muestra la pantalla en 1280x768** (la captura mide 1280x768); **sin contestar vuelve sola a 1024x768**: 19 s entre «¿Se ve bien?» y
+  «nadie contesto» en la bitácora (que va por segundos; en QEMU cada cuadro tarda segundos y el aviso de 1 s del reloj llega entre cuadro
+  y cuadro); no se guardó nada.
+- Otra vez y «Sí» (Tab, Intro): `modo=1280x768@60` guardado, la pantalla sigue en 1280x768 con la rocola reacomodada (`p5-guardado.png`:
+  la pared de 1280x768 y la ventana centrada) y `rocola-pantalla estado` lo dice.
+- La rocola cerrada y vuelta a abrir: **arranca ya en 1280x768**.
+- `rocola-pantalla auto`: borra lo guardado, cierra la rocola conservando el estado y el lanzador la abre **en 1024x768**.
+- Los cuatro mandos de color y la saturación en gris con su porqué («Necesita una tarjeta con tabla de gamma; la de esta rocola (bochs-drm)
+  no la tiene.»). `rocola_error.txt` sin fallos de Rocola OS.
+- **Lo que enseñó QEMU** (corridas 1 y 2, fallos de la prueba, no del programa; arreglados en `pantalla.py`): con un modo de un solo
+  hercio la barra de los hercios va en gris y el tabulador la salta (una Tab menos), y `rocola-discos` puede montar el disco de la prueba
+  después de que la rocola ya esté abierta (se espera). **Y un fallo de la hoja que las pruebas fuera de pantalla no veían**: con letras
+  más anchas que las de la máquina de pruebas (en QEMU, las «letras de XP» de mentira de `mundo.sh`, DejaVu Serif), el texto de abajo de
+  «Resolución y hercios» llevaba saltos de línea a mano y su último renglón («mantenimiento lo deshace.») quedaba fuera, y el porqué de los
+  mandos de color, en un renglón, se cortaba en «(bochs-». Arreglado: ese texto ya no lleva saltos fijos (el rótulo parte por palabras, 74
+  px de alto) y el porqué va en dos renglones como el de la saturación. Con las letras de XP de verdad (las del disco de Windows del A4)
+  hay que mirarlo otra vez en el A4.
+
+**Ni en el A4 ni con un monitor de verdad.**
 
 ## Lo que queda abierto y lo que hay que comprobar en el A4
 
@@ -161,8 +210,12 @@ sus modos de `/sys/class/drm/*/modes` (sin repetir; los hercios se ven en Ctrl+F
   (y la vuelta sola a los 15 s) se vea; que la radeon acepte la tabla de gamma (y cuánto tarda cada una: los 10 ms de `msleep`); que la
   consola de mantenimiento quede con los colores de fábrica; que con un modo guardado el arranque no parpadee de más; y medir que la
   rocola en una resolución mayor que 1024x768 vaya fluida (el A4 está medido en 1024x768; regla del 17-10-2026: no afirmar fluidez).
-- **El cambio de modo en vivo rehace la superficie de GBM y EGL** (el contexto de OpenGL es el mismo): probado solo con el KMS simulado. La
-  prueba en QEMU (bochs con su KMS de verdad) no se hizo: la de la junta de Spotify estaba corriendo.
+- **El cambio de modo en vivo rehace la superficie de GBM y EGL** (el contexto de OpenGL es el mismo): probado con el KMS simulado y en
+  QEMU (bochs-drm, Mesa por software: 1024x768 → 1280x768 → 1024x768, y otra vez a 1280x768), no con la radeon del A4. Si el controlador no
+  acepta la superficie nueva, se vuelve a la de antes y se suelta la nueva después (20-11: antes se soltaba primero la nueva y luego se
+  volvía; ahora primero la de antes al frente: `Kms.CambiaModo`).
+- La tabla de gamma por KMS de verdad **no se pudo probar en QEMU**: bochs-drm no tiene gamma (ni la llamada de siempre ni `GAMMA_LUT`). Lo
+  único que la prueba es la radeon del A4.
 - La pantalla simulada no aplica la tabla a la captura (en la tarjeta la aplica la salida, después del framebuffer): los colores se
   comprueban por los números de la tabla, no a la vista.
 - Con un modo mayor la rocola de XP se reacomoda (LayoutControls), pero XP se diseñó para 1024x768: lo que se vea raro en otras medidas es

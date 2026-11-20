@@ -97,10 +97,12 @@ namespace Rocola
             fHz.Item2.Text = "Las veces por segundo que se pinta la pantalla,\nlas que da el monitor a esa resolución.";
             BotonPlano bProbar = new BotonPlano(); bProbar.SetBounds(16, 284, anchoFila, 38); bProbar.Font = x.FBot;
             BotonPlano bAuto = new BotonPlano(); bAuto.SetBounds(16, 330, anchoFila, 38); bAuto.Font = x.FBot; bAuto.Text = "Volver a lo automático";
-            Rotulo lResInfo = new Rotulo(); lResInfo.SetBounds(16, 380, anchoFila, 66); lResInfo.BackColor = Color.Transparent;
+            Rotulo lResInfo = new Rotulo(); lResInfo.SetBounds(16, 378, anchoFila, 74); lResInfo.BackColor = Color.Transparent;
             lResInfo.ForeColor = x.CTenue; lResInfo.Font = x.FDes;
-            lResInfo.Text = "Al probar, la pantalla cambia y pregunta «¿Se ve bien?»: si nadie\ncontesta en " + RocolaOs.PantallaPruebaSegundos
-                + " s, vuelve sola a la de antes. Lo confirmado se guarda\npara siempre; «rocola-pantalla auto» en la consola de\nmantenimiento lo deshace.";
+            // (sin saltos a mano: el rotulo parte por palabras; con las letras de XP del disco de Windows, mas anchas que las de las pruebas,
+            // los saltos fijos dejaban la ultima linea fuera -visto en QEMU con letras anchas-)
+            lResInfo.Text = "Al probar, la pantalla cambia y pregunta «¿Se ve bien?»: si nadie contesta en " + RocolaOs.PantallaPruebaSegundos
+                + " s, vuelve sola a la de antes. Lo confirmado se guarda para siempre; «rocola-pantalla auto» en la consola de mantenimiento lo deshace.";
             Rotulo lResEstado = new Rotulo(); lResEstado.SetBounds(16, 454, anchoFila, 62); lResEstado.BackColor = Color.Transparent;
             lResEstado.ForeColor = x.CAviso; lResEstado.Font = x.FDes;
             Rotulo lTarjeta = new Rotulo(); lTarjeta.SetBounds(16, 522, anchoFila, 34); lTarjeta.BackColor = Color.Transparent;
@@ -241,8 +243,15 @@ namespace Rocola
             if (!hayGamma)
             {
                 Color cN = Color.FromArgb(232, 186, 112);   // el color de «Necesita» de Ctrl+F3 (Interruptor.ColorNecesita)
-                string por = !va ? "Necesita la hoja Pantalla (pantalla=1 y la pantalla por KMS)." : "Necesita una tarjeta con tabla de gamma; " + ctl + " no la tiene.";
-                foreach (var f in new[] { fBri, fCon, fGam, fTem }) { f.Item2.Text = por; f.Item2.ForeColor = cN; }
+                string por = !va ? "Necesita la hoja Pantalla (pantalla=1 y la pantalla por KMS)." : "Necesita una tarjeta con tabla de gamma;\n" + ctl + " no la tiene.";
+                var filas = new[] { fBri, fCon, fGam, fTem }; int[] ys = { 40, 118, 196, 274 };
+                for (int i = 0; i < 4; i++)
+                {
+                    var f = filas[i]; int y0 = ys[i];
+                    // (dos renglones, como el de la saturacion: en uno no cabia el nombre del controlador)
+                    f.Item2.Text = por; f.Item2.ForeColor = cN;
+                    f.Item2.SetBounds(16, y0 + 21, anchoFila, 30); f.Item3.SetBounds(16, y0 + 21 + 32, anchoFila, 22);
+                }
             }
             if (!hayCtm)
             {
