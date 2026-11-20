@@ -212,3 +212,22 @@ procesador (`gpu=0`, como deja la fase `sinllave`; con la tarjeta de QEMU un cua
 - Para repetir: la máquina instalada queda en `/root/rocola-trabajo/act/qemu-spotify` (`xp.qcow2` sobre `discoxp.img`); la memoria de
   instalar (`usb.img`) se borró para ahorrar disco y se rehace con `arma.sh`.
 
+
+## 8. Otra vez, con la junta final (20-11-2026)
+
+Con las paredes del buscador y la sustitución invisible ya juntadas (`SPOTIFY_JUNTA_PENDIENTES.md`, «La junta final»), solo la parte de
+Spotify: `spotify.py` entero sobre la máquina ya instalada. Como al final del apartado 1, el `rocola-xp` nuevo (NativeAOT, perfil de QEMU,
+compilado de la junta final: `rocola-xp programa 0 (local) compilado 1795155866`) se puso encima del sistema instalado por el CDN falso
+(sha256 comprobado dentro: igual), porque desde la imagen de `arma.sh` del apartado 1 solo cambió `rocola-xp` (ni `rootfs_overlay`, ni
+`rocola-pulso`, ni el `init`); el Soloist falso (NativeAOT) y la API falsa se recompilaron de la junta final.
+
+| Fase | Resultado |
+|---|---|
+| prepara, limpia, sinllave, red (corrida7) | **3 + 2 + 9 + 19 BIEN, 0 MAL** (sin llaves: el vigilante en `sin_llave`, 0 peticiones al CDN y a la API, «spotify estado» dice «encendido (de fabrica encendido)»; con la memoria: llaves 0600 en 10 s, Soloist falso bajado y en marcha en 4 s con nuestro `libpulse.so.0`, «spotify prueba» 9 BIEN 0 MAL) |
+| pide, noche, kill, sonido, fin (corrida9) | **23 BIEN, 0 MAL**: una de XP (créditos 5 -> 8 con la moneda), el buscador «entira» a la API falsa, el disco de Spotify abierto, dos de Spotify a un crédito cada una (8 -> 6), otra de XP en la cola (6 -> 5); el reloj a las 23:00:05 con la primera de Spotify sonando; tras el SIGKILL, R5 (7 + 2 + 4 = 13) y ni un play a Soloist; en lo grabado 196 -> 300 -> 220 -> 300 Hz, sin el autoplay de 990 Hz, y el modo noche **-3,22 dB** |
+
+**Lo que falló, y era de la prueba**: en la corrida7, `pide` daba DERECHA 14 veces para llegar al disco, la última tarjeta; con las paredes
+del buscador la última es «Todos los discos de «entira»» (`21b-buscador-elegido.png`) y abría su pared (`GET /v1/search ... t=album`) en
+vez del disco. Ahora va a la última y sube una (`spotify.py`). Una corrida8 intermedia con otro cambio mío (suponer que REGRESAR volvía al
+buscador) se paró: el disco `dis000` ya está en la letra ♫ y, como en XP, REGRESAR vuelve a la pared (`23-pared-letra-spotify.png`); se
+dejó como estaba. Capturas nuevas (20 a 25b) en la carpeta de capturas de la sesión y en `capturas/`.

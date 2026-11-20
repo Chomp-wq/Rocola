@@ -8,7 +8,7 @@
 2. **HECHO** (lo hizo el grupo catalogo al juntar el núcleo; comprobado en la junta: el archivo no está y sus pruebas cuentan las
    pedidas por las «COBRADA» del núcleo). Borrar `RocolaOs/RocolaOs.SpotifyCatalogoDobleI6.cs` (el doble de I6 del grupo catalogo) y cambiar sus comprobaciones de «pedidas».
 3. **El buscador con Spotify como lo pidió el dueño el 7-11-2026** (AGENTS.md; lo funcional, sin dibujo nuevo):
-   **HECHO en la rama `paredes-buscador`** (`FASE11_paredes-buscador.md`; 116 de 116 en JIT y NativeAOT con la API falsa). Al elegir un
+   **HECHO y JUNTADO** (rama `paredes-buscador`, `FASE11_paredes-buscador.md`; juntada en `70c0929`; abajo, «La junta final»). Al elegir un
    artista de Spotify se abre su pared (punto 4), no sus discos en la letra.
    - Un disco o lista de Spotify abierto desde el buscador que NO está en la pared: REGRESAR vuelve AL BUSCADOR con lo escrito y la
      misma elección (hoy el grupo catalogo vuelve a la pared, a la letra ♫). Si está en la pared, la pared se queda en él.
@@ -20,8 +20,8 @@
    - SP9, los atajos del buscador: «tus más escuchadas» (`/v1/me/top/tracks`) y «escuchado hace poco»
      (`/v1/me/player/recently-played`), una petición cada uno por sesión y en memoria; solo con `refresh_token` (si no, no salen).
    - El zoom desde la casilla es visual: a la presentación del final.
-4. **Las paredes del buscador** (decisión del dueño del 15-11-2026, AGENTS.md). **HECHO en la rama `paredes-buscador`** (`FASE11_paredes-buscador.md`, ganchos
-   g53-g56). Va en un grupo propio («paredes-buscador») encima de la
+4. **Las paredes del buscador** (decisión del dueño del 15-11-2026, AGENTS.md). **HECHO y JUNTADO** (rama `paredes-buscador`, `FASE11_paredes-buscador.md`, ganchos
+   g53-g57; juntada en `70c0929`; abajo, «La junta final»). Va en un grupo propio («paredes-buscador») encima de la
    rama `fase11-catalogo` en cuanto ese grupo termine (toca los mismos archivos), y se junta con la base si está a tiempo:
    - Pared del artista que solo está en Spotify: la rejilla de XP (18 por página, IZQ/DER, ARRIBA/ABAJO de página, PONER abre), fuera de
      la barra de letras; la cabecera dice su nombre. Casilla 1: «Canciones de ARTISTA» (`/v1/search?type=track&q=artist:"..."`, hasta
@@ -37,16 +37,18 @@
      pared, apagado = XP tal cual.
 5. **HECHO en la junta** (abajo, escena «noche»). **El modo noche también con Spotify** (pregunta del dueño del 15-11-2026): comprobar con una escena que una canción de Spotify (la
    fuente de `RocolaOs.SpotifyFuente.cs` por `ArmaCadena`) baja al `noche_pct` de noche y con «Probar», con su rampa, igual que una de XP.
-6. **La sustitución invisible** (petición del dueño del 15-11-2026, «si una canción de mi rocola existe en mejor calidad en Spotify, que tome
+6. **HECHO y JUNTADO** (juntada en `30c31d4`; abajo, «La junta final»). **La sustitución invisible** (petición del dueño del 15-11-2026, «si una canción de mi rocola existe en mejor calidad en Spotify, que tome
    esa versión»; rama `sustitucion-spotify`, `FASE11_sustitucion.md`): la función «calidad_spotify» (encendida de fábrica), sus ganchos
    **g60-g62** (`AperturaAudio.cs` 238, `Form1.Sonido.cs` 1288, `NivelDisco.cs` 46) y los cambios chicos en lo del núcleo y del catálogo
    (`SinDevolver` en la fuente, la primera línea de `RocolaOsSpotifyAbre`, `partial` y el pedido «pareja» en el cliente de la API). Al juntar:
    la línea de la petición en `AGENTS.md`, y si las paredes del buscador renumeran ganchos, que no choquen con g60-g62.
 7. **El asistente con lo nuevo de Spotify** (petición del dueño del 15-11-2026, AGENTS.md): grupo «asistente-spotify» después de juntar
    las paredes del buscador: guías nuevas del asistente con su mismo dibujo, solo con el modo Spotify; sin el modo, el de XP tal cual.
-   **HECHO en la rama `asistente-spotify`** (`FASE11_asistente-spotify.md`).
+   **HECHO en la rama `asistente-spotify`** (`FASE11_asistente-spotify.md`). **NO entra en esta junta**: el asistente queda para
+   después (se junta y se prueba aparte, con la batería de abajo otra vez).
 8. **«AYUDA» siempre en la casilla de la ayuda** (petición del dueño del 15-11-2026): con Rocola OS activo, `AyudaCasillaGpu` no va
-   compacta en 1024x768 (la cabecera cede el sitio). Lo hace el grupo del asistente (es su casilla). **HECHO en la rama `asistente-spotify`**.
+   compacta en 1024x768 (la cabecera cede el sitio). Lo hace el grupo del asistente (es su casilla). **HECHO en la rama `asistente-spotify`**; como el 7, **no entra en esta
+   junta**.
 
 ## La junta (15-11-2026, rama `junta-spotify`)
 
@@ -135,3 +137,69 @@ la cuenta real ni en el A4**: todo con el Soloist falso, la API falsa, datos inv
 - La junta no está en QEMU ni compilada para el sistema (lo hace el coordinador, con permiso del dueño); el cambio de `rocola-soloist`
   pide solo la compilación rápida (es del `rootfs_overlay`).
 - Sin llave, el vigilante mira la USB cada 30 s (arriba, «Riesgo que queda»).
+
+## La junta final (15 y 20-11-2026, rama `junta-spotify`)
+
+Sobre la junta de arriba (con la prueba del sistema entero en QEMU, `sistema/ACT_qemu_spotify.md`, y sus dos arreglos `f1e7e1b` y
+`a744bf4`) se juntaron, con `git merge --no-ff`, **`paredes-buscador`** (`70c0929`, hasta `c7f73b7`: los puntos 3 y 4, con sus dos
+revisiones) y **`sustitucion-spotify`** (`30c31d4`, hasta `4a0ea76`: el punto 6, con su revisión). **`asistente-spotify` no** (puntos 7 y 8:
+queda para después). Lo cortó el límite de uso el 15-11 con las dos juntas hechas y compiladas; se siguió el 20-11 sin rehacerlas.
+
+- **Choques resueltos** (como en la junta de prueba `7766186` de la rama del asistente): `GANCHOS.tsv` (g53-g57 de las paredes y g60-g62 de
+  la sustitución, sin ids repetidos: **34 ganchos en 15 archivos**); la API falsa del catálogo (los dos juegos de datos; los de la
+  sustitución en `art80`/`art81` y `dis080`-`dis082`, porque `art50` ya era «Banda Interminable»); el Soloist falso (`SOLOIST_FALSO_SEG` de
+  `a744bf4` y la envolvente de la sustitución). Lo de la sustitución en el núcleo no choca con `a744bf4`: `SinDevolver` en la fuente y la
+  primera línea de `RocolaOsSpotifyAbre` (la sustitución antes de mirar si la ruta es `spotify:`); R4 sigue igual.
+- **Con el encendido de fábrica** (punto 1): las escenas de las paredes daban `spotify=1` a mano; ahora la escena `sinllave` del catálogo
+  quita también `rocola_os.txt` (`305e8c3`): encendido de fábrica, sin llaves, ni una petición y la traza de XP. `apagado` y `cero` siguen
+  con `spotify=0` / sin `ROCOLA_OS`. La función `calidad_spotify` (encendida de fábrica) tampoco hace nada sin llaves (escena «fabrica»).
+- **La prueba de QEMU**: `spotify.py` daba DERECHA 14 veces para llegar al disco, la última tarjeta; ahora la última es «Todos los discos
+  de «entira»» y se abría su pared: va a la última y sube una (`b76ccb3`). Era la prueba, no la rocola.
+- **La línea de la petición en `AGENTS.md`** (punto 6) ya está en la rama principal (`9fda01a`); no se repite aquí para que no choque al
+  juntar `junta-spotify` con ella.
+- **Sin cambios de código** después de las dos juntas: `Codigo/`, `RocolaOs/`, `Nativo/` y `Plataforma/` quedan como en `30c31d4`. Los
+  programas probados (JIT y NativeAOT) son los de `30c31d4`.
+
+### La tabla final (20-11-2026; JIT = `dotnet build -c Release --no-incremental`, AOT = `dotnet publish -p:PublishAot=true -r linux-x64`)
+
+La máquina de pruebas, compartida con otros grupos (carga entre 5 y 21 en 4 núcleos, y otra QEMU de otro grupo): lo que falló a la primera
+fue de tiempos y se repitió la escena; dice cuál y por qué.
+
+| Prueba | JIT | NativeAOT |
+|---|---|---|
+| Compilar | 0 errores, **13 avisos = los 13 de `avisos-base.txt`** (archivo, línea y código) | sale con 0, **0 avisos IL/AOT**, los mismos 13 del compilador |
+| `ganchos.py` | **TODO BIEN**: 34 ganchos en 15 archivos; `Codigo/` = `fc7b667` devolviéndolos (109 archivos, 13 con ganchos) | (el mismo código) |
+| `diff-xp.py --sin-ganchos` (109 archivos) | **5 095 / 4 828 / 229**, las de la base; 32 ganchos devueltos en 13 archivos | |
+| `andamio/prueba.sh` | **101 de 101** | **101 de 101** |
+| `catalogo/prueba.sh` (27 escenas, con las de las paredes: pared, canciones, todos, mas, atajos, pared429, mantenido, tiempo, hojea, atajos503, sinllave, ayuda, miente, portadas) | **154 de 156** a la primera: `cero` (la traza de `apagado`, que arrancó en frío, perdió sus últimas teclas: lo que ya apuntó la revisión de las paredes) y `fallos` (con la carga, el 429 cayó en «inve» y no en «inven»; después, ni una petición: lo que se quiere). Repetidas `apagado cero sinllave fallos`: **21 de 21** | **154 de 156** a la primera: `cero` y `sinllave` (lo mismo de `apagado`). Repetidas `apagado cero sinllave`: **14 de 14** |
+| `spotify-xp/prueba.sh` (15 escenas, con «fabrica» y «noche») | **148 de 149**: `celular`, `no_pedidas=1` en vez de ≥2 (con la carga, los dos «NO PEDIDO» caen en la misma ventana de 1-2 s). Repetida con carga 5: **10 de 10** (`no_pedidas=2`) | **141 de 149** con carga 15-21: `dos` (3 y 1 huecos, saltos en la onda), `celular` (lo mismo) y `noche` (la de Spotify no llegó a cruzar las 23:00 sonando: 0,0 dB). Repetidas `dos celular noche` con carga 10: **49 de 49** |
+| `sustitucion/prueba.sh` | **97 de 97** | **96 de 97**: `titulo`, la buena sonó 8,85 s (con la carga) en vez de ≥9; repetida: **6 de 6** (9,95 s) |
+| Escena «fabrica» (encendido sin ninguna llave = XP) | BIEN entera (en `spotify-xp`) | BIEN entera |
+| Escena «noche» (repetición AOT) | | Spotify **-3,22 dB** con rampa de 11,6 s; XP **-3,22 dB**, 11,5 s; con «Probar» las dos -3,22 dB en 0,9 s, 14,9 s abajo y vuelven solas |
+| Nivel 0 (`nivel0.sh`, pasos previo codigo ganchos escenas aot cierre importa; 37 min) | **38 BIEN, 2 ACEPTADO, 0 MAL**: `Codigo/` 109 de 109 con sus líneas, CRLF y último byte; las **24 escenas JIT** IGUAL (tab, salirq y f12vigia a la segunda, solo cuentas o la hora; sigterm y f3sigterm ACEPTADAS: el estado se borra); `cierre_rocola_os.sh` 43 de 43; `Pruebas/Importa` 145 de 145 | las **7 escenas AOT** IGUAL; `cierre_rocola_os.sh` 43 de 43; `Pruebas/Importa` 145 de 145 |
+| QEMU, solo Spotify (`spotify.py` entero sobre la máquina instalada, con el `rocola-xp` de la junta final del perfil de QEMU; `sistema/ACT_qemu_spotify.md` §8) | | **56 BIEN, 0 MAL** (prepara 3, limpia 2, sinllave 9, red 19, pide-noche-kill-sonido-fin 23); modo noche -3,22 dB en lo grabado; R5 tras el SIGKILL |
+
+Capturas de QEMU (20 a 25b): `/tmp/claude-0/-home-user-Rocola/b54ee812-4417-50ce-9f97-015b8aeef72d/scratchpad/qemu-spotify-capturas/` y
+`/root/rocola-trabajo/act/qemu-spotify/capturas`. Registros: `/root/rocola-trabajo/fase11/junta2` (`bateria.log`, `repite.log`,
+`ronda2.log`, `b-*`, `r-*`, `r2-*`, `r3-*`, `n0/resumen.txt`) y `/root/rocola-trabajo/act/qemu-spotify` (`corrida7.log`, `corrida9.log`).
+
+### Lo que NO se probó aquí
+
+- **Nada con el Soloist de verdad** (nunca se ejecutó), **ni con la cuenta real ni la API web de verdad, ni en el A4.** Todo con el Soloist
+  falso, la API falsa, llaves inventadas y la tarjeta de prueba con reloj (o QEMU sin KVM), fuera de pantalla con llvmpipe y letras DejaVu.
+- De `nivel0.sh`: los arneses, el banco, las cintas, los recorridos, las pruebas de la hoja y la pantalla (`ventanas`) y el nivel 1. El
+  código de XP solo cambió en los ganchos, que sin `ROCOLA_OS` devuelven lo de XP (lo comprueban las escenas); quedan para la siguiente
+  corrida completa.
+- La fase `a4` de `prueba.py` (el `rocola-xp` del perfil del A4 en QEMU) y el resto de `prueba.py` con la junta final.
+- Las pruebas de tiempos que fallaron a la primera con la carga solo se repitieron una vez cada una (todas BIEN): con la máquina libre,
+  repetir la batería entera de corrido.
+
+### Lo que queda abierto
+
+- El asistente con Spotify y «AYUDA» siempre (puntos 7 y 8): en `asistente-spotify`, sin juntar.
+- Lo abierto de cada grupo: `FASE11_paredes-buscador.md` (el tope de aperturas de XP al volver al buscador, «spotify apagar» con alguien
+  dentro de una pared, la tarjeta ARTISTA que dice «1 disco», las portadas de `/run` sin tope en la sesión), `FASE11_sustitucion.md` y lo
+  de «La junta» de arriba (el vigilante mira la USB cada 30 s sin llave).
+- La compilación del sistema y el paso al A4 los hace el coordinador, con permiso del dueño. Esta junta solo cambia `rocola-xp` y los
+  guiones de prueba (desde la junta de arriba, la del `rootfs_overlay` -`rocola-soloist` y la orden `spotify`- sigue igual): basta la
+  rápida.
