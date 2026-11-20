@@ -59,6 +59,14 @@ python3 prueba.py                        # todas las fases (una hora larga); o a
   antes el dibujo por procesador (`gpu=0`, unos 5 s por cuadro en QEMU).
 - `rocola_error.txt` se llena de «Pantalla parada ...»: es lo lento de QEMU.
 
+## El corte de luz (20-11-2026): `apagones.py`
+
+De la auditoría de apagones (`sistema/rocola/Xp/FASE11_apagones.md`). Sobre el sistema instalado de `spotify.py` (`BASE`, con una capa
+qcow2 encima que se tira), QEMU se cierra en seco sin `sync` poco después de guardar y se mira qué quedó: `dd:MODO:ESPERA` (cinco
+guardados como los de XP), `moneda:MODO:ESPERA` (rocola-xp de verdad y una moneda) y `mira`. MODO `normal` (el sistema instalado) o
+`initrd` (el `init` del repositorio pegado en un cpio al final del `initrd.gz` instalado; lo trae un segundo disco en bruto).
+`mount -o remount,dirsync` no sirve: el núcleo no cambia `dirsync` al remontar.
+
 ## La junta de Spotify (15-11-2026): `spotify.py`
 
 Sigue a `prueba.py` sobre el sistema que dejó instalado (`Q=/root/rocola-trabajo/act/qemu-spotify`) y prueba Spotify de punta a punta con
