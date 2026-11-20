@@ -318,7 +318,7 @@ namespace Rocola
             {
                 case RocolaOsPasoAbre: titulo = "Abre el buscador"; texto = "Mantén el botón ROJO y pulsa la flecha de ARRIBA. Ahí salen también las canciones de Spotify."; teclas = "B+U"; break;
                 case RocolaOsPasoAbreArtista: titulo = "Abre el buscador"; texto = "Mantén el botón ROJO y pulsa la flecha de ARRIBA para buscar al artista."; teclas = "B+U"; break;
-                case RocolaOsPasoSinLetra: titulo = "Aún no hay letra ♫"; texto = "Sale cuando la rocola tiene tu cuenta de Spotify. Mientras, búscalas: ROJO + ARRIBA."; teclas = "B+U"; break;
+                case RocolaOsPasoSinLetra: titulo = "Aún no hay letra ♫"; texto = "Sale con tu cuenta o al abrir un disco de Spotify. Mientras, búscalas: ROJO + ARRIBA."; teclas = "B+U"; break;
                 case RocolaOsPasoEscribe: titulo = "Escribe el nombre"; texto = "Elige las letras con las flechas y VERDE. Luego ve con las flechas a las de Spotify."; teclas = "L/R U/D V"; break;
                 case RocolaOsPasoEscribeArtista: titulo = "Escribe el artista"; texto = "Si solo está en Spotify sale su tarjeta. Si ya lo tienes, detrás sale «más en Spotify»."; teclas = "L/R U/D V"; break;
                 case RocolaOsPasoBuscaSpotify: titulo = "Busca las de Spotify"; texto = "Esa es de la rocola. Muévete con las flechas hasta una canción de Spotify."; teclas = "L/R U/D"; break;
@@ -330,7 +330,7 @@ namespace Rocola
                 case RocolaOsPasoTodos: titulo = "Todos los discos"; texto = "Pulsa VERDE y verás todos los discos que salen con lo que escribiste."; teclas = "V"; break;
                 case RocolaOsPasoMoneda: titulo = "Mete una moneda"; texto = "Sin créditos no se pide: cada canción, también las de Spotify, cuesta 1 crédito."; teclas = "M"; break;
                 case RocolaOsPasoCancionDisco: titulo = "Elige tu canción"; texto = "Sube o baja con las flechas y pulsa VERDE para pedirla. El ROJO te regresa."; teclas = "U/D V"; break;
-                case RocolaOsPasoLetra: titulo = "Ve a la letra ♫"; texto = "Mantén ROJO y pulsa IZQUIERDA o DERECHA: en la ♫ están tus discos y listas de Spotify."; teclas = "B+L/R"; break;
+                case RocolaOsPasoLetra: titulo = "Ve a la letra ♫"; texto = "Mantén ROJO y pulsa IZQUIERDA o DERECHA: en la ♫ están los discos y listas de Spotify."; teclas = "B+L/R"; break;
                 case RocolaOsPasoEntraDisco: titulo = "Elige un disco o lista"; texto = "Muévete con las flechas y pulsa VERDE para ver sus canciones."; teclas = "L/R U/D V"; break;
                 case RocolaOsPasoParedCanciones: titulo = "Sus canciones"; texto = "La primera casilla trae sus canciones. VERDE abre; el ROJO te regresa al buscador."; teclas = "V B"; break;
                 case RocolaOsPasoParedDisco: titulo = "Su pared de discos"; texto = "Muévete con las flechas; ARRIBA o ABAJO cambian de página. VERDE abre un disco."; teclas = "L/R U/D V"; break;

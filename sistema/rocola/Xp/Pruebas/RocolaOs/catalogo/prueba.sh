@@ -468,8 +468,9 @@ for e in $escenas; do
       ROCOLA_CAPTURA="$(cap 21.5 ayuda-sobre-el-buscador-desde-la-pared),$(cap 24 buscador-al-cerrar-la-ayuda),$(cap 32.5 ayuda-sobre-la-pared-desde-un-disco),$(cap 35 pared-al-cerrar-la-ayuda),$(cap 41.5 buscador-al-final-de-ayuda)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
     si "ayuda: sale con 0" test "$(cat $o/salio)" = 0
-    # la ayuda abierta se ve en su captura: el circulo verde de «Poner una cancion» del globo (948,369); cerrada, no (el dibujo de XP)
-    ca="${CAPTURAS:-$W}"; verde() { python3 -c "import sys;from PIL import Image;p=Image.open(sys.argv[1]).convert('RGB').getpixel((948,369));sys.exit(0 if (p[1]>=200 and p[0]<160)==(sys.argv[2]=='1') else 1)" "$ca/$1.png" "$2"; }
+    # la ayuda abierta se ve en su captura: el circulo verde de «Poner una cancion» del globo (948,350: con el modo y la llave la pregunta
+    # lleva cuatro opciones, un poco mas juntas -asistente-spotify, g76-; con las tres de XP iria en 948,369); cerrada, no
+    ca="${CAPTURAS:-$W}"; verde() { python3 -c "import sys;from PIL import Image;p=Image.open(sys.argv[1]).convert('RGB').getpixel((948,350));sys.exit(0 if (p[1]>=200 and p[0]<160)==(sys.argv[2]=='1') else 1)" "$ca/$1.png" "$2"; }
     si "ayuda: la ayuda se abrio en la pared (encima del buscador) y en el disco de la pared (encima de la pared), y el rojo la cerro las dos veces (capturas)" bash -c "$(declare -f verde); ca='$ca'; verde ayuda-sobre-el-buscador-desde-la-pared 1 && verde ayuda-sobre-la-pared-desde-un-disco 1 && verde buscador-al-cerrar-la-ayuda 0 && verde pared-al-cerrar-la-ayuda 0"
     si "ayuda: tras cerrar la ayuda, el buscador seguia con lo escrito y tras la pared, la misma pagina y casilla (la pared de Banda abierta 3 veces)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$d/rocola_os_bitacora.txt') = 3 ]"
     si "ayuda: la 1a pedida es la 1a del disco de la casilla 19 (can5181) y es la unica ($(pedidos $o))" bash -c "[ '$(pedido $o 1)' = \"\$(printf 'pedida\tspotify:track:can5181')\" ] && [ $(pedidos $o) = 1 ]"

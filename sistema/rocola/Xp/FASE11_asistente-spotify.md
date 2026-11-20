@@ -45,7 +45,7 @@ avanzar, «SIGAMOS» si se salió del camino, y al lograrlo «¡LO LOGRASTE!» y
 | Guía | Pasos (lo que señala) | Se logra |
 |---|---|---|
 | **1. Pedir una canción de Spotify** | Abre el buscador (la casilla BUSCAR; «ahí salen también las canciones de Spotify») → Escribe el nombre (el teclado; «Luego ve con las flechas a las de Spotify», como XP dice «Luego ve con las flechas hasta tu canción») → en los resultados, según la tarjeta elegida (la tarjeta): una tuya, «Busca las de Spotify»; una canción de Spotify, «Pídela con VERDE» («se pide como las tuyas y cuesta 1 crédito»); un disco o lista, «Un disco de Spotify»; un artista que solo está en Spotify, «Un artista de Spotify» («verás sus discos en su propia pared»); «más en Spotify»; «Todos los discos de…» → **sin créditos, «Mete una moneda: sin créditos no se pide»** (los créditos) → dentro de un disco de Spotify, «Elige tu canción» (la fila elegida) | una canción pedida («¡Tu canción está en la cola! Es de Spotify y suena como las tuyas») |
-| **2. La letra ♫ de Spotify** | Ve a la letra ♫ (la barra de letras; ROJO + IZQ/DER) → Elige un disco o lista (el disco elegido) → la moneda → Elige tu canción. Sin la letra ♫ (sale con la cuenta de Spotify, `refresh_token`): «Aún no hay letra ♫ … búscalas: ROJO + ARRIBA» (la casilla BUSCAR) y sigue como la guía 1 (sus pasos cuentan como «PASO 2 DE 4», en el lugar de elegir un disco; revisión) | una canción pedida |
+| **2. La letra ♫ de Spotify** | Ve a la letra ♫ (la barra de letras; ROJO + IZQ/DER) → Elige un disco o lista (el disco elegido) → la moneda → Elige tu canción. Sin la letra ♫ (sale con la cuenta de Spotify, `refresh_token`, o en cuanto se abre un disco de Spotify: la letra lleva también los recientes de la sesión): «Aún no hay letra ♫ … búscalas: ROJO + ARRIBA» (la casilla BUSCAR) y sigue como la guía 1 (sus pasos cuentan como «PASO 2 DE 4», en el lugar de elegir un disco; revisión) | una canción pedida |
 | **3. Los discos de un artista** | Abre el buscador → Escribe el artista («si solo está en Spotify sale su tarjeta; si ya lo tienes, detrás sale «más en Spotify»») → la tarjeta (artista, «más en Spotify», «Todos los discos de…»; en otra, «Busca su tarjeta») → su pared: en la primera casilla «Sus canciones» («La primera casilla trae sus canciones. VERDE abre; el ROJO te regresa al buscador»), en las demás «Su pared de discos» (ARRIBA/ABAJO cambian de página) → en un disco de la pared, «Vuelve con ROJO» (a su pared, en la misma casilla) → otra vez en la pared, «Vuelve al buscador» (la cabecera, que dice el nombre del artista) | volver al buscador desde la pared con REGRESAR («¡Ya viste sus discos! El ROJO siempre te regresa») |
 
 La estrella sigue **sin cara** (nada de esto la toca: solo sus gestos de siempre, los de XP para cada paso).
@@ -109,6 +109,7 @@ Las escenas de `asistente/prueba.sh` (las teclas con `ROCOLA_PULSA`; la ayuda co
 | `menu` | con la llave, la pregunta de cuatro; ABAJO x4 se queda en la cuarta; VERDE, la de Spotify; ABAJO x4 se queda en la tercera; ROJO vuelve a la primera (la misma captura salvo el latido del VERDE, menos de 5 000 puntos frente a 47 369 de elegir otra) y ROJO la guarda; ninguna guía empezó |
 | `pide` | guía 1 con «inventad» y sin créditos: los pasos «Abre el buscador › Escribe el nombre › Un artista de Spotify › Mete una moneda › Un artista de Spotify › Mete una moneda › Pídela con VERDE»; **VERDE sin crédito no pidió** (0 COBRADA); con la moneda, 1 COBRADA y «lo logró (pidió una de Spotify)» |
 | `letra` | guía 2 con la cuenta: «Ve a la letra ♫ › Elige un disco o lista › Mete una moneda › Elige tu canción», 1 COBRADA y el logro |
+| `sinletra` | (revisión) guía 2 con la llave y sin la cuenta (no hay letra ♫): «Aún no hay letra ♫ › Escribe el nombre › … › Mete una moneda › Pídela con VERDE», con su número de paso (no «SIGAMOS»), 1 COBRADA y el logro |
 | `artista` | guía 3 con «interminable»: «Abre el buscador › Escribe el artista › Un artista de Spotify › Sus canciones › Su pared de discos › Vuelve con ROJO › Vuelve al buscador», el logro al volver al buscador y 0 COBRADA |
 | `tarjetas` | guía 1 con «mentira» y crédito: la canción («Pídela con VERDE», sin la moneda), el disco, «Todos los discos» y de vuelta |
 | `mas` | guía 3 con «otra»: tu artista («Busca su tarjeta») y «Más en Spotify» |
@@ -133,3 +134,42 @@ Capturas (PNG, 1024x768) en el scratchpad de la sesión, `asistente-capturas/`: 
   pasa.
 - Es visual en lo que añade (una opción y textos) con el dibujo de XP, como pidió el dueño; la presentación del final puede proponer algo
   más (p. ej. el zoom o una marca de Spotify en la guía).
+
+## 5. La revisión independiente (20-11-2026)
+
+Sigue la que se cortó por el límite de uso (bb42c2b, «lo que la revisión dejó a medias»), sin rehacerla. De aquella quedan, comprobados:
+la escena `sinletra` (la guía 2 sin letra ♫ cuenta los pasos del buscador como «PASO 2 DE 4», no «SIGAMOS»), «Escribe el nombre» con el
+tono de XP («Luego ve con las flechas a las de Spotify»), «Elige un disco o lista», «¡Ya viste sus discos!» y, en el catálogo, que lo
+contestado de memoria (lo mismo escrito otra vez, o al volver de una pared o de un disco) también cuente en la casilla del buscador (antes
+decía «Sin resultados» encima de las tarjetas de Spotify).
+
+Lo que cambió esta revisión:
+
+- **«Aún no hay letra ♫» no decía la verdad**: la letra ♫ sale con la cuenta de Spotify **o en cuanto se abre un disco de Spotify** (lleva
+  los recientes de la sesión, `RocolaOsSpotifyCatalogoReciente`), no solo con la cuenta. Ahora: «Sale con tu cuenta o al abrir un disco de
+  Spotify. Mientras, búscalas: ROJO + ARRIBA.»; y «Ve a la letra ♫» dice «en la ♫ están **los** discos y listas de Spotify» (no «tus»: también
+  los recientes). Los dos en dos renglones con DejaVu (un primer intento más largo pasaba a tres y rozaba los botones: se acortó y se miró).
+- **La escena `ayuda` del catálogo miraba el VERDE del globo donde lo pone la pregunta de tres** (948,369): con el modo y la llave la pregunta
+  lleva cuatro opciones (g76) y el VERDE de la primera queda en 948,350. Era la prueba, no la rocola (las capturas: la ayuda abierta y
+  cerrada como se esperaba); se cambió el punto con su nota.
+
+Comprobado en el código y en las capturas (1024x768, `cap5-aot`): cada guía dice lo que pasa de verdad (buscar y pedir con créditos —VERDE
+sin crédito no pide—, la letra ♫, la pared del artista que solo está en Spotify con «Canciones de» en la primera casilla, «Todos los discos
+de», «más en Spotify», REGRESAR a la pared en la misma casilla y otra vez al buscador con lo escrito); los textos caben (los títulos de XP que
+con DejaVu pasan a dos renglones, «¿Qué quieres hacer?» y «¡Tu canción está en la cola!», hacen lo mismo en la de XP: son de XP); el globo de
+la pregunta es `PintaPanelAsistente` línea por línea (diff: solo los textos y el número de opciones como parámetros) y la estrella, la de
+siempre, sin cara; sin la llave, los mismos 10 globos que XP punto por punto y la traza igual; «AYUDA» en la fila de arriba con la cabecera
+entera («LETRA L», «BANDA INTERMINABLE» encogida como en XP).
+
+| Prueba (NativeAOT, `aot5`; la máquina con otros 3 agentes: carga de 8 a 26 en 4 núcleos) | Resultado |
+|---|---|
+| Publicar NativeAOT | sale con 0; 0 avisos IL/AOT; los 13 del compilador de siempre |
+| `ganchos.py` | **TODO BIEN** (49 ganchos en 19 archivos; `Codigo/` = `fc7b667` devolviéndolos) |
+| `diff-xp.py --sin-ganchos` (109 archivos) | **5 095 / 4 828 / 229**; 47 ganchos devueltos en 17 archivos |
+| `asistente/prueba.sh` | **28 de 29**; la que falló (`xp`-`sinllave`: a `sinllave` le faltó un globo de paso, con carga 12), repetida: **5 de 5**. (Con el texto intermedio, `menu` falló por arrancar tarde con carga 11 y repetida dio 4 de 4) |
+| `spotify-xp/prueba.sh` | **143 de 149** con carga 15-17: huecos en el sonido (`dos`, `frecuencia`, `pulso`); repetidas: `pulso` bien con carga 20, `dos` y `frecuencia` **29 de 29** con carga 8 (con carga 20 seguían con huecos: tiempos, no esto; la revisión anterior dio 149 de 149 en AOT con este mismo código salvo dos textos) |
+| `catalogo/prueba.sh` | **152 de 156**: `fallos` (la carga espació lo escrito y la búsqueda que debía dar 401 salió de memoria), `sinllave` (solo cuentas del reloj) y `ayuda` (la prueba, arriba); repetidas con la prueba arreglada: **16 de 16** |
+| `sustitucion/prueba.sh` | **96 de 97**: `atasca` con carga 21; repetida: **6 de 6** |
+
+En JIT no se corrió nada: no falló nada que no fueran tiempos. Sigue abierto lo de §4 (nada en el A4, ni con el Soloist de verdad ni con la
+cuenta real; la ♫ con las letras de XP).
