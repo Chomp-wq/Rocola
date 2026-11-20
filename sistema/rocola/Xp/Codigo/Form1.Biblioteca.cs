@@ -2385,7 +2385,7 @@ namespace Rocola
             if (currentLetter == TopMark) return topDiscs ?? new List<Album>();
             List<Album> list;
             if (!byLetter.TryGetValue(currentLetter, out list)) list = RocolaOsSpotifyCatalogoLista(currentLetter);   // ROCOLA OS g44: (XP) if (!byLetter.TryGetValue(currentLetter, out list)) list = new List<Album>(); — los discos de la letra de Spotify (RocolaOs/RocolaOs.SpotifyCatalogo.cs; de cualquier otra, una lista vacia, como XP)
-            return list;
+            return RocolaOsParedGenerosLista(list);   // ROCOLA OS g90: (XP) return list; — con el modo Spotify y el catalogo, la letra con los discos del catalogo intercalados en el orden de XP (artista y disco), hasta 500 paginas, primero los de los artistas mas famosos (RocolaOs/RocolaOs.ParedGeneros.cs; sin ellos, la lista de XP)
         }
 
         private void RefreshAlbums()

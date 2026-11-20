@@ -1215,7 +1215,7 @@ namespace Rocola
             // cuadro -dieciocho, sesenta veces por segundo-, y pegar cadenas ahi seria basura sin fin.
             private string ClaveCasilla(Album a)
             {
-                string k = CellKey(a);
+                string k = RocolaOsParedGenerosClave(a, CellKey(a));   // ROCOLA OS g91: (XP) string k = CellKey(a); — con el modo Spotify y el catalogo, la casilla con la pastilla del genero es otro mapa: su clave lleva la pastilla (RocolaOs/RocolaOs.ParedGeneros.cs; sin pastilla, la de XP)
                 if (k == null || EnCola == null || !EnCola(a)) return k;
                 if (a.KeyQ == null || !object.ReferenceEquals(a.KeyQDe, k)) { a.KeyQDe = k; a.KeyQ = k + "#q"; }
                 return a.KeyQ;
@@ -1251,7 +1251,7 @@ namespace Rocola
                     bool suave = true;   // EN LINUX: g.SmoothingMode = AntiAlias, en una variable
                     Rectangle rDisco = new Rectangle((cw - side) / 2, 0, side, side);
                     Cube.Draw(g, suave, false, filtro, false, rDisco, cover, 0.0);   // disco centrado (mismo x que Geometry)   // EN LINUX: el lienzo y su estado (copia y medio pixel, de fabrica)
-                    if (EnCola != null && EnCola(a)) Palomito(g, suave, rDisco);   // EN LINUX: el lienzo y su suavizado
+                    if (EnCola != null && EnCola(a)) Palomito(g, suave, rDisco); RocolaOsParedGenerosPinta(g, RocolaOsParedGenerosPastillaCasilla(a, side, this.Font.Familia), cw, side);   // ROCOLA OS g92: (XP) if (EnCola != null && EnCola(a)) Palomito(g, suave, rDisco); — la pastilla del genero de XP del disco, abajo a la izquierda de la portada (RocolaOs/RocolaOs.ParedGeneros.cs; sin pastilla, nada)
                     EnsureLabelRes();
                     TextoGdiPlus.Escribe(g, AlbumLabel(a), lblFont, AjusteLetra.DelSistema, lblBrush, new Rectangle(2, side + gap, cw - 4, labelH), lblSF);   // etiqueta pegada al disco   // EN LINUX: g.DrawString en esa caja con ese formato y el modo de letra de fabrica (SystemDefault) (Nativo/TextoGdiPlus.cs)
                 }

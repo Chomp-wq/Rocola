@@ -26,6 +26,13 @@
 //   (revision cuota-hilos-y-fallos, 2a pasada) GET /control/miente?total=N   en search, los discos dicen «total» N aunque haya menos (como
 //                                            Spotify, cuyo total de search es una estimacion)
 //   (revision cuota-hilos-y-fallos, 2a pasada) GET /control/imgfalla?n=N     las siguientes N portadas (/img/) dan 503
+//   (pared-generos) GET /catalogo/ARCHIVO           el catalogo de la rocola (la version «catalogo» de GitHub): los archivos de la carpeta
+//                                            de la variable API_CATALOGO (sin ella o sin el archivo, 404)
+//   (pared-generos) GET /release-group/MBID/front-250   el Cover Art Archive: una portada dibujada; los MBID que acaban en 0, 404 (sin portada)
+//   (pared-generos) GET /control/caalento?ms=N   cada portada del Cover Art Archive tarda N ms mas
+//   (pared-generos) GET /v1/albums/catID         un disco del catalogo (4 canciones inventadas); los «catno...», 404 (Spotify no lo tiene)
+//   (pared-generos) search con q=album:"NOMBRE" artist:"ARTISTA" (type=album): un disco con ese nombre (id «catb...»); si el nombre dice
+//                                            «Sin Spotify», ninguno
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -53,7 +60,8 @@ internal static class ApiFalsa
     static string baseUrl, carpeta, clientId = "id-de-prueba", secreto = "secreto-de-prueba", refresco = "refresco-1";
     static readonly HashSet<string> llavesApp = new HashSet<string>(), llavesCuenta = new HashSet<string>();
     static int n429, seg429 = 30, n5xx, nLlave; static bool cuota429, fecha429;
-    static int lento, miente, nImg; static bool muchos; static readonly List<Disco> extraInter = new List<Disco>();   // (revision cuota-hilos-y-fallos)
+    static int lento, miente, nImg, caaLento; static bool muchos; static readonly List<Disco> extraInter = new List<Disco>();   // (revision cuota-hilos-y-fallos; caaLento: pared-generos)
+    static readonly Dictionary<string, Disco> delCatalogo = new Dictionary<string, Disco>();   // (pared-generos) los discos del catalogo inventados
     static readonly object cerrojo = new object();
 
     static int Main(string[] a)
@@ -173,6 +181,7 @@ internal static class ApiFalsa
                 else if (ruta == "/control/muchos") muchos = true;
                 else if (ruta == "/control/miente") miente = int.Parse(q["total"] ?? "1000", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/imgfalla") nImg = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
+                else if (ruta == "/control/caalento") caaLento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
             }
             Contesta(c, 200, "{}", ctype, null, extra); return;
         }
@@ -182,6 +191,23 @@ internal static class ApiFalsa
             if (falla) { Apunta(c, ruta, "img", 503); Contesta(c, 503, "{}", ctype, null, extra); return; }
         }
         if (ruta.StartsWith("/img/", StringComparison.Ordinal)) { binario = Portada(Path.GetFileNameWithoutExtension(ruta)); ctype = "image/jpeg"; cuerpo = null; Apunta(c, ruta, "img", 200); Contesta(c, 200, null, ctype, binario, extra); return; }
+        if (ruta.StartsWith("/catalogo/", StringComparison.Ordinal))
+        {
+            string dir = Environment.GetEnvironmentVariable("API_CATALOGO");
+            string f = string.IsNullOrEmpty(dir) ? null : Path.Combine(dir, Path.GetFileName(ruta));
+            if (f != null && File.Exists(f)) { Apunta(c, ruta, "catalogo", 200); Contesta(c, 200, null, "application/octet-stream", File.ReadAllBytes(f), extra); }
+            else { Apunta(c, ruta, "catalogo", 404); Contesta(c, 404, "Not Found", "text/plain", null, extra); }
+            return;
+        }
+        if (ruta.StartsWith("/release-group/", StringComparison.Ordinal))
+        {
+            string[] r = ruta.Split('/');
+            string mbid = r.Length > 2 ? r[2] : "";
+            int ms; lock (cerrojo) ms = caaLento;
+            if (ms > 0) Thread.Sleep(ms);
+            if (mbid.Length == 0 || mbid.EndsWith("0", StringComparison.Ordinal)) { Apunta(c, ruta, "caa", 404); Contesta(c, 404, "Not Found", "text/plain", null, extra); return; }
+            Apunta(c, ruta, "caa", 200); Contesta(c, 200, null, "image/jpeg", Portada("caa-" + mbid), extra); return;
+        }
         if (ruta == "/api/token" && c.Request.HttpMethod == "POST")
         {
             string form; using (StreamReader r = new StreamReader(c.Request.InputStream)) form = r.ReadToEnd();
@@ -249,6 +275,15 @@ internal static class ApiFalsa
                 }
                 return Escribe(w => { w.WriteStartObject(); w.WritePropertyName("tracks"); Pagina(w, l, limite, desde, CancionEntera); w.WriteEndObject(); });
             }
+            // (pared-generos) un disco del catalogo sin id: «album:"NOMBRE" artist:"ARTISTA"»
+            if (t.StartsWith("album:\"", StringComparison.Ordinal))
+            {
+                string orig = q["q"]; int fin = orig.IndexOf('"', 7);
+                string nombre = fin > 7 ? orig.Substring(7, fin - 7) : "";
+                List<Disco> l = new List<Disco>();
+                if (nombre.Length > 0 && !nombre.ToLowerInvariant().Contains("sin spotify")) { uint h = 2166136261; foreach (char ch in nombre) { h ^= ch; h *= 16777619; } Disco d0 = DiscoDelCatalogo("catb" + h.ToString("x8", CultureInfo.InvariantCulture)); d0.Nombre = nombre; l.Add(d0); }
+                return Escribe(w => { w.WriteStartObject(); w.WritePropertyName("albums"); Pagina(w, l, limite, desde, (ww, d) => DiscoSimple(ww, d)); w.WriteEndObject(); });
+            }
             // «artist:"NOMBRE"»: solo las de ese artista (como el filtro de campo de Spotify)
             string deArtista = null;
             if (t.StartsWith("artist:\"", StringComparison.Ordinal) && t.EndsWith("\"", StringComparison.Ordinal) && t.Length > 9) deArtista = t.Substring(8, t.Length - 9);
@@ -266,6 +301,7 @@ internal static class ApiFalsa
         if (p[0] == "albums" && p.Length >= 2)
         {
             Disco d = discos.Find(x => x.Id == p[1]) ?? (muchos ? extraInter.Find(x => x.Id == p[1]) : null);
+            if (d == null && p[1].StartsWith("cat", StringComparison.Ordinal) && !p[1].StartsWith("catno", StringComparison.Ordinal)) d = DiscoDelCatalogo(p[1]);   // (pared-generos)
             if (d == null) { cod = 404; return "{\"error\":{\"status\":404,\"message\":\"Resource not found\"}}"; }
             if (p.Length >= 3 && p[2] == "tracks") return Escribe(w => Pagina(w, d.Canciones, Math.Min(limite, 50), desde, CancionSimple));
             return Escribe(w => { w.WriteStartObject(); DiscoCampos(w, d); w.WritePropertyName("tracks"); Pagina(w, d.Canciones, 50, 0, CancionSimple); w.WriteEndObject(); });
@@ -322,6 +358,21 @@ internal static class ApiFalsa
         const string con = "áéíóúüñÁÉÍÓÚÜÑ", sin = "aeiouunAEIOUUN";   // (InvariantGlobalization: Normalize no separa los acentos)
         foreach (char c in s) { int k = con.IndexOf(c); b.Append(char.ToLowerInvariant(k >= 0 ? sin[k] : c)); }
         return b.ToString().Trim();
+    }
+
+    // (pared-generos) un disco del catalogo, inventado por su id (el mismo cada vez): 4 canciones
+    static Disco DiscoDelCatalogo(string id)
+    {
+        lock (cerrojo)
+        {
+            Disco d;
+            if (delCatalogo.TryGetValue(id, out d)) return d;
+            Artista ar = new Artista { Id = "art-" + id, Nombre = "Artista del Catalogo" };
+            d = new Disco { Id = id, Nombre = "Disco " + id, Art = ar };
+            for (int k = 1; k <= 4; k++) d.Canciones.Add(new Cancion { Id = "c" + id + k.ToString(CultureInfo.InvariantCulture), Nombre = "Tema del Catalogo " + k.ToString(CultureInfo.InvariantCulture), Art = ar, Dis = d, Numero = k, Ms = 180000 });
+            delCatalogo[id] = d;
+            return d;
+        }
     }
 
     // ---------- el JSON como el de verdad ----------

@@ -2,6 +2,13 @@
 
 # Las letras por género con Spotify: hasta 500 páginas por letra (plan, 14-11-2026)
 
+> **SUSTITUIDO EN EL ORDEN Y EN LA PASTILLA (decisión del dueño del 20-11-2026)**: «El modo Spotify, en la parte de las carátulas, ya no
+> se ordenará por género, creo que sería malo cambiar la distribución actual a la que la gente ya está acostumbrada, mejor ahora cada disco
+> tendrá al lado la pastilla que diga de qué género es como un dato extra». La pared conserva **el orden de XP** (artista y disco) con los
+> discos del catálogo **intercalados** en ese orden, hasta 500 páginas por letra, primero los de los artistas más famosos; **cada casilla de
+> disco** lleva la pastilla del género de XP (no la cabecera). Lo de abajo sigue valiendo para el catálogo, su descarga, sus portadas y
+> abrir sus discos; lo hecho y probado, en `FASE11_pared-generos.md`.
+
 Petición del dueño del 14-11-2026: «La meta es que al final, Spotify quede completamente integrado en la rocola, ahora en las letras de
 abecedario se ordenarán además de por orden alfabético como ahora, también se acomodarán por género. Para que cada letra tenga más
 canciones, quería que se tomara música de Spotify, y así que cada letra tuviera 500 páginas juntando mi música local y la de Spotify,
