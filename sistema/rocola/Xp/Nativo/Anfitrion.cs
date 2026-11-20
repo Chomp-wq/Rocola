@@ -27,7 +27,7 @@ namespace Rocola
             ISuperficie s = null;
             if (!p.StartsWith("fuera"))
             {
-                try { s = new Kms(); }
+                try { s = RocolaOs.AbreLaPantalla(); }   // ROCOLA OS g86: (antes) try { s = new Kms(); } — con la hoja Pantalla de Ctrl+F4, el modo guardado y los colores del monitor antes de pintar, o la pantalla simulada de las pruebas (RocolaOs/RocolaOs.Pantalla.cs; sin ROCOLA_OS, new Kms() como siempre)
                 catch (Exception ex) { Console.Error.WriteLine("Pantalla: sin KMS (" + ex.Message + "): fuera de pantalla"); }
             }
             if (s == null)
