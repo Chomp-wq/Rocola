@@ -234,19 +234,39 @@ namespace Rocola
         // (Control.CreateParams, Control.cs:1691: «cp.Style |= NativeMethods.WS_CHILD | NativeMethods.WS_CLIPSIBLINGS»): donde la tapa un
         // hermano de encima (antes en la lista, se vea por donde se vea, aunque sea transparente) no se pinta; el transparente ensena lo que
         // pinta su padre, nunca a sus hermanos de debajo. Una vista sin medida o que no se ve, ni se pinta ni recorta.
-        private sealed class Tramo { internal SKBitmap Mapa; internal int Version; }
+        private sealed class Tramo { internal SKBitmap Mapa; internal int Version; internal bool Vacio; internal CapaPantalla Capa, CapaCorte; }   // Vacio (rapido-general): al repintarse no se pinto nada en el (ni el fondo ni ninguna vista): todo transparente
         private static readonly List<Tramo> tramos = new List<Tramo>();
         private static int versionTramo;
+#if RAPIDO_GENERAL_PRUEBA
+        internal static int TramosRepintados, TramosSinRepintar;   // (pruebas: cuantas veces se pinto un tramo y cuantas se ahorro; solo en Pruebas/RapidoGeneral)
+#endif
+        private static object[] fotoLista = new object[0]; private static int fotoN;
+        private static readonly List<int> cortesVentana = new List<int>();
+        // (rapido-general) el nombre del tipo, una vez por tipo (en NativeAOT GetType().Name arma la cadena cada vez: era en cada cuadro)
+        private static readonly Dictionary<Type, string> nombresDeTipo = new Dictionary<Type, string>();
+        internal static string NombreDelTipo(object o)
+        {
+            Type t = o.GetType(); string n;
+            if (!nombresDeTipo.TryGetValue(t, out n)) nombresDeTipo[t] = n = t.Name;
+            return n;
+        }
         internal static void CapasDeLaVentana(List<CapaPantalla> salida)
         {
-            if (lista.Count == 0 && FondoDeLaVentana == null) { SueltaTramos(0); return; }
-            if (ventana != null && !ventana.Visible) { SueltaTramos(0); return; }   // (form1-sin-form) la ventana de la rocola aun sin ensenar, o ya desechada
-            object[] l = lista.ToArray();
+            if (lista.Count == 0 && FondoDeLaVentana == null) { SueltaTramos(0); SueltaFoto(); return; }
+            if (ventana != null && !ventana.Visible) { SueltaTramos(0); SueltaFoto(); return; }   // (form1-sin-form) la ventana de la rocola aun sin ensenar, o ya desechada
+            // (rapido-general) la foto de la lista en un arreglo que se reusa de un cuadro al otro (antes, ToArray en cada cuadro); solo se miran
+            // sus 'nl' primeros, y lo que sobra de la foto anterior se suelta
+            int nl = lista.Count;
+            if (fotoLista.Length < nl) fotoLista = new object[Math.Max(nl, fotoLista.Length * 2)];
+            lista.CopyTo(fotoLista);
+            if (fotoN > nl) Array.Clear(fotoLista, nl, fotoN - nl);
+            fotoN = nl;
+            object[] l = fotoLista;
             // (form1-sin-form) LO QUE QUEDA DEBAJO DE UNA TEXTURA QUE TAPA LA VENTANA ENTERA NO SE PINTA (Escritorio.TapaTodo y ArmaCapas de la
             // capa: el panel de la tarjeta a pantalla completa): ni el fondo de la ventana ni las vistas de debajo; el primer tramo queda vacio
-            int fondoDesde = l.Length - 1; bool tapaTodo = false;
+            int fondoDesde = nl - 1; bool tapaTodo = false;
             if (ventana != null)
-                for (int i = 0; i < l.Length; i++)
+                for (int i = 0; i < nl; i++)
                 {
                     CapaDeTextura t = l[i] as CapaDeTextura; IVista vt = l[i] as IVista;
                     Rectangle r; bool ve;
@@ -256,7 +276,7 @@ namespace Rocola
             string tipo = ventana != null ? "dibujo2d" : "vista";   // (las capturas por capa la nombran como la capa nombraba lo pintado por procesador de la ventana)
             bool repinta = pintadoVentana != cambiosVentana;   // (cada cambio de una vista -sitio, visible, Invalidate- sube cambiosVentana)
             // los cortes: las capas de textura que se ven y las vistas de la tarjeta que se ven (gpupanel-sin-control), de abajo arriba
-            List<int> cortes = new List<int>();
+            List<int> cortes = cortesVentana; cortes.Clear();
             for (int i = fondoDesde; i >= 0; i--) { CapaDeTextura t = l[i] as CapaDeTextura; IVista vt = l[i] as IVista; if ((t != null && t.Visible) || (vt != null && vt.DeLaTarjeta && Ve(vt))) cortes.Add(i); }
             int n = cortes.Count + 1;
             while (tramos.Count < n) tramos.Add(new Tramo());
@@ -266,25 +286,37 @@ namespace Rocola
             {
                 int corte = t < cortes.Count ? cortes[t] : -1;
                 Tramo tr = tramos[t];
-                if (repinta || tr.Mapa == null || tr.Mapa.Width != Ancho || tr.Mapa.Height != Alto)
+                bool nuevo = tr.Mapa == null || tr.Mapa.Width != Ancho || tr.Mapa.Height != Alto;
+                // (rapido-general) un tramo que ya estaba todo transparente y en el que tampoco ahora se pintaria nada (ni el fondo ni ninguna vista
+                // que se vea) se queda como esta: sin borrar sus 3 MB ni crear un lienzo (el mismo resultado: transparente, y nadie se pinta)
+                bool sigueVacio = !nuevo && tr.Vacio && !(t == 0 && FondoDeLaVentana != null && !tapaTodo) && !AlgunaSePinta(l, hasta, corte);
+#if RAPIDO_GENERAL_PRUEBA
+                if ((repinta || nuevo) && sigueVacio) TramosSinRepintar++;
+#endif
+                if ((repinta || nuevo) && !sigueVacio)
                 {
-                    if (tr.Mapa == null || tr.Mapa.Width != Ancho || tr.Mapa.Height != Alto) { if (tr.Mapa != null) tr.Mapa.Dispose(); tr.Mapa = new SKBitmap(new SKImageInfo(Math.Max(1, Ancho), Math.Max(1, Alto), SKColorType.Bgra8888, SKAlphaType.Premul)); }
+#if RAPIDO_GENERAL_PRUEBA
+                    TramosRepintados++;
+#endif
+                    if (nuevo) { if (tr.Mapa != null) tr.Mapa.Dispose(); tr.Mapa = new SKBitmap(new SKImageInfo(Math.Max(1, Ancho), Math.Max(1, Alto), SKColorType.Bgra8888, SKAlphaType.Premul)); }
+                    bool pinto = false;
                     using (SKCanvas g = new SKCanvas(tr.Mapa))
                     {
                         g.Clear(SKColors.Transparent);
                         Action<SKCanvas> fondo = FondoDeLaVentana;
-                        if (t == 0 && fondo != null && !tapaTodo) { int s = g.Save(); try { fondo(g); } catch (Exception ex) { Falla(ex); } g.RestoreToCount(s); }
-                        for (int i = hasta; i > corte; i--) { IVista v = l[i] as IVista; if (v != null && !v.DeLaTarjeta) PintaRecortada(l, i, v, g); }   // (una de la tarjeta que no se ve no es corte: no se pinta)
+                        if (t == 0 && fondo != null && !tapaTodo) { pinto = true; int s = g.Save(); try { fondo(g); } catch (Exception ex) { Falla(ex); } g.RestoreToCount(s); }
+                        for (int i = hasta; i > corte; i--) { IVista v = l[i] as IVista; if (v != null && !v.DeLaTarjeta && PintaRecortada(l, i, v, g)) pinto = true; }   // (una de la tarjeta que no se ve no es corte: no se pinta)
                         g.Flush();
                     }
-                    tr.Version = ++versionTramo;
+                    tr.Version = ++versionTramo; tr.Vacio = !pinto;
                 }
-                CapaPantalla c = new CapaPantalla();
-                c.Clave = tr; c.Mapa = tr.Mapa; c.Version = tr.Version; c.Rect = new Rectangle(0, 0, Ancho, Alto); c.Tipo = tipo;
+                CapaPantalla c = tr.Capa ?? (tr.Capa = new CapaPantalla());   // (rapido-general: la misma de un cuadro al otro; la lista solo vive el cuadro)
+                c.Clave = tr; c.Mapa = tr.Mapa; c.Version = tr.Version; c.Vacia = tr.Vacio; c.Rect = new Rectangle(0, 0, Ancho, Alto); c.Tipo = tipo;
                 salida.Add(c);
                 if (corte >= 0)
                 {
-                    CapaPantalla ct = new CapaPantalla();
+                    CapaPantalla ct = tr.CapaCorte ?? (tr.CapaCorte = new CapaPantalla());
+                    ct.Mapa = null; ct.Version = 0; ct.Opacidad = 1f; ct.Rgba = false; ct.Vacia = false;   // (todo lo que la nueva traia de fabrica)
                     CapaDeTextura x = l[corte] as CapaDeTextura;
                     if (x != null) { ct.Clave = x; ct.DeTextura = true; ct.Textura = x.Textura; ct.AnchoGl = x.AnchoGl; ct.AltoGl = x.AltoGl; ct.Rgba = x.Rgba; ct.Rect = x.Sitio; ct.Nombre = x.Nombre; ct.Tipo = "tarjeta"; }
                     else
@@ -294,7 +326,7 @@ namespace Rocola
                         // tampoco, que la recorta)
                         IVista vt = (IVista)l[corte]; Superficie su = SuperficieDeLaVista(vt);
                         ct.Clave = (object)su ?? vt; ct.DeTextura = true; ct.Textura = su != null ? su.Textura : 0; ct.AnchoGl = su != null ? su.AnchoGl : 0; ct.AltoGl = su != null ? su.AltoGl : 0;
-                        ct.Rect = vt.Bounds; ct.Nombre = vt.GetType().Name; ct.Tipo = "tarjeta";
+                        ct.Rect = vt.Bounds; ct.Nombre = NombreDelTipo(vt); ct.Tipo = "tarjeta";
                     }
                     salida.Add(ct);
                     hasta = corte - 1;
@@ -302,11 +334,35 @@ namespace Rocola
             }
             pintadoVentana = cambiosVentana;
         }
-        private static void SueltaTramos(int quedan) { for (int i = quedan; i < tramos.Count; i++) if (tramos[i].Mapa != null) { tramos[i].Mapa.Dispose(); tramos[i].Mapa = null; } }
-        private static void PintaRecortada(object[] l, int i, IVista v, SKCanvas g)
+        // (rapido-general) si alguna vista del tramo (de 'hasta' hacia arriba, sin llegar a 'corte') se pintaria: lo mismo que mira PintaRecortada
+        private static bool AlgunaSePinta(object[] l, int hasta, int corte)
+        {
+            for (int i = hasta; i > corte; i--)
+            {
+                IVista v = l[i] as IVista;
+                if (v == null || v.DeLaTarjeta || !Ve(v)) continue;
+                Rectangle r = v.Bounds;
+                if (r.Width > 0 && r.Height > 0) return true;
+            }
+            return false;
+        }
+        // (rapido-general) los tramos que sobran sueltan su mapa y lo que agarraban sus capas reusadas (el mapa, la textura de la tarjeta o su vista)
+        private static void SueltaTramos(int quedan)
+        {
+            for (int i = quedan; i < tramos.Count; i++)
+            {
+                Tramo tr = tramos[i];
+                if (tr.Mapa != null) { tr.Mapa.Dispose(); tr.Mapa = null; }
+                if (tr.Capa != null) tr.Capa.Mapa = null;
+                if (tr.CapaCorte != null) { tr.CapaCorte.Clave = null; tr.CapaCorte.Mapa = null; }
+            }
+        }
+        // (rapido-general) la foto de la lista ya no agarra las vistas del ultimo cuadro (desechadas, con sus mapas y portadas)
+        private static void SueltaFoto() { if (fotoN > 0) { Array.Clear(fotoLista, 0, fotoN); fotoN = 0; } }
+        private static bool PintaRecortada(object[] l, int i, IVista v, SKCanvas g)   // (rapido-general) true si la pinto (si no, el tramo puede quedar vacio)
         {
             Rectangle r = v.Bounds;
-            if (!Ve(v) || r.Width <= 0 || r.Height <= 0) return;
+            if (!Ve(v) || r.Width <= 0 || r.Height <= 0) return false;
             int s = g.Save();
             try
             {
@@ -327,6 +383,7 @@ namespace Rocola
             }
             catch (Exception ex) { Falla(ex); }   // (lo que lanza un OnPaint va a ThreadException: NativeWindow.Callback)
             finally { g.RestoreToCount(s); }
+            return true;
         }
         // LAS HIJAS DE UNA VISTA, despues de ella y de abajo arriba (Ventanas.Escritorio.PintaArbol: el control y despues sus hijos), cada una
         // recortada a su dueno (un hijo es una ventana hija: WS_CHILD, no se sale del cliente de su padre) y por las hermanas que tiene encima

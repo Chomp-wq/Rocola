@@ -43,6 +43,7 @@ namespace Rocola.Nativo
 
     public static class TextoGdiPlus
     {
+        [ThreadStatic] private static SKPaint pincelDeEscribir;
         // DRAWSTRING DE GDI+: 's' con la letra 'f' y el modo de letra 'ajuste', en la caja 'r' (sin ancho o sin alto: desde el punto), con el
         // pincel de XP (color, o degradado o textura en su Shader), el formato (null = el de fabrica), 'copia' = CompositingMode.SourceCopy y
         // 'medio' = PixelOffsetMode Half o HighQuality (con el de fabrica el color del pincel en cada pixel es el de su centro, en los enteros).
@@ -58,17 +59,28 @@ namespace Rocola.Nativo
             if (a.Piezas.Count == 0) return;
             bool recorta = !noClip && r.Width > 0 && r.Height > 0;
             int n = 0; if (recorta) { n = c.Save(); c.ClipRect(new SKRect(r.Left, r.Top, r.Right, r.Bottom)); }
-            using (SKPaint p = new SKPaint { Style = SKPaintStyle.Fill })
+            // (rapido-general) el pincel de pintar, uno por hilo y de un texto al otro (antes uno nuevo en cada texto: un objeto de .NET y su
+            // apunte en el diccionario de SkiaSharp): se le pone todo lo que se le ponia al nuevo (lo demas nunca se toca: queda el de fabrica)
+            SKPaint p = pincelDeEscribir ?? (pincelDeEscribir = new SKPaint());
             {
-                Pixel.ConPincel(c, p, pincel, medio, 0f);
-                if (copia) p.BlendMode = SKBlendMode.Src;
-                p.IsAntialias = ajuste != AjusteLetra.SinSuavizar && ajuste != AjusteLetra.SinSuavizarAjustada;
-                foreach (Pieza x in a.Piezas)
+                try
                 {
-                    c.DrawText(x.Cadena, x.X, x.Base, sk, p);
-                    if (f.Subrayada) { float grosor = Math.Max(1f, f.Px / 14f); c.DrawRect(new SKRect(x.X, x.Base + grosor, x.X + x.Ancho, x.Base + 2 * grosor), p); }
+                    p.Style = SKPaintStyle.Fill;
+                    Pixel.ConPincel(c, p, pincel, medio, 0f);
+                    p.BlendMode = copia ? SKBlendMode.Src : SKBlendMode.SrcOver;
+                    p.IsAntialias = ajuste != AjusteLetra.SinSuavizar && ajuste != AjusteLetra.SinSuavizarAjustada;
+                    foreach (Pieza x in a.Piezas)
+                    {
+                        TiraSkia.Dibuja(c, x.Cadena, x.X, x.Base, sk, p);   // (rapido-general: c.DrawText(x.Cadena, x.X, x.Base, sk, p) sin los objetos de .NET de cada llamada; Nativo/TiraSkia.cs)
+                        if (f.Subrayada) { float grosor = Math.Max(1f, f.Px / 14f); c.DrawRect(new SKRect(x.X, x.Base + grosor, x.X + x.Ancho, x.Base + 2 * grosor), p); }
+                    }
                 }
-                if (p.Shader != null && !ReferenceEquals(p.Shader, pincel.Shader)) p.Shader.Dispose();
+                finally
+                {
+                    // (que el pincel guardado no se quede con el degradado de este texto, tampoco si algo lanza a medio texto)
+                    if (p.Shader != null && !ReferenceEquals(p.Shader, pincel.Shader)) p.Shader.Dispose();
+                    p.Shader = null;
+                }
             }
             if (!f.Guarda(ajuste)) sk.Dispose();
             if (recorta) c.RestoreToCount(n);
