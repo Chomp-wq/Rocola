@@ -11,7 +11,7 @@
 #   W:        la carpeta de trabajo (de fabrica /root/rocola-trabajo/fase11/cielo-nucleo/prueba; se rehace); CAPTURAS (de fabrica $W/capturas)
 #   PY:       donde estan brotli y astral (pip install --target PY brotli astral==3.2; de fabrica /root/rocola-trabajo/fase11/cielo-nucleo/py)
 # partes (de fabrica todas): ganchos orden clima apagado noche calma escenas medio reloj
-#   ganchos  ganchos.py TODO BIEN y diff-xp.py --sin-ganchos con las cuentas de la base (5135 / 4868 / 229)
+#   ganchos  ganchos.py TODO BIEN y diff-xp.py --sin-ganchos con las cuentas de la base (5147 / 4880 / 229 desde la junta 3, con noche-nv; antes 5135 / 4868 / 229)
 #   orden    `rocola-xp --prueba-cielo` (las cuentas: TODO BIEN), las salidas y puestas del sol contra la NOAA (astral) a +-3 min, el calendario
 #            de §6 dia por dia (2026) y el tercer domingo de junio
 #   clima    el lugar y el clima con los servidores falsos (y lo que se guarda); ciudad_bar sin pedir el lugar; sin red con un clima de hace 2 h
@@ -74,7 +74,7 @@ if [[ " $partes " == *" ganchos "* ]]; then
   si "ganchos.py: TODO BIEN ($(grep -o '[0-9]* archivos comparados con [0-9a-f]* ([0-9]* con ganchos)' "$W/ganchos.txt"))" test $r = 0 -a "$(tail -1 "$W/ganchos.txt")" = "TODO BIEN"
   si "ganchos.py: los 20 del cielo (g120-g139) en el manifiesto" test "$(grep -cP '^g1[23][0-9]\t' "$XP/RocolaOs/GANCHOS.tsv")" = 20
   (cd "$XP" && python3 Pruebas/Tarjeta/guiones/diff-xp.py --sin-ganchos $(ls Codigo)) > "$W/diff-xp.txt" 2>&1
-  si "diff-xp.py --sin-ganchos: $(grep '^TOTAL' "$W/diff-xp.txt") (la base: 5135 / 4868 / 229)" contiene "$W/diff-xp.txt" "TOTAL: 5135 lineas quitadas, 4868 puestas (229 sin marca)"
+  si "diff-xp.py --sin-ganchos: $(grep '^TOTAL' "$W/diff-xp.txt") (la base: 5147 / 4880 / 229)" contiene "$W/diff-xp.txt" "TOTAL: 5147 lineas quitadas, 4880 puestas (229 sin marca)"
 fi
 
 # ---------------------------------------------------------------- orden
