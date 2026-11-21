@@ -175,6 +175,20 @@ Lo que se arregló (programa `fin4`):
   el adelanto puede pedir (2 páginas vistas, las 2 de al lado y la 1.a de 2 letras), con `fin4` 92 frente a 33 de la base: es lo que se
   adelanta a propósito. `spotify-xp adelanto`: el hueco, menos de 1,7 s (con `fin4` 1,31-1,33 s; sin adelantar unos 2,3).
 
+Medida después de la revisión (`fin4` = `64b5ca2`, NativeAOT, `compara.sh 2 "pared busca"` alternando con la base, carga 8,4-13,1,
+`medidas-070823.txt`):
+
+| lo medido | base | fin4 |
+|---|---|---|
+| pared: cuadros p50/p95/p99/máx | 41/70/91/141 | 38/62/78/128 |
+| pared: última portada de cada página en pantalla (mediana de 5) | 2265 [2250-2280] | 245 [214-276] |
+| pared: portadas pedidas al Cover Art Archive | 99 | 159 |
+| busca: 1.a búsqueda, resultados / última portada en pantalla | 748 / 1369 | 475 / 921 |
+
+Baterías con `fin4`: `catalogo` TODO BIEN (156), `pared-generos` `orden hojea portadas abre` 30 BIEN 0 MAL, `spotify-xp`
+`dos adelanto adelantoxp adelantoreloj`: las nuevas y las del adelanto bien; las MAL que salen (`dos` y `adelanto`: un hueco o 4-8 saltos
+en la onda de la PRIMERA canción, que no es adelantada) salen igual con `fin3` en la misma corrida (carga 11-14): son de la carga.
+
 Lo que no se cambió:
 
 - **La primera búsqueda con 3 letras** (con la llave ya calentada sale a los 300 ms sin teclear, la regla de XP, en vez de esperar a la
