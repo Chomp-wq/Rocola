@@ -92,7 +92,7 @@ namespace Rocola
                 if (unchecked(Environment.TickCount - asistenteLogroTick) >= GuiaLogroMs) CierraAsistente();   // se guarda sola
                 return;
             }
-            if (RocolaOsAsistenteEvalua()) return; if (asistenteMision == MisionCancion || asistenteMision == MisionBuscar)   // ROCOLA OS g81: (XP) if (asistenteMision == MisionCancion || asistenteMision == MisionBuscar) — el latido de una guia de Spotify: el paso que toca, mirando lo que pasa de verdad (RocolaOs/RocolaOs.Asistente.cs; las de XP, false)
+            if (asistenteMision == MisionCancion || asistenteMision == MisionBuscar)
             {
                 if (asistentePedidos != asistentePedidosBase) { Logro(); return; }
                 PonPaso(PasoParaCancion(asistenteMision, searchOpen, EnResultados, EnDisco, credits));
@@ -157,7 +157,7 @@ namespace Rocola
         // Lo que hay que senalar en la pantalla para el paso de ahora (coordenadas del formulario).
         private RectangleF ObjetivoGuia(int paso)
         {
-            switch (RocolaOsAsistenteObjetivo(paso))   // ROCOLA OS g82: (XP) switch (paso) — un paso de Spotify senala lo mismo que el paso de XP que senala esa pieza (RocolaOs/RocolaOs.Asistente.cs; los de XP, el mismo paso)
+            switch (paso)
             {
                 case PasoDisco: case PasoMover: case PasoEntrar: return DiscoElegidoRect();
                 case PasoPagina: return headerView != null && headerView.Visible && headerView.Width > 40 ? (RectangleF)headerView.Bounds : DiscoElegidoRect();
@@ -244,7 +244,7 @@ namespace Rocola
 
         private SKBitmap PintaGuiaActual(int w, int h)   // EN LINUX: un SKBitmap
         {
-            SKBitmap rocolaOsGuia = RocolaOsAsistenteGuiaPinta(w, h); if (rocolaOsGuia != null) return rocolaOsGuia; string arriba, titulo, texto, teclas;   // ROCOLA OS g83: (XP) string arriba, titulo, texto, teclas; — el globo de una guia de Spotify, con PintaGuiaAsistente de XP y sus textos (RocolaOs/RocolaOs.AsistentePinta.cs; las de XP, null)
+            string arriba, titulo, texto, teclas;
             if (asistenteLogroTick != 0)
             {
                 arriba = "¡LO LOGRASTE!";

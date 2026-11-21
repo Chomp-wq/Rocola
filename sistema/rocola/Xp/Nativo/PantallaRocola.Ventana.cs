@@ -173,7 +173,7 @@ namespace Rocola
             public Color Fondo { get { return fondo; } set { if (fondo == value) return; fondo = value; CambioVentana(); } }
             public void SinBorde() { conBorde = false; if (creada && visible && maximizada) PonMedida(new Size(Ancho, Alto)); CambioVentana(); }
             public void Maximiza() { bool antes = maximizada; maximizada = true; if (!creada || !visible || antes) return; PonMedida(new Size(Ancho, Alto)); }
-            public bool Minimizada { get { return RocolaOs.NavegadorDelante; } }   // ROCOLA OS g100: (antes) public bool Minimizada { get { return false; } } — con el navegador de Ctrl+F4 delante (RocolaOs/RocolaOs.Navegador.cs) la ventana de la rocola cuenta como minimizada: XP deja de pintar en la tarjeta y de preparar portadas, como en Windows con la ventana minimizada; la musica sigue. Sin ROCOLA_OS, false (nadie la minimiza: en Rocola OS no hay barra de tareas)
+            public bool Minimizada { get { return false; } }   // (nadie la minimiza: en Rocola OS no hay barra de tareas)
             public bool Creada { get { return creada; } }
             public bool Desechada { get { return desechada; } }
             public bool Desechandose { get { return desechandose; } }
