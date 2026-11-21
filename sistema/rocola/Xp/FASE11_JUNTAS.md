@@ -222,7 +222,7 @@ Rama `junta-3` (en `.claude/worktrees/junta-3`), sobre la rama principal `claude
 ### Los ganchos renumerados
 
 Ninguno repetido entre ramas salvo **g110 y g111**: los tomaron `xp-1718-linux` (`Codigo/Form1.Sonido.cs`: la conversión en `OpenAudio` y
-en `LectorMedida`) y `letras` (`Codigo/Form1.Biblioteca.cs`: la letra en la lista del buscador y la tarjeta «NO ESTÁ EN LA ROCOLA`).
+en `LectorMedida`) y `letras` (`Codigo/Form1.Biblioteca.cs`: la letra en la lista del buscador y la tarjeta «NO ESTÁ EN LA ROCOLA»).
 Entró antes xp-1718-linux, así que los de letras pasan a **g114 y g115**: en sus dos marcas de `Codigo/Form1.Biblioteca.cs`,
 `GANCHOS.tsv`, `RocolaOs.Letras.cs`, `RocolaOs.LetrasGenius.cs`, `RocolaOs.SpotifyCatalogo.cs` (dos comentarios) y `FASE11_letras.md`
 (dicho allí). Los demás no se tocan: g85-g87, g90-g98, g100-g101 (junta-2), g102 (noche-nv), g110-g113 (xp-1718-linux), g120-g139
