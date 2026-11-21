@@ -41,6 +41,7 @@ namespace Rocola
         private StreamWriter mgLog; private DiagCaptura mgCap; private DiagInstantanea mgFoto;
         private readonly List<KeyValuePair<double, string>> mgTramos = new List<KeyValuePair<double, string>>();
         private readonly List<double> mgCosteTodo = new List<double>(), mgCosteAhora = new List<double>();
+        private int mgRep, mgSinRep;
         private int mgComparados, mgDistintos, mgPeor; private int mgSig; private string mgNombre; private long mgAllocUi, mgAllocTodo; private bool mgPrimer, mgLista, mgEnchufada;
         private static double MgDesdeProceso()
         {
@@ -125,6 +126,9 @@ namespace Rocola
                 if (n == "fin") { mgNombre = null; continue; }
                 mgNombre = n; MgCambios();
                 mgFoto = DiagInstantanea.Toma(GpuPanel.AhoraMs());
+#if !MIDE_BASE
+                mgRep = PantallaRocola.TramosRepintados; mgSinRep = PantallaRocola.TramosSinRepintar;
+#endif
                 mgAllocUi = GC.GetAllocatedBytesForCurrentThread(); mgAllocTodo = GC.GetTotalAllocatedBytes(false);
                 if (mgEnchufada) mgCap.Empieza(GpuPanel.AhoraMs(), 1000.0 / 60.0);
             }
@@ -144,6 +148,9 @@ namespace Rocola
             sb.Append('\t').Append(b.Gc0 - mgFoto.Gc0).Append('\t').Append(b.Gc1 - mgFoto.Gc1).Append('\t').Append(b.Gc2 - mgFoto.Gc2);
             sb.Append('\t').Append((ui / 1048576.0).ToString("0.00", mgc)).Append('\t').Append((r.Cuadros > 0 ? ui / 1024.0 / r.Cuadros : 0).ToString("0.0", mgc));
             sb.Append('\t').Append((todo / 1048576.0).ToString("0.00", mgc)).Append('\t').Append((r.CpuNucleos * 100).ToString("0.0", mgc));
+#if !MIDE_BASE
+            sb.Append("\ttramos=").Append(PantallaRocola.TramosRepintados - mgRep).Append('/').Append(PantallaRocola.TramosSinRepintar - mgSinRep);
+#endif
             sb.Append("\tfases(ms/cuadro):");
             for (int i = 0; i < DiagCaptura.NSlots; i++)
                 sb.Append(' ').Append(DiagCaptura.NombresSlots[i]).Append('=').Append((r.Cuadros > 0 ? r.FasesMs[i] / r.Cuadros : 0).ToString("0.00", mgc));

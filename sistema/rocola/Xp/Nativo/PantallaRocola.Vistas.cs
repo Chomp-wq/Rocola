@@ -237,6 +237,7 @@ namespace Rocola
         private sealed class Tramo { internal SKBitmap Mapa; internal int Version; internal bool Vacio; internal CapaPantalla Capa, CapaCorte; }   // Vacio (rapido-general): al repintarse no se pinto nada en el (ni el fondo ni ninguna vista): todo transparente
         private static readonly List<Tramo> tramos = new List<Tramo>();
         private static int versionTramo;
+        internal static int TramosRepintados, TramosSinRepintar;   // (pruebas: cuantas veces se pinto un tramo y cuantas se ahorro)
         private static object[] fotoLista = new object[0]; private static int fotoN;
         private static readonly List<int> cortesVentana = new List<int>();
         // (rapido-general) el nombre del tipo, una vez por tipo (en NativeAOT GetType().Name arma la cadena cada vez: era en cada cuadro)
@@ -283,9 +284,15 @@ namespace Rocola
             {
                 int corte = t < cortes.Count ? cortes[t] : -1;
                 Tramo tr = tramos[t];
-                if (repinta || tr.Mapa == null || tr.Mapa.Width != Ancho || tr.Mapa.Height != Alto)
+                bool nuevo = tr.Mapa == null || tr.Mapa.Width != Ancho || tr.Mapa.Height != Alto;
+                // (rapido-general) un tramo que ya estaba todo transparente y en el que tampoco ahora se pintaria nada (ni el fondo ni ninguna vista
+                // que se vea) se queda como esta: sin borrar sus 3 MB ni crear un lienzo (el mismo resultado: transparente, y nadie se pinta)
+                bool sigueVacio = !nuevo && tr.Vacio && !(t == 0 && FondoDeLaVentana != null && !tapaTodo) && !AlgunaSePinta(l, hasta, corte);
+                if ((repinta || nuevo) && sigueVacio) TramosSinRepintar++;
+                if ((repinta || nuevo) && !sigueVacio)
                 {
-                    if (tr.Mapa == null || tr.Mapa.Width != Ancho || tr.Mapa.Height != Alto) { if (tr.Mapa != null) tr.Mapa.Dispose(); tr.Mapa = new SKBitmap(new SKImageInfo(Math.Max(1, Ancho), Math.Max(1, Alto), SKColorType.Bgra8888, SKAlphaType.Premul)); }
+                    TramosRepintados++;
+                    if (nuevo) { if (tr.Mapa != null) tr.Mapa.Dispose(); tr.Mapa = new SKBitmap(new SKImageInfo(Math.Max(1, Ancho), Math.Max(1, Alto), SKColorType.Bgra8888, SKAlphaType.Premul)); }
                     bool pinto = false;
                     using (SKCanvas g = new SKCanvas(tr.Mapa))
                     {
@@ -320,6 +327,18 @@ namespace Rocola
                 }
             }
             pintadoVentana = cambiosVentana;
+        }
+        // (rapido-general) si alguna vista del tramo (de 'hasta' hacia arriba, sin llegar a 'corte') se pintaria: lo mismo que mira PintaRecortada
+        private static bool AlgunaSePinta(object[] l, int hasta, int corte)
+        {
+            for (int i = hasta; i > corte; i--)
+            {
+                IVista v = l[i] as IVista;
+                if (v == null || v.DeLaTarjeta || !Ve(v)) continue;
+                Rectangle r = v.Bounds;
+                if (r.Width > 0 && r.Height > 0) return true;
+            }
+            return false;
         }
         private static void SueltaTramos(int quedan) { for (int i = quedan; i < tramos.Count; i++) if (tramos[i].Mapa != null) { tramos[i].Mapa.Dispose(); tramos[i].Mapa = null; } }
         private static bool PintaRecortada(object[] l, int i, IVista v, SKCanvas g)   // (rapido-general) true si la pinto (si no, el tramo puede quedar vacio)
