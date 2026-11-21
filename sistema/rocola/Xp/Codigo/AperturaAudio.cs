@@ -318,7 +318,7 @@ namespace Rocola
             EstadoPasajero("No se pudo reproducir: " + MotivoFallo(ex) + "  (" + System.IO.Path.GetFileName(t.Path) + ")", EstadoPasajeroMs);   // el motivo primero: un nombre largo se corta por la orilla y se llevaria el motivo; el detalle, en rocola_error.txt
             MarcaDanada(t.Path, ex);   // si es el archivo (no el disco), no se vuelve a dejar poner hasta que lo cambien
             LogError("PlayTrack " + System.IO.Path.GetFileName(t.Path), ex);
-            NoteIncompatible(t.Path, ex);
+            if (!RocolaOsNoAnota(ex)) NoteIncompatible(t.Path, ex);   // ROCOLA OS g112: (XP) NoteIncompatible(t.Path, ex); — la pedida que aun se esta convirtiendo a WAV (funcion «convierte», RocolaOs/RocolaOs.Convierte.cs) no se anota en rocola_incompatibles.txt: XP la anotaria una vez para siempre con ese motivo
             RefundCredit();
             ShowToast("No se pudo reproducir: credito devuelto", System.Drawing.Color.FromArgb(200, 80, 70));
             DisposePlaybackNow();

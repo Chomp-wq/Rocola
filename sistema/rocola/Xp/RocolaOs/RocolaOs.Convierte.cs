@@ -65,24 +65,48 @@ namespace Rocola
             if (path == null || !path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) return null;
             string otro = NoEsMp3.OtroFormato(path);
             if (otro == null) return null;
-            string wav = RocolaOsConvertidas.Espera(path, audioOpeningForMeasurement ? 0 : RocolaOsConvertidas.EsperaPedidaMs);
+            string wav = RocolaOsConvertidas.Espera(path, audioOpeningForMeasurement ? 0 : RocolaOsConvertidas.EsperaPedidaMs, null);
             if (wav == null)
             {
                 if (RocolaOsConvertidas.Convirtiendo(path))
-                    throw new IOException("se esta convirtiendo (era " + otro + " con otro nombre): sonara la proxima vez");   // credito devuelto, sin marcarla danada
-                return null;   // sin ffmpeg, sin sitio o no se pudo: lo de XP
+                    throw new RocolaOsConvirtiendo(otro);   // credito devuelto, sin marcarla danada (es un IOException) y sin anotarla (g112)
+                wav = RocolaOsConvertidas.Lista(path);   // (acabo justo entre la ultima mirada y esta: ya esta)
+                if (wav == null) return null;   // sin ffmpeg, sin sitio o no se pudo: lo de XP
             }
             FuenteMedida inicio = CapturaFuente(path);   // el sello es el del original: sus medidas son las de la cancion
-            return SinSilencios(path, SellaFuenteAudio(path, inicio, ComoEstereo(new FileAudioSource(wav))));
+            FileAudioSource fuente;
+            try { fuente = new FileAudioSource(wav); }
+            catch (Exception ex) when (!(ex is FileNotFoundException) && !(ex is DirectoryNotFoundException) && !(ex is UnauthorizedAccessException))
+            {
+                // la copia no se deja abrir (un apagon a media escritura en un disco sin la marca de limpio, o la borraron a medias): se
+                // tira y se vuelve a hacer; mientras, el credito se devuelve sin marcarla danada (lo de la cancion es la copia, no el original)
+                RocolaOsConvertidas.Tira(path, wav, ex);
+                throw new RocolaOsConvirtiendo(otro);
+            }
+            return SinSilencios(path, SellaFuenteAudio(path, inicio, ComoEstereo(fuente)));
         }
+
+        // g112 (AudioStartFailed, AperturaAudio.cs): la que se esta convirtiendo no se anota en rocola_incompatibles.txt (esa lista es para
+        // el operador, y XP la anota UNA vez para siempre: con este motivo, el de verdad -si despues falla la conversion- ya no se apuntaria)
+        internal static bool RocolaOsNoAnota(Exception ex) { return ex is RocolaOsConvirtiendo; }
 
         // g111: lo que lee el medidor (la ruta del WAV, o la misma)
         internal static string RocolaOsConvertidaMide(string ruta)
         {
             if (!RocolaOs.Activo || !RocolaOs.Encendida(RocolaOsConvierteNombre)) return ruta;
             if (ruta == null || !ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) || NoEsMp3.OtroFormato(ruta) == null) return ruta;
-            return RocolaOsConvertidas.Espera(ruta, RocolaOsConvertidas.EsperaMedidaMs) ?? ruta;
+            // la espera se corta con la medida (el repaso que se para, el precalentador que cambia de cancion: MeasurementCancelled, la
+            // cancelacion que ya trae este hilo); sin llegar, la ruta original y XP la rechaza como siempre (el repaso la mide en otra vuelta)
+            return RocolaOsConvertidas.Espera(ruta, RocolaOsConvertidas.EsperaMedidaMs, MeasurementCancelled) ?? ruta;
         }
+    }
+
+    // La pedida que aun se esta convirtiendo (o cuya copia se esta rehaciendo): un IOException, asi que por el camino de XP el credito se
+    // devuelve y NO queda danada (EsArchivoDanado); MotivoFallo (g113) lo dice en corto y g112 no la anota.
+    internal sealed class RocolaOsConvirtiendo : IOException
+    {
+        internal const string Motivo = "se está preparando: sonará la próxima vez";
+        internal RocolaOsConvirtiendo(string otro) : base("se esta convirtiendo (era " + otro + " con otro nombre): sonara la proxima vez") { }
     }
 
     // Las conversiones: de una en una, en un hilo de fondo (nice 19), como Motor/Conversiones.cs.
@@ -138,8 +162,9 @@ namespace Rocola
         }
         internal static bool Convirtiendo(string ruta) { string c = Clave(ruta); if (c == null) return false; lock (llave) return enCurso.Contains(c); }
 
-        // La convertida, pidiendola si hace falta y esperando hasta ms (0: sin esperar). null si no esta (aun no, o no se pudo).
-        internal static string Espera(string ruta, int ms)
+        // La convertida, pidiendola si hace falta y esperando hasta ms (0: sin esperar; cancela, si la hay, la corta). null si no esta (aun
+        // no, o no se pudo).
+        internal static string Espera(string ruta, int ms, Func<bool> cancela)
         {
             string w = Lista(ruta);
             if (w != null) return w;
@@ -148,10 +173,27 @@ namespace Rocola
             while (true)
             {
                 w = Lista(ruta);
-                if (w != null || !Convirtiendo(ruta)) return w;
+                if (w != null) return w;
+                if (!Convirtiendo(ruta)) return Lista(ruta);   // acabo (el Move va antes de soltarla: si salio bien, ya se ve)
                 if (unchecked(Environment.TickCount - desde) >= ms) return null;
+                if (cancela != null) { bool c; try { c = cancela(); } catch { c = false; } if (c) return null; }
                 Thread.Sleep(100);
             }
+        }
+
+        // Una copia que no se deja abrir: se borra y se pide otra (una sola vez por sesion; la segunda, fallida: lo de XP).
+        private static readonly HashSet<string> tiradas = new HashSet<string>(StringComparer.Ordinal);
+        internal static void Tira(string ruta, string wav, Exception ex)
+        {
+            string c = Clave(ruta);
+            bool otra;
+            lock (llave) otra = c != null && tiradas.Add(c);
+            try { File.Delete(wav); } catch { }
+            try { File.Delete(Path.ChangeExtension(wav, ".txt")); } catch { }
+            RocolaOs.Apunta("convierte", Path.GetFileName(ruta) + ": la copia no se pudo abrir (" + ex.GetType().Name + ": " + ex.Message + ")"
+                + (otra ? ": se hace otra" : ": queda como en XP"));
+            if (otra) Pide(ruta);
+            else if (c != null) lock (llave) fallidas[c] = "la copia no se pudo abrir dos veces";
         }
 
         // Que se convierta (si no esta hecha, en marcha o fallida). false si ya se intento y no se pudo.
@@ -203,8 +245,9 @@ namespace Rocola
             string tmp = destino + ".haciendo.wav";
             string ffmpeg = Environment.GetEnvironmentVariable("ROCOLA_FFMPEG");
             ProcessStartInfo pi = new ProcessStartInfo(string.IsNullOrEmpty(ffmpeg) ? "ffmpeg" : ffmpeg);
+            // aformat: mono y estereo quedan tal cual (bit a bit); mas de dos canales (un 5.1) se mezclan a estereo, como los oye la rocola
             foreach (string s in new[] { "-nostdin", "-hide_banner", "-v", "error", "-y", "-i", ruta, "-map", "0:a:0", "-vn", "-sn", "-dn",
-                "-map_metadata", "-1", "-c:a", "pcm_s16le", "-f", "wav", tmp })
+                "-map_metadata", "-1", "-af", "aformat=channel_layouts=mono|stereo", "-c:a", "pcm_s16le", "-f", "wav", tmp })
                 pi.ArgumentList.Add(s);
             pi.UseShellExecute = false; pi.RedirectStandardError = true; pi.RedirectStandardOutput = true; pi.RedirectStandardInput = false; pi.CreateNoWindow = true;
             Process p;
@@ -236,11 +279,33 @@ namespace Rocola
                     return "ffmpeg: " + (err.Length > 0 ? err : "codigo " + p.ExitCode);
                 }
             }
+            // al disco ANTES del cambio de nombre (fsync): sin esto, un apagon puede dejar el nombre bueno con los datos sin escribir (un WAV
+            // de ceros o recortado que Lista daria por hecho para siempre, porque la clave del original no cambia)
+            using (FileStream fs = new FileStream(tmp, FileMode.Open, FileAccess.ReadWrite, FileShare.Read)) fs.Flush(true);
+            // la ruta del original junto a la copia (para LimpiaRestos: las copias de un original que cambio o ya no esta se borran)
+            string nota = Path.ChangeExtension(destino, ".txt");
+            try { File.WriteAllText(nota, Path.GetFullPath(ruta) + "\n", new UTF8Encoding(false)); } catch { }
             File.Move(tmp, destino, true);   // de un tiron: una convertida a medias nunca se ve como hecha
+            SincronizaCarpeta(carpeta);
             return null;
         }
 
-        // Al arrancar: las copias a medias de un apagon (.haciendo.wav) se borran.
+        // El cambio de nombre tambien al disco (fsync de la carpeta, como hacen los que escriben con cuidado en Linux).
+        private static void SincronizaCarpeta(string carpeta)
+        {
+            if (!OperatingSystem.IsLinux()) return;
+            int fd = -1;
+            try { fd = open(carpeta, 0x10000 /* O_RDONLY|O_DIRECTORY */); if (fd >= 0) fsync(fd); }
+            catch { }
+            finally { if (fd >= 0) { try { close(fd); } catch { } } }
+        }
+        [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)] private static extern int open([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPUTF8Str)] string ruta, int flags);
+        [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)] private static extern int fsync(int fd);
+        [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)] private static extern int close(int fd);
+
+        // Al arrancar: las copias a medias de un apagon (.haciendo.wav) se borran, y tambien las de un original que cambio (otro tamano o
+        // fecha: su clave ya es otra) o que ya no esta en su carpeta. Si ni la carpeta del original esta (un disco que no se conecto), la
+        // copia se queda. Una copia sin su nota (.txt) no se toca.
         internal static void LimpiaRestos()
         {
             try
@@ -248,6 +313,25 @@ namespace Rocola
                 string d = Carpeta;
                 if (!Directory.Exists(d)) return;
                 foreach (string f in Directory.GetFiles(d, "*.haciendo.wav")) { try { File.Delete(f); } catch { } }
+                int viejas = 0;
+                foreach (string w in Directory.GetFiles(d, "*.wav"))
+                {
+                    try
+                    {
+                        string nota = Path.ChangeExtension(w, ".txt");
+                        if (!File.Exists(nota)) continue;
+                        string orig = File.ReadAllText(nota, Encoding.UTF8).Trim();
+                        if (orig.Length == 0) continue;
+                        bool sobra;
+                        if (File.Exists(orig)) sobra = !string.Equals(Clave(orig), Path.GetFileNameWithoutExtension(w), StringComparison.Ordinal);
+                        else { string dir = Path.GetDirectoryName(orig); sobra = !string.IsNullOrEmpty(dir) && Directory.Exists(dir); }
+                        if (!sobra) continue;
+                        File.Delete(w); try { File.Delete(nota); } catch { }
+                        viejas++;
+                    }
+                    catch { }
+                }
+                if (viejas > 0) RocolaOs.Apunta("convierte", viejas + " copia(s) de originales que cambiaron o ya no estan, borradas");
             }
             catch { }
         }
