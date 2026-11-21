@@ -58,6 +58,11 @@ corre() {
   local n="$1" p="$2" seg="$3" d="$4"; shift 4
   local o="$W/$n"; mkdir -p "$o/run"
   if [ "${d#=}" != "$d" ]; then d="${d#=}"; else copia "$d" "$o/datos"; d="$o/datos"; fi
+  # (junta 4) las cuatro funciones del cielo vienen APAGADAS de fabrica en esta version (vuelven en la del cielo): con ROCOLA_OS=1 la bateria
+  # las enciende en rocola_os.txt (la que ya diga cielo=, fiestas=, clima= o vidrio= manda); CIELO_DE_FABRICA=1 lo deja como de fabrica
+  if printf '%s\n' "$@" | grep -qx 'ROCOLA_OS=1' && ! printf '%s\n' "$@" | grep -qx 'CIELO_DE_FABRICA=1'; then
+    for k in cielo fiestas clima vidrio; do grep -q "^$k=" "$d/rocola_os.txt" 2>/dev/null || printf '%s=1\n' "$k" >> "$d/rocola_os.txt"; done
+  fi
   printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj }\n' "$AL/libasound_module_pcm_reloj.so" > "$o/alsa.conf"
   ( cd "$d" && exec env -u ROCOLA_OS -u ROCOLA_CIELO_FECHA -u ROCOLA_CLIMA -u ROCOLA_CIUDAD ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj \
       ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_LETRAS_XP="$LETRAS" TZ=America/Mexico_City \
@@ -173,6 +178,14 @@ if [[ " $partes " == *" apagado "* ]]; then
   si "el control (DN1 encendida a las 13:00): la cinta SI cambia (el comparador ve el cielo)" test $r = 1
   si "sin ROCOLA_OS no se escribe nada de Rocola OS (ni rocola_os.txt ni su bitacora) y no corre el hilo del cielo" \
      bash -c "[ ! -e '$W/mio-sin/datos/rocola_os.txt' ] && [ ! -e '$W/mio-sin/datos/rocola_os_bitacora.txt' ] && [ ! -e '$W/mio-sin/datos/rocola_clima.txt' ]"
+  # (junta 4) DE FABRICA (sin rocola_os.txt): las cuatro funciones apagadas, sin ciudad ni clima falsos y con el lugar y el clima a un puerto
+  # donde nada escucha: ni una peticion, el cielo no arranca y la cinta es la de XP
+  cinta fabrica "$prog" ROCOLA_OS=1 CIELO_DE_FABRICA=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA_API=$SINRED ROCOLA_LUGAR_API=$SINRED/lugar; espera fabrica
+  compara_cinta "$W/base-sin.cinta" "$W/fabrica.cinta" > "$W/fabrica.compara" 2>&1; r=$?
+  sed 's/^/   /' "$W/fabrica.compara"
+  si "DE FABRICA (junta 4, sin rocola_os.txt): la cinta de la pared igual a la de la rama principal" test $r = 0
+  si "DE FABRICA: el cielo no arranca, no pide el lugar ni el clima y no deja sus archivos" \
+     bash -c "[ -e '$(bit fabrica)' ] && ! grep -q '\\[cielo\\]' '$(bit fabrica)' && ! grep -qi 'lugar\\|clima' '$(bit fabrica)' && [ ! -e '$W/fabrica/datos/rocola_clima.txt' ] && [ ! -e '$W/fabrica/datos/rocola_clima_lugar.txt' ]"
   si "con las cuatro funciones en 0: el cielo no arranca (ni su hilo ni sus archivos)" \
      bash -c "! grep -q '\\[cielo\\]' '$(bit mio-cero)' && [ ! -e '$W/mio-cero/datos/rocola_clima.txt' ]"
   si "con todas las claves en 0: arranca (la foto), pero no pinta nada (la cinta igual) y no pide el clima" \

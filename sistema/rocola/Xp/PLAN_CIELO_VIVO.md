@@ -7,6 +7,13 @@ Ctrl+F4). Solo Rocola OS (rocola-xp), solo GPU (el dibujo por procesador esta co
 anterior (H1-H7, F1-F3, O1-O3, G1-G11, sistema/rocola/Consola) NO se trasplanta; de el solo se reusa la logica que no es dibujo
 (sistema/rocola/Motor/CieloClima.cs: el sol, la luna, las ciudades, Open-Meteo, el lugar por internet, el calendario).
 
+> **En esta version, apagado de fabrica (junta 4, 21-11-2026).** Decision del dueno al juntar («Cuando termines esto sube a github, ya lo
+> demas que entre en otra version»; el cielo vivo va en la siguiente): las cuatro funciones del cielo vivo (`cielo`, `fiestas`, `clima` y
+> `vidrio`, `RocolaOs.Cielo.cs`) van con `DeFabrica = false`: sin `cielo=1` (o `fiestas=1`, `clima=1`, `vidrio=1`) en `rocola_os.txt` no
+> arranca nada del cielo, no cambia nada a la vista y no se pide el lugar ni el clima por internet. Sus claves no cambian. **Vuelven a
+> encenderse de fabrica (`DeFabrica = true`) en la version del cielo**, cuando entren los cuatro grupos y la hoja «Imagen» de Ctrl+F4. La
+> bateria `Pruebas/RocolaOs/cielo` las enciende ella con `ROCOLA_OS=1` y comprueba lo de fabrica aparte (`CIELO_DE_FABRICA=1`).
+
 ## 1. Las seis reglas (de la presentacion; mandan sobre todo lo demas)
 
 1. **La noche es la de XP.** Con el sol bajo -12 grados (noche cerrada), el cielo sale bit a bit como hoy (salvo lo que pinte una
