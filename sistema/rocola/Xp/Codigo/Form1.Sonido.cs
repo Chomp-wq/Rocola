@@ -232,7 +232,7 @@ namespace Rocola
         {
             if (actual == meta) return meta;
             if (msPasados <= 0) return actual;
-            float paso = Math.Max(1f - 0.5f, 1f - MadLin()) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si la noche (o la madrugada, NV4: MadLin nunca es mas alta que NocheLin) baja mas que eso (de 50 a 65 %, desde el 20-11-2026), lo que baja: la noche entera siempre en rampaMs o menos
+            float paso = Math.Max(1f - 0.5f, 1f - Math.Min(MadLin(), Math.Min(actual, meta))) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si baja mas que eso (de 50 a 65 %, desde el 20-11-2026), de 1 a lo mas bajo de la noche (o de la madrugada, NV4: MadLin nunca es mas alta que NocheLin), de donde esta o de a donde va: la noche entera, o el deslizador de 50 a 90 % y de vuelta, en rampaMs o menos (la subida de las 7 y el interruptor no esperan a la rampa: van por la curva del avance, AvanzaModoNoche)
             if (actual < meta) { actual += paso; if (actual > meta) actual = meta; }
             else { actual -= paso; if (actual < meta) actual = meta; }
             return actual;
@@ -274,6 +274,11 @@ namespace Rocola
             }
             // Lo que toca ahora: la noche baja por su avance (una hora, pareja en dB), y de madrugada la madrugada por el suyo (otra hora); «Probar»
             // va directo al nivel entero (de la noche o de la madrugada) con su rampa rapida.
+            // (20-11-2026) lo que ya va por la curva de los avances (acotada: baja en una hora, sube en 20 s) la sigue sin rampa: al 50 % la rampa se quedaba
+            // atras y la subida de las 7 tardaba 23 s. Cada uno por su lado (el volumen, el grave y el corte): lo que se movio con un mando, «Probar» o un
+            // ajuste nuevo no esta en la curva y va por su rampa.
+            bool libre = !ProbandoNoche && !nochePruebaRapida;
+            bool enCurva = libre && nocheFactor == FactorDeAvances(nocheAvance, madAvance), gCurva = libre && gravesAhora == GravesDeAvances(nocheAvance, madAvance), cCurva = libre && corteAhora == CorteDeAvances(nocheAvance, madAvance);
             nocheAvance = AvanzaAvance(nocheAvance, esNoche, dt);
             madAvance = AvanzaAvance(madAvance, esMad, dt);   // (a las 7, o al apagar algo, vuelve en los 20 s de siempre)
             double a = nocheAvance, b = madAvance;
@@ -281,12 +286,12 @@ namespace Rocola
             float meta = FactorDeAvances(a, b);
             int rampa = nochePruebaRapida ? NochePruebaRampaMs : NocheRampaMs;
             float antes = nocheFactor;
-            nocheFactor = AvanzaRampa(nocheFactor, meta, dt, rampa);
+            nocheFactor = enCurva ? meta : AvanzaRampa(nocheFactor, meta, dt, rampa);
             // N1/NV1 y NV2: el grave de noche y el corte siguen a su meta (los dos avances) con la misma rampa: en la bajada de una hora van
             // pegados a ella; con el mando, «Probar» o la manana, enteros en rampaMs (12 dB o el corte entero), nunca de golpe.
             float gMeta = GravesDeAvances(a, b), cMeta = CorteDeAvances(a, b);
-            gravesAhora = SigueMeta(gravesAhora, gMeta, NocheGravesMax * (float)dt / rampa);
-            corteAhora = SigueMeta(corteAhora, cMeta, (float)dt / rampa);
+            gravesAhora = gCurva ? gMeta : SigueMeta(gravesAhora, gMeta, NocheGravesMax * (float)dt / rampa);
+            corteAhora = cCurva ? cMeta : SigueMeta(corteAhora, cMeta, (float)dt / rampa);
             if (nocheFactor == meta && gravesAhora == gMeta && corteAhora == cMeta) nochePruebaRapida = false;
             PublicaNoche();   // de dia, 0 y 0: las etapas salen bit a bit como antes
             // El volumen parejo del billar (VolumenParejo.cs) no aprende de una cancion que sono con la noche puesta (20-11-2026): mide delante del

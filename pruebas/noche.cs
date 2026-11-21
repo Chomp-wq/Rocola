@@ -397,13 +397,39 @@ class Noche
                 try { vuelta(500); } catch (Exception e) { sube = false; Console.WriteLine("    " + (e.InnerException ?? e).Message); break; }
                 pasosSube++; if (factor() == 1f) break;
             }
-            Check(sube && factor() == 1f && grave() == 0f && pasosSube * 0.5 >= 18 && pasosSube * 0.5 <= 24, "al 50 %, la subida de la manana llega en " + (pasosSube * 0.5).ToString("0.0") + " s (unos 20; sin el paso mayor, 28,5 s)");
+            Check(sube && factor() == 1f && grave() == 0f && pasosSube * 0.5 >= 19.5 && pasosSube * 0.5 <= 20.5, "al 50 %, la subida de la manana llega en " + (pasosSube * 0.5).ToString("0.0") + " s (20, la curva del avance; antes de seguirla sin rampa, 23 s; sin el paso mayor, 28,5 s)");
             mProb.Invoke(f, null);
             pasosP = 0; for (k = 0; k < 12; k++) { vuelta(500); pasosP++; if (Math.Abs(factor() - lin50n) < 1e-6f && Math.Abs(grave() - 4f) < 0.01f) break; }
             Check(Math.Abs(factor() - lin50n) < 1e-6f && pasosP * 0.5 <= 2.0, "al 50 %, «Probar» baja a -10 dB y el grave en " + (pasosP * 0.5) + " s (la rampa rapida de 1,5 s; sin el paso mayor, 2,5 s)");
             fHastaP.SetValue(f, (Environment.TickCount - 10) | 1);
             pasosV = 0; for (k = 0; k < 12; k++) { vuelta(500); pasosV++; if (factor() == 1f && grave() == 0f) break; }
             Check(factor() == 1f && grave() == 0f && pasosV * 0.5 <= 2.0, "acabada la prueba, de dia, vuelve a 1 en " + (pasosV * 0.5) + " s");
+            // (20-11-2026, revision) De noche con la bajada completa: mover el deslizador de 50 a 90 % y de 90 a 50 %, y apagar el interruptor.
+            FieldInfo fAv = TF.GetField("nocheAvance", T);
+            Func<float, int, int, bool, string, int> mueve = (metaF, msVuelta, maxV, conGrave, que) =>
+            {
+                int n = 0; float ant = factor(); bool mono = true, subeM = metaF > ant;
+                for (int j = 0; j < maxV; j++) { vuelta(msVuelta); n++; float v = factor(); if (subeM ? v < ant : v > ant) mono = false; ant = v; if (Math.Abs(v - metaF) < 1e-6f) break; }
+                Check(mono && Math.Abs(factor() - metaF) < 1e-6f && n * msVuelta <= 20500, que + " llega en " + (n * msVuelta / 1000.0).ToString("0.0") + " s, sin escalon ni vuelta atras");
+                return n;
+            };
+            fDesde.SetValue(null, 0); fHasta.SetValue(null, 24); fArr.SetValue(f, false); fHastaP.SetValue(f, 0); fPct.SetValue(null, 50); vuelta(500);
+            Check(Math.Abs(factor() - lin50n) < 1e-6f && (double)fAv.GetValue(f) == 1.0, "de noche al 50 %: en -10 dB y el avance completo");
+            fPct.SetValue(null, 90); float lin90n = (float)Math.Pow(10, db(90) / 20); fPct.SetValue(null, 90);
+            mueve(lin90n, 500, 60, false, "de noche, el deslizador de 50 a 90 % (-10 a -1,5 dB)");
+            fPct.SetValue(null, 50);
+            mueve(lin50n, 500, 60, false, "y de 90 a 50 %");
+            TF.GetField("nocheAvisada", T).SetValue(f, false);   // (el aviso de «se acabo» necesita la ventana viva: aqui no hay; se salta)
+            fOn.SetValue(null, false);
+            mueve(1f, 500, 60, false, "al 50 %, apagar el interruptor de noche");
+            Check(grave() == 0f, "y el grave de noche vuelve a 0");
+            fOn.SetValue(null, true);
+            // Al 80 % (y de 66 a 90 %) la curva de la subida es mas lenta que la rampa: la vuelta a vuelta es la de antes (la curva del avance).
+            fPct.SetValue(null, 80); fArr.SetValue(f, false); vuelta(500);
+            fDesde.SetValue(null, 3); fHasta.SetValue(null, 3); TF.GetField("nocheAvisada", T).SetValue(f, false);
+            bool enCurva = true; int nv = 0;
+            for (k = 0; k < 60; k++) { vuelta(500); nv++; float c = (float)mFacAv.Invoke(null, new object[] { (double)fAv.GetValue(f) }); if (factor() != c) enCurva = false; if (factor() == 1f) break; }
+            Check(enCurva && nv * 0.5 <= 20.0, "al 80 %, la subida va justo por la curva del avance, vuelta a vuelta, y llega en " + (nv * 0.5).ToString("0.0") + " s");
             fPct.SetValue(null, 80);
 
             Vecinos(TF, f, fOn, fDesde, fHasta, fPct, fGrav, fCorte, fMad, fMadD, fMadP, dir);
