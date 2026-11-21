@@ -449,7 +449,7 @@ namespace Rocola
             }
         }
         private int AdaptiveCoverReaders()
-        { return gpuEnabled ? Math.Max(1, Math.Min(coverCarriles, coverGovernor.ProfileReaders)) : coverCarriles; }
+        { return RocolaOsLectoresPortadas(gpuEnabled ? Math.Max(1, Math.Min(coverCarriles, coverGovernor.ProfileReaders)) : coverCarriles); }   // ROCOLA OS g223: (XP) { return gpuEnabled ? Math.Max(1, Math.Min(coverCarriles, coverGovernor.ProfileReaders)) : coverCarriles; } — con Rocola OS y portadas_dos_lectores=1, un lector mas que los de XP mientras la pagina que se ve tiene portadas sin miniatura (RocolaOs/RocolaOs.Caratulas.cs); si no, lo de XP
 
         // Solo GPU. Bajo coverLock: el cupo global incluye las lecturas antiguas
         // en vuelo; cambiar de perfil o F5 no permite duplicarlas ni las cancela.

@@ -596,7 +596,7 @@ namespace Rocola
                     {
                         identidadAntes = ThumbCachePath(key);
 #if ROCOLA_GPU
-                        if (gpuEnabled) thumb = DecodeCoverForPublication(key, identidadAntes, out miniaturaParaGuardar);
+                        if (gpuEnabled) thumb = RocolaOsDecodificaPortada(key, identidadAntes, out miniaturaParaGuardar);   // ROCOLA OS g224: (XP) if (gpuEnabled) thumb = DecodeCoverForPublication(key, identidadAntes, out miniaturaParaGuardar); — con Rocola OS y portadas_dos_lectores=1, abre el segundo lector si la portada es de la original y lo que se ve tiene mas esperando, y el lector que pasa de los de XP decodifica a nice 19 (RocolaOs/RocolaOs.Caratulas.cs); si no, DecodeCoverForPublication como siempre
                         else
 #endif
                         thumb = DecodeCoverWithIdentity(key, identidadAntes);
@@ -973,7 +973,7 @@ namespace Rocola
                 try
                 {
                     using (MemoryStream ms = new MemoryStream(data, 0, largo, false))
-                    using (SKBitmap src = Imagenes.Lee(ms, out FormatoImagen formatoSrc))   // EN LINUX: Image.FromStream(ms, false, false): los puntos y el formato que diria GDI+ (un JPEG o un PNG sin alfa, de 24 bits; un GIF, de paleta; con alfa, de 32 bits con alfa)
+                    using (SKBitmap src = RocolaOsLeeOriginal(ms, data, largo, ThumbPx, out FormatoImagen formatoSrc))   // ROCOLA OS g222: (XP) using (Image src = Image.FromStream(ms, false, false)) — con Rocola OS y portadas_dct=1, una JPEG grande sale ya reducida por la escala DCT (los dos lados en al menos el doble de la miniatura) y sigue por lo de XP; si no, Imagenes.Lee como siempre (RocolaOs/RocolaOs.Caratulas.cs)
                     {
                         SKBitmap thumb = null;   // EN LINUX: un SKBitmap
                         try
