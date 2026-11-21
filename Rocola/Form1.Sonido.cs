@@ -151,7 +151,7 @@ namespace Rocola
         {
             if (actual == meta) return meta;
             if (msPasados <= 0) return actual;
-            float paso = Math.Max(1f - 0.5f, 1f - NocheLin()) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si la noche baja mas que eso (de 50 a 65 %, desde el 20-11-2026), lo que baja: la noche entera siempre en rampaMs o menos
+            float paso = Math.Max(1f - 0.5f, 1f - Math.Min(NocheLin(), Math.Min(actual, meta))) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si baja mas que eso (de 50 a 65 %, desde el 20-11-2026), de 1 a lo mas bajo de la noche, de donde esta o de a donde va: la noche entera, o el deslizador de 50 a 90 % y de vuelta, en rampaMs o menos (la subida de las 7 y el interruptor no esperan a la rampa: van por la curva del avance, AvanzaModoNoche)
             if (actual < meta) { actual += paso; if (actual > meta) actual = meta; }
             else { actual -= paso; if (actual < meta) actual = meta; }
             return actual;
@@ -184,10 +184,10 @@ namespace Rocola
                 if (!esNoche) ShowToast("Se acabo el modo noche: vuelve el volumen de siempre", Color.FromArgb(38, 78, 132));
             }
             // Lo que toca ahora: la noche baja por su avance (una hora, pareja en dB); «Probar» va directo al nivel entero con su rampa rapida.
-            nocheAvance = AvanzaAvance(nocheAvance, esNoche, dt);
+            bool enCurva = !ProbandoNoche && !nochePruebaRapida && nocheFactor == FactorDeAvance(nocheAvance); nocheAvance = AvanzaAvance(nocheAvance, esNoche, dt);   // (20-11-2026) si ya va por la curva del avance (acotada: baja en una hora, sube en 20 s), la sigue sin rampa: al 50 % la rampa se quedaba atras y la subida de las 7 tardaba 23 s
             if (ProbandoNoche) meta = NocheLin(); else meta = FactorDeAvance(nocheAvance);
             float antes = nocheFactor;
-            nocheFactor = AvanzaRampa(nocheFactor, meta, dt, nochePruebaRapida ? NochePruebaRampaMs : NocheRampaMs);
+            nocheFactor = enCurva ? meta : AvanzaRampa(nocheFactor, meta, dt, nochePruebaRapida ? NochePruebaRampaMs : NocheRampaMs);
             if (nocheFactor == meta) nochePruebaRapida = false;
             SalaLocal.GravesNocheDb = GravesNocheDe(AvanceDeFactor(nocheFactor));   // N1: el grave de noche, con el mismo avance (de dia, 0)
             // Y se empuja a la cancion que YA suena (y a la preparada, y al video): si no, no se oiria hasta la siguiente.
