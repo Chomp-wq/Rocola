@@ -43,8 +43,8 @@ namespace Rocola.Nativo
                     if (bpp == 4)
                     {
                         uint* tt = (uint*)t;
-                        // (rapido-caratulas) de cuatro en cuatro mientras los cuatro son opacos o del todo transparentes (casi todo en una
-                        // portada o en la interfaz): esos van tal cual (con el alfa a 255 en Rgb32), lo mismo que la tabla; los demas, uno a uno
+                        // (rapido-caratulas) los grupos de cuatro opacos o del todo transparentes (casi todo en una portada o en la interfaz)
+                        // van tal cual (con el alfa a 255 en Rgb32), lo mismo que la tabla; los demas puntos, con la tabla
                         int x = Vector128.IsHardwareAccelerated ? CuatroTalCual(s, tt, r.Width, rgb) : 0;
                         for (; x < r.Width; x++)
                         {
