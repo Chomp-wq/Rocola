@@ -5,7 +5,8 @@ de `PLAN_CIELO_VIVO.md` (que manda): las cuatro funciones del andamio con todas 
 calendario, calma, «Ver como se veria»), los **enchufes** en el codigo de XP para que los cuatro grupos de despues trabajen en paralelo sin
 tocar las mismas lineas, y las dos primeras ideas: **DN1** (el cielo sigue al sol) y **DN5** (la raya del horizonte con la luz de la hora).
 Solo Rocola OS (`ROCOLA_OS`), solo la tarjeta (el dibujo por procesador sigue congelado y no se toca). Sin `ROCOLA_OS`, o con las cuatro
-funciones apagadas, o con todas sus claves en 0, la rocola pinta lo de XP (comprobado con las cintas de la tarjeta, abajo). **Nada probado
+funciones apagadas, o con todas sus claves en 0, la rocola pinta lo de XP (comprobado con las cintas de la tarjeta, abajo: el degradado del cielo byte a byte, la forma del cuadro, y con
+tolerancia los colores de la nebulosa, las estrellas, la aurora y el color medio de la raya; no es «byte a byte como el port» en todo). **Nada probado
 en el A4.**
 
 ## Que se hizo
@@ -110,7 +111,9 @@ abajo). La imagen intermedia se vuelve a pintar cuando cambia el cielo (`FirmaCi
 - **La «madrugada» de §5** (estrellas 1,1 y nebulosa 0,9 en las maquetas): no se aplica; la regla 1 manda.
 - **La regla 3**: con el horizonte de la pared, ninguna paleta pasa de **0,125** hasta 0,848 del alto (manana; el limite es 0,17), ni la mezcla
   de cada minuto de cuatro dias en CDMX y Monterrey (0,124); medida en las capturas de la pared (abajo). En el **reposo con musica** el horizonte
-  sube con el panel (la raya en 525 de 768) y con el la franja clara: hasta 0,848/0,868 del horizonte sigue bajo 0,17, pero «hasta 0,848 del alto»
+  sube con el panel (la raya en 525 de 768) y con el la franja clara. La paleta sola queda bajo 0,17 hasta 0,848/0,868 del horizonte, pero
+  lo que se ve no: con DN5 a 2,2 el resplandor de la raya daba 0,177-0,189 en la fila 509-512 de dia; por eso en el reposo DN5 baja a 1,4
+  (abajo, «La revision») y lo medido queda en 0,138-0,160. «Hasta 0,848 del alto»
   literal cae ya bajo el horizonte (detras del panel del reposo): ahi hay 0,63. Es lo de las maquetas aprobadas (la del reposo tenia el
   horizonte en 525); se dice para que el dueno lo sepa.
 
@@ -119,7 +122,9 @@ abajo). La imagen intermedia se vuelve a pintar cuando cambia el cielo (`FirmaCi
 La raya de XP (la que lleva el pie de la aurora: `AurBrillo`, un nucleo de 1,4 px, 34 px de resplandor hacia arriba y 11 hacia abajo, sumada)
 toma el color de la fase (§5: `#a888d8` alba ... `#ff9a58` atardecer), con 2,2 veces su luz media (como en las maquetas: la luz media de la
 raya de XP por el color de la fase x 2,2), algo mas fuerte en el centro (0,6 a 1), mezclada con la de XP por el peso del dia. De noche, la de
-XP. Va en el gancho de la columna de la aurora (g128) y la aurora se rehace cuando cambia la luz (g129, `FirmaAurora`).
+XP. Va en el gancho de la columna de la aurora (g128) y la aurora se rehace cuando cambia la luz (g129, `FirmaAurora`). **En el reposo con
+musica** la luz baja de 2,2 a 1,4 veces (`RayaLuzReposo`, mezclada por `Escena.Reposo`, que tambien entra en `FirmaAurora`) por la regla 3:
+la raya sube a 525 y su resplandor de dia pasaba de 0,17 justo encima (ver «La revision»). Fuera del reposo, 2,2 exacto.
 
 **Diferencia con §5**: §5 describe un resplandor de 70 px con `exp(-1,8 d)` y un filo de 2,2 px (la funcion `luz_horizonte` de
 `maquetas/lib.py`). Las maquetas que aprobo el dueno **no** la usaron (solo `prueba_lib.py`): recoloreaban la raya de XP (`escena.py`,
@@ -256,10 +261,10 @@ verdad. Resultados (JIT salvo «reloj»):
 | `ganchos` | `ganchos.py`; los 20 del cielo en el manifiesto; `diff-xp.py --sin-ganchos` | **TODO BIEN**: 112 archivos de `Codigo/` vuelven byte a byte a 69e6547 (20 con ganchos, 67 ganchos); `diff-xp.py`: 5135 lineas quitadas, 4868 puestas, 229 sin marca (las de la base) |
 | `orden` | `rocola-xp --prueba-cielo` (68 comprobaciones) y lo de fuera | **TODO BIEN (68)**. Salidas y puestas del sol de CDMX y Monterrey en 7 fechas de 2026 contra la NOAA (astral 3.2): **lo mas lejos, 0,27 min** (28 de 28 a +-3 min). La luna en las cuatro lunas de los eclipses de 2026: 0,996/0,504/0,002/0,496 frente a 0/0,5/0/0,5 (+-0,03). Los pesos de las paletas suman 1 y cambian como mucho 0,0025 por centesima de grado. Regla 3 de cada paleta (horizonte 0,868 y 667/768): lo mas claro hasta 0,848, **0,125** (manana); de cada minuto de 4 dias en las dos ciudades, 0,124. El calendario de 2026 dia por dia: 28 dias con fiesta, **iguales a §6**; el tercer domingo de junio de 2025-2028 (15, 21, 20 y 18). `rocola_fechas.txt`: 8 renglones buenos y 4 malos de una muestra, cumple, aniversario, quitar (una y todas), fiesta propia con colores, mensaje, fuegos a otra hora y sin fuegos. El clima: Open-Meteo (una respuesta de muestra), `rocola_clima.txt` de ida y vuelta, vale a las 2 h 59 min y no a las 3 h 01, los 17 codigos de la OMM, `ROCOLA_CLIMA`. El lugar: ipapi.co (numeros) y get.geojs.io (texto), una semana. La calma: baja a 0,35 en 0,40 s y vuelve en 2,98 s, como mucho 0,041 de un cuadro a otro |
 | `clima` | con el Open-Meteo y el lugar falsos, y sin red | **TODO BIEN (13)**. Con `ciudad_bar=0` se pide el lugar una vez (Monterrey, falso), el clima se pide para ese lugar con los campos de §3, se guardan `rocola_clima_lugar.txt` y `rocola_clima.txt`, y el sol pasa al lugar de internet. Con `ciudad_bar=23` no se pide el lugar y el clima va con Monterrey de la lista; si Open-Meteo contesta 500 se dice y el cielo queda sin saber (despejado). Sin red: un clima guardado de hace 2 h vale; uno de hace 4 h no (despejado). `ROCOLA_CLIMA` no pide nada |
-| `apagado` | las cintas de la tarjeta (los cuadros de los 10 a los 11,5 s de la pared de `datos0`) contra la rama principal (424ade7) | **IGUALES** sin `ROCOLA_OS`, con `ROCOLA_OS=1` y `cielo=0 fiestas=0 clima=0 vidrio=0`, y con `ROCOLA_OS=1` y las 23 claves en 0: el mismo degradado del cielo byte a byte (1 de 1, `63b61f9e...`) y la misma forma del cuadro mas comun. El control (DN1 a las 13:00): **DISTINTAS** (el comparador si ve el cielo). Sin `ROCOLA_OS` no se escribe nada; con las cuatro en 0 no arranca nada |
+| `apagado` | las cintas de la tarjeta (los cuadros de los 10 a los 11,5 s de la pared de `datos0`) contra la rama principal (424ade7) | **IGUALES** sin `ROCOLA_OS`, con `ROCOLA_OS=1` y `cielo=0 fiestas=0 clima=0 vidrio=0`, y con `ROCOLA_OS=1` y las 23 claves en 0: el mismo degradado del cielo byte a byte (1 de 1, `63b61f9e...`), la misma forma del cuadro y (desde la revision) los mismos colores de la nebulosa (DrawQuads, RGB iguales y alfa al 3 %), el alfa medio de las estrellas (12 %), el de la aurora (50 %) y el color medio de la raya (8 niveles). El control (DN1 a las 13:00): **DISTINTAS** (el comparador si ve el cielo). Sin `ROCOLA_OS` no se escribe nada; con las cuatro en 0 no arranca nada |
 | `noche` | `ROCOLA_CIELO_FECHA=2026-11-18 23:30`, todo encendido, sin clima | **IGUALES** a la rama principal (la cinta), fase noche |
 | `calma` | la de verdad, con lo que sabe XP (`ROCOLA_CIELO_CALMA`) | una tecla a los 25 s: en 0,35 a los **0,35 s**; deja de elegir a los 15,1 s; en 1 a los **2,86 s**. (Al arrancar XP cuenta como si se acabara de tocar: 15 s calmado.) |
-| `escenas` | 6 horas (6:50, 9:30, 13:00, 17:40, 18:35, 22:00) del 18-11 en CDMX | **TODO BIEN**. La pared casi vacia (`datos0`, mucho cielo libre), la regla 3 hasta 0,848: 0,104 / 0,110 / 0,112 / 0,092 / 0,066 / 0,058 (contraste del blanco de 6,5:1 a 9,7:1). El escaparate (x 560-1000, y 560-650): de 0,020 a 0,114; el disco (x 0-430, y 560-650): de 0,086 a 0,114. El reposo con musica, **dato** (no hay texto en ese cielo; el horizonte sube a 525 y la raya y su resplandor con el): hasta 0,848/0,868 de 525, 0,177 / 0,189 / 0,182 / 0,170 / 0,107 / 0,130, siempre en la fila 509-512, a 13-16 px de la raya (a las 22:00, la noche de XP, ya 0,130). **A las 6:50, 9:30 y 13:00 pasa de 0,17** (por 0,007 a 0,019): es el resplandor de la raya de XP mas claro de dia (DN5, x 2,2) y el cielo claro que baja hasta ella; la paleta sola da 0,125 a esa altura. No hay texto ahi; si la junta lo quiere dentro de 0,17 tambien en el reposo, se baja el factor de DN5 cuando `Escena.Reposo` (o el tope de la paleta cerca del horizonte). «Ver como se veria» por el buzon (6 veces en el escaparate, la pared llena y el reposo); el disco con `ROCOLA_CIELO_FECHA` (6 corridas: el disco se cierra solo si nadie toca, y las teclas quitarian «ver como se veria») |
+| `escenas` | 6 horas (6:50, 9:30, 13:00, 17:40, 18:35, 22:00) del 18-11 en CDMX | **TODO BIEN**. La pared casi vacia (`datos0`, mucho cielo libre), la regla 3 hasta 0,848: 0,104 / 0,110 / 0,112 / 0,092 / 0,066 / 0,058 (contraste del blanco de 6,5:1 a 9,7:1). El escaparate (x 560-1000, y 560-650): de 0,020 a 0,114; el disco (x 0-430, y 560-650): de 0,086 a 0,114. El reposo con musica, primero **dato** y desde la revision **comprobacion** (ver «La revision»: con DN5 a 1,4 en el reposo, 0,149 / 0,154 / 0,160 / 0,143 / 0,104 / 0,138). Antes de la revision: hasta 0,848/0,868 de 525, 0,177 / 0,189 / 0,182 / 0,170 / 0,107 / 0,130, siempre en la fila 509-512, a 13-16 px de la raya (a las 22:00, la noche de XP, ya 0,130). **A las 6:50, 9:30 y 13:00 pasa de 0,17** (por 0,007 a 0,019): es el resplandor de la raya de XP mas claro de dia (DN5, x 2,2) y el cielo claro que baja hasta ella; la paleta sola da 0,125 a esa altura. No hay texto ahi; si la junta lo quiere dentro de 0,17 tambien en el reposo, se baja el factor de DN5 cuando `Escena.Reposo` (o el tope de la paleta cerca del horizonte). «Ver como se veria» por el buzon (6 veces en el escaparate, la pared llena y el reposo); el disco con `ROCOLA_CIELO_FECHA` (6 corridas: el disco se cierra solo si nadie toca, y las teclas quitarian «ver como se veria») |
 | `medio` | el cielo a media resolucion (`cielo_media=1`: la imagen intermedia, 36 repintes en 50 cuadros) contra el directo, a las 13:00 | el mismo degradado: las medianas por fila se separan **1 nivel** como mucho |
 | `reloj` | el trabajo de cada cuadro (`ROCOLA_CIELO_RELOJ`), NativeAOT, la pared llena con la ficha y luego el escaparate a las 17:40 (dos paletas mezclandose), 62 s, alternando | todo encendido (incluso VI1, VI2, VI4, VI6 y la luna B, que aun no pintan): p50 **2,11 / 2,03** ms, p95 **4,94 / 4,48**, p99 **8,49 / 7,93**, max **14,41 / 16,42**; las cuatro funciones apagadas: p50 **1,92 / 1,92**, p95 **4,99 / 4,84**, p99 **8,05 / 7,55**, max **19,22 / 16,68** (unos 1 800 cuadros cada una). Con llvmpipe (la tarjeta por procesador) y la maquina compartida (carga 7,3 en 4 nucleos): solo dice que el nucleo no cambia el orden de lo que cuesta un cuadro; **nada del A4** |
 
@@ -288,6 +293,34 @@ en NativeAOT `arranque buscador`; registros en `/root/rocola-trabajo/fase11/ciel
   hoja. El nucleo no toca nada de eso fuera de la tarjeta (los ganchos solo estan en `D3D9Star.cs`, `PerformanceGpu.cs` y `AtraccionGpu.cs`,
   y sin `ROCOLA_OS` devuelven lo de XP), pero **no esta comprobado**: lo corre la junta.
 
+## La revision (21-11-2026)
+
+Un revisor reprodujo la regla 3 en el reposo y encontro menores; se comprobaron uno por uno y se arreglaron (commits `7c2836b` y `1e92c26`):
+
+- **La regla 3 en el reposo con musica (grave)**: DN5 a 1,4 veces la luz en el reposo (`RayaLuzReposo`, mezcla por `Escena.Reposo`); el
+  reposo en `FirmaAurora` (si no, la malla no se rehacia al entrar o salir). `prueba.sh` lo comprueba (antes «DATO»). Medido (JIT, la misma
+  escena): **0,149 / 0,154 / 0,160 / 0,143 / 0,104 / 0,138** a las 6:50 / 9:30 / 13:00 / 17:40 / 18:35 / 22:00, el blanco de 5,0 a 6,8:1.
+- **Las cintas probaban menos de lo que decia la doc**: `cinta.py` compara ademas los colores de la nebulosa y la via lactea (g124/g125),
+  el alfa medio de las estrellas (g126/g127) y de la aurora, y el color medio de la raya (g128/DN5); el control de las 13:00 sale DISTINTAS
+  por las cuatro. Al correrlo con la maquina muy cargada (carga ~20 en 4 nucleos, 3 a 11 cuadros en la ventana) la rama principal contra si
+  misma daba DISTINTAS por la forma del cuadro (un destello de XP que sale a ratos); la forma ya no cuenta las mallas sumadas despues de las
+  primeras estrellas y junta las llamadas iguales seguidas. Con eso, tres juegos de cintas (el del autor y dos de la revision): todo IGUALES
+  y el control DISTINTAS.
+- **El nucleo se protege**: la escena del cuadro (g120), `Arma` (g121/g122) y `Raya` (g128) van con try/catch; si lanzan, `CaeNucleo` lo
+  apunta una vez y deja `Va` falso el resto de la sesion (vuelve el cielo de XP) en vez de perder cada cuadro.
+- **`Pinta` y `HayTintes` miran `Va`** (un tinte de otro grupo no pinta con todo apagado); `FirmaCielo` lleva el horizonte siempre que se
+  pinte el cielo de Rocola OS (tambien solo con tintes); `MaxParadas` 64.
+- **El lugar por internet solo si alguna idea lo usa** (DN1-DN6, VI5 o el clima); prueba nueva en `clima` (F): sin ellas no se pide nada.
+- **La bitacora**: «el horizonte de la escena» el primero y como mucho uno por hora (en la escena del reposo, 1 renglon; antes 3 en 1 min).
+- **La doc**: el panel AHORA SUENA va DEBAJO de la raya; lo de «hasta 0,848/0,868 sigue bajo 0,17» era de la paleta sola; `CieloFiestas.cs`
+  nombra los campos de `Foto.Hoy`.
+
+Corrido otra vez (JIT de `7c2836b`/`1e92c26`, base `424ade7`; registros en `/root/rocola-trabajo/fase11/cielo-nucleo/p-rev*.log`): ganchos
+3 BIEN (diff-xp 5135/4868/229), orden (68 de la orden), clima 14 BIEN, apagado y noche IGUALES, calma BIEN (0,35 a los 0,39 s; vuelve en
+2,81 s), escenas TODO BIEN con el reposo comprobado, medio BIEN (con la maquina cargada, de 2 a 6 niveles por fila y media 0,28-0,89 en tres
+corridas; el programa de antes de la revision, `d492f0e`, da lo mismo: 6,0 y 0,91; es el reloj de las nebulosas, no el cambio). NativeAOT: 0 avisos IL/AOT, los mismos 13 de compilar; `noche` con el AOT: IGUALES. El reloj
+(p50/p95/p99) no se volvio a medir: la maquina estaba a carga ~20 y no diria nada. El nivel 0 y el nivel 1 enteros, tampoco.
+
 ## Lo no probado y lo pendiente
 
 - **Nada en el A4**: ni como se ve, ni lo que cuesta en su tarjeta (el reloj de arriba es de llvmpipe, en una maquina compartida).
@@ -300,9 +333,17 @@ en NativeAOT `arranque buscador`; registros en `/root/rocola-trabajo/fase11/ciel
   0,36 dorada + 0,64 atardecer y las 18:35, 0,67 anochecer + 0,33 noche; las maquetas las llamaban «tarde dorada» y «atardecer». Si se quiere
   lo de las maquetas, se mueven las anclas de la tarde (`RocolaOsCieloDia.AnclaTarde`), no la forma.
 - **DN5 sin el resplandor de 70 px de §5** (se hizo lo de las maquetas; arriba el porque).
-- **La regla 3 en el reposo con musica**: a 13-16 px encima de la raya (fila 509-512, horizonte en 525) la luz llega a 0,177-0,189 a las 6:50,
-  9:30 y 13:00 (de 0,17). Alli no hay texto (el panel AHORA SUENA va mas arriba y tiene su fondo), por eso es un dato y no una falla de la
-  bateria; decidirlo en la junta (arriba, como bajarlo).
+- **La regla 3 en el reposo con musica**: ARREGLADO en la revision (DN5 a 1,4 en el reposo; ahora la bateria lo comprueba). Antes, a 13-16
+  px encima de la raya (fila 509-512, horizonte en 525) la luz llegaba a 0,177-0,189 a las 6:50, 9:30 y 13:00. (El panel AHORA SUENA va
+  DEBAJO de la raya, en y≈543, con su fondo; sobre la raya no hay texto.) Como se lee la regla 3 en el reposo (hasta 0,848/0,868 del
+  horizonte, como la bateria, y no «hasta 0,848 del alto» literal, que ya ni XP cumple: su raya en 525 da 0,39) lo decide la junta.
+- **La pared llena con una cancion sonando** (la raya hacia la ultima fila de titulos, 636-651) no se capturo; el disco y el escaparate con
+  musica dan 0,10 o menos en la fila 650.
+- **DN5 pisa de dia el color de la raya que ponga FI1** (Raya va despues de los clientes de la aurora y mezcla por el peso del dia): si la
+  raya de las fiestas debe verse de dia, lo decide el grupo de las fiestas o la junta.
+- **La imagen intermedia del cielo se repinta en cada cuadro de la entrada y salida del reposo de dia** (FirmaCielo lleva el horizonte, que
+  se mueve en esa animacion): correcto, pero cuesta justo donde G1 queria no repetir; sin medir en el A4.
+- **CaeNucleo no se ejercito** (no hay como hacer lanzar al nucleo desde fuera); se reviso a mano que con `Va` falso todos los ganchos den lo de XP.
 - **El nivel 0 y el nivel 1 enteros no se corrieron** (solo el subconjunto de arriba); la escena moneda da MAL tambien en la rama principal.
 - **La «madrugada» de §5** no se aplica (regla 1).
 - **Las fugaces al azar de XP siguen saliendo de dia** (no se atenuan con el brillo de las estrellas: g126 solo toca las estrellas; la de
