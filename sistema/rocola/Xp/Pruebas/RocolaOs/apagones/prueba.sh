@@ -7,7 +7,7 @@
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
 #   escenas (de fabrica todas): kill9 segv sigterm usr1 hup inyecta strace importa
 #   W: la carpeta de trabajo (/root/rocola-trabajo/fase11/apagones/prueba; se rehace); DATOS0 (/root/rocola-trabajo/fase11/apagones/datos0,
-#   ver arriba; se copia, nunca se toca)
+#   los de arriba; se copia, nunca se toca): si no existe lo arma datos.sh (junto a este guion; ORIGEN en DATOS_ORIGEN)
 # Lo que XP hace (Rocola/Form1.Datos.cs, «ESTADO VIVO», y Form1.Video.cs, OnFormClosing) y se comprueba aqui:
 #   - un apagon (kill -9) o una caida (SIGSEGV): no corre nada al cerrar -> rocola_estado.txt sobrevive y al volver: los mismos creditos, la misma cola
 #     y la que sonaba vuelve a entrar y suena DESDE EL PRINCIPIO (XP: «a peticion: media cancion confunde mas de lo que ayuda»)
@@ -28,6 +28,13 @@ W=${W:-/root/rocola-trabajo/fase11/apagones/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/fase11/apagones/datos0}
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
 rm -rf "$W"; mkdir -p "$W"
+if [ ! -d "$DATOS0/musica" ]; then
+  echo "== DATOS0 ($DATOS0) no existe: se arma con datos.sh"
+  DATOS0="$DATOS0" bash "$G/datos.sh" ${DATOS_ORIGEN:+"$DATOS_ORIGEN"} > "$W/datos0.txt" 2>&1 || { cat "$W/datos0.txt"; echo "MAL   no se pudo armar DATOS0"; exit 1; }
+fi
+for t in "01 Cancion 1" "02 Cancion 2" "03 Cancion 3"; do
+  [ -s "$DATOS0/musica/Los Ejemplos/Disco Uno/$t.mp3" ] || { echo "MAL   DATOS0 sin «Los Ejemplos/Disco Uno/$t.mp3» (borralo y se rehace con datos.sh)"; exit 1; }
+done
 bien=0; mal=0
 si() { local d="$1"; shift; if "$@"; then echo "BIEN  $d"; bien=$((bien + 1)); else echo "MAL   $d"; mal=$((mal + 1)); fi; }
 A=$W/../alsa; mkdir -p "$A"
@@ -66,7 +73,7 @@ EOC
   for f in rocola_estado.txt rocola_estado.txt.bak rocola_estado.txt.tmp; do [ -f "$d/$f" ] && cp "$d/$f" "$o/quedo-$f"; done
   return 0
 }
-datos() { local d="$W/datos-$1"; rm -rf "$d"; mkdir -p "$d"; cp -r "$DATOS0"/. "$d"/; rm -f "$d"/rocola_estado.txt*; echo "$d"; }
+datos() { local d="$W/datos-$1"; rm -rf "$d"; mkdir -p "$d"; cp -r "$DATOS0"/. "$d"/ || { echo "datos: no se pudo copiar DATOS0 ($DATOS0)" >&2; kill -TERM $$; exit 1; }; rm -f "$d"/rocola_estado.txt*; echo "$d"; }
 lineas() { tr -d '\r' < "$1" 2>/dev/null | grep -E '^(creditos|sonando|cola)=' ; }   # (las lineas del estado de XP, sin ts=)
 val() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }                               # (del estado de prueba, ROCOLA_ESTADO_EN)
 oye() { [ -f "$1" ] || { echo 0.0; return; }; awk -v f="$2" '$3>=f-6 && $3<=f+6 {s+=$2-$1} END {printf "%.1f\n", s+0}' "$1"; }   # segundos que se oyo HZ
@@ -165,8 +172,11 @@ if [[ " $partes " == *" inyecta "* ]]; then
     sc=${caso%%:*}; r=${caso#*:}; nth=${r%%:*}; er=${r#*:}; k=$((k + 1)); n="iny$k"
     d=$(datos "$n"); st="$d/rocola_estado.txt"
     inj="inject=$sc:signal=SIGKILL:when=$nth${er:+:error=$er}"
-    abre "$n" "$d" "$PIDE" 45 NADA -- strace -f -qq -o "$W/$n.strace" -P "$st" -P "$st.tmp" -P "$st.bak" -e trace=openat,pwrite64,write,fsync,fdatasync,link,linkat,rename,renameat,renameat2,unlink,unlinkat -e "$inj"
+    abre "$n" "$d" "$PIDE" 45 NADA -- strace -f -qq --kill-on-exit -o "$W/$n.strace" -P "$st" -P "$st.tmp" -P "$st.bak" -e trace=openat,pwrite64,write,fsync,fdatasync,link,linkat,rename,renameat,renameat2,unlink,unlinkat -e "$inj"
     killed=$(grep -c "+++ killed by SIGKILL" "$W/$n.strace" 2>/dev/null)
+    # (si la inyeccion no disparo, el SIGKILL de los 45 s va a strace, que con --kill-on-exit se lleva a la rocola; por si acaso, ninguna
+    # rocola con ESTOS datos sigue viva antes de volver a abrir)
+    for q in $(pgrep -f rocola-xp); do tr '\0' '\n' < /proc/$q/environ 2>/dev/null | grep -qx "ROCOLA_DATOS=$d" && kill -KILL $q; done; sleep 0.5
     cp "$st" "$W/$n-quedo.txt" 2>/dev/null; cp "$st.bak" "$W/$n-quedo.bak" 2>/dev/null
     ESTADO="8:a" abre "$n-v" "$d" "" 12 KILL
     # el estado que quedo: entero (cabecera, ts y creditos) y la rocola lo leyo (los mismos creditos)
@@ -197,24 +207,38 @@ if [[ " $partes " == *" strace "* ]]; then
   # monta un ext4 en un archivo con ellas, la rocola guarda alli, y se mide (strace -T) cuanto tarda cada cambio de nombre: con dirsync
   # espera al disco (milisegundos), sin el vuelve al momento (microsegundos). Que sobrevive a un corte de luz se ve en QEMU, no aqui.
   opc=$(sed -n 's/^DATOS_OPC=//p' "$XP/../../board/rocola/initramfs/init" | head -1)
-  si "strace: el initramfs monta lo aprendido (/rocola/datos) con dirsync ($opc)" bash -c "[[ ',$opc,' == *',dirsync,'* ]]"
+  ini="$XP/../../board/rocola/initramfs/init"
+  si "strace: el initramfs monta lo aprendido (/rocola/datos) con dirsync ($opc): DATOS_OPC lo trae y todo mount de /raiz/rocola/datos la usa" \
+    bash -c "[[ ',$opc,' == *',dirsync,'* ]] && [ \$(grep -cE '^[[:space:]]*(if ! )?mount .*/raiz/rocola/datos' '$ini') -ge 2 ] && ! grep -E '^[[:space:]]*(if ! )?mount .*/raiz/rocola/datos' '$ini' | grep -vq -- '-o \$DATOS_OPC '"
   for m in dirsync nodirsync; do
     img="$W/datos-$m.img"; mnt="$W/datos-$m"; rm -f "$img"; mkdir -p "$mnt"
     truncate -s 64M "$img" && mkfs.ext4 -q "$img" && mount -o loop,"$([ $m = dirsync ] && echo "$opc" || echo noatime)" "$img" "$mnt" \
       || { echo "MAL   strace $m: no se pudo montar un ext4 de prueba (hace falta root y loop)"; mal=$((mal + 1)); continue; }
     cp -r "$DATOS0"/. "$mnt"/; rm -f "$mnt"/rocola_estado.txt*
-    abre "strace-$m" "$mnt" "$PIDE" 18 KILL -- strace -f -qq -T -o "$W/strace-$m.strace" -P "$mnt/rocola_estado.txt.tmp" -P "$mnt/rocola_estado.txt" -e trace=rename,renameat,renameat2
+    abre "strace-$m" "$mnt" "$PIDE" 18 KILL -- strace -f -qq -T -o "$W/strace-$m.strace" -P "$mnt/rocola_estado.txt.tmp" -P "$mnt/rocola_estado.txt" -P "$mnt/rocola_estado.txt.bak" -e trace=openat,unlink,unlinkat,link,linkat,rename,renameat,renameat2
     grep ' '"$mnt"' ' /proc/mounts | head -1 > "$W/strace-$m.montaje"
     python3 - "$W/strace-$m.strace" > "$W/strace-$m.tiempos" <<'EOP'
 import re, sys
-t = [float(m.group(1)) * 1000 for l in open(sys.argv[1], errors="replace") if "rocola_estado.txt.tmp" in l
-     for m in [re.search(r"= 0 <([0-9.]+)>", l)] if m]
-t.sort(); print(len(t), "%.3f" % (t[len(t) // 2] if t else 0), "%.3f" % (t[0] if t else 0))
+# por clase: el cambio de nombre (.tmp -> estado), crear el de paso, borrar el .bak y enlazar el .bak; y la suma por guardado
+def med(v): v = sorted(v); return v[len(v) // 2] if v else 0
+c = {"ren": [], "crea": [], "borra": [], "enlaza": []}
+for l in open(sys.argv[1], errors="replace"):
+    m = re.search(r"= (-?[0-9]+)[^<]*<([0-9.]+)>", l)
+    if not m or int(m.group(1)) < 0: continue
+    ms = float(m.group(2)) * 1000
+    if re.search(r"rename(at2?)?\(.*rocola_estado\.txt\.tmp", l): c["ren"].append(ms)
+    elif "openat(" in l and "rocola_estado.txt.tmp" in l and "O_CREAT" in l: c["crea"].append(ms)
+    elif re.search(r"unlink(at)?\(.*rocola_estado\.txt\.bak", l): c["borra"].append(ms)
+    elif re.search(r"link(at)?\(.*rocola_estado\.txt\.bak", l): c["enlaza"].append(ms)
+r = c["ren"]
+print(len(r), "%.3f" % med(r), "%.3f" % (min(r) if r else 0), " ".join("%.3f" % med(c[k]) for k in ("crea", "borra", "enlaza")),
+      "%.3f" % sum(med(v) for v in c.values()))
 EOP
     umount "$mnt" 2>/dev/null || umount -l "$mnt"; rm -f "$img"
   done
-  read -r nd md0 mind < "$W/strace-dirsync.tiempos"; read -r nn mdn minn < "$W/strace-nodirsync.tiempos"
+  read -r nd md0 mind cd bd ed sd < "$W/strace-dirsync.tiempos"; read -r nn mdn minn cn bn en sn < "$W/strace-nodirsync.tiempos"
   echo "  cambios de nombre del estado: con dirsync $nd (mediana $md0 ms, el mas rapido $mind ms); sin dirsync $nn (mediana $mdn ms)"
+  echo "  medianas por guardado (crear el de paso / borrar el .bak / enlazar el .bak / cambio de nombre = suma): con dirsync $cd / $bd / $ed / $md0 = $sd ms; sin dirsync $cn / $bn / $en / $mdn = $sn ms"
   si "strace: montado con dirsync, la rocola guarda alli igual (3 o mas guardados) y cada cambio de nombre espera al disco (el mas rapido >= 5 veces la mediana sin dirsync)" \
     bash -c "grep -q dirsync '$W/strace-dirsync.montaje' && [ '${nd:-0}' -ge 3 ] && [ '${nn:-0}' -ge 3 ] && python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= 5 * max(float(sys.argv[2]), 0.001) else 1)' '${mind:-0}' '${mdn:-0}'"
 fi
