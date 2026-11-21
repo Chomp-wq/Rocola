@@ -2,7 +2,9 @@
 # falso.py PUERTO CARPETA DATOS.json : GENIUS Y LRCLIB FALSOS en 127.0.0.1 (solo para Pruebas/RocolaOs/letras/prueba.sh; datos inventados).
 #   GET /search?q=..&per_page=..   (Genius) con «Authorization: Bearer LLAVE»: los «hits» de la primera frase de DATOS.genius contenida en q
 #                                  (sin mayusculas); otra llave: 401; sin llave: 401
-#   GET /api/get?track_name&artist_name&album_name&duration   (LRCLIB): lo de DATOS.lrclib["titulo|artista"] ({synced, plain}); si no, 404
+#   GET /api/get?track_name&artist_name&album_name&duration   (LRCLIB): lo de DATOS.lrclib["titulo|artista"] ({synced, plain}); si no, 404;
+#                                  sin album_name o sin duration, 400 (como lo documenta LRCLIB: los cuatro obligatorios); «Cae Con 503»: 503
+#   GET /api/search?track_name&artist_name   (LRCLIB): una lista con lo de DATOS.lrclib de ese titulo y artista (duracion 30 s), o []
 # Escribe CARPETA/peticiones.txt (una linea por peticion: «ruta consulta-decodificada | ua=USER-AGENT | auth=bien|mal|no») y CARPETA/listo.
 import json, os, sys, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -27,7 +29,17 @@ class H(BaseHTTPRequestHandler):
                 if frase in t:
                     hits = [{"type": "song", "result": {"title": h[0], "primary_artist": {"name": h[1]}}} for h in hs]; break
             return self.manda(200, {"meta": {"status": 200}, "response": {"hits": hits}})
+        if u.path in ("/api/get", "/api/search") and q.get("track_name", [""])[0] == "Cae Con 503":
+            return self.manda(503, {"code": 503, "message": "inventado"})
+        if u.path == "/api/search":
+            k = q.get("track_name", [""])[0] + "|" + q.get("artist_name", [""])[0]
+            x = datos.get("lrclib", {}).get(k)
+            if x is None: return self.manda(200, [])
+            return self.manda(200, [{"id": 2, "trackName": k.split("|")[0], "artistName": k.split("|")[1], "duration": 30.0, "instrumental": False,
+                                     "plainLyrics": x.get("plain"), "syncedLyrics": x.get("synced")}])
         if u.path == "/api/get":
+            if not q.get("album_name", [""])[0] or not q.get("duration", [""])[0]:
+                return self.manda(400, {"code": 400, "name": "QueryError", "message": "inventado: faltan album_name o duration"})
             k = q.get("track_name", [""])[0] + "|" + q.get("artist_name", [""])[0]
             x = datos.get("lrclib", {}).get(k)
             if x is None: return self.manda(404, {"code": 404, "name": "TrackNotFound", "message": "Failed to find specified track"})

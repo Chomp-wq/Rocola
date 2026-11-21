@@ -134,6 +134,9 @@ namespace Rocola
             Despierta();
         }
         internal static void OlvidaBusqueda() { lock (cerrojo) { busquedaPendiente = null; } }
+        // (letras, revision) UNA BUSQUEDA APARTE (la de Genius: «titulo artista»): va en la cola como un pedido propio, NO en busquedaPendiente,
+        // asi ni la reemplaza lo que se escribe despues ni ella reemplaza lo escrito; siempre se contesta (Listo con la busqueda o con el error)
+        internal static void BuscaAparte(string consulta, Action<object, string> listo) { Encola(new Pedido { Que = "busca", Clave = consulta, Alguien = true, Listo = listo }); }
         internal static RocolaOsSpotifyCatalogoDisco DiscoYa(string id)
         {
             lock (cerrojo) { RocolaOsSpotifyCatalogoDisco d; return discos.TryGetValue(id, out d) && d.Canciones != null ? d : null; }

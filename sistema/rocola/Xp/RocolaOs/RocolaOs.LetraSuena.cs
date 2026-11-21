@@ -10,8 +10,11 @@
 // (RocolaOsLetraVerso): de ahi leera el dibujo cuando lo haya (RocolaOsLetraSuena.Verso, y RocolaOsLetra.En para una posicion mas fina).
 // LAS LETRAS NO SE GUARDAN: cache en memoria (la sesion, 64 canciones) y en /run/rocola-xp/letras (lo vivo: se borra al apagar). Ni en los
 // datos, ni en la bitacora, ni en el estado (/run/rocola-xp/letras/estado: solo numeros, sin texto de la letra).
-// EL TOPE: una peticion por cancion y por sesion; si fallo (sin red, LRCLIB caido o que no la tiene) esa ya no se vuelve a pedir en la
-// sesion, y tras un fallo de la red no se pide nada en 2 minutos (sin reintentos). Con ROCOLA_LETRA_API, un LRCLIB falso (las pruebas).
+// EL TOPE: si LRCLIB CONTESTO que no la tiene (y el MP3 tampoco), esa ya no se vuelve a pedir en la sesion; tras un fallo de la red (sin red,
+// 5xx o 429) no se pide nada en 2 minutos, y esa cancion SI se vuelve a intentar la siguiente vez que suene pasado el freno (una peticion
+// cada vez que empieza, nunca en bucle: la rocola esta prendida semanas y pudo arrancar sin red). Lo que esta en /run se toca al usarlo
+// (el recorte quita lo menos usado). Si /api/get no la encuentra sin disco o sin duracion (o no las acepta: 400), una busqueda
+// (/api/search) por titulo y artista, la de la duracion mas cercana (a 3 s si se sabe). Con ROCOLA_LETRA_API, un LRCLIB falso (las pruebas).
 // Apagada (letra_cielo=0) o sin ROCOLA_OS: ni el hilo ni una peticion.
 using System;
 using System.Collections.Generic;
@@ -61,12 +64,13 @@ namespace Rocola
     {
         internal const string UserAgent = "rocola-xp/1 (Rocola OS)";
         internal const int CacheMax = 64;
-        internal const int FrenoRedMs = 120000;
+        internal static readonly int FrenoRedMs = FrenoDe(Environment.GetEnvironmentVariable("ROCOLA_LETRA_FRENO_MS"));   // (2 min; las pruebas lo acortan)
+        private static int FrenoDe(string e) { int ms; return int.TryParse(e, NumberStyles.None, CultureInfo.InvariantCulture, out ms) && ms > 0 ? ms : 120000; }
         internal const int RunMax = 400, RunQueda = 300;   // (/run es memoria: con mas de 400 letras se borran las mas viejas hasta 300)
         internal sealed class Pedido { internal string Ruta, Titulo, Artista, Disco, Mp3; internal int Duracion; }
         private static readonly Dictionary<string, RocolaOsLetra> cache = new Dictionary<string, RocolaOsLetra>(StringComparer.Ordinal);
         private static readonly Queue<string> orden = new Queue<string>();
-        private static readonly HashSet<string> intentadas = new HashSet<string>(StringComparer.Ordinal);   // (la sesion: una por cancion)
+        private static readonly HashSet<string> sinLetra = new HashSet<string>(StringComparer.Ordinal);   // (la sesion: LRCLIB contesto que no y el MP3 tampoco)
         private static readonly object cerrojo = new object();
         private static readonly AutoResetEvent despierta = new AutoResetEvent(false);
         private static Pedido pendiente;
@@ -160,11 +164,9 @@ namespace Rocola
             l = DeRun(p.Ruta);
             if (l == null)
             {
-                bool primera;
-                lock (cerrojo) primera = intentadas.Add(p.Ruta);
-                if (!primera) return null;   // (ya se intento en la sesion y no hubo: nada, sin otra peticion)
-                string sinTiempos;
-                l = DeLrclib(p, out sinTiempos);
+                lock (cerrojo) { if (sinLetra.Contains(p.Ruta)) return null; }   // (LRCLIB ya dijo que no en la sesion: nada, sin otra peticion)
+                string sinTiempos; bool contesto;
+                l = DeLrclib(p, out sinTiempos, out contesto);
                 if (l == null && p.Mp3 != null)
                 {
                     string uslt = null;
@@ -173,6 +175,7 @@ namespace Rocola
                 }
                 if (l == null && sinTiempos != null) l = DeTexto(p.Ruta, "LRCLIB", false, sinTiempos);
                 if (l != null) ARun(l, p.Ruta);
+                else if (contesto) lock (cerrojo) sinLetra.Add(p.Ruta);   // (sin contestar -freno, sin red, 5xx, 429-: la siguiente vez que suene)
             }
             if (l == null) return null;
             lock (cerrojo)
@@ -197,40 +200,32 @@ namespace Rocola
             return c;
         }
         // LRCLIB: la sincronizada (o null), y en sinTiempos la que no trae tiempos, si la dio
-        private static RocolaOsLetra DeLrclib(Pedido p, out string sinTiempos)
+        // contesto: LRCLIB dijo algo (200 o un 4xx que no es 429); false si no se pregunto (el freno) o no contesto (sin red, 5xx, 429)
+        private static RocolaOsLetra DeLrclib(Pedido p, out string sinTiempos, out bool contesto)
         {
-            sinTiempos = null;
+            sinTiempos = null; contesto = true;
             if (string.IsNullOrWhiteSpace(p.Titulo) || string.IsNullOrWhiteSpace(p.Artista)) return null;
-            if (Environment.TickCount64 < Interlocked.Read(ref frenoHasta)) return null;   // (la red fallo hace poco: nada)
+            if (Environment.TickCount64 < Interlocked.Read(ref frenoHasta)) { contesto = false; return null; }   // (la red fallo hace poco: nada)
             string api = Api;
             StringBuilder u = new StringBuilder(api).Append("/api/get?track_name=").Append(Uri.EscapeDataString(p.Titulo.Trim()))
                 .Append("&artist_name=").Append(Uri.EscapeDataString(p.Artista.Trim()));
+            bool completa = !string.IsNullOrWhiteSpace(p.Disco) && p.Duracion > 0;
             if (!string.IsNullOrWhiteSpace(p.Disco)) u.Append("&album_name=").Append(Uri.EscapeDataString(p.Disco.Trim()));
             if (p.Duracion > 0) u.Append("&duration=").Append(p.Duracion.ToString(CultureInfo.InvariantCulture));
-            string cuerpo;
-            try
+            int cod;
+            string cuerpo = Pide(api, u.ToString(), out cod);
+            if (cuerpo == null && cod == 0) { contesto = false; return null; }
+            // sin disco o sin duracion, /api/get puede no encontrarla (o no aceptarla: 400): una busqueda por titulo y artista
+            if (cuerpo == null && (cod == 400 || (cod == 404 && !completa)))
             {
-                Interlocked.Increment(ref peticiones);
-                using (HttpResponseMessage r = Http(api).Send(new HttpRequestMessage(HttpMethod.Get, u.ToString())))
-                {
-                    int cod = (int)r.StatusCode;
-                    if (cod != 200)
-                    {
-                        Interlocked.Increment(ref fallidas);
-                        if (cod != 404) RocolaOs.Apunta("letra_cielo", "LRCLIB contesto " + cod.ToString(CultureInfo.InvariantCulture));
-                        if (cod >= 500 || cod == 429) Interlocked.Exchange(ref frenoHasta, Environment.TickCount64 + FrenoRedMs);
-                        return null;
-                    }
-                    using (StreamReader sr = new StreamReader(r.Content.ReadAsStream(), Encoding.UTF8)) cuerpo = sr.ReadToEnd();
-                }
+                StringBuilder b = new StringBuilder(api).Append("/api/search?track_name=").Append(Uri.EscapeDataString(p.Titulo.Trim()))
+                    .Append("&artist_name=").Append(Uri.EscapeDataString(p.Artista.Trim()));
+                string lista = Pide(api, b.ToString(), out cod);
+                if (lista == null) { contesto = cod != 0; return null; }
+                cuerpo = DeLaLista(lista, p.Duracion);
+                if (cuerpo == null) return null;   // (el 404 o 400 de antes ya conto como fallida)
             }
-            catch (Exception ex)
-            {
-                Interlocked.Increment(ref fallidas);
-                Interlocked.Exchange(ref frenoHasta, Environment.TickCount64 + FrenoRedMs);
-                RocolaOs.Apunta("letra_cielo", "LRCLIB no contesto (" + ex.GetType().Name + "): nada en 2 minutos");
-                return null;
-            }
+            if (cuerpo == null) return null;
             try
             {
                 using (JsonDocument d = JsonDocument.Parse(cuerpo))
@@ -244,6 +239,63 @@ namespace Rocola
                 }
             }
             catch (Exception ex) { Interlocked.Increment(ref fallidas); RocolaOs.Apunta("letra_cielo", "LRCLIB contesto algo raro (" + ex.GetType().Name + ")"); return null; }
+        }
+        // UNA PETICION: el cuerpo (200) o null; cod = el codigo, 0 si no contesto (y entonces, 5xx y 429 tambien, el freno de 2 minutos)
+        private static string Pide(string api, string url, out int cod)
+        {
+            cod = 0;
+            try
+            {
+                Interlocked.Increment(ref peticiones);
+                using (HttpResponseMessage r = Http(api).Send(new HttpRequestMessage(HttpMethod.Get, url)))
+                {
+                    int c = (int)r.StatusCode;
+                    if (c != 200)
+                    {
+                        Interlocked.Increment(ref fallidas);
+                        if (c != 404) RocolaOs.Apunta("letra_cielo", "LRCLIB contesto " + c.ToString(CultureInfo.InvariantCulture));
+                        if (c >= 500 || c == 429) { Interlocked.Exchange(ref frenoHasta, Environment.TickCount64 + FrenoRedMs); return null; }
+                        cod = c;
+                        return null;
+                    }
+                    cod = 200;
+                    using (StreamReader sr = new StreamReader(r.Content.ReadAsStream(), Encoding.UTF8)) return sr.ReadToEnd();
+                }
+            }
+            catch (Exception ex)
+            {
+                Interlocked.Increment(ref fallidas);
+                Interlocked.Exchange(ref frenoHasta, Environment.TickCount64 + FrenoRedMs);
+                RocolaOs.Apunta("letra_cielo", "LRCLIB no contesto (" + ex.GetType().Name + "): nada en 2 minutos");
+                return null;
+            }
+        }
+        // DE LO QUE DIO /api/search (una lista): la de la duracion mas cercana (a 3 s o menos si se sabe), mejor si es sincronizada; su JSON o null
+        private static string DeLaLista(string lista, int duracion)
+        {
+            try
+            {
+                using (JsonDocument d = JsonDocument.Parse(lista))
+                {
+                    if (d.RootElement.ValueKind != JsonValueKind.Array) return null;
+                    string mejor = null; double puntos = double.MaxValue;
+                    foreach (JsonElement e in d.RootElement.EnumerateArray())
+                    {
+                        if (e.ValueKind != JsonValueKind.Object) continue;
+                        JsonElement v;
+                        bool sinc = e.TryGetProperty("syncedLyrics", out v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString());
+                        bool plana = e.TryGetProperty("plainLyrics", out v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString());
+                        if (!sinc && !plana) continue;
+                        double dur = e.TryGetProperty("duration", out v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
+                        double dif = duracion > 0 && dur > 0 ? Math.Abs(dur - duracion) : 0;
+                        if (duracion > 0 && dur > 0 && dif > 3) continue;
+                        double pts = dif + (sinc ? 0 : 100);
+                        if (pts < puntos) { puntos = pts; mejor = e.GetRawText(); }
+                    }
+                    return mejor;
+                }
+            }
+            catch { return null; }
         }
 
         // ---------- leer una letra ----------
@@ -369,6 +421,7 @@ namespace Rocola
                 if (n < 0) return null;
                 string[] c = s.Substring(0, n).Split('\t');
                 if (c.Length < 3 || c[2] != ruta.Replace('\n', ' ')) return null;   // (otra cancion con el mismo resumen: no)
+                try { File.SetLastWriteTimeUtc(f, DateTime.UtcNow); } catch { }   // (usada: el recorte de /run quita las menos usadas)
                 string cuerpo = s.Substring(n + 1);
                 return c[1] == "1" ? DeLrc(ruta, c[0], cuerpo) : DeTexto(ruta, c[0], false, cuerpo);
             }
@@ -377,26 +430,36 @@ namespace Rocola
 
         // ---------- la orden de prueba ----------
         // rocola-xp --prueba-letra-cielo TITULO ARTISTA DISCO DURACION MP3|- POS... : busca la letra como el hilo (LRCLIB con ROCOLA_LETRA_API,
-        // el MP3, /run con ROCOLA_RUN) y dice, sin la letra entera, el proveedor y el verso de cada posicion; con «otra vez», busca otra vez
+        // el MP3, /run con ROCOLA_RUN) y dice, sin la letra entera, el proveedor y el verso de cada posicion; con «otra», busca otra vez; con
+        // «cancion=TITULO», otra vuelta con otra cancion (sin MP3, el mismo artista, disco y duracion); con «pausa=MS», espera antes de la siguiente
         internal static int Prueba(string[] a)
         {
-            if (a.Length < 5) { Console.Error.WriteLine("uso: --prueba-letra-cielo TITULO ARTISTA DISCO DURACION MP3|- [POS...] [otra]"); return 2; }
+            if (a.Length < 5) { Console.Error.WriteLine("uso: --prueba-letra-cielo TITULO ARTISTA DISCO DURACION MP3|- [POS...] [otra] [cancion=TITULO] [pausa=MS]"); return 2; }
             int dur; int.TryParse(a[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out dur);
             Pedido p = new Pedido { Titulo = a[0], Artista = a[1], Disco = a[2], Duracion = dur, Mp3 = a[4] == "-" ? null : a[4] };
             p.Ruta = p.Mp3 ?? ("prueba:" + a[0] + "|" + a[1]);
-            int vueltas = 1;
+            List<Pedido> vueltas = new List<Pedido> { p };
+            List<int> pausas = new List<int> { 0 };
             List<double> pos = new List<double>();
             for (int i = 5; i < a.Length; i++)
             {
-                if (a[i] == "otra") { vueltas++; continue; }
+                if (a[i] == "otra") { vueltas.Add(p); pausas.Add(0); continue; }
+                if (a[i].StartsWith("cancion=", StringComparison.Ordinal))
+                {
+                    string t = a[i].Substring(8);
+                    vueltas.Add(new Pedido { Titulo = t, Artista = a[1], Disco = a[2], Duracion = dur, Ruta = "prueba:" + t + "|" + a[1] }); pausas.Add(0); continue;
+                }
+                int ms;
+                if (a[i].StartsWith("pausa=", StringComparison.Ordinal) && int.TryParse(a[i].Substring(6), NumberStyles.None, CultureInfo.InvariantCulture, out ms)) { pausas[pausas.Count - 1] += ms; continue; }
                 double x; if (double.TryParse(a[i], NumberStyles.Float, CultureInfo.InvariantCulture, out x)) pos.Add(x);
             }
-            for (int v = 0; v < vueltas; v++)
+            for (int v = 0; v < vueltas.Count; v++)
             {
-                RocolaOsLetra l = Busca(p);
+                if (v > 0 && pausas[v - 1] > 0) Thread.Sleep(pausas[v - 1]);
+                RocolaOsLetra l = Busca(vueltas[v]);
                 Console.WriteLine("vuelta=" + (v + 1).ToString(CultureInfo.InvariantCulture) + " letra=" + (l == null ? "ninguna" : l.Sincronizada ? "sincronizada" : "sin_tiempos")
                     + " proveedor=" + (l != null ? l.Proveedor : "") + " versos=" + (l != null ? l.Versos.Length : 0).ToString(CultureInfo.InvariantCulture)
-                    + " peticiones=" + Peticiones.ToString(CultureInfo.InvariantCulture) + " fallidas=" + Fallidas.ToString(CultureInfo.InvariantCulture));
+                    + " peticiones=" + Peticiones.ToString(CultureInfo.InvariantCulture) + " fallidas=" + Fallidas.ToString(CultureInfo.InvariantCulture) + " cancion=" + vueltas[v].Titulo);
                 if (l == null || v > 0) continue;
                 foreach (double x in pos)
                 {

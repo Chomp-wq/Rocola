@@ -27,8 +27,9 @@ Genius ni LRCLIB de verdad, ni con la biblioteca real, ni en el A4**: todo con M
   `UnicodeXp.FormaD`, nunca `string.Normalize`), **sin las vacías** (el, la, de, que, the, you…) ni las de una letra, y **en orden
   alfabético**: con ellas no se puede rehacer la letra. **La letra nunca se guarda.** Una letra de menos de 5 palabras no cuenta (un
   comentario). Como el programa anterior, solo se añaden renglones y al arrancar se compacta si sobra más de un tercio.
-- **En el buscador** (g110): una frase de **4 palabras o más** (contadas en lo escrito ya normalizado) cuyas palabras que cuentan (sin las
-  vacías, sin repetir) estén **3 de cada 4** en la letra de una canción (la última puede ir a medio escribir: vale la que empiece así, desde
+- **En el buscador** (g110): una frase de **4 palabras o más** (contadas en lo escrito ya normalizado), con **al menos 3 que cuentan**
+  (sin las vacías, sin repetir: «los tigres del norte» son 2 y no busca en las letras; revisión del 21-11), cuyas palabras que cuentan
+  estén **3 de cada 4** en la letra de una canción (la última puede ir a medio escribir: vale la que empiece así, desde
   3 letras) la encuentra. Va **debajo de todo lo de XP** (lo de XP manda y sale en su orden), sin repetir lo que XP ya dio, como mucho 20, y
   la casilla de XP las cuenta. Con 3 palabras o menos, nada (lo de XP tal cual).
 
@@ -44,15 +45,19 @@ Genius ni LRCLIB de verdad, ni con la biblioteca real, ni en el A4**: todo con M
   Vivo)» son una) van **DELANTE** de lo de XP, cada uno:
   1. **tu canción**, si la tienes: el mismo título como suena (normalizado, sin espacios ni paréntesis, con 1 letra de falta en los de 4 a
      6 y 2 en los de 7 o más) y alguna palabra del artista en el de tu canción o el de su disco; es la tarjeta de XP de esa canción;
-  2. si no, **la de Spotify** (con el modo Spotify y su llave): la búsqueda «título artista» del cliente del catálogo (la misma de lo
-     escrito: su cuota, su freno de 429) y la primera canción con ese título; su tarjeta es la de Spotify del buscador (elegirla la pide por
-     I6, con sus créditos);
+  2. si no, **la de Spotify** (con el modo Spotify y su llave): la búsqueda «título artista» del cliente del catálogo (su cuota, su freno
+     de 429, su caché de la sesión) y la primera canción con ese título; su tarjeta es la de Spotify del buscador (elegirla la pide por
+     I6, con sus créditos). Va como **un pedido aparte en la cola del catálogo** (`BuscaAparte`), no como «la última búsqueda» de lo
+     escrito: ni la reemplaza lo que se teclea después ni ella reemplaza lo escrito. Si Spotify **no contestó** (sin red, frenando, más de
+     10 s), no se sabe si está: esa no sale (tampoco como NO ESTÁ). Lo que g40 trae de Spotify no repite una canción que ya va delante por
+     Genius (la misma `spotify:…`);
   3. si no, **una tarjeta «NO ESTÁ EN LA ROCOLA»**: la tarjeta de canción del buscador de XP, con el título que dice Genius y, en el renglón
      del disco, «NO ESTA EN LA ROCOLA» (con el artista en la de la tarjeta). No hay nada nuevo que dibujar: es un `Album` de mentira (la
      carpeta `/::LETRA::/…`, sin palabras ni portada: XP pone las iniciales) en un `SearchItem` de XP. Elegirla (g111) solo lo dice con el
      aviso del buscador de XP («Esa no esta en la rocola»).
 - Al llegar la respuesta (el encargo `RocolaOs:busca_letra:llego`), si se sigue mirando esa frase, la lista se rehace con
-  `RecomputeResults` de XP y la elegida conserva su sitio.
+  `RecomputeResults` de XP y la elegida conserva su sitio. Lo que esperaba sus 0,8 s para otra frase que ya no se mira (se borró una letra
+  o una palabra) se olvida y no se pregunta (`Mirando`).
 - **Nada se guarda**: lo dicho por Genius vive en memoria la sesión (40 frases), cada frase se pregunta **una sola vez** por sesión (aunque
   fallara), y como mucho 300 preguntas por sesión. Sin red o con Genius caído, nada (el buscador de XP tal cual).
 
@@ -61,7 +66,9 @@ Genius ni LRCLIB de verdad, ni con la biblioteca real, ni en el A4**: todo con M
 - El latido (en la pantalla) ve que empezó a sonar otra canción (`nowPlaying`; tuya o de Spotify; un video no) y, en cuanto se sabe su
   duración (la del lector, hasta 5 s), le pide su letra al hilo `RocolaOs:letra_cielo`, que busca:
   1. **LRCLIB** (`https://lrclib.net/api/get?track_name=&artist_name=&album_name=&duration=`, sin llave), con el User-Agent
-     `rocola-xp/1 (Rocola OS)` (el nombre del programa, nada del dueño): la letra **sincronizada** (`syncedLyrics`, LRC);
+     `rocola-xp/1 (Rocola OS)` (el nombre del programa, nada del dueño): la letra **sincronizada** (`syncedLyrics`, LRC). Si `/api/get`
+     no la acepta (400: su documentación pide los cuatro datos) o, sin disco o sin duración, no la encuentra (404), **una búsqueda**
+     `/api/search?track_name=&artist_name=`: de su lista, la de duración más cercana (a 3 s o menos si se sabe), mejor sincronizada;
   2. si no, la **USLT del MP3** (sin tiempos; solo si es un MP3 tuyo);
   3. si tampoco, la de LRCLIB **sin tiempos** (`plainLyrics`), si la dio.
 - El título va sin el número de pista (`TituloSinPista` de XP), el artista el de la canción (o el de su disco), el disco el de la canción
@@ -75,8 +82,12 @@ Genius ni LRCLIB de verdad, ni con la biblioteca real, ni en el A4**: todo con M
   prendida meses no la llena). El estado,
   `/run/rocola-xp/letras/estado`, lleva **solo números** (qué hay, el proveedor, cuántos versos, el de ahora y el siguiente, las
   peticiones y las fallidas), sin texto de la letra.
-- **El tope**: una petición por canción y por sesión (ninguna repetida si falló); un fallo de la red, un 429 o un 5xx frena **2 minutos**
-  cualquier otra (sin reintentos). Con `ROCOLA_LETRA_API` un LRCLIB falso (las pruebas).
+- **El tope**: si LRCLIB **contestó** que no la tiene (y el MP3 tampoco), esa canción ya no se pide otra vez en la sesión. Un fallo de la
+  red, un 429 o un 5xx frena **2 minutos** cualquier petición, y esa canción **sí** se vuelve a intentar la siguiente vez que suene pasado el
+  freno (una petición cada vez que empieza a sonar, nunca en bucle; revisión del 21-11: antes quedaba sin letra toda la sesión, y la rocola
+  está prendida semanas y puede arrancar antes que la red). Lo mismo una que se encontró y luego salió de la memoria y de `/run`. La letra
+  leída de `/run` se toca, así el recorte quita las menos usadas. Con `ROCOLA_LETRA_API` un LRCLIB falso y con `ROCOLA_LETRA_FRENO_MS`
+  otro freno (las pruebas).
 
 **Sin `ROCOLA_OS`** (o con las tres apagadas) los ganchos devuelven lo de XP sin tocar nada (`RocolaOsLetrasResultados` devuelve 0 antes de
 normalizar nada; `RocolaOsLetrasElige`, false), no corre ningún hilo, no se lee ni se escribe ningún archivo y no sale ninguna petición: el
@@ -109,11 +120,12 @@ teclas «c» y «s» son la moneda (67) y saltar (83) en esos datos, así que la
 
 | Escena | Qué comprueba |
 |---|---|
-| `orden` | `--prueba-letra-cielo` (sin la rocola): el tope de `/run` (405 viejas inventadas puestas antes: quedan 300 con la nueva); LRCLIB sincronizada y el verso a −1, 0, 1,99, 2, 5,5, 12,3, 18, 19,9 y 30 s (y el siguiente); de memoria sin otra petición; la petición con título, artista, disco, duración y el User-Agent genérico; `/run` sí y los datos no; otro arranque con el mismo `/run`: 0 peticiones; `[offset:+500]` y dos tiempos en un renglón; sin disco ni duración; LRCLIB 404 → la USLT del MP3; solo `plainLyrics`; ninguna en ningún lado tres veces = 1 petición; sin red = nada, 1 petición en tres vueltas, y con USLT, la del MP3 |
+| `orden` | `--prueba-letra-cielo` (sin la rocola): el tope de `/run` (405 viejas inventadas puestas antes: quedan 300 con la nueva); LRCLIB sincronizada y el verso a −1, 0, 1,99, 2, 5,5, 12,3, 18, 19,9 y 30 s (y el siguiente); de memoria sin otra petición; la petición con título, artista, disco, duración y el User-Agent genérico; `/run` sí y los datos no; otro arranque con el mismo `/run`: 0 peticiones, y la letra leída se toca; `[offset:+500]` y dos tiempos en un renglón; sin disco ni duración: el LRCLIB falso dice 400 (como lo documenta LRCLIB) y la búsqueda `/api/search` la trae; LRCLIB 404 → la USLT del MP3; solo `plainLyrics`; ninguna en ningún lado tres veces = 1 petición; **el freno en una sola corrida** (acortado a 1,5 s): la del 503 frena, otra canción en el freno no pregunta, la del 503 otra vez tampoco, pasado el freno la otra sí pregunta y sale y la del 503 se vuelve a intentar (1 petición más); sin red = nada, 1 petición en tres vueltas, y con USLT, la del MP3 |
 | `l3` | El repaso (5 MP3, 3 con letra); «luna de papel brillante»: lo exacto de XP (el título de la 03) primero y la 04 (por su letra) la última; «perro viento frio tarde» (3 de 4) la encuentra; «perro azul viento frio» (2 de 4) no; el archivo solo con palabras sueltas en orden alfabético, sin acentos ni vacías; Genius apagado de fábrica: 0 peticiones |
 | `tres` | «viento frio tarde» está entera en la letra de la 05, pero son 3 palabras: no sale |
 | `apagado`, `cero` | Sin `ROCOLA_OS`, y con `ROCOLA_OS=1` y las cuatro apagadas: ni el archivo, ni `/run`, ni una petición, nada en la traza; y en `cero`, la traza igual a la de `apagado` quitando lo de RocolaOs (`compara_trazas.py --ignora RocolaOs: --holgura 80`) |
 | `genius` | Con la llave falsa y el modo Spotify: UNA pregunta a Genius (con la frase entera y la llave bien en la cabecera, nunca en la dirección); delante, la tuya, la de Spotify (por la búsqueda «título artista») y la NO ESTÁ, en ese orden; la 4.ª de Genius (el remix de la misma) no es otra tarjeta; la llave en ningún archivo de los datos (salvo el suyo), `/run`, la salida ni la traza; nada de Genius guardado |
+| `choque` | La de `genius`, y desde 0,75 s después de escribir (Genius ya preguntó) hasta 3,6 s se teclea y se borra una «x» cada 0,12 s: cada tecla es otra búsqueda de lo escrito en Spotify justo cuando el hilo de Genius pide «título artista». Las mismas comprobaciones: la de Spotify sigue en su sitio (con el programa de `117ac6f` salía «noesta:Tema Tema de Mentira» tras esperar 10 s, y Genius preguntaba dos veces: también la frase con la «x», ya borrada) |
 | `sinllave` | Encendida sin llave: 0 peticiones, la bitácora lo dice, y la letra de tus MP3 sí |
 | `suena` | La rocola toca «Amor de Prueba» (21 s, LRC de 10 versos cada 2 s): UNA petición a LRCLIB con título, artista, disco y duración; la letra sincronizada de LRCLIB; los versos avanzan en orden; el siguiente es el que le sigue; al acabar, nada suena; la letra en `/run` y nada en los datos; el estado sin texto |
 
@@ -135,14 +147,13 @@ teclas «c» y «s» son la moneda (67) y saltar (83) en esos datos, así que la
   `RocolaOsLetraSuena.Verso` (o `Actual.En(pos)` con la posición fina).
 - **Genius queda apagado**: encenderlo es del dueño (y sus condiciones, de uso no comercial). Sin probar con el Genius de verdad: su
   `/search` se leyó como lo leía el programa anterior (`response.hits[].result.title` y `primary_artist.name`).
-- **LRCLIB de verdad no se probó** (sin red aquí): `/api/get` se usó como lo documenta LRCLIB (404 si no la tiene; `syncedLyrics` y
-  `plainLyrics`). Con la biblioteca de XP el artista y el disco salen de las carpetas (`Artista - Disco`); con carpetas sin ese formato el
+- **LRCLIB de verdad no se probó** (sin red aquí: lrclib.net no está en la red permitida de la sesión): `/api/get` se usó como lo documenta
+  LRCLIB (404 si no la tiene; `syncedLyrics` y `plainLyrics`; disco y duración obligatorios, de ahí el respaldo de `/api/search`). De
+  Spotify la duración sale del lector (si no la da en 5 s, va sin ella y entra el respaldo). Con la biblioteca de XP el artista y el disco salen de las carpetas (`Artista - Disco`); con carpetas sin ese formato el
   artista puede ser otro y LRCLIB no la encontrará (no cuesta más que esa petición).
 - **Con el modo Spotify, sus artistas van arriba de las tarjetas de Genius**: g40 pone los artistas de Spotify delante cuando lo primero de
   la lista no es un artista (y las de Genius son canciones). Con una frase de 4 palabras rara vez sale un artista de Spotify (su nombre
   tiene que parecerse a lo escrito), pero puede pasar.
-- **La búsqueda de Spotify de L1 comparte la cola de una búsqueda del cliente del catálogo**: si llegara justo cuando la de lo escrito aún
-  espera sus 300 ms, la reemplazaría (la de lo escrito ya salió para entonces: Genius pregunta a los 0,8 s y tarda lo suyo).
 - **Elegir la tarjeta NO ESTÁ no se probó en la rocola entera** (las teclas del buscador con portadas en las pruebas son delicadas); lo que
   hace es una línea (el aviso de XP).
 - **El repaso con la biblioteca real y en el A4**: sin medir (20 ms por archivo a nice 19; con 20 000 MP3, unos 7 minutos la primera vez).

@@ -32,6 +32,7 @@ namespace Rocola
     {
         internal const string Archivo = "rocola_letras_mp3.txt";
         internal const int PalabrasDeFrase = 4;         // desde cuantas palabras escritas se busca por la letra
+        internal const int PalabrasQueCuentan = 3;      // y cuantas de ellas no vacias, como minimo, para la letra de tus MP3
         internal const int PausaMs = 20;                // entre archivo y archivo
         private sealed class Entrada { internal long Tam, Fecha; internal string[] Palabras; }
         private static readonly Dictionary<string, Entrada> porRuta = new Dictionary<string, Entrada>(StringComparer.Ordinal);   // (solo su hilo)
@@ -205,7 +206,8 @@ namespace Rocola
         {
             Dictionary<string, string[]> d = Indice;
             List<KeyValuePair<string, int>> r = new List<KeyValuePair<string, int>>();
-            if (d == null || toks == null || toks.Count < 2) return r;
+            // (revision) al menos 3 palabras que cuentan: «los tigres del norte» (tigres+norte) pedia 2 de 2 en cualquier lado de la letra
+            if (d == null || toks == null || toks.Count < PalabrasQueCuentan) return r;
             int hacen = Math.Max(2, (toks.Count * 3 + 3) / 4);
             Dictionary<string, int> cuenta = new Dictionary<string, int>(StringComparer.Ordinal);
             for (int t = 0; t < toks.Count; t++)
@@ -354,7 +356,7 @@ namespace Rocola
             if (!l3 && !l1) return 0;
             string q = MotorBusqueda.Normaliza(consulta);
             List<string> toks = RocolaOsLetrasMp3.DeLaFrase(q);
-            if (toks == null) return 0;   // (menos de 4 palabras: lo de XP tal cual)
+            if (toks == null) { if (l1) RocolaOsGenius.Mirando(null); return 0; }   // (menos de 4 palabras: lo de XP tal cual; y Genius no pregunta lo de antes)
             int n = 0;
             if (l1) n += RocolaOsGeniusDelante(q, res);
             if (l3) n += RocolaOsLetrasDeTusMp3(toks, res);

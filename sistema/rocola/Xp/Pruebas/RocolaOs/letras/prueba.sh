@@ -7,11 +7,12 @@
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/letras/prueba; se rehace)
 # escenas: orden (la letra de lo que suena con la orden --prueba-letra-cielo: LRCLIB, el MP3, /run, sin red) apagado (sin ROCOLA_OS: nada
 #   de Rocola OS) l3 (la letra de tus MP3 en el buscador) tres (frases de 3 palabras: nada) genius (L1 con la llave falsa: las tres delante)
+#   choque (genius, y mientras Genius busca en Spotify, se teclea y se borra una «x» cada 0,12 s: la de Spotify no sale como NO ESTA)
 #   cero (ROCOLA_OS=1 con las cuatro apagadas: la traza igual a la de apagado) sinllave (L1 encendida sin llave: ni una peticion) suena (la letra de la cancion que suena, en la rocola entera); todas, de fabrica
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-orden apagado cero l3 tres genius sinllave suena}"
+escenas="${*:-orden apagado cero l3 tres genius choque sinllave suena}"
 W=${W:-/root/rocola-trabajo/fase11/letras/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 CAT="$G/../catalogo"; SX="$G/../spotify-xp"
@@ -117,14 +118,17 @@ for e in $escenas; do
     si "orden: la peticion con titulo, artista, disco y duracion" contiene "$f" "/api/get track_name=Amor de Prueba&artist_name=Los Probados&album_name=Disco Letras&duration=20 | ua=rocola-xp/1 (Rocola OS) | auth=no"
     si "orden: /run guarda la letra (rocola-xp/letras/*.lrc) y nada en los datos" bash -c "ls '$o/run/rocola-xp/letras/'*.lrc >/dev/null 2>&1 && [ -z \"\$(ls -A '$o/datos')\" ]"
     si "orden: el tope de /run (405 viejas + la nueva -> 300, la nueva se queda)" bash -c "[ \$(ls '$o/run/rocola-xp/letras/'*.lrc | wc -l) = 300 ] && [ \$(ls '$o/run/rocola-xp/letras/'*.lrc | grep -vc '/viejo') = 1 ]"
-    # otro arranque con el mismo /run: de /run, sin peticion
+    # otro arranque con el mismo /run: de /run, sin peticion (y la letra usada se toca: el recorte quita las menos usadas)
+    nueva=$(ls "$o/run/rocola-xp/letras/"*.lrc | grep -v '/viejo' | head -1); touch -d '2020-06-01' "$nueva"
     orden "$o" env $L "${RX[@]}" --prueba-letra-cielo "Amor de Prueba" "Los Probados" "Disco Letras" 20 - 7 > "$o/run2.txt" 2>&1
+    si "orden: la letra leida de /run se toca (su fecha ya no es la de 2020)" bash -c "[ \$(date -r '$nueva' +%Y) != 2020 ]"
     si "orden: otro arranque con el mismo /run: de /run, 0 peticiones, y el verso a 7 s es el 3" bash -c "grep -q 'vuelta=1 letra=sincronizada proveedor=LRCLIB versos=11 peticiones=0' '$o/run2.txt' && grep -q 'pos=7 verso=3 «verso inventado numero 3»' '$o/run2.txt'"
     # el offset y dos tiempos en un renglon
     orden "$o" env $L "${RX[@]}" --prueba-letra-cielo "Doble Tiempo" "Los Probados" "" 0 - 0.4 0.6 4.6 8.6 > "$o/doble.txt" 2>&1
     sed 's/^/   /' "$o/doble.txt"
     si "orden: [offset:+500] adelanta medio segundo y un renglon con dos tiempos sale dos veces" bash -c "grep -q 'pos=0.4 verso=-1' '$o/doble.txt' && grep -q 'pos=0.6 verso=0 «estribillo repetido»' '$o/doble.txt' && grep -q 'pos=4.6 verso=1 «verso del medio»' '$o/doble.txt' && grep -q 'pos=8.6 verso=2 «estribillo repetido»' '$o/doble.txt'"
     si "orden: sin disco ni duracion, la peticion sin album_name ni duration" contiene "$f" "/api/get track_name=Doble Tiempo&artist_name=Los Probados | ua="
+    si "orden: y /api/get dice 400 (sin disco ni duracion): una busqueda /api/search por titulo y artista, de la que sale la letra" bash -c "grep -q '^/api/search track_name=Doble Tiempo&artist_name=Los Probados | ua=' '$f' && grep -q 'vuelta=1 letra=sincronizada proveedor=LRCLIB versos=3' '$o/doble.txt'"
     # LRCLIB no la tiene: la USLT del MP3 (sin tiempos)
     orden "$o" env $L "${RX[@]}" --prueba-letra-cielo "Solo del MP3" "Los Probados" "Disco Letras" 2 "$o/mp3/solo.mp3" 1 > "$o/mp3.txt" 2>&1
     sed 's/^/   /' "$o/mp3.txt"
@@ -137,8 +141,17 @@ for e in $escenas; do
     cp "$o/mp3/nada.mp3" "$o/mp3/nada2.mp3"
     orden "$o" env $L "${RX[@]}" --prueba-letra-cielo "No La Tiene Nadie" "Los Probados" "Disco Letras" 2 "$o/mp3/nada2.mp3" otra otra > "$o/ninguna.txt" 2>&1
     si "orden: ninguna en ningun lado, tres veces: UNA peticion" bash -c "grep -q 'vuelta=3 letra=ninguna proveedor= versos=0 peticiones=1 fallidas=1' '$o/ninguna.txt' && [ \$(grep -c 'track_name=No La Tiene Nadie' '$f') = 1 ]"
+    # EL FRENO (acortado a 1,5 s con ROCOLA_LETRA_FRENO_MS) en UNA sola corrida: «Cae Con 503» (el falso contesta 503) frena; otra cancion
+    # en el freno no pregunta; pasado el freno, la otra SI pregunta (y sale), y la del 503 se vuelve a intentar (no queda sin letra la sesion)
+    orden "$o" env $L ROCOLA_LETRA_FRENO_MS=1500 "${RX[@]}" --prueba-letra-cielo "Cae Con 503" "Los Probados" "Disco Letras" 2 - "cancion=Solo Texto" "cancion=Cae Con 503" pausa=1800 "cancion=Solo Texto" "cancion=Cae Con 503" > "$o/freno.txt" 2>&1
+    sed 's/^/   /' "$o/freno.txt"
+    si "orden: el 503: ninguna, 1 peticion" contiene "$o/freno.txt" "vuelta=1 letra=ninguna proveedor= versos=0 peticiones=1 fallidas=1 cancion=Cae Con 503"
+    si "orden: otra cancion en el freno: ninguna y sin peticion" contiene "$o/freno.txt" "vuelta=2 letra=ninguna proveedor= versos=0 peticiones=1 fallidas=1 cancion=Solo Texto"
+    si "orden: la del 503 otra vez en el freno: sin peticion" contiene "$o/freno.txt" "vuelta=3 letra=ninguna proveedor= versos=0 peticiones=1 fallidas=1 cancion=Cae Con 503"
+    si "orden: pasado el freno, la otra SI pregunta y sale (no se quedo sin letra la sesion)" contiene "$o/freno.txt" "vuelta=4 letra=sin_tiempos proveedor=LRCLIB versos=2 peticiones=2 fallidas=1 cancion=Solo Texto"
+    si "orden: y la del 503 se vuelve a intentar (una peticion mas, nunca en bucle)" contiene "$o/freno.txt" "vuelta=5 letra=ninguna proveedor= versos=0 peticiones=3 fallidas=2 cancion=Cae Con 503"
     para_falso
-    # sin red: nada, y sin reintentos (otra cancion tampoco pregunta en 2 minutos)
+    # sin red: nada, y en el freno de 2 minutos ni una peticion mas (las tres vueltas son la misma cancion; el freno con otra, arriba)
     orden "$o" env ROCOLA_LETRA_API=http://127.0.0.1:9 "${RX[@]}" --prueba-letra-cielo "Amor Sin Red" "Los Probados" "Disco Letras" 20 - otra otra > "$o/sinred.txt" 2>&1
     sed 's/^/   /' "$o/sinred.txt"
     si "orden: sin red: ninguna, una sola peticion en tres vueltas" contiene "$o/sinred.txt" "vuelta=3 letra=ninguna proveedor= versos=0 peticiones=1 fallidas=1"
@@ -194,7 +207,7 @@ for e in $escenas; do
       sed 's/^/   /' "$o/compara.txt" | head -8
       si "cero: la traza igual a la de sin ROCOLA_OS quitando lo de RocolaOs (compara_trazas.py --ignora, holgura 80)" test $r = 0
     fi ;;
-  genius)
+  genius|choque)
     # L1 ENCENDIDA CON LA LLAVE FALSA (y el modo Spotify con su API falsa): «bajo la lluvia por la avenida». Genius dice 4: «Lluvia Inventada»
     # (tuya), «Tema Tema de Mentira» de Los Inventados (no la tienes: esta en Spotify), «Cancion Desconocida (En Vivo)» (en ningun lado) y
     # «Lluvia Inventada (Remix)» (la misma que la 1a: no cuenta). Delante, en ese orden: la tuya, la de Spotify y la tarjeta NO ESTA.
@@ -204,20 +217,25 @@ for e in $escenas; do
     printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt"
     printf '%s\n' "$LLAVE" > "$d/rocola_genius.txt"; chmod 600 "$d/rocola_genius.txt"
     F1="bajo la lluvia por la avenida"; t1=$(fin 9.5 "$F1")
-    abre $e "$d" "$BASE,$(escribe 9.5 "$F1")" $(echo "$t1 + 9" | bc | cut -d. -f1) ROCOLA_OS=1 ROCOLA_CAPTURA="$( [ -n "$CAPTURAS" ] && echo "$(echo "$t1 + 7" | bc):$CAPTURAS/buscador-genius.png" || echo "$(echo "$t1 + 7" | bc):$W/$e/buscador.png")"
+    T="$BASE,$(escribe 9.5 "$F1")"
+    # choque: desde 0,75 s despues de escribir (Genius ya pregunto: 0,8 s tras la ultima tecla) hasta 3,6 s, «x» y borrar cada 0,12 s (cada tecla, otra busqueda de lo escrito en Spotify,
+    # justo cuando el hilo de Genius pide «titulo artista»); al final queda la frase
+    if [ $e = choque ]; then for i in $(seq 0 11); do T="$T,$(echo "$t1 + 0.75 + $i * 0.24" | bc):88,$(echo "$t1 + 0.87 + $i * 0.24" | bc):27"; done; fi
+    # (choque: 16 s, para que con el fallo de antes -10 s esperando una busqueda reemplazada- se viera la NO ESTA)
+    abre $e "$d" "$T" $(echo "$t1 + $( [ $e = choque ] && echo 16 || echo 9)" | bc | cut -d. -f1) ROCOLA_OS=1 ROCOLA_CAPTURA="$( [ -n "$CAPTURAS" ] && echo "$(echo "$t1 + 7" | bc):$CAPTURAS/buscador-$e.png" || echo "$(echo "$t1 + 7" | bc):$W/$e/buscador.png")"
     espera $e; para_falso; kill $APIPID 2>/dev/null; wait $APIPID 2>/dev/null; o="$W/$e"; f="$o/falso/peticiones.txt"; a="$o/api/peticiones.txt"
     u1=$(ultimo $o "$F1"); echo "   $u1"; sed 's/^/   genius: /' "$f"
-    si "genius: sale con 0" test "$(cat $o/salio)" = 0
-    si "genius: UNA pregunta a Genius (a los 0,8 s de dejar de escribir), con la frase entera y la llave en la cabecera" bash -c "[ \$(grep -c '^/search ' '$f') = 1 ] && grep -q '^/search per_page=5&q=bajo la lluvia por la avenida | ua=rocola-xp/1 | auth=bien' '$f'"
-    si "genius: la llave nunca en la direccion de la peticion" nocontiene "$f" "$LLAVE"
-    si "genius: 1a delante, TU cancion (Lluvia Inventada)" test "$(lugar "$u1" "2:Los Probados - 01 Lluvia Inventada")" = 1
-    si "genius: 2a, la de Spotify (Tema Tema de Mentira, por la busqueda «titulo artista»)" bash -c "[ $(lugar "$u1" "spotify:Los Inventados - Tema Tema de Mentira") = 2 ] && grep -q 'q=tema tema de mentira los inventados' '$a'"
-    si "genius: 3a, la tarjeta NO ESTA con lo que dice Genius" test "$(lugar "$u1" "noesta:Cancion Desconocida (En Vivo)")" = 3
-    si "genius: la casilla las cuenta tambien con el modo Spotify (3 resultados, no «Sin resultados»)" bash -c "echo '$u1' | grep -qF '«$F1» (3) |'"
-    si "genius: la 4a de Genius (Remix de la misma) no es otra tarjeta, y la tuya no sale dos veces" bash -c "[ \$(echo '$u1' | grep -o 'Lluvia Inventada' | wc -l) = 1 ] && [ \$(echo '$u1' | grep -o 'noesta:' | wc -l) = 1 ]"
-    si "genius: la llave nunca en los datos (salvo su archivo), /run, la salida, la traza ni la bitacora" sinllave_en "$d" "$o/run" "$o/salida.txt" "$o/traza.txt"
-    si "genius: nada de Genius guardado en los datos (ni el titulo de la NO ESTA)" bash -c "! grep -rlF 'Cancion Desconocida' '$d' | grep -q ."
-    si "genius: el encargo con su nombre (RocolaOs:busca_letra:llego)" contiene "$o/traza.txt" "RocolaOs:busca_letra:llego" ;;
+    si "$e: sale con 0" test "$(cat $o/salio)" = 0
+    si "$e: UNA pregunta a Genius (a los 0,8 s de dejar de escribir), con la frase entera y la llave en la cabecera" bash -c "[ \$(grep -c '^/search ' '$f') = 1 ] && grep -q '^/search per_page=5&q=bajo la lluvia por la avenida | ua=rocola-xp/1 | auth=bien' '$f'"
+    si "$e: la llave nunca en la direccion de la peticion" nocontiene "$f" "$LLAVE"
+    si "$e: 1a delante, TU cancion (Lluvia Inventada)" test "$(lugar "$u1" "2:Los Probados - 01 Lluvia Inventada")" = 1
+    si "$e: 2a, la de Spotify (Tema Tema de Mentira, por la busqueda «titulo artista»)" bash -c "[ $(lugar "$u1" "spotify:Los Inventados - Tema Tema de Mentira") = 2 ] && grep -q 'q=tema tema de mentira los inventados' '$a'"
+    si "$e: 3a, la tarjeta NO ESTA con lo que dice Genius" test "$(lugar "$u1" "noesta:Cancion Desconocida (En Vivo)")" = 3
+    si "$e: la casilla las cuenta tambien con el modo Spotify (3 resultados, no «Sin resultados»)" bash -c "echo '$u1' | grep -qF '«$F1» (3) |'"
+    si "$e: la 4a de Genius (Remix de la misma) no es otra tarjeta, y la tuya no sale dos veces" bash -c "[ \$(echo '$u1' | grep -o 'Lluvia Inventada' | wc -l) = 1 ] && [ \$(echo '$u1' | grep -o 'noesta:' | wc -l) = 1 ]"
+    si "$e: la llave nunca en los datos (salvo su archivo), /run, la salida, la traza ni la bitacora" sinllave_en "$d" "$o/run" "$o/salida.txt" "$o/traza.txt"
+    si "$e: nada de Genius guardado en los datos (ni el titulo de la NO ESTA)" bash -c "! grep -rlF 'Cancion Desconocida' '$d' | grep -q ."
+    si "$e: el encargo con su nombre (RocolaOs:busca_letra:llego)" contiene "$o/traza.txt" "RocolaOs:busca_letra:llego" ;;
   sinllave)
     # L1 ENCENDIDA SIN LLAVE: ni una pregunta a Genius (y el buscador de XP con lo de la letra de tus MP3, como siempre)
     falso $e; d=$(datos $e spotify=0 busca_letra=1); F1="bajo la lluvia por la avenida"; t1=$(fin 9.5 "$F1")

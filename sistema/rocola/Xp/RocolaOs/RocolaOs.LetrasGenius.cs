@@ -13,6 +13,8 @@
 //   3. si no, UNA TARJETA «NO ESTA EN LA ROCOLA»: la tarjeta de cancion del buscador de XP con el titulo que dice Genius, y debajo el artista
 //      y «NO ESTA EN LA ROCOLA» (el renglon del disco de XP). Nada nuevo que dibujar: un disco de mentira, sin portada (XP pone las iniciales).
 //      Elegirla solo lo dice con el aviso del buscador de XP (g111).
+//      Si Spotify NO CONTESTO (sin red, frenando), no se sabe: esa no sale (ni como NO ESTA). La busqueda de Spotify va en un pedido aparte
+//      de la cola del catalogo (BuscaAparte): ni la reemplaza lo que se escribe despues, ni ella reemplaza lo escrito.
 // NADA SE GUARDA (en memoria, la sesion; y como mucho 300 preguntas a Genius por sesion). Sin llave, sin red o con Genius caido: nada (el
 // buscador de XP tal cual). Apagada: ni el hilo, ni una peticion, ni se mira la llave.
 using System;
@@ -36,6 +38,7 @@ namespace Rocola
         private int RocolaOsGeniusDelante(string q, List<SearchItem> res)
         {
             if (!RocolaOsGenius.HayLlave) return 0;
+            RocolaOsGenius.Mirando(q);
             List<SearchItem> ya = null;
             if (rocolaOsGeniusHechas != null) rocolaOsGeniusHechas.TryGetValue(q, out ya);
             if (ya == null) { if (RocolaOsGenius.Quiere(q)) RocolaOsGenius.Pide(q, RocolaOsGeniusFoto()); return 0; }
@@ -77,6 +80,7 @@ namespace Rocola
                     l.Add(new SearchItem { Kind = 2, Display = (c.Artista.Length > 0 ? c.Artista + " - " : "") + c.Titulo, Key = "", AlbumRef = a, TrackRef = t });
                     continue;
                 }
+                if (h.SinSaber) continue;   // (Spotify no contesto: no se sabe si esta; ni NO ESTA ni nada)
                 l.Add(new SearchItem { Kind = 2, Display = h.Titulo, Key = "", AlbumRef = RocolaOsGenius.NoEsta(h.Artista) });
             }
             rocolaOsGeniusHechas[q] = l;
@@ -96,7 +100,7 @@ namespace Rocola
             internal const string ArchivoLlave = "rocola_genius.txt";
             internal const int EsperaMs = 800;            // dejar de escribir
             internal const int TopeSesion = 300;          // preguntas a Genius por sesion, como mucho
-            internal sealed class Hallada { internal string Titulo, Artista; internal SearchItem Tuya; internal RocolaOsSpotifyCatalogoCancion Spotify; }
+            internal sealed class Hallada { internal string Titulo, Artista; internal SearchItem Tuya; internal RocolaOsSpotifyCatalogoCancion Spotify; internal bool SinSaber; }
             private sealed class Pedido { internal string Q; internal long Desde; internal List<SearchItem> Foto; }
             private static Pedido pendiente;
             private static readonly HashSet<string> preguntadas = new HashSet<string>(StringComparer.Ordinal);   // (en la sesion: ni una repetida)
@@ -121,6 +125,12 @@ namespace Rocola
             internal static bool Quiere(string q)
             {
                 lock (cerrojo) return !preguntadas.Contains(q) && (pendiente == null || pendiente.Q != q);
+            }
+            // (revision) LO QUE SE MIRA AHORA (desde la pantalla, con cada consulta; null si no es una frase): lo que esperaba otra frase ya no se
+            // mira (se borro la «x», o una palabra) y no se pregunta
+            internal static void Mirando(string q)
+            {
+                lock (cerrojo) { if (pendiente != null && pendiente.Q != q) pendiente = null; }
             }
             // lo escrito (desde la pantalla): reemplaza lo que esperaba
             internal static void Pide(string q, List<SearchItem> foto)
@@ -274,7 +284,7 @@ namespace Rocola
                 foreach (Hallada h in hs)
                 {
                     h.Tuya = TuCancion(p.Foto, h.Titulo, h.Artista);
-                    if (h.Tuya == null) h.Spotify = DeSpotify(h.Titulo, h.Artista);
+                    if (h.Tuya == null) h.Spotify = DeSpotify(h.Titulo, h.Artista, out h.SinSaber);
                 }
                 return hs;
             }
@@ -315,8 +325,10 @@ namespace Rocola
                 return null;
             }
             // LA DE SPOTIFY (con el modo y su llave): la busqueda «titulo artista» del cliente del catalogo; la primera con ese titulo
-            private static RocolaOsSpotifyCatalogoCancion DeSpotify(string titulo, string artista)
+            // (revision) sinSaber: Spotify NO CONTESTO (sin red, frenando, mas de 10 s): eso no es «no esta en Spotify», y esa no sale como NO ESTA
+            private static RocolaOsSpotifyCatalogoCancion DeSpotify(string titulo, string artista, out bool sinSaber)
             {
+                sinSaber = false;
                 if (!RocolaOs.Encendida("spotify") || !RocolaOsSpotifyCatalogoApi.HayLlave) return null;
                 string q = RocolaOsSpotifyCatalogoClave(SinParentesis(titulo) + " " + artista);
                 RocolaOsSpotifyCatalogoBusqueda b = RocolaOsSpotifyCatalogoApi.BuscaYa(q);
@@ -324,11 +336,14 @@ namespace Rocola
                 {
                     ManualResetEventSlim listo = new ManualResetEventSlim(false);
                     RocolaOsSpotifyCatalogoBusqueda llego = null;
-                    RocolaOsSpotifyCatalogoApi.Busca(q, delegate (object r, string error) { llego = r as RocolaOsSpotifyCatalogoBusqueda; listo.Set(); });
+                    // (revision) un pedido aparte en la cola: con Busca (solo la ultima) lo escrito despues la reemplazaba sin contestar, y la de
+                    // Spotify salia como NO ESTA toda la sesion; y ella reemplazaba lo escrito
+                    RocolaOsSpotifyCatalogoApi.BuscaAparte(q, delegate (object r, string error) { llego = r as RocolaOsSpotifyCatalogoBusqueda; listo.Set(); });
                     listo.Wait(10000);
                     b = llego;
                 }
-                if (b == null || b.Canciones == null) return null;
+                if (b == null) { sinSaber = true; return null; }
+                if (b.Canciones == null) return null;
                 foreach (RocolaOsSpotifyCatalogoCancion c in b.Canciones)
                     if (c != null && !string.IsNullOrEmpty(c.Uri) && MismoTitulo(titulo, c.Titulo ?? "")) return c;
                 return null;
