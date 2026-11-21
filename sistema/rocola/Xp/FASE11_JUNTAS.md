@@ -58,8 +58,9 @@ g20-g24, g40-g57, g60-g62, g70-g87, g90-g98, g100-g101; 20 archivos de `Codigo/`
 - `39b6fc3` — `Pruebas/RocolaOs/asistente/prueba.sh` le da a la rocola `ROCOLA_CATALOGO_URL` y `ROCOLA_PORTADAS_CATALOGO` de la API falsa:
   con la pared juntada, `ROCOLA_OS=1` con la llave de la API arranca la descarga del catálogo, que a los 45 s miraría la versión
   «catalogo» de GitHub. Sus escenas duran 35 s como mucho (no llegaba), pero una prueba no debe poder salir a la red (lo mismo que
-  `pared-generos` hizo con la del catálogo). La de la sustitución no lo necesita (`ROCOLA_OS` es una lista sin `pared`), ni la de
-  `navegador-archivos` (`archivos,navegador`).
+  `pared-generos` hizo con la del catálogo). (Aquí se decía que la de la sustitución no lo necesitaba porque su `ROCOLA_OS` era «una
+  lista sin `pared`»: **no es así**, su escena `apagado-cero` abre con `ROCOLA_OS=1` y la llave de la API; lo arregló la revisión, abajo.)
+  La de `navegador-archivos` no lo necesita (`archivos,navegador`).
 - `58f5824` — `Pruebas/RocolaOs/andamio/prueba.sh`: dos comprobaciones de la parte «ganchos» esperaban aún la base de antes de
   `PORT_xp-1718.md` («109 archivos comparados con fc7b667»); `ganchos.py` compara con `69e6547` y sus 112 archivos. **Fallaba igual en la
   rama principal** (la junta del 20-11 no corrió el andamio); no es de esta junta.
@@ -136,3 +137,38 @@ COMPLETA). Nada probado en el A4.
 - `spotify-xp` NativeAOT 159/160 por un aviso de «Pantalla parada» con la máquina cargada; se puede volver a correr con la máquina libre.
 - La prueba de QEMU de la hoja Pantalla con las pestañas nuevas, y la compilación COMPLETA (paquetes de WPE WebKit y cog), cuando el dueño
   la pida.
+- **El catálogo publicado no tiene el pre-mapeo de géneros.** La versión «catalogo» de GitHub (20261114.3, 182 418 discos: la que lee la
+  escena `real`) se armó antes de `8090912`; hasta volver a armarlo con `rocola-catalogo.yml`, la pastilla de cada casilla sigue con los
+  géneros mal puestos que arregla `catalogo-generos` («A Flock of Seagulls» como Bolero, «classic rock» como Clásica...). Esa compilación
+  es solo a pedido del dueño: él decide cuándo.
+- Con la máquina muy cargada (carga 12) la escena `sinllave` de `catalogo` puede salir MAL («la traza igual a la de sin ROCOLA_OS») solo
+  porque los relojes cuentan distinto (`Form1.cs:724`, `MedidasBitacora.cs:129`): lo de RJ9b/RJ12b de siempre; con la máquina libre sale
+  BIEN. No es de la junta.
+
+### La revisión de la junta (21-11-2026)
+
+Un revisor no encontró nada grave. De lo que encontró, comprobado uno por uno:
+
+- **El contrato I8 era el de antes** (cierto: `cmp` de `pared-generos/contrato/rocola_catalogo_prueba.tsv.gz` con el de
+  `sistema/catalogo/prueba` daba distintos; 176/652 contra 187/673). `29c129c`: la copia del armador juntado, y las cuentas se leen de su
+  cabecera «#rocola-catalogo».
+- **La escena `real` se saltaba sin avisar** (cierto). `29c129c`: sin el catálogo de verdad sus 4 comprobaciones cuentan como FALTA y la
+  batería sale con 2.
+- **Pruebas que podían salir a la red** (cierto: `sustitucion` `apagado-cero` abre con `ROCOLA_OS=1` y la llave). `29c129c`: la de la
+  sustitución da `ROCOLA_CATALOGO_URL` y `ROCOLA_PORTADAS_CATALOGO` de su API falsa; `spotify-xp`, `andamio` y `pantalla`, `127.0.0.1:9`
+  (nada escucha). Corregido el texto de arriba.
+- **`spotify-xp` fabrica contaba los «Pantalla parada»** (cierto). `29c129c`: `rocola_error.txt` se compara sin esos avisos de XP ni su
+  renglón «(sin excepcion)».
+- **Los programas falsos compartidos se rehacían por la fecha** (cierto). `29c129c`: en las cinco baterías, la API falsa y el Soloist
+  falso se rehacen si su `Program.cs` no es igual (`cmp`) a la copia que queda junto al `.dll`.
+- **La carga en `catalogo sinllave`**: anotado arriba; no se toca.
+- **Duda: el navegador podía borrar el modo guardado** (cierto, por el código: `Kms.Recupera` no mira `drmSetMaster`, y un
+  `drmModeSetCrtc` fallido al volver hacía `modo_malo`). `bd39d2b`: en los 15 s después de `Retoma`, el latido toma otra vez el mando y
+  pone el mismo modo (hasta 10 veces); solo si sigue fallando, lo de siempre. El KMS simulado aprende `retoma=N` y `pantalla/prueba.sh`
+  la escena `navegador` (corregida la frase de `FASE11_pantalla.md`). Con cog y una tarjeta de verdad no se probó; `Kms.cs` no se tocó.
+- **Dudas sin cambio**: el nivel 0 ya se comparó con la base arriba (las mismas MAL); QEMU y la compilación COMPLETA siguen sin correr; el
+  caso a ciegas de `2bcf38e` sigue sin prueba (ni el KMS simulado ni QEMU lo dan).
+
+Las baterías afectadas, otra vez en JIT con el programa de `bd39d2b` (bitácora `.../junta-segunda/bateria-rev.log`):
+
+RESULTADOS_REV

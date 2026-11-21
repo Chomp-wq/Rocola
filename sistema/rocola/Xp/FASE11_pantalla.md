@@ -246,8 +246,13 @@ Revisado en el código (no en el informe del grupo): `RocolaOs.Pantalla.cs`, `Ro
   que pone el núcleo y, tras el `>>6` de `dce5_crtc_load_lut`, la misma que pone radeon al arrancar (`i<<2`). `CambiaModo`: con la misma
   medida no rehace superficies; con otra, la nueva y, si el controlador no la acepta, la de antes al frente antes de soltar la nueva; los
   buffers de GBM y los fb se sueltan una sola vez en cada camino (mirado camino por camino). Lo de `Suelta`/`Recupera` (DRM master para un
-  video) no lo usa rocola-xp (el video va por libmpv dentro del mismo OpenGL), así que el `UltimoFallo` del latido solo puede salir del
-  primer cuadro.
+  video) no lo usaba rocola-xp (el video va por libmpv dentro del mismo OpenGL), así que el `UltimoFallo` del latido solo podía salir del
+  primer cuadro. **Desde la junta 2 ya no es así**: el navegador de Ctrl+F4 cede y retoma la pantalla (`RocolaOs.Navegador.cs`, `Cede` y
+  `Retoma`), y `Recupera` no mira lo que devuelve `drmSetMaster`. Si al volver cog aún tuviera el mando, el `drmModeSetCrtc` del cuadro
+  siguiente fallaría y el latido borraba para siempre el modo guardado (`modo_malo`). Arreglado en la revisión de la junta 2 (`bd39d2b`):
+  en los 15 s después de `Retoma`, el latido toma otra vez el mando y pone el mismo modo (hasta 10 veces), y solo si sigue fallando hace
+  lo de siempre; con el navegador delante no mira el fallo. Escena `navegador` de `Pruebas/RocolaOs/pantalla/prueba.sh` con el KMS
+  simulado (`retoma=2`: el modo se queda; `retoma=14`: lo automático y `modo_malo`). Con cog y la tarjeta de verdad no se probó.
 - **Arreglado**: a ciegas (sin monitor al prender) o con un conector sin modos, `Kms` no llama a `EligeModo` y la clave del automático
   quedaba en `null`: la hoja decía «Sin guardar» en lo automático, «Volver a lo automático» guardaba `modo=1024x768@60` como si fuera un
   modo elegido, y con un fallo al presentar el latido intentaba volver a lo automático en cada latido. Ahora `AbreLaPantalla` la toma del
