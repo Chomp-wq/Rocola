@@ -9,6 +9,11 @@
 #   de Rocola OS) l3 (la letra de tus MP3 en el buscador) tres (frases de 3 palabras: nada) genius (L1 con la llave falsa: las tres delante)
 #   choque (genius, y mientras Genius busca en Spotify, se teclea y se borra una «x» cada 0,12 s: la de Spotify no sale como NO ESTA)
 #   cero (ROCOLA_OS=1 con las cuatro apagadas: la traza igual a la de apagado) sinllave (L1 encendida sin llave: ni una peticion) suena (la letra de la cancion que suena, en la rocola entera); todas, de fabrica
+# (junta 3, revision) con ROCOLA_OS=1 el cielo pide el lugar y el clima por internet sin llave, y la letra va a LRCLIB: en la prueba,
+# todo eso va al sumidero 127.0.0.1:7 (nada escucha) para no depender de la red ni de lo que conteste un servicio de fuera; una escena
+# que ponga su propio falso lo pone delante y manda
+export ROCOLA_CLIMA_API="${ROCOLA_CLIMA_API:-http://127.0.0.1:7}" ROCOLA_LUGAR_API="${ROCOLA_LUGAR_API:-http://127.0.0.1:7/lugar}"
+export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_API="${ROCOLA_GENIUS_API:-http://127.0.0.1:7}"
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
