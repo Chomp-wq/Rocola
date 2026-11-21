@@ -319,5 +319,5 @@ Un revisor no encontró nada grave. De lo que encontró, comprobado uno por uno:
   XP» y del 20-11 «lo demás encendido de fábrica» pueden chocar en el reposo: lo aclara el dueño); Kms.cs de Consola viene de la junta 2.
 
 Corridas otra vez con el JIT de la junta (el código no cambió, solo pruebas y documentos): `letras` 88/88, `sustitucion` 97/97, `Importa`
-181/181, `spotify-xp` SPOTIFYXP. Salidas en `/root/rocola-trabajo/fase11/junta-3/rev/`. Nada probado en el A4.
+181/181, `spotify-xp` 167/167 (sin `PULSO`, por eso no las 187; la escena `fabrica`: 0 conexiones a internet con y sin `ROCOLA_OS`, 3 al sumidero). Salidas en `/root/rocola-trabajo/fase11/junta-3/rev/`. Nada probado en el A4.
 
