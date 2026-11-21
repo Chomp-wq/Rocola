@@ -116,7 +116,7 @@ HOME=$DIR XDG_DATA_HOME=$DIR/datos XDG_CACHE_HOME=$DIR/cache XDG_CONFIG_HOME=$DI
 	"$COG" --platform=drm --cookie-jar="sqlite:$DIR/galletas.sqlite" "$URL" >> "$LOG" 2>&1 &
 cpid=$!
 echo "$cpid" > "$PIDF"
-echo "$(date '+%F %T') abierto (pid $cpid)" >> "$LOG"
+echo "$(date '+%F %T') abierto (pid $cpid; descargas en $DESC, tope $DTOPE MB)" >> "$LOG"
 cierra() { kill "$cpid" 2>/dev/null; i=0; while kill -0 "$cpid" 2>/dev/null && [ $i -lt 30 ]; do sleep 0.1; i=$((i + 1)); done; kill -9 "$cpid" 2>/dev/null; }
 trap 'cierra' TERM INT HUP
 # si rocola-xp se cae, el navegador fuera (la rocola vuelve a necesitar la pantalla)
