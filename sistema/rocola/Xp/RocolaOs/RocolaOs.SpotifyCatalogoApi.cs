@@ -180,28 +180,32 @@ namespace Rocola
         internal static void PortadaDe(string url) { try { Uri u = new Uri(url); hostPortadas = u.Scheme + "://" + u.Authority + "/"; } catch { } }
         internal static void Calienta()
         {
+            // (revision) desde el latido de la pantalla: aqui solo el plazo de 20 s y el pedido a la cola (sin disco ni red, sin hilos nuevos);
+            // el plazo de un 429, la configuracion, la llave y las HEAD las hace el hilo de la API (AtiendeCalentar)
             long ahora = Environment.TickCount64;
             if (ahora - Interlocked.Read(ref ultimoCalentar) < 20000) return;
-            Prepara();   // (antes de mirar Frena: lee el plazo de un 429 de antes de abrir, guardado en /run)
-            if (Frena) return;
-            Config c = LeeConfig();
-            if (c == null || !c.Listo) return;
             Interlocked.Exchange(ref ultimoCalentar, ahora);
-            Interlocked.Increment(ref Calentadas);
             Encola(new Pedido { Que = Calentar, Clave = "", Alguien = true });
+        }
+        // (en el hilo de la API) las HEAD, sin esperarlas (SendAsync: ni hilo nuevo ni la cola parada si la red tarda)
+        private static void CalientaConexiones()
+        {
+            Interlocked.Increment(ref Calentadas);
             string api, img = hostPortadas;
             try { Uri u = new Uri(Base); api = u.Scheme + "://" + u.Authority + "/"; } catch { return; }
             if (img == null) img = api.StartsWith("http://127.0.0.1", StringComparison.Ordinal) ? api : "https://i.scdn.co/";
-            RocolaOs.Hilo("spotify_calienta", delegate
-            {
-                foreach (string u in img == api ? new[] { api } : new[] { api, img })
-                    if (!Frena) try
+            foreach (string u in img == api ? new[] { api } : new[] { api, img })
+                try
+                {
+                    CancellationTokenSource cts = new CancellationTokenSource(8000);
+                    HttpRequestMessage m = new HttpRequestMessage(HttpMethod.Head, u);
+                    Http.SendAsync(m, HttpCompletionOption.ResponseHeadersRead, cts.Token).ContinueWith(t =>
                     {
-                        using (CancellationTokenSource cts = new CancellationTokenSource(8000))
-                        using (HttpResponseMessage r = Http.Send(new HttpRequestMessage(HttpMethod.Head, u), HttpCompletionOption.ResponseHeadersRead, cts.Token)) { }
-                    }
-                    catch { }   // (sin red: la busqueda dira lo suyo)
-            });
+                        try { if (t.Status == System.Threading.Tasks.TaskStatus.RanToCompletion) t.Result.Dispose(); } catch { }
+                        m.Dispose(); cts.Dispose();
+                    }, System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously);
+                }
+                catch { }   // (sin red: la busqueda dira lo suyo)
         }
 
         private static void Encola(Pedido p)
@@ -462,7 +466,9 @@ namespace Rocola
             {   // (rapido-spotify) la llave de la app, si falta o vence en menos de 5 min (no es una peticion a la API: es la de cuentas)
                 if (Frena) { error = "Spotify frena"; return null; }
                 string ll = Llave(c, false, MargenCalentarMs, out error);
-                return ll != null ? (object)Calentar : null;
+                if (ll == null) return null;
+                if (!Frena) CalientaConexiones();
+                return Calentar;
             }
             error = "pedido desconocido";
             return null;

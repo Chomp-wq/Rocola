@@ -176,7 +176,11 @@ PY
       # (de la pagina donde empieza y de donde se para: hasta 7 paginas de 18 cada vez), lo que se cuenta es lo pedido MIENTRAS se hojea (de
       # los 12,5 a los 52 s: ARRIBA mantenido), que tiene que seguir siendo casi nada; el total, solo se dice
       hj=$(awk -v i="$(cat $o/inicio_ms)" '$4 ~ /^\/release-group\// && $1 >= i + 12500 && $1 <= i + 52000' "$o/api/tiempos.txt" | wc -l)
-      si "hojea: portadas pedidas al Cover Art Archive mientras se hojea: $hj (en total $(grep -c 'GET /release-group/' $a): las de la 1a pagina, las de donde se paro y las de al lado de las dos; $(est $o portadas_dejadas) dejadas sin pedir)" test "$hj" -le 60
+      # (revision) mientras se hojea, como la base (unos 16; el defecto de 6a49a70 pedia 64-148): 30 como mucho. Y el total con tope (la
+      # base, 90 como mucho; con lo adelantado, 174-186): 200, para ver si el adelanto vuelve a gastar de mas en la red y el disco del bar
+      ht=$(grep -c 'GET /release-group/' $a)
+      si "hojea: portadas pedidas al Cover Art Archive mientras se hojea: $hj de 30 como mucho ($(est $o portadas_dejadas) dejadas sin pedir)" test "$hj" -le 30
+      si "hojea: portadas pedidas en total: $ht de 200 como mucho (las de la 1a pagina, las de donde se paro y las de al lado de las dos)" test "$ht" -le 200
       si "hojea: la memoria con tope (el mayor tamano en la memoria: $(est $o memoria_mb_max) MB; los objetos de .NET: $(est $o gc_mb_max) MB)" test "$(est $o gc_mb_max)" -le 250
       si "hojea: en la memoria como mucho 4 letras ($(est $o en_memoria))" test "$(est $o en_memoria | wc -c)" -le 5
     else

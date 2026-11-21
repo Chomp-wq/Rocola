@@ -136,10 +136,14 @@ elif esc == 'pared':
             ms = [mb[i] for i in range(pag * 18, pag * 18 + 18) if i in mb]
             falta = [m for m in ms if m not in llego]
             v = max([0] + [llego[m] - tk for m in ms if m in llego])
-            listas.append(v)
-            M('pagina%d_lista_en_disco' % len(listas), v if not falta else None)
+            # (revision) si todas llegaron ANTES de pasar a la pagina (adelantadas), no es «0 ms»: no hay nada que medir («-»)
+            antes = not falta and bool(ms) and all(llego[m] <= tk for m in ms)
+            listas.append(None if (falta or antes) else v)
+            M('pagina%d_lista_en_disco' % len(listas), None if (falta or antes) else v)
+            if antes: M('pagina%d_ya_lista_antes' % len(listas), 1)
             if falta: M('pagina%d_sin_pedir' % len(listas), len(falta))
-        if listas: M('paginas_lista_en_disco_mediana', statistics.median(listas))
+        vl = [x for x in listas if x is not None]
+        if vl: M('paginas_lista_en_disco_mediana', statistics.median(vl))
     except (FileNotFoundError, ValueError): pass
 elif esc in ('suena', 'mezcla'):
     # cuando se atendio cada pedido (hora de Unix)

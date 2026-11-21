@@ -7,7 +7,7 @@
 # Soloist de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): apagado fabrica dos adelanto adelantoxp mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso
+#   escenas (de fabrica todas): apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso
 #   vigilante noche (adelanto y adelantoxp: el play adelantado de la siguiente de Spotify, rapido-spotify: FASE11_rapido-spotify.md)
 #   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
 #   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
@@ -24,7 +24,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado fabrica dos adelanto adelantoxp mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche}"
+partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -268,7 +268,7 @@ if [[ " $partes " == *" adelanto "* ]]; then
   si "adelanto: la primera entera (8 s: $t440 s)" entre "$t440" 7.7 8.3
   si "adelanto: la segunda entera (6 s: $t550 s)" entre "$t550" 5.7 6.3
   hueco=$(echo "$(primero "$f" 550) - $(ultimo "$f" 440)" | bc)
-  si "adelanto: el hueco entre las dos sin el segundo de Soloist (menos de 1,9 s: $hueco s; sin adelantar, unos 2,3)" entre "$hueco" 0 1.9
+  si "adelanto: el hueco entre las dos sin el segundo de Soloist (menos de 1,7 s: $hueco s; sin adelantar, unos 2,3)" entre "$hueco" 0 1.7
   si "adelanto: el autoplay del final (990 Hz) no se oye ($t990 s)" entre "$t990" 0 0.15
   si "adelanto: ni un hueco dentro de cada una (440: $(huecos "$f" 440), 550: $(huecos "$f" 550))" test "$(huecos "$f" 440)$(huecos "$f" 550)" = 00
   si "adelanto: la bitacora: 2 cobradas y 2 acabadas de verdad, sin devolver" bash -c "[ \$(grep -c 'COBRADA' '$b') = 2 ] && [ \$(grep -c ': termino, sono' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
@@ -292,7 +292,35 @@ if [[ " $partes " == *" adelantoxp "* ]]; then
   xp=$(awk -v p="$(primero "$f" 440)" '$1 < p && $3 != 0 && ($3 < 425 || $3 > 455) {u=$2} END {print u+0}' "$f")
   hueco=$(echo "$(primero "$f" 440) - $xp" | bc)
   si "adelantoxp: el hueco de la de XP a la de Spotify sin el segundo de Soloist (menos de 1,9 s: $hueco s)" entre "$hueco" 0 1.9
+  si "adelantoxp: el adelanto sigue encendido (ni la salvaguarda ni su archivo)" bash -c "! grep -q 'SE APAGA' '$b' && [ ! -f '$d/rocola_spotify_sin_adelanto.txt' ]"
   si "adelantoxp: 1 cobrada y 1 acabada de verdad, sin devolver" bash -c "[ \$(grep -c 'COBRADA' '$b') = 1 ] && [ \$(grep -c ': termino, sono' '$b') = 1 ] && ! grep -q DEVUELTA '$b'"
+fi
+
+# ---------------------------------------------------------------- adelantoreloj (revision): la salvaguarda del play adelantado
+# Un Soloist que SIN LECTOR sigue avanzando por su reloj (SOLOIST_FALSO_RELOJ=1; el falso de siempre no avanza): la de Spotify adelantada desde
+# una de XP pierde su principio. La rocola lo ve (sono menos que su duracion), apaga el adelanto para siempre y la siguiente suena entera, con
+# su play al abrir la fuente (como antes de rapido-spotify)
+if [[ " $partes " == *" adelantoreloj "* ]]; then
+  echo "== adelantoreloj (Soloist que avanza sin lector: la salvaguarda apaga el adelanto)"
+  d=$(datos adelantoreloj); T0=$(date +%s.%N)
+  abre adelantoreloj "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;11.9:pide spotify:track:f550d006bb|$P|6000;33:copia" 34 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=1 SOLOIST_FALSO_RELOJ=1
+  o="$W/adelantoreloj"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$f" | head -12
+  si "adelantoreloj: sale con 0" test "$(cat $o/salio)" = 0
+  si "adelantoreloj: el falso avanzo sin lector" contiene "$o/falso.txt" "sin lector: avanza por el reloj"
+  si "adelantoreloj: la 1a de Spotify, adelantada" contiene "$b" "play adelantado spotify:track:f440d006aa"
+  si "adelantoreloj: la salvaguarda la vio corta y apago el adelanto" contiene "$b" "EL PLAY ADELANTADO SE APAGA para siempre (la adelantada spotify:track:f440d006aa"
+  si "adelantoreloj: y lo guardo (rocola_spotify_sin_adelanto.txt)" test -f "$d/rocola_spotify_sin_adelanto.txt"
+  si "adelantoreloj: la 2a ya no se adelanto" nocontiene "$b" "play adelantado spotify:track:f550d006bb"
+  t550=$(oye "$f" 550)
+  si "adelantoreloj: la 2a entera (6 s: $t550 s)" entre "$t550" 5.7 6.3
+  si "adelantoreloj: 2 cobradas, ninguna devuelta" bash -c "[ \$(grep -c 'COBRADA' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
+  # y al volver a abrir con el mismo archivo, ni se intenta
+  T0=$(date +%s.%N)
+  abre adelantoreloj2 "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;24:copia" 25 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=1 SOLOIST_FALSO_RELOJ=1
+  o="$W/adelantoreloj2"; f="$o/frec.txt"
+  t440=$(oye "$f" 440)
+  si "adelantoreloj: otra vez: sin adelanto (lo guardado manda) y entera (6 s: $t440 s)" bash -c "[ \$(grep -c 'play adelantado' '$b') = 1 ] && python3 -c 'import sys; sys.exit(0 if 5.7 <= float(sys.argv[1]) <= 6.3 else 1)' '$t440'"
 fi
 
 # ---------------------------------------------------------------- mezcla: con las de XP, el turno, sin creditos

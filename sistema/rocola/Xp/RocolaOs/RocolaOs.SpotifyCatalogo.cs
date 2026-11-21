@@ -100,6 +100,9 @@ namespace Rocola
         private HashSet<Album> rocolaOsSpTarjetasAdelantadas;
         private long rocolaOsSpUltimoAdelantoMs = long.MinValue / 2;
         internal static long RocolaOsSpAdelantadas;
+        // (revision) como mucho 3 tarjetas adelantadas cada vez que se abre el buscador (3 a 6 peticiones; abrir una lo pediria igual)
+        private const int RocolaOsSpTopeAdelantos = 3;
+        private int rocolaOsSpAdelantosBuscador;
         private void RocolaOsSpotifyCatalogoMiraTarjeta(bool abierto)
         {
             SearchItem it = null;
@@ -109,7 +112,10 @@ namespace Rocola
                 int i = searchOverlay.SelResult;
                 if (r != null && i >= 0 && i < r.Count) it = r[i];
             }
+            // (revision) al cerrarse el buscador se olvida lo adelantado (sin crecer toda la sesion) y vuelve el tope de lo que se adelanta
+            if (!abierto && rocolaOsSpTarjetasAdelantadas != null && rocolaOsSpTarjetasAdelantadas.Count > 0) { rocolaOsSpTarjetasAdelantadas.Clear(); rocolaOsSpAdelantosBuscador = 0; }
             if (it == null || !ReferenceEquals(it, rocolaOsSpTarjetaMirada)) { rocolaOsSpTarjetaMirada = it; return; }
+            if (rocolaOsSpAdelantosBuscador >= RocolaOsSpTopeAdelantos) return;   // (revision: la cuota; quien baja despacio por la lista no gasta mas)
             Album a = it.AlbumRef;
             if (!RocolaOsEsSpotify(a) || !RocolaOsSpotifyCatalogoVa || RocolaOsSpotifyCatalogoApi.Frena || !RocolaOsSpotifyCatalogoApi.HayLlave) return;
             if (rocolaOsSpTarjetasAdelantadas == null) rocolaOsSpTarjetasAdelantadas = new HashSet<Album>();
@@ -121,7 +127,7 @@ namespace Rocola
             RocolaOsSpotifyParedQue q;
             if (it.Kind == 1 && rocolaOsSpDeDisco.TryGetValue(a, out d) && d.Tipo == "album" && d.Canciones == null && a.Tracks.Count == 0)
             {
-                rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++;
+                rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; rocolaOsSpAdelantosBuscador++;
                 RocolaOsSpotifyCatalogoApi.AbreDisco(d.Id, delegate (object r, string error)
                 {
                     RocolaOs.Encarga("spotify_catalogo:adelanto", delegate { RocolaOsSpotifyCatalogoLlegoPrevisto(a, r as RocolaOsSpotifyCatalogoDisco); });
@@ -130,12 +136,12 @@ namespace Rocola
             else if (rocolaOsSpParedDe != null && rocolaOsSpParedDe.TryGetValue(a, out q) && !string.IsNullOrEmpty(q.De))
             {   // «ARTISTA · mas en Spotify» (la pared del artista) o «Todos los discos de «lo escrito»»
                 if (RocolaOsSpotifyCatalogoAdelantaPared(q.Tipo == "todos" ? RocolaOsSpotifyCatalogoApi.ParedTodos : RocolaOsSpotifyCatalogoApi.ParedArtista, q.De))
-                { rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; }
+                { rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; rocolaOsSpAdelantosBuscador++; }
             }
             else if (it.Kind == 0 && rocolaOsSpDeArtista.TryGetValue(a, out ar) && !string.IsNullOrEmpty(ar.Id))
             {
                 if (RocolaOsSpotifyCatalogoAdelantaPared(RocolaOsSpotifyCatalogoApi.ParedArtista, ar.Id))
-                { rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; }
+                { rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; rocolaOsSpAdelantosBuscador++; }
             }
         }
         // la primera pagina de una pared del buscador: su 1er bloque de 10 y, si hay mas, el 2o (las 18 casillas de su primera pagina). La respuesta

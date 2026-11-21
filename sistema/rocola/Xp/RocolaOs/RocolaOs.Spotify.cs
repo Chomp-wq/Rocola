@@ -129,6 +129,25 @@ namespace Rocola
         private static RocolaOsSpotifyPeticion adelantada;
         internal const int AdelantoMaxMs = 30000;
         internal static long Adelantadas, AdelantadasUsadas;
+        // (revision) la salvaguarda (Remata): una adelantada que sono mas de 500 ms menos que su duracion apaga el adelanto para siempre
+        internal const int AdelantoFaltaMaxMs = 500;
+        internal const string ArchivoSinAdelanto = "rocola_spotify_sin_adelanto.txt";
+        private static int adelantoApagado = -1;   // -1 sin leer (lo lee el hilo de Spotify la primera vez), 0 va, 1 apagado
+        private static bool AdelantoApagado
+        {
+            get
+            {
+                int v = Volatile.Read(ref adelantoApagado);
+                if (v < 0) { bool hay = false; try { hay = File.Exists(RocolaOs.Datos(ArchivoSinAdelanto)); } catch { } v = hay ? 1 : 0; Volatile.Write(ref adelantoApagado, v); }
+                return v == 1;
+            }
+        }
+        private static void ApagaAdelanto(string por)
+        {
+            if (Interlocked.Exchange(ref adelantoApagado, 1) == 1) return;
+            Apunta("EL PLAY ADELANTADO SE APAGA para siempre (" + por + "): Soloist no espera sin lector; desde ahora el play al abrir la fuente, como antes");
+            try { File.WriteAllText(RocolaOs.Datos(ArchivoSinAdelanto), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + "\t" + por + "\n"); } catch { }
+        }
         // la fuente, en su primera lectura (hilo del sonido, sin esperar): la adelantada si es la suya y sigue viva (si no, null: la de siempre)
         internal static RocolaOsSpotifyPeticion TomaAdelantada(string uri)
         {
@@ -718,7 +737,7 @@ namespace Rocola
                         Evalua(ahora);
                     }
                 }
-                else if (f == RocolaOsSpotifyPeticion.Mandada && !p.Reintentada && ahora - Volatile.Read(ref p.MandadaMs) > 4000 && st.Ws && st.Sesion)
+                else if (f == RocolaOsSpotifyPeticion.Mandada && !p.Reintentada && !(p.Adelantada && !p.Adoptada) && ahora - Volatile.Read(ref p.MandadaMs) > 4000 && st.Ws && st.Sesion)
                 {   // a los 4 s Soloist aun no la toca: se le pide otra vez (una vez)
                     p.Reintentada = true;
                     Apunta("play otra vez " + p.Uri + " (a los 4 s seguia «" + st.ItemUri + "» " + st.Status + ")");
@@ -750,6 +769,13 @@ namespace Rocola
             if (p.Rematada) return;
             p.Rematada = true;
             if (Volatile.Read(ref p.Motivo) == 0) Volatile.Write(ref p.Motivo, p.FinMotivo);
+            // (revision) LA SALVAGUARDA DEL PLAY ADELANTADO: probado solo con el Soloist falso, que sin lector no avanza. Si un Soloist de verdad
+            // avanzara por su reloj sin poder escribir (y se comiera el principio), la adelantada acabaria bien pero mas corta que su duracion:
+            // entonces el adelanto se apaga para siempre en esta rocola (rocola_spotify_sin_adelanto.txt) y todo vuelve a ser como antes de
+            // rapido-spotify (el play al abrir la fuente). Lo mas que se pierde es el principio de UNA cancion.
+            int durAd = Volatile.Read(ref p.DuracionMs);
+            if (p.Adelantada && p.Adoptada && !p.Devolver && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && durAd > 0 && p.SegundosSonados * 1000 < durAd - AdelantoFaltaMaxMs)
+                ApagaAdelanto("la adelantada " + p.Uri + " sono " + p.SegundosSonados.ToString("0.0", CultureInfo.InvariantCulture) + " s de " + (durAd / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s");
             string s = Estado.Status;
             if (ReferenceEquals(p, Actual) && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && !p.Devolver && Adelanta(p)) { }   // (rapido-spotify)
             else if (ReferenceEquals(p, Actual) && (s == "playing" || s == "buffering")) { PausaNuestra(); }
@@ -774,6 +800,7 @@ namespace Rocola
             Siguiente sg = Volatile.Read(ref siguiente);
             RocolaOsSpotifyEstado st = Estado;
             if (sg == null || (acabada != null && sg.Uri == acabada.Uri) || !st.Ws || !st.Sesion || Volatile.Read(ref adelantada) != null || parar || CerrandoLaRocola) return false;
+            if (AdelantoApagado) return false;
             foreach (RocolaOsSpotifyPeticion v in vivas) if (v.Uri == sg.Uri && Volatile.Read(ref v.Fase) != RocolaOsSpotifyPeticion.Acabada) return false;   // (ya la abrio XP)
             long ahora = Environment.TickCount64;
             RocolaOsSpotifyPeticion q = new RocolaOsSpotifyPeticion(sg.Uri, sg.Titulo, sg.DuracionMs) { Adelantada = true };

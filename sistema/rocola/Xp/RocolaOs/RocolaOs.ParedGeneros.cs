@@ -97,6 +97,7 @@ namespace Rocola
         private Dictionary<string, List<Album>> rocolaOsPgEsperan;        // mbid -> los discos que esperan su portada
         // (rapido-spotify) los de las paginas de al lado que se bajan por adelantado: mbid -> los discos y la pagina (con su letra) donde estan
         private Dictionary<string, List<KeyValuePair<Album, int>>> rocolaOsPgEsperanVecinas;
+        private int rocolaOsPgVecinasPagina = -1;
         private char rocolaOsPgVecinasLetra;
         private HashSet<Album> rocolaOsPgAbriendo;
         private List<Album> rocolaOsPgAlbumsXp;                           // la biblioteca de XP con que se armaron (otra tras re-escanear)
@@ -525,7 +526,19 @@ namespace Rocola
                     }
             }
             int dir = RocolaOsPgPortadas.Mira(currentLetter, page, vecinaDespues, vecinaAntes);
-            if (rocolaOsPgVecinasLetra != currentLetter) { rocolaOsPgEsperanVecinas.Clear(); rocolaOsPgVecinasLetra = currentLetter; }   // (otra letra: lo de la de antes ya no)
+            if (rocolaOsPgVecinasLetra != currentLetter) { rocolaOsPgEsperanVecinas.Clear(); rocolaOsPgVecinasLetra = currentLetter; rocolaOsPgVecinasPagina = page; }   // (otra letra: lo de la de antes ya no)
+            else if (rocolaOsPgVecinasPagina != page)
+            {   // (revision) otra pagina: lo que esperaba de paginas que ya no estan cerca se olvida (si llega, la ruta la pone EnDisco al volver)
+                rocolaOsPgVecinasPagina = page;
+                List<string> fuera = null;
+                foreach (KeyValuePair<string, List<KeyValuePair<Album, int>>> kv in rocolaOsPgEsperanVecinas)
+                {
+                    List<KeyValuePair<Album, int>> l = kv.Value;
+                    for (int i = l.Count - 1; i >= 0; i--) if (l[i].Value < page - 2 || l[i].Value > page + 2) l.RemoveAt(i);
+                    if (l.Count == 0) (fuera ?? (fuera = new List<string>())).Add(kv.Key);
+                }
+                if (fuera != null) foreach (string k in fuera) rocolaOsPgEsperanVecinas.Remove(k);
+            }
             // las portadas: las que ya estan en el disco, de esta pagina y de las de al lado (XP las lee por adelantado); las que faltan, de esta
             // (al verse) y (rapido-spotify) tambien de las de al lado y de la que sigue hacia donde se va, POR ADELANTADO: las baja el hilo de las
             // portadas cuando ya no le queda nada de la que se mira (asi, al pasar de pagina, ya estan en el disco y XP ya las leyo). Nada de la

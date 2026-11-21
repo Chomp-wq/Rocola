@@ -518,6 +518,7 @@ namespace Rocola
                     if (letra == visLetra && pagina == visPagina) return visDir;
                     visDir = letra == visLetra && pagina < visPagina ? -1 : 1;
                     visLetra = letra; visPagina = pagina; visDesde = Environment.TickCount64;
+                    quietaPagina = -1;   // (revision: al volver a una pagina que ya estuvo quieta, el adelanto vuelve a esperar los 6 cuadros y 600 ms)
                     Monitor.PulseAll(cerrojo);
                     return visDir;
                 }

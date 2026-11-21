@@ -135,18 +135,37 @@ static unsafe class SoloistFalso
         new Thread(() => Guion()) { IsBackground = true }.Start();
         // EL REPRODUCTOR: cada 5 ms escribe lo que el lector deja, de la cancion que suena
         float[] buf = new float[Rate * 2];
+        // (revision rapido-spotify) SOLOIST_FALSO_RELOJ=1: un Soloist que, sin lector, sigue avanzando por su reloj (se come lo que no pudo
+        // escribir), para la salvaguarda del play adelantado
+        bool reloj = Environment.GetEnvironmentVariable("SOLOIST_FALSO_RELOJ") == "1";
+        long relojAntes = System.Diagnostics.Stopwatch.GetTimestamp();
         while (!fin)
         {
             Thread.Sleep(5);
             int quiere;
             bool sonando;
+            long relojAhora = System.Diagnostics.Stopwatch.GetTimestamp();
+            long relojCuadros = (relojAhora - relojAntes) * Rate / System.Diagnostics.Stopwatch.Frequency;
+            relojAntes = relojAhora;
             lock (cerrojo) sonando = status == "playing" && !cortado && !nunca && item.Length > 0;
             esc.Tapado(!sonando);
             if (!sonando) continue;
             quiere = esc.Puede();
-            if (quiere <= 0) continue;
             string acabo = null;
-            int n;
+            if (quiere <= 0 && reloj && esc.SinLector)
+            {
+                lock (cerrojo)
+                    if (status == "playing" && item.Length > 0 && posCuadros < durCuadros)
+                    {
+                        if (posCuadros == 0) Apunta("soloist", "sin lector: avanza por el reloj (RELOJ)");
+                        posCuadros = Math.Min(durCuadros, posCuadros + relojCuadros);
+                        if (posCuadros >= durCuadros) acabo = item;
+                    }
+                if (acabo == null) continue;
+            }
+            else if (quiere <= 0) continue;
+            int n = 0;
+            if (acabo == null)
             lock (cerrojoEscritor)
             {
             lock (cerrojo)
@@ -447,6 +466,7 @@ static unsafe class SoloistFalso
     abstract class Escritor
     {
         internal abstract int Puede();                    // cuantos cuadros deja escribir el lector
+        internal bool SinLector;                          // (la ultima Puede: 0 porque no hay lector)
         internal abstract void Escribe(float[] b, int n);
         internal abstract void Tapado(bool t);
         internal abstract void Vacia();
@@ -528,6 +548,7 @@ static unsafe class SoloistFalso
             long ahora = Mono();
             if (ahora - ultimoLatido > 200_000_000) { Volatile.Write(ref *(long*)(b + 56), ahora); ultimoLatido = ahora; }
             bool lector = Volatile.Read(ref *(uint*)(b + 76)) == 1 && ahora - Volatile.Read(ref *(long*)(b + 64)) < 2_000_000_000L;
+            SinLector = !lector;
             if (!lector) return 0;
             long objetivo = Rate / 4;   // 250 ms (sin tlength)
             long p = Pendientes();
