@@ -130,6 +130,18 @@ elif modo == "histsigterm":
     clic(PEST["imagen"], sep=1.5); clic(MEDIR)
     t[0] = 10.0 + v + 1.0
     clic(HISTORIAL, "h1historial", sep=1.7); tecla("67", sep=1.2); estado("historial", 0.3); t[0] -= 2.0
+elif modo == "ecualizador":
+    # (20-11-2026, PORT_xp-1718.md) la hoja «Ecualizador...» de XP del 17-11-2026, que la referencia (aef2211) no tiene: abrirla desde
+    # Ajustes del sonido; la banda de 31 Hz al maximo y la de 16 kHz al minimo con el raton (el dibujo de la curva cambia); «Sin
+    # ecualizador» (E1) y otra vez; «Todo en 0»; la de 500 Hz arriba; volver. Los botones por su SetBounds en Form1.Ajustes.cs (la hoja en
+    # (48,131) de la pantalla, la tarjeta de la curva en (520,131)); los deslizadores en (84, 40 + 30*i, 270, 22) de su tarjeta
+    EQ = (748, 400); CERO = (166, 494); SIN = (386, 494)
+    banda = lambda i, x: (x, 182 + 30 * i)
+    cada[0] = True
+    clic(AJUSTES, "q1aju"); clic(EQ, "q2eq")
+    clic(banda(0, 400), "q3banda0"); clic(banda(9, 134), "q4banda9")
+    clic(SIN, "q5sin"); clic(SIN, "q6con"); clic(CERO, "q7cero"); clic(banda(4, 330), "q8banda4"); clic(VOLVER, "q9vuelta")
+    fin()
 def lista(l): return ",".join("%.1f:%s" % (x + ESPERA, n) for x, n in l)
 print(lista(p))
 print(lista(c))

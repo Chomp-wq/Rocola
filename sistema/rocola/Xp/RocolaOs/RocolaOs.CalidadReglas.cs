@@ -101,6 +101,10 @@ namespace Rocola
                             }
                         }
                     }
+                    // un «MP3» que es otro formato (M4A, OGG, FLAC, WMA, WAV: NoEsMp3, y desde el 21-11 suena por su copia en WAV, funcion
+                    // «convierte») no se busca su cuadro: en sus bytes saldria un sincronismo falso con Hz y kbps al azar (EsMp3 queda en false:
+                    // para A, solo el corte medido)
+                    if (NoEsMp3.OtroFormato(ruta) != null) return r;
                     fs.Position = audio; byte[] a = new byte[65536]; int n = Lee(fs, a, a.Length);
                     for (int i = 0; i + 4 <= n; i++)
                     {

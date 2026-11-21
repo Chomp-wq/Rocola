@@ -2219,7 +2219,7 @@ namespace Rocola
                 return "no se encuentra el archivo (¿se desconectó el disco?)";
             if (ex is UnauthorizedAccessException) return "Windows no deja leer el archivo";
             if (ex is EndOfStreamException) return "el archivo está incompleto o dañado";
-            if (ex is IOException) return "no se pudo leer el archivo del disco";
+            if (ex is IOException) return ex is RocolaOsConvirtiendo ? RocolaOsConvirtiendo.Motivo : "no se pudo leer el archivo del disco";   // ROCOLA OS g113: (XP) if (ex is IOException) return "no se pudo leer el archivo del disco"; — la pedida que aun se esta convirtiendo a WAV (funcion «convierte») lo dice asi
             if (ex is System.Runtime.InteropServices.COMException) return "el reproductor de Windows no lo pudo abrir";
             if (ex is FormatException || ex is InvalidDataException || ex is InvalidOperationException
                 || ex is ArgumentException || ex is NotSupportedException)

@@ -77,6 +77,16 @@ ia_xp() {
 	mkdir -p "$DISCO/rocola-os/ia-xp" 2>/dev/null && [ -d "$DISCO/rocola-os/ia-xp" ] && echo "$DISCO/rocola-os/ia-xp"
 }
 [ -z "$ROCOLA_IA_DATOS" ] && d=$(ia_xp) && export ROCOLA_IA_DATOS="$d"
+# LOS «MP3» QUE NO LO SON, CONVERTIDOS (decision del 4-11-2026; rocola-xp: RocolaOs/RocolaOs.Convierte.cs, funcion «convierte»): la copia
+# en WAV de 16 bits de un M4A/OGG/FLAC/WMA/WAV con nombre .mp3 va al disco de la rocola, junto a la musica (rocola-os/convertidas; el
+# original nunca se toca). Solo con ese disco montado con escritura; si no, sin la variable: rocola-xp usaria su carpeta de datos, donde no
+# hay 1 GB libre, y queda lo de XP (credito devuelto, danada).
+conv_xp() {
+	[ -d "$DISCO/rocola-os" ] || return 1
+	awk -v m="$DISCO" '$2 == m {print $4}' /proc/mounts 2>/dev/null | grep -q '^rw' || return 1
+	mkdir -p "$DISCO/rocola-os/convertidas" 2>/dev/null && [ -d "$DISCO/rocola-os/convertidas" ] && echo "$DISCO/rocola-os/convertidas"
+}
+[ -z "$ROCOLA_CONVERTIDAS" ] && d=$(conv_xp) && export ROCOLA_CONVERTIDAS="$d"
 
 # LOS rocola-xp ABIERTOS COMO ROCOLA: no el importador (rocola-xp --importa-xp, abajo: tambien se llama rocola-xp) ni uno que ya acabo y
 # espera a que se le recoja (con el lanzador parado por rocola-sonido).

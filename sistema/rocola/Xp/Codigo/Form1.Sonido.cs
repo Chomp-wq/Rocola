@@ -618,7 +618,7 @@ namespace Rocola
             }
             public LectorMedida(string ruta)
             {
-                NoEsMp3.Rechaza(ruta);   // un M4A/OGG/FLAC/WMA/WAV con nombre .mp3 no se mide (seria medir basura); ver NoEsMp3.cs
+                ruta = RocolaOsConvertidaMide(ruta); NoEsMp3.Rechaza(ruta);   // ROCOLA OS g111: (XP) NoEsMp3.Rechaza(ruta); — un «MP3» que es otro formato y ya esta convertido a WAV (funcion «convierte») se mide del WAV, bajo la ruta del original (RocolaOs/RocolaOs.Convierte.cs; sin ella, la misma ruta). un M4A/OGG/FLAC/WMA/WAV con nombre .mp3 no se mide (seria medir basura); ver NoEsMp3.cs
                 try
                 {
                     if (ruta != null && ruta.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
@@ -1508,7 +1508,7 @@ namespace Rocola
             // LOS «MP3» QUE NO LO SON (17-11-2026): un M4A/OGG/FLAC/WMA/WAV con nombre .mp3 se rechaza por su cabecera, ANTES de abrir nada y sin
             // pasar por BuildCleanMp3 (sus cuadros falsos sonaban a ruido). AudioStartFailed devuelve el credito, la marca danada y la anota en
             // rocola_incompatibles.txt. Los MP3 de verdad (y el MP3 dentro de un WAV) pasan igual que antes. Ver NoEsMp3.cs.
-            NoEsMp3.Rechaza(path);
+            { IAudioSource rocolaOsConvertida = RocolaOsConvertidaAbre(path); if (rocolaOsConvertida != null) return rocolaOsConvertida; } NoEsMp3.Rechaza(path);   // ROCOLA OS g110: (XP) NoEsMp3.Rechaza(path); — un «MP3» que es otro formato suena desde su copia en WAV hecha con ffmpeg (funcion «convierte», RocolaOs/RocolaOs.Convierte.cs): si aun no esta, se espera hasta 20 s y si tarda mas se devuelve el credito sin marcarla danada; sin ffmpeg, sin sitio o si no se pudo, null y lo de XP
             { IAudioSource rocolaOsSpotify = RocolaOsSpotifyAbre(path); if (rocolaOsSpotify != null) return rocolaOsSpotify; } string original = RutaOriginalDe(path);   // ROCOLA OS g13: (XP) string original = RutaOriginalDe(path); — con el modo Spotify (spotify=1), una ruta «spotify:track:» se abre con la fuente de Spotify, que lee el anillo de Soloist (RocolaOs/RocolaOs.SpotifyFuente.cs); apagado, null y lo de XP
             FuenteMedida inicio = CapturaFuente(original);
             try { return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, ComoEstereo(new FileAudioSource(path))))); }   // sin el hueco del codificador ni los silencios largos

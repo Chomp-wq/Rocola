@@ -83,3 +83,135 @@ arriba. `ventanaf3.cs` es de WinForms: no se corrió.
 No se corrió `nivel0.sh` entero: la copia congelada de la referencia (aef2211) es la XP de antes, y Ctrl+F3 -> Sonido (el modo noche con
 sus graves, el botón del ecualizador, sin «Presencia nueva o antes» ni I3) y el sonido de fábrica a partir de las 22 h ya no son los suyos
 a propósito. Nada probado en el A4.
+
+## Lo de Linux (20-11-2026)
+
+Rama `xp-1718-linux`, sobre `claude/modest-carson-fa2v2n` (424ade7) con d44473f. Lo que faltaba del paso: la importación de XP con lo
+nuevo, los «MP3» que no lo son con lo que Linux tiene, las baterías de XP otra vez y la hoja del ecualizador con el arnés del port. **No**
+se hizo lo de los videos (el ecualizador del dueño y los graves de noche como filtro de mpv): es una propuesta que decide el dueño.
+
+### 1. La importación de XP (`Nativo/ImportaXp.cs`)
+
+- d44473f (revisado): si la configuración de XP no trae `parejo_v2=1`, su `rocola_billar_nivel.txt` no se importa y la marca de la
+  importación lo dice; la carpeta de XP no se escribe. Bien, pero al juntar las configuraciones quedaban dos huecos:
+  - una **rocola-xp de antes del 18-11** (su propia tabla, aprendida con la presencia, sin la marca) y una XP **con** la marca: la tabla de
+    rocola-xp se queda («no se tocan») y `JuntaConfig(ya, cfg)` le añadía el `parejo_v2=1` de XP: al abrir, el código de XP ya no la
+    apartaba;
+  - una re-importación de una XP con `parejo_v2=0` escrito (manda la de XP) le quitaba la marca a la tabla de rocola-xp, que se apartaba
+    sin motivo.
+- Arreglo: **la marca va con la tabla que quede** (no es una preferencia, es de `rocola_billar_nivel.txt`). Si la tabla de XP va a su
+  sitio (no había, re-importación, copia del lanzador, o la de rocola-xp sin ninguna canción), `parejo_v2=1`; si se queda la de rocola-xp
+  (o ninguna), la marca que tenía rocola-xp, y si no tenía, ninguna (rocola-xp aparta lo suyo al cargar, como XP). Una sola línea, al final;
+  la marca de la importación dice cuál quedó (`parejo_v2=1 (con la tabla de XP)` o `(la de rocola-xp)`).
+- `eq_dueno=`, `eq_dueno_billar=`, `noche_graves=`, `noche_desde=` y `noche_desde_22=` pasan tal cual (las lee el código de XP).
+  `dsee_genero=` también se copia (es una línea más), rocola-xp la ignora (`LoadConfigPrefs`: `{ }`) y al guardar ya no la escribe.
+- Prueba (`Pruebas/Importa`, parte `importa`, JIT): **147 de 147**. Lo nuevo: la configuración de XP del mundo falso con las seis claves
+  (y `noche_desde=23` puesta a mano después del paso a las 22: se respeta), y cinco casos del volumen parejo con rocola-xp abierta
+  después: (a) XP sin la marca a una rocola-xp nueva: no se importa la tabla, sin marca, rocola-xp la pone al abrir, sin nada que apartar,
+  `dsee_genero=` fuera, el ecualizador, los graves de noche y las 23 h iguales, la carpeta de XP sin tocar; (b) rocola-xp vieja sin la
+  marca y XP con ella: su tabla no se toca, sin marca, y al abrir se aparta en `rocola_billar_nivel.antes-2026-11-18.txt` (la misma) y
+  pone la marca; (c) rocola-xp con la marca y XP sin ella: la de XP no entra, la suya y su marca se quedan, y al abrir no se aparta nada;
+  (d) re-importación de una XP con `parejo_v2=0`: la tabla y la marca `1` de rocola-xp se quedan; (e) re-importación de la XP con la
+  marca: su tabla entra (la de rocola-xp a `.antes-xp`) con `parejo_v2=1`. Las partes `usa` y `material` no cambian (no se volvieron a
+  correr: ver lo pendiente).
+
+### 2. Los «MP3» que no lo son, convertidos (función «convierte»)
+
+La decisión del 4-11-2026 (AGENTS.md) encima de lo de XP del 17-11-2026: `RocolaOs/RocolaOs.Convierte.cs`, encendida de fábrica
+(`convierte=0` en `rocola_os.txt` la apaga), con `NoEsMp3.OtroFormato` de detector y la lógica de `Motor/Conversiones.cs` (no se tocó).
+`Nativo/LectorAudio.cs` y `Nativo/MedidorVideo.cs` ya usan ffmpeg por tubería, pero para otra cosa (descomprimir un WAV comprimido,
+medir un video): la conversión es un proceso aparte que escribe un archivo, como en el programa anterior.
+
+- **Qué hace**: ffmpeg (`ROCOLA_FFMPEG` para las pruebas) pasa el archivo a WAV PCM de 16 bits con su frecuencia y sus canales, de uno en
+  uno en un hilo de fondo (nice 19). **El original no se toca**: la copia va a `ROCOLA_CONVERTIDAS`, con un nombre sacado de la ruta, el
+  tamaño y la fecha de escritura (si el archivo cambia, otra copia), escrita como `.haciendo.wav` y cambiada de nombre al acabar (las a
+  medias de un apagón se borran al arrancar). Sin ffmpeg, con menos de 1 GB libre (más 16 veces el original) o si ffmpeg falla: lo de XP.
+- **Cómo suena como la canción de la rocola**: la canción sigue siendo la ruta del `.mp3` original para todo (la cola, el estado, lo más
+  sonado, las estadísticas, lo aprendido, lo que se ve); solo cambia **qué archivo se lee**, en los dos sitios donde XP abre el sonido:
+  - **g110** (`Codigo/Form1.Sonido.cs:1511`, `OpenAudio`, antes del rechazo de XP): `RocolaOsConvertidaAbre` arma el lector como XP
+    (`SinSilencios`, `SellaFuenteAudio` con el sello **del original**, `ComoEstereo`, `FileAudioSource`) sobre el WAV, sin `SinRelleno`
+    (el hueco del codificador es de los MP3). Si aún no está, se pide y se espera hasta **20 s** (en el hilo de la apertura; el medidor de
+    Ctrl+F3, que abre en la pantalla, no espera). Si tarda más, un `IOException` «se esta convirtiendo»: por `AudioStartFailed` el crédito
+    se devuelve y, como es de E/S (`EsArchivoDanado`), **no queda dañada**: la próxima vez suena. Sin ffmpeg, sin sitio o fallida: null.
+  - **g111** (`Codigo/Form1.Sonido.cs:621`, `LectorMedida`: el repaso, la duración, la tanda larga): `RocolaOsConvertidaMide` da la ruta
+    del WAV (el mismo sonido; la medida se guarda bajo la ruta del original, la de quien mide). Si no está, se pide y ese hilo de fondo
+    espera hasta 60 s; si no llega, la ruta original y XP la rechaza. Así el repaso la convierte en cuanto la encuentra.
+  - Sin `ROCOLA_OS` o con la función apagada, los dos ganchos devuelven lo de XP sin leer nada; un MP3 de verdad (y el MP3 dentro de un
+    WAV, 0x55) tampoco cambia.
+- **El lanzador** (`/usr/bin/rocola`, BusyBox, sin `stat`): `conv_xp`, como `ia_xp`: `ROCOLA_CONVERTIDAS=$DISCO/rocola-os/convertidas`
+  solo con el disco de la rocola montado con escritura (comprobado con un tmpfs en escritura y en solo lectura; no con el BusyBox del
+  sistema, que no está en esta máquina). Sin ella, `convertidas` en la carpeta de datos (datos.img: sin 1 GB libre, lo de XP).
+- Ganchos: g110 y g111 en `GANCHOS.tsv`; `ganchos.py` TODO BIEN (51 en 19 archivos); `diff-xp.py --sin-ganchos` en los 112: las mismas
+  5 135 / 4 868 / 229 de antes (los dos ganchos se devuelven).
+- Prueba nueva `Pruebas/RocolaOs/convierte/prueba.sh` (rocola-xp de verdad fuera de pantalla, la tarjeta con reloj para saber qué sonó, el
+  doble «calidad-prueba» para pedir; música inventada con el ffmpeg de esta máquina): **41 de 41 en JIT** (la primera corrida, 4 MAL de
+  la prueba misma: funciones de bash fuera de `bash -c` y la canción buena pedida otra vez al final). Escenas: `convierte` (M4A, OGG,
+  FLAC y WAV con nombre .mp3: cada uno cobrado y oído entero, 6,00-6,05 s de 6, desde su WAV; el MP3 dentro de un WAV y el MP3 de verdad
+  como siempre; ningún crédito devuelto; cuatro copias PCM de 16 bits, hechas en 0,3-0,8 s; originales iguales por sha256, tamaño y
+  fecha; nada en `rocola_incompatibles.txt`; lo más sonado y `rocola_volumen.txt` por la ruta `.mp3`, nunca la del WAV), `xp` (sin la
+  función: no suenan, créditos devueltos, dañada la segunda vez, `rocola_incompatibles.txt`, ninguna copia), `lenta` (un ffmpeg que tarda
+  35 s: cobrada, a los 31,5 s ya no está y el crédito volvió, el motivo en `rocola_error.txt`, la copia llega a los 35,1 s, no quedó dañada
+  y la segunda vez se cobra y suena entera), `sinffmpeg` y `sinsitio` (un tmpfs de 40 MB: lo de XP, con el motivo en la bitácora) y
+  `sinrocolaos` (ni copias ni nada de Rocola OS; el repaso no la mide, como XP).
+- ~~Lo que no es como quisiera~~ (arreglado en la revisión del 21-11, abajo): en el caso lento, `NoteIncompatible` apuntaba la canción
+  con «se esta convirtiendo»; las copias viejas no se borraban; la espera del repaso no miraba la cancelación.
+
+#### Revisión del 21-11-2026 (lo que encontró el revisor, comprobado uno por uno)
+
+- **La carrera de los 20 s** (real, por lectura): `Espera` miraba `Lista` (null) y después `Convirtiendo` (false) y devolvía null si la
+  conversión acababa justo entre las dos; `RocolaOsConvertidaAbre` pasaba entonces a lo de XP y la marcaba dañada con su WAV ya hecho.
+  Ahora, si ya no se está convirtiendo, `Espera` vuelve a mirar `Lista` (el `File.Move` va antes de soltar la clave), y `Abre`, tras el
+  plazo, también.
+- **La copia al disco antes del cambio de nombre**: `Flush(true)` (fsync) del `.haciendo.wav` antes del `File.Move` y fsync de la carpeta
+  después. Y si la copia no se deja abrir en g110 (un apagón a media escritura, o la borraron a medias), se borra y se pide otra (una vez
+  por sesión; la segunda vez, fallida y lo de XP): el crédito se devuelve como «se está convirtiendo», sin marcarla dañada.
+- **Ganchos nuevos g112 y g113** (`GANCHOS.tsv`; `ganchos.py` TODO BIEN, 53 en 19 archivos): la pedida que aún se está convirtiendo lanza
+  `RocolaOsConvirtiendo` (un `IOException`, así que no queda dañada); g112 (`AudioStartFailed`, `AperturaAudio.cs:321`) no la anota en
+  `rocola_incompatibles.txt` (XP la anotaba una vez para siempre: si después fallaba de verdad, el «no es un MP3» ya no se apuntaba) y g113
+  (`MotivoFallo`, `Form1.cs:2222`) dice «se está preparando: sonará la próxima vez» en vez de «no se pudo leer el archivo del disco». Sin
+  `ROCOLA_OS` ese error nunca se lanza: XP bit a bit.
+- **La espera del repaso** (g111) se corta con la cancelación que ya trae ese hilo (`MeasurementCancelled`: el repaso que se para, el
+  precalentador que cambia de canción). Sigue esperando hasta 60 s con el turno de esa unidad tomado mientras nadie la corta (no se
+  cambió a «pedirla y medirla en otra vuelta»: con muchas así el repaso va de una en una, pero ffmpeg las hace en segundos).
+- **Más de dos canales**: `-af aformat=channel_layouts=mono|stereo` (comprobado con el ffmpeg de esta máquina: un FLAC 5.1 sale con 2
+  canales; mono sigue mono y un estéreo sale **idéntico byte a byte** con y sin el filtro).
+- **Las copias viejas**: junto a cada copia, una nota `.txt` con la ruta del original; al arrancar (`LimpiaRestos`) se borran las de un
+  original que cambió (otra clave) o que ya no está en su carpeta; si ni la carpeta está (un disco sin conectar), se queda; sin nota, no se
+  toca.
+- **`LeeMp3`** (`RocolaOs.CalidadReglas.cs`): de un «MP3» que es otro formato ya no se busca el cuadro (un sincronismo falso daba Hz y kbps
+  al azar); `EsMp3` queda en false y para la regla A solo cuenta el corte medido (del WAV).
+- `sistema/INTEGRACION_ROCOLA_XP.md` dice que `ROCOLA_CONVERTIDAS` volvió para `rocola-xp`.
+- Prueba: escenas nuevas `atiempo` (un ffmpeg de 12 s, pedida mientras se convierte: se espera, suena entera, cobrada una vez, nada
+  devuelto ni anotado, la nota junto a la copia) y `rota` (la copia es basura: se tira y se rehace, el crédito vuelve sin marcarla dañada
+  y a la segunda suena; al arrancar se borran la de un original que cambió y la de uno que ya no está, y se quedan la de un disco que no
+  está y la que no tiene nota); `lenta` comprueba además que no queda en `rocola_incompatibles.txt`. Resultado: **57 de 57 en JIT y 57
+  de 57 en NativeAOT** (atiempo: WAV listo en 12,5 s, cobrada una vez, 6,00 s oídos de 6; rota: «Not a WAVE file», otra copia en 1,9 s,
+  crédito devuelto y a la segunda 6,00 s). La sustitución (`Pruebas/RocolaOs/sustitucion/prueba.sh`, por `LeeMp3`), JIT: **97 de 97**.
+  Compila JIT y NativeAOT con los mismos 13 avisos (0 de IL/AOT); `ganchos.py` TODO BIEN (53 en 19 archivos); `diff-xp.py --sin-ganchos`
+  las mismas 5 135 / 4 868 / 229.
+- **Lo que no se cambió**, y por qué: (1) las medidas viejas hechas sobre la basura de un archivo leído como MP3 antes del 17-11: si
+  existen se importan y se aplican a la convertida (solo se tiran si la duración difiere más de 1 s); no comprobado si alguna casa, y
+  la XP de antes casi siempre fallaba al abrirlas (`BuildCleanMp3` sin cuadros útiles devuelve null), así que no se tocó. (2)
+  `audioOpeningForMeasurement` leído desde otros hilos: el medidor de Ctrl+F3 para lo que suena; no se ve cómo coincidiría. (3) La
+  re-importación de una XP sin `parejo_v2=1` sobre una tabla de rocola-xp con la marca: se quedan la tabla y la marca (ya se aprendió sin
+  la presencia): **lo decide el dueño**. (4) Mientras se espera hasta 20 s en el hilo de la apertura no se abre otra: es lo de la decisión
+  del 4-11; no medido cómo se ve. (5) De E1 la batería sigue probando solo «otro toque».
+
+### 3. Las baterías de XP y la hoja del ecualizador
+
+- Las cinco baterías de XP del paso, compiladas fuera del repositorio con .NET 10 (`/root/rocola-trabajo/fase11/xp-1718-linux/baterias`:
+  `NAudio.Core` 3.3.0, la lectura con `Span` de NAudio 3 añadida a sus fuentes de prueba y una de arreglos para las que leen, `leercodigo.cs`
+  al lado, `../Rocola` apuntando a `Codigo/`; `billar18.cs` y `billarparejo.cs` cargaban con `Assembly.Load(bytes)`, sin sitio para sus
+  dependencias: `LoadFrom`), contra el rocola-xp.dll de esta rama (JIT): **ecualizador 77/77, noche 65/65, nomp3 23/23, billarparejo
+  8/8, billar18 35/35**.
+- La hoja «Ecualizador...» con el arnés del port de Ctrl+F3 (`ventanaf3.cs` es de WinForms y no se puede correr): escena nueva
+  `f3ecualizador` (`Pruebas/Ventanas/guiones/escenas.sh`, sus pasos en `vistas_f3.py`: el ratón por Ajustes del sonido, la hoja, la banda
+  de 31 Hz al máximo, la de 16 kHz al mínimo, «Sin ecualizador» dos veces, «Todo en 0», la de 500 Hz a +6 y volver) y su comprobación
+  `bateria_eq.py` sobre los volcados de cada pieza y las capturas de la hoja (la referencia aef2211 no tiene esa hoja: no se compara punto
+  por punto). JIT: **23 de 23**: el botón en Ajustes del sonido; la hoja con sus 10 deslizadores, nombres y «0 dB», «Todo en 0», «Sin
+  ecualizador», la memoria en uso, el margen y la curva; cada banda movida con su valor y su letrero, el margen y el dibujo de la curva
+  cambiado (2 359 y 371 puntos de su caja); «Ponerlo (15 s)» y vuelta; «Todo en 0» deja el dibujo como al abrir (0 puntos); lo guardado
+  (`eq_dueno=0.0;0.0;0.0;0.0;6.0;...`, `eq_dueno_billar=` en 0); y las tres de sitio de `ventanaf3.cs` (`bateria_f3.py`): 1 278
+  comprobaciones en 9 vistas.
+- Compila JIT: 0 errores, los 13 avisos de `avisos-base.txt`. NativeAOT (`dotnet publish -r linux-x64 -p:PublishAot=true`): sale con 0,
+  los mismos 13, 0 de IL/AOT.
