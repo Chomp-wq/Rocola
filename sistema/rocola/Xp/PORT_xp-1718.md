@@ -153,9 +153,45 @@ medir un video): la conversión es un proceso aparte que escribe un archivo, com
   35 s: cobrada, a los 31,5 s ya no está y el crédito volvió, el motivo en `rocola_error.txt`, la copia llega a los 35,1 s, no quedó dañada
   y la segunda vez se cobra y suena entera), `sinffmpeg` y `sinsitio` (un tmpfs de 40 MB: lo de XP, con el motivo en la bitácora) y
   `sinrocolaos` (ni copias ni nada de Rocola OS; el repaso no la mide, como XP).
-- Lo que no es como quisiera, dicho: en el caso lento, `NoteIncompatible` de XP también apunta la canción en `rocola_incompatibles.txt`
-  con «se esta convirtiendo» (es el camino de siempre de una que no se pudo abrir; no se tocó para no poner otro gancho). Las copias viejas
-  (de un archivo que cambió o se borró) no se borran nunca. Mientras el repaso espera una conversión (hasta 60 s) no mide otra cosa.
+- ~~Lo que no es como quisiera~~ (arreglado en la revisión del 21-11, abajo): en el caso lento, `NoteIncompatible` apuntaba la canción
+  con «se esta convirtiendo»; las copias viejas no se borraban; la espera del repaso no miraba la cancelación.
+
+#### Revisión del 21-11-2026 (lo que encontró el revisor, comprobado uno por uno)
+
+- **La carrera de los 20 s** (real, por lectura): `Espera` miraba `Lista` (null) y después `Convirtiendo` (false) y devolvía null si la
+  conversión acababa justo entre las dos; `RocolaOsConvertidaAbre` pasaba entonces a lo de XP y la marcaba dañada con su WAV ya hecho.
+  Ahora, si ya no se está convirtiendo, `Espera` vuelve a mirar `Lista` (el `File.Move` va antes de soltar la clave), y `Abre`, tras el
+  plazo, también.
+- **La copia al disco antes del cambio de nombre**: `Flush(true)` (fsync) del `.haciendo.wav` antes del `File.Move` y fsync de la carpeta
+  después. Y si la copia no se deja abrir en g110 (un apagón a media escritura, o la borraron a medias), se borra y se pide otra (una vez
+  por sesión; la segunda vez, fallida y lo de XP): el crédito se devuelve como «se está convirtiendo», sin marcarla dañada.
+- **Ganchos nuevos g112 y g113** (`GANCHOS.tsv`; `ganchos.py` TODO BIEN, 53 en 19 archivos): la pedida que aún se está convirtiendo lanza
+  `RocolaOsConvirtiendo` (un `IOException`, así que no queda dañada); g112 (`AudioStartFailed`, `AperturaAudio.cs:321`) no la anota en
+  `rocola_incompatibles.txt` (XP la anotaba una vez para siempre: si después fallaba de verdad, el «no es un MP3» ya no se apuntaba) y g113
+  (`MotivoFallo`, `Form1.cs:2222`) dice «se está preparando: sonará la próxima vez» en vez de «no se pudo leer el archivo del disco». Sin
+  `ROCOLA_OS` ese error nunca se lanza: XP bit a bit.
+- **La espera del repaso** (g111) se corta con la cancelación que ya trae ese hilo (`MeasurementCancelled`: el repaso que se para, el
+  precalentador que cambia de canción). Sigue esperando hasta 60 s con el turno de esa unidad tomado mientras nadie la corta (no se
+  cambió a «pedirla y medirla en otra vuelta»: con muchas así el repaso va de una en una, pero ffmpeg las hace en segundos).
+- **Más de dos canales**: `-af aformat=channel_layouts=mono|stereo` (comprobado con el ffmpeg de esta máquina: un FLAC 5.1 sale con 2
+  canales; mono sigue mono y un estéreo sale **idéntico byte a byte** con y sin el filtro).
+- **Las copias viejas**: junto a cada copia, una nota `.txt` con la ruta del original; al arrancar (`LimpiaRestos`) se borran las de un
+  original que cambió (otra clave) o que ya no está en su carpeta; si ni la carpeta está (un disco sin conectar), se queda; sin nota, no se
+  toca.
+- **`LeeMp3`** (`RocolaOs.CalidadReglas.cs`): de un «MP3» que es otro formato ya no se busca el cuadro (un sincronismo falso daba Hz y kbps
+  al azar); `EsMp3` queda en false y para la regla A solo cuenta el corte medido (del WAV).
+- `sistema/INTEGRACION_ROCOLA_XP.md` dice que `ROCOLA_CONVERTIDAS` volvió para `rocola-xp`.
+- Prueba: escenas nuevas `atiempo` (un ffmpeg de 12 s, pedida mientras se convierte: se espera, suena entera, cobrada una vez, nada
+  devuelto ni anotado, la nota junto a la copia) y `rota` (la copia es basura: se tira y se rehace, el crédito vuelve sin marcarla dañada
+  y a la segunda suena; al arrancar se borran la de un original que cambió y la de uno que ya no está, y se quedan la de un disco que no
+  está y la que no tiene nota); `lenta` comprueba además que no queda en `rocola_incompatibles.txt`. Resultado: ver la tabla de abajo.
+- **Lo que no se cambió**, y por qué: (1) las medidas viejas hechas sobre la basura de un archivo leído como MP3 antes del 17-11: si
+  existen se importan y se aplican a la convertida (solo se tiran si la duración difiere más de 1 s); no comprobado si alguna casa, y
+  la XP de antes casi siempre fallaba al abrirlas (`BuildCleanMp3` sin cuadros útiles devuelve null), así que no se tocó. (2)
+  `audioOpeningForMeasurement` leído desde otros hilos: el medidor de Ctrl+F3 para lo que suena; no se ve cómo coincidiría. (3) La
+  re-importación de una XP sin `parejo_v2=1` sobre una tabla de rocola-xp con la marca: se quedan la tabla y la marca (ya se aprendió sin
+  la presencia): **lo decide el dueño**. (4) Mientras se espera hasta 20 s en el hilo de la apertura no se abre otra: es lo de la decisión
+  del 4-11; no medido cómo se ve. (5) De E1 la batería sigue probando solo «otro toque».
 
 ### 3. Las baterías de XP y la hoja del ecualizador
 

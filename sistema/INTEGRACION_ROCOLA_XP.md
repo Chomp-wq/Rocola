@@ -121,7 +121,9 @@ Lo demás, como estaba: la consola de mantenimiento (Ctrl+Alt+F2 la cierra con S
 momento se está trayendo lo de XP, eso sigue; y, nuevo, al cerrarla repinta la consola de delante -`ESC [?5h ESC [?5l`-: en QEMU se
 quedaba en negro hasta tocar una tecla, `sistema/ACT_qemu.md`), «reiniciar el programa ya» del buzón (SIGUSR1, y otra vez), el volumen,
 los códigos de salida 42 a 46 (`rocola-xp` hoy no sale con ninguno: son de la fase 11; 42 = otra vez, 43 y 46 = reiniciar el equipo, 44 = apagar,
-45 = volver a Windows XP), `/root/rocola.txt`. Se quitaron `ROCOLA_CONVERTIDAS` y `ROCOLA_COPIAS` (eran de `rocola-consola`).
+45 = volver a Windows XP), `/root/rocola.txt`. Se quitó `ROCOLA_COPIAS` (era de `rocola-consola`). `ROCOLA_CONVERTIDAS` se quitó el 14-11-2026 y volvió el
+20-11-2026 para `rocola-xp` (función «convierte», `RocolaOs/RocolaOs.Convierte.cs`, `sistema/rocola/Xp/PORT_xp-1718.md`): `$DISCO/rocola-os/convertidas`,
+solo con el disco de la rocola montado con escritura.
 
 ## 4. Apagado y reinicios (regla del 8-11-2026)
 
