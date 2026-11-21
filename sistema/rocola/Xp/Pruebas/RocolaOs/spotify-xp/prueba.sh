@@ -140,11 +140,15 @@ if [[ " $partes " == *" fabrica "* ]]; then
     if [ $v = xp ]; then abre fabrica-$v "$d" "$FT" "38.5:copia" 40 TERM env -u ROCOLA_OS ROCOLA_CAPTURA="${FC//CUAL/$v}" "${ST[@]}"
     else abre fabrica-$v "$d" "$FT" "38.5:copia" 40 TERM ROCOLA_OS=1 ROCOLA_CAPTURA="${FC//CUAL/$v}" ROCOLA_SOLOIST_BIN="$VIGILANTE" \
       ROCOLA_XP_DATOS="$d" ROCOLA_DISCO="$W/sin-disco" ROCOLA_DISCOS="$W/sin-discos" ROCOLA_SYS_BLOCK="$W/sin-block" \
-      ROCOLA_SPOTIFY_API="http://127.0.0.1:9/v1" ROCOLA_SPOTIFY_CUENTAS="http://127.0.0.1:9" "${ST[@]}"; fi
+      ROCOLA_SPOTIFY_API="http://127.0.0.1:9/v1" ROCOLA_SPOTIFY_CUENTAS="http://127.0.0.1:9" ROCOLA_CLIMA_API="http://127.0.0.1:7" \
+      ROCOLA_LUGAR_API="http://127.0.0.1:7/lugar" ROCOLA_LETRA_API="http://127.0.0.1:7" ROCOLA_GENIUS_API="http://127.0.0.1:7" "${ST[@]}"; fi
     wait $sp 2>/dev/null
   done
   a="$W/fabrica-xp"; o="$W/fabrica-os"; d="$W/datos-fabrica-os"; b="$d/rocola_spotify.txt"
-  red() { grep -cE 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null; }
+  # (junta 3: el clima del cielo y la letra de LRCLIB salen a internet sin llave -decisiones del dueno del 20-11-2026, cielo-nucleo y
+  # letras-; aqui van al sumidero 127.0.0.1:7, donde nada escucha, y no cuentan como peticion a la red: se cuentan aparte, sumidero())
+  red() { grep -E 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null | grep -vc 'htons(7)'; }
+  sumidero() { grep -E 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null | grep -c 'htons(7)'; }
   progs() { grep -c ' execve(' "$1/strace.txt" 2>/dev/null; }
   # los programas abiertos entre las dos miradas (de los 18 a los 38 s: el vigilante ya esperando); solo los que de verdad se abrieron
   # (no los intentos por cada carpeta del PATH que no lo tiene, ENOENT) y sin las envolturas que la sesion de pruebas pone delante en el
@@ -175,6 +179,7 @@ if [[ " $partes " == *" fabrica "* ]]; then
   si "fabrica: sin sesion (Listo falso: ni la letra de la cuenta ni nada que pedir)" bash -c "grep -qx 'sesion=0' '$o/estado.txt'"
   ra=$(red "$a"); ro=$(red "$o")
   si "fabrica: ni una peticion a la red (connect a internet: sin ROCOLA_OS $ra, con ROCOLA_OS=1 $ro)" test "$ra/$ro" = "0/0"
+  echo "   (lo de sin llave del cielo y la letra, al sumidero 127.0.0.1:7: sin ROCOLA_OS $(sumidero "$a"), con ROCOLA_OS=1 $(sumidero "$o"))"
   si "fabrica: ni una a la API (ni a la de prueba de 127.0.0.1:9)" bash -c "! grep -q 'htons(9)' '$o/strace.txt'"
   pa=$(progs "$a"); po=$(progs "$o")
   hz=$(getconf CLK_TCK); pe=$(progs2 "$o")
