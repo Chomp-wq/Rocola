@@ -96,7 +96,7 @@ namespace Rocola.Nativo
         public static void RellenaPoligono(SKCanvas c, PointF[] puntos, SKPaint pincel, bool suave, bool alterno = true, bool medio = false, bool copia = false)
         {
             if (puntos == null || puntos.Length < 3) return;
-            using (SKPath sp = Poligono(puntos, alterno)) Rellena(c, sp, pincel, suave, medio, copia);
+            Rellena(c, PoligonoDelHilo(puntos, alterno), pincel, suave, medio, copia);   // (rapido-general: el mismo trazo en un SKPath que se reusa)
         }
         public static void RellenaPorcion(SKCanvas c, RectangleF r, float inicio, float barrido, SKPaint pincel, bool suave, bool medio = false, bool copia = false)
         { Puesto x = Pon(c, pincel, suave, medio, copia, false, Corrimiento(suave, medio)); try { c.DrawArc(R(r), inicio, barrido, true, pincel); } finally { Quita(c, pincel, ref x); } }
@@ -134,7 +134,7 @@ namespace Rocola.Nativo
         public static void TrazaPoligono(SKCanvas c, PointF[] puntos, SKPaint pluma, bool suave, bool medio = false, bool copia = false)
         {
             if (puntos == null || puntos.Length < 2) return;
-            using (SKPath sp = Poligono(puntos, true)) Traza(c, sp, pluma, suave, medio, copia);
+            Traza(c, PoligonoDelHilo(puntos, true), pluma, suave, medio, copia);
         }
         public static void Arco(SKCanvas c, RectangleF r, float inicio, float barrido, SKPaint pluma, bool suave, bool medio = false, bool copia = false)
         { Puesto x = Pon(c, pluma, suave, medio, copia, true, Corrimiento(suave, medio)); try { c.DrawArc(R(r), inicio, barrido, false, pluma); } finally { Quita(c, pluma, ref x); } }
@@ -143,6 +143,18 @@ namespace Rocola.Nativo
             using (SKPath sp = new SKPath()) { sp.MoveTo(a.X, a.Y); sp.CubicTo(b.X, b.Y, c2.X, c2.Y, d.X, d.Y); Traza(c, sp, pluma, suave, medio, copia); }
         }
         // el poligono cerrado de FillPolygon y DrawPolygon (alterno = FillMode.Alternate, EvenOdd; si no, Winding)
+        // (rapido-general) el mismo poligono en un SKPath del hilo que se reusa (Reset lo deja como uno nuevo: sin puntos y Winding), en vez de un
+        // SKPath nuevo en cada relleno (un objeto de .NET con su finalizador y su apunte en el diccionario de SkiaSharp); Rellena y Traza no lo
+        // guardan
+        [ThreadStatic] private static SKPath poligonoDelHilo;
+        private static SKPath PoligonoDelHilo(PointF[] ps, bool alterno)
+        {
+            SKPath sp = poligonoDelHilo ?? (poligonoDelHilo = new SKPath());
+            sp.Reset();
+            sp.FillType = alterno ? SKPathFillType.EvenOdd : SKPathFillType.Winding;
+            sp.MoveTo(ps[0].X, ps[0].Y); for (int i = 1; i < ps.Length; i++) sp.LineTo(ps[i].X, ps[i].Y); sp.Close();
+            return sp;
+        }
         public static SKPath Poligono(PointF[] ps, bool alterno)
         {
             SKPath sp = new SKPath { FillType = alterno ? SKPathFillType.EvenOdd : SKPathFillType.Winding };
