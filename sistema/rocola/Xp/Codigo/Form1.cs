@@ -2074,7 +2074,7 @@ namespace Rocola
                 return true;
             }
 #endif
-            if (RocolaOsCtrlF4(keyData)) return true; if (keyData == (Tecla.Control | Tecla.F2))   // ROCOLA OS g85: (XP) if (keyData == (Tecla.Control | Tecla.F2)) — Ctrl+F4 abre la ventana de Rocola OS con las mismas reglas que Ctrl+F2 y Ctrl+F3 (RocolaOs/RocolaOs.Ventana.cs; sin ROCOLA_OS, false). Ctrl+F2 = gestor de carpetas de musica (agregar/quitar; otros discos); EN LINUX: Keys -> Tecla, los mismos numeros
+            if (keyData == (Tecla.Control | Tecla.F2))   // Ctrl+F2 = gestor de carpetas de musica (agregar/quitar; otros discos); EN LINUX: Keys -> Tecla, los mismos numeros
             {
                 ShowMusicDirManager();
                 return true;
@@ -2149,7 +2149,7 @@ namespace Rocola
                         searchOverlay.PressSelected();
                     return true;
                 }
-                if (IsBack(kc)) { if (!RocolaOsSpotifyTragaRegresar(msg.Repetida)) searchOverlay.Backspace(); return true; }   // ROCOLA OS g57: (XP) if (IsBack(kc)) { searchOverlay.Backspace(); return true; }   // REGRESAR = borrar letra; cerrar = REGRESAR+ARRIBA — al volver al buscador desde una pared o un disco del buscador con REGRESAR, su repeticion (el rojo mantenido) no borra lo escrito (RocolaOs/RocolaOs.SpotifyCatalogoParedes.cs; sin el modo, siempre Backspace, como XP)
+                if (IsBack(kc)) { searchOverlay.Backspace(); return true; }   // REGRESAR = borrar letra; cerrar = REGRESAR+ARRIBA
                 // letras, numeros, Ñ, acentos, comillas, espacio y BORRAR los entrega KeyPress (admite TODO caracter)
                 return false;   // EN LINUX: base.ProcessCmdKey(ref msg, keyData): la de un Form sin menus ni aceleradores da false (Control.cs:9440-9454, ContainerControl.cs:1190-1208, Form.cs:4862-4895) y la tecla sigue a KeyDown y KeyPress
             }
@@ -2171,7 +2171,7 @@ namespace Rocola
                 if (IsRight(kc)) { MoveSong(rpc); return true; }      // pagina siguiente
 #endif
                 if (IsOK(kc)) { EnqueueSelectedSong(); return true; }
-                if (IsBack(kc)) { if (!RocolaOsSpotifyDiscoRegresa()) BackToAlbums(); return true; }   // ROCOLA OS g54: (XP) if (IsBack(kc)) { BackToAlbums(); return true; } — un disco de Spotify abierto desde el buscador que no estaba en la letra de Spotify vuelve al buscador (RocolaOs/RocolaOs.SpotifyCatalogoParedes.cs; lo demas y sin el modo, BackToAlbums de XP)
+                if (IsBack(kc)) { BackToAlbums(); return true; }
             }
             else
             {
@@ -2182,7 +2182,7 @@ namespace Rocola
                 if (IsUp(kc)) { if (!BackHeld()) NextPage(); return true; }
                 if (IsDown(kc)) { if (!BackHeld()) PrevPage(); return true; }
                 if (IsOK(kc)) { List<Album> l = CurrentList(); if (selAlbumIndex >= 0 && selAlbumIndex < l.Count) EnterAlbum(l[selAlbumIndex]); return true; }
-                if (IsBack(kc)) { RocolaOsSpotifyParedRegresa(msg.Repetida); return true; }   // ROCOLA OS g53: (XP) if (IsBack(kc)) { return true; } — en una pared del buscador (la de un artista de Spotify, «mas en Spotify» o «Todos los discos de...»), REGRESAR (no su repeticion) vuelve al buscador con lo escrito y la misma eleccion (RocolaOs/RocolaOs.SpotifyCatalogoParedes.cs; en las de XP y sin el modo, nada, como XP)
+                if (IsBack(kc)) { return true; }
             }
             return false;   // EN LINUX: base.ProcessCmdKey(ref msg, keyData): la de un Form sin menus ni aceleradores da false (Control.cs:9440-9454, ContainerControl.cs:1190-1208, Form.cs:4862-4895) y la tecla sigue a KeyDown y KeyPress
         }
@@ -2219,7 +2219,7 @@ namespace Rocola
                 return "no se encuentra el archivo (¿se desconectó el disco?)";
             if (ex is UnauthorizedAccessException) return "Windows no deja leer el archivo";
             if (ex is EndOfStreamException) return "el archivo está incompleto o dañado";
-            if (ex is IOException) return ex is RocolaOsConvirtiendo ? RocolaOsConvirtiendo.Motivo : "no se pudo leer el archivo del disco";   // ROCOLA OS g113: (XP) if (ex is IOException) return "no se pudo leer el archivo del disco"; — la pedida que aun se esta convirtiendo a WAV (funcion «convierte») lo dice asi
+            if (ex is IOException) return "no se pudo leer el archivo del disco";
             if (ex is System.Runtime.InteropServices.COMException) return "el reproductor de Windows no lo pudo abrir";
             if (ex is FormatException || ex is InvalidDataException || ex is InvalidOperationException
                 || ex is ArgumentException || ex is NotSupportedException)
@@ -2275,7 +2275,7 @@ namespace Rocola
 
         private void AddSong(Track t, Album disc)
         {
-            if (t == null || RocolaOsSpotifyCatalogoPone(t, disc)) return;   // ROCOLA OS g42: (XP) if (t == null) return; — PONER en un disco de Spotify la pide por I6 (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, false)
+            if (t == null) return;
             PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disc;
             AddResult r = AddItem(it);
             if (r == AddResult.Added) ShowSongAddedToast(false);

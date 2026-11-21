@@ -44,7 +44,7 @@ namespace Rocola
     {
         private readonly ISuperficie sup;
         private readonly uint fboPantalla;
-        private int ancho { get { return sup.Ancho; } set { } } private int alto { get { return sup.Alto; } set { } }   // ROCOLA OS g87: (antes) private readonly int ancho, alto; — la medida de la pantalla en cada cuadro: con Rocola OS el modo puede cambiar con la rocola andando (la hoja Pantalla de Ctrl+F4); sin el, la de siempre (nunca cambia)
+        private readonly int ancho, alto;
         private uint programa; private int lugarM, lugarA, lugarS, lugarRgba;
         private sealed class CapaGl { internal uint Tex; internal int Version = -1, W, H; internal bool Vista;
 #if RAPIDO_GENERAL_PRUEBA

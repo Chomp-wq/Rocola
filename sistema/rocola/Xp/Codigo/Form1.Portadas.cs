@@ -346,7 +346,7 @@ namespace Rocola
                 false, 0,
 #endif
                 diskSlow, JpegActivo, CargaTrabajo.Procesadores);
-            for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); } RocolaOsAdelantaLetras();   // ROCOLA OS g221: (XP) for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); } — con Rocola OS, despues de lo de XP, tambien la primera pagina de la letra de antes y de la de despues (a donde lleva REGRESAR con izquierda o derecha), en la fila baja (RocolaOs/RocolaOs.Caratulas.cs; sin el, nada)
+            for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); }
         }
 
         // PAGINAS DE COLCHON (peticion del 13-10-2026: que los perfiles aprovechen el JPEG). Una miniatura JPEG pesa unas
@@ -596,7 +596,7 @@ namespace Rocola
                     {
                         identidadAntes = ThumbCachePath(key);
 #if ROCOLA_GPU
-                        if (gpuEnabled) thumb = RocolaOsDecodificaPortada(key, identidadAntes, out miniaturaParaGuardar);   // ROCOLA OS g224: (XP) if (gpuEnabled) thumb = DecodeCoverForPublication(key, identidadAntes, out miniaturaParaGuardar); — con Rocola OS y portadas_dos_lectores=1, abre el segundo lector si la portada es de la original y lo que se ve tiene mas esperando, y el lector que pasa de los de XP decodifica a nice 19 (RocolaOs/RocolaOs.Caratulas.cs); si no, DecodeCoverForPublication como siempre
+                        if (gpuEnabled) thumb = DecodeCoverForPublication(key, identidadAntes, out miniaturaParaGuardar);
                         else
 #endif
                         thumb = DecodeCoverWithIdentity(key, identidadAntes);
@@ -715,7 +715,7 @@ namespace Rocola
         {
             if (thumbDir == null)
             {
-                string d = DatosGrandes.Ruta("rocola_miniaturas");   // ROCOLA OS g07: (XP) string d = RutaDatos("rocola_miniaturas"); — con ROCOLA_IA_DATOS, en el disco de la rocola; con 2 000 discos son unos 280 MB y lo aprendido mide 512 MB (Nativo/DatosGrandes.cs)
+                string d = DatosGrandes.Ruta("rocola_miniaturas");   // EN LINUX: (XP) RutaDatos(...): con ROCOLA_IA_DATOS, en el disco de la rocola; con 2 000 discos son unos 280 MB y lo aprendido mide 512 MB (Nativo/DatosGrandes.cs)
                 try { if (!Directory.Exists(d)) Directory.CreateDirectory(d); } catch { }
                 thumbDir = d;
             }
@@ -734,7 +734,7 @@ namespace Rocola
             catch { identidad += "|sin-archivo"; }
             ulong h = Fnv64(identidad);
             // Version nueva: nunca reutilizar el JPEG anterior, que perdia alfa y calidad.
-            return RocolaOsSpotifyCatalogoMiniatura(coverPath, Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png"));   // ROCOLA OS g43: (XP) return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png"); — la miniatura de una portada de Spotify va a /run, no a rocola_miniaturas: nada de Spotify al disco (RocolaOs/RocolaOs.SpotifyCatalogo.cs; lo demas, la de XP)
+            return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png");
         }
 
         // CARATULAS EN JPEG (interruptor de Ctrl+F3, apagado de fabrica). La identidad de arriba no cambia; con el
@@ -973,7 +973,7 @@ namespace Rocola
                 try
                 {
                     using (MemoryStream ms = new MemoryStream(data, 0, largo, false))
-                    using (SKBitmap src = RocolaOsLeeOriginal(ms, data, largo, ThumbPx, out FormatoImagen formatoSrc))   // ROCOLA OS g222: (XP) using (Image src = Image.FromStream(ms, false, false)) — con Rocola OS y portadas_dct=1, una JPEG grande sale ya reducida por la escala DCT (los dos lados en al menos el doble de la miniatura) y sigue por lo de XP; si no, Imagenes.Lee como siempre (RocolaOs/RocolaOs.Caratulas.cs)
+                    using (SKBitmap src = Imagenes.Lee(ms, out FormatoImagen formatoSrc))   // EN LINUX: Image.FromStream(ms, false, false): los puntos y el formato que diria GDI+ (un JPEG o un PNG sin alfa, de 24 bits; un GIF, de paleta; con alfa, de 32 bits con alfa)
                     {
                         SKBitmap thumb = null;   // EN LINUX: un SKBitmap
                         try

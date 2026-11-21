@@ -620,7 +620,7 @@ namespace Rocola
                 char c = LetrasOrden[i];
                 if (letterAvailable == null || letterAvailable.Contains(c)) sb.Append(c);
             }
-            return RocolaOsSpotifyCatalogoLetras((sb.Length > 0) ? sb.ToString() : "#");   // ROCOLA OS g45: (XP) return (sb.Length > 0) ? sb.ToString() : "#"; — con el modo Spotify y discos suyos, su letra al final de la barra (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, lo de XP)
+            return (sb.Length > 0) ? sb.ToString() : "#";
         }
 
         // LO ALTA QUE ES LA CAPSULA DE CREDITOS / EN COLA, que es lo mismo que decir LO GRANDE QUE SALE SU
@@ -666,7 +666,7 @@ namespace Rocola
             }
             Dictionary<char, Color> tinte = new Dictionary<char, Color>();
             foreach (KeyValuePair<char, string> kv in letterTag) tinte[kv.Key] = ColorDeEtiqueta(kv.Value);
-            letterBar.Counts = RocolaOsSpotifyCatalogoCuentas(cuenta);   // ROCOLA OS g51: (XP) letterBar.Counts = cuenta; — la letra de Spotify lleva su numero de canciones y su rayita como las demas letras (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, el mismo diccionario de XP)
+            letterBar.Counts = cuenta;
             letterBar.Tints = tinte;
             // LAS LETRAS VACIAS NI SE DIBUJAN. Antes salian las 29 casillas siempre y las que no tenian nada
             // se pintaban apagadas: ocupaban su sitio para no decir nada. Ahora la barra solo lleva las que
@@ -2384,8 +2384,8 @@ namespace Rocola
             if (currentLetter == VideoMark) return videoAlbums ?? new List<Album>();
             if (currentLetter == TopMark) return topDiscs ?? new List<Album>();
             List<Album> list;
-            if (!byLetter.TryGetValue(currentLetter, out list)) list = RocolaOsSpotifyCatalogoLista(currentLetter);   // ROCOLA OS g44: (XP) if (!byLetter.TryGetValue(currentLetter, out list)) list = new List<Album>(); — los discos de la letra de Spotify (RocolaOs/RocolaOs.SpotifyCatalogo.cs; de cualquier otra, una lista vacia, como XP)
-            return RocolaOsParedGenerosLista(list);   // ROCOLA OS g90: (XP) return list; — con el modo Spotify y el catalogo, la letra con los discos del catalogo intercalados en el orden de XP (artista y disco), hasta 500 paginas, primero los de los artistas mas famosos (RocolaOs/RocolaOs.ParedGeneros.cs; sin ellos, la lista de XP)
+            if (!byLetter.TryGetValue(currentLetter, out list)) list = new List<Album>();
+            return list;
         }
 
         private void RefreshAlbums()
@@ -2441,7 +2441,7 @@ namespace Rocola
             albumView.CancelHandoff();   // cambio de pagina/letra: cancela cualquier giro de relevo en curso
             albumView.Invalidate();
 
-            headerView.Section = RocolaOsSpotifyCatalogoSeccion(currentLetter, (currentLetter == VideoMark) ? "VIDEOS" : (currentLetter == TopMark) ? "LO MAS SONADO" : ("LETRA " + currentLetter));   // ROCOLA OS g47: (XP) headerView.Section = (currentLetter == VideoMark) ? "VIDEOS" : (currentLetter == TopMark) ? "LO MAS SONADO" : ("LETRA " + currentLetter); — la cabecera de la letra de Spotify dice SPOTIFY, como VIDEOS o LO MAS SONADO (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, lo de XP)
+            headerView.Section = (currentLetter == VideoMark) ? "VIDEOS" : (currentLetter == TopMark) ? "LO MAS SONADO" : ("LETRA " + currentLetter);
             headerView.Page = page; headerView.Total = totalPages;
             headerView.Accent = AcentoSeccion();
             headerView.Invalidate();
@@ -2669,7 +2669,7 @@ namespace Rocola
                             long calidad = MiniaturaCalidadJpeg;   // EN LINUX: ep.Param[0] = new EncoderParameter(Encoder.Quality, MiniaturaCalidadJpeg)
                             Imagenes.GuardaJpeg(thumb, tmp, (int)calidad);   // EN LINUX: thumb.Save(tmp, jpeg, ep): en JPEG con esa calidad (Nativo/Imagenes.cs)
                         }
-                    else RocolaOsGuardaMiniaturaPng(thumb, tmp);   // ROCOLA OS g220: (XP) else thumb.Save(tmp, ImageFormat.Png); // Sin perdida; mismo alfa/aspecto en primera carga y cache. — con Rocola OS la PNG sale con zlib 1 (3 ms en vez de 38, los mismos puntos: RocolaOs/RocolaOs.Caratulas.cs); sin el, Imagenes.GuardaPng como siempre
+                    else Imagenes.GuardaPng(thumb, tmp); // Sin perdida; mismo alfa/aspecto en primera carga y cache.   // EN LINUX: thumb.Save(tmp, ImageFormat.Png)
                     if (File.Exists(destino))
                     {
                         try
@@ -2871,7 +2871,7 @@ namespace Rocola
         // lado (VIDEO -> TOP/#/A... y viceversa): el abecedario es una rueda, nunca se atasca.
         private bool GotoLetter(int dir, bool wrap)
         {
-            string order = RocolaOsSpotifyCatalogoOrden(LetrasOrden);   // ROCOLA OS g46: (XP) string order = LetrasOrden; — REGRESAR+izquierda/derecha tambien llega a la letra de Spotify (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, LetrasOrden)
+            string order = LetrasOrden;
             int n = order.Length;
             int idx = order.IndexOf(currentLetter);
             if (idx < 0) idx = 0;
@@ -2923,7 +2923,7 @@ namespace Rocola
             else desde = SelectedDiscRect(out angDesde);
             transNextFrom = RectangleF.Empty;
 #endif
-            currentAlbum = RocolaOsSpotifyCatalogoEntra(a);   // ROCOLA OS g49: (XP) currentAlbum = a; — entrar a un disco de Spotify sin sus canciones las pide y entran al llegar (RocolaOs/RocolaOs.SpotifyCatalogo.cs; devuelve el mismo disco)
+            currentAlbum = a;
             browsingVideo = (currentLetter == VideoMark);
             bool showVideos = browsingVideo || (a != null && a.TopIsVideo);   // seccion VIDEOS o disco TOP de videos
             lblAlbum.Text = browsingVideo ? (AlbumLabel(a) + "   (video)") : AlbumLabel(a);
@@ -3512,8 +3512,8 @@ namespace Rocola
                 // no solo las visibles; sus puntos se calculan con la nueva consulta.
             }
             else { lastMatches = null; lastQuery = null; lastMatchesApproximate = false; }
-            CuentaResultados(query, (lastMatches != null ? lastMatches.Count : 0) + RocolaOsLetrasResultados(query, res));   // la casilla del buscador con portadas lo dice   // ROCOLA OS g114: (XP) CuentaResultados(query, lastMatches != null ? lastMatches.Count : 0);   // la casilla del buscador con portadas lo dice — buscar por la letra: lo de Genius delante y lo de la letra de tus MP3 detras, en la misma lista de XP y antes de g40, y la casilla los cuenta (RocolaOs/RocolaOs.Letras.cs; sin ROCOLA_OS o con las dos apagadas, 0 sin tocar res)
-            searchOverlay.Results = RocolaOsSpotifyCatalogoResultados(query, res);   // ROCOLA OS g40: (XP) searchOverlay.Results = res; — con el modo Spotify, sus canciones, discos y artistas como resultados mas de la misma lista, debajo de las primeras de XP (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, res tal cual)
+            CuentaResultados(query, lastMatches != null ? lastMatches.Count : 0);   // la casilla del buscador con portadas lo dice
+            searchOverlay.Results = res;
             searchOverlay.Invalidate();
         }
 
@@ -3557,8 +3557,8 @@ namespace Rocola
 
         private void ChooseSearchResult(SearchItem it)
         {
-            if (it == null || RocolaOsSpotifyCatalogoElige(it)) return;   // ROCOLA OS g41: (XP) if (it == null) return; — elegir un resultado de Spotify: la cancion se pide por I6, el disco se abre en la vista de disco, el artista lleva a sus discos (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, false)
-            if (RocolaOsLetrasElige(it)) return; MarkSearchActivity();   // ROCOLA OS g115: (XP) MarkSearchActivity(); — la tarjeta «NO ESTA EN LA ROCOLA» de Genius solo lo dice con el aviso del buscador de XP (RocolaOs/RocolaOs.Letras.cs; sin ROCOLA_OS, false)
+            if (it == null) return;
+            MarkSearchActivity();
             if (it.Kind == 3) { GrantSecretCredits(it); return; }
             ApuntaBusqueda(it);   // lo buscado pasa a los atajos del buscador con portadas ("Buscaste: ...")
             if (it.Kind == 2 && it.TrackRef != null)

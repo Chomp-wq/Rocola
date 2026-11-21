@@ -1223,7 +1223,7 @@ namespace Rocola
         // El degradado del cielo tal cual, a la pantalla (o, a tamano completo, a la imagen que lo guarda: PerformanceGpu.cs).
         internal void CieloDirecto(int w, int h, float midY, uint cTop, uint cMid, uint cBot, bool sinLoTapado)
         {
-            if (RocolaOsPintaCielo(w, h, midY, cTop, cMid, cBot, 0f, sinLoTapado)) { } else if (CieloSuave)   // ROCOLA OS g121: (XP) if (CieloSuave)   // C1: doce franjas; las que quedan bajo el estado opaco no se mandan (PulidoGpu.cs) — los colores del cielo (directo): con DN1 de dia (o un tinte de otro grupo) el degradado lo pinta Rocola OS; si no, false y XP pinta el suyo (RocolaOs.CieloEnchufes.cs, RocolaOs.CieloDia.cs)
+            if (CieloSuave)   // C1: doce franjas; las que quedan bajo el estado opaco no se mandan (PulidoGpu.cs)
                 DibujaCieloSuave(CieloSuaveVisible(ArmaCieloSuave(w, h, midY, cTop, cMid, cBot, 0f), sinLoTapado ? EstrellasTapadasDesde : 0f));
             else
             {
@@ -1333,7 +1333,7 @@ namespace Rocola
             int vi = 0;
             HazAire();   // se rehace SOLO si se toco la perilla; si no, es comparar dos numeros
             float aireEsc = (h > 0f) ? (AireN / h) : 0f;   // de altura en pixeles a banda de la tabla del aire
-            float f255 = fade * RocolaOsBrilloEstrellas() * 255f;   // ROCOLA OS g126: (XP) float f255 = fade * 255f;                      // el entrecruzado y el paso a niveles, de una vez — el brillo de las estrellas de XP por la fase del dia (DN1; con DN4, 1); sin ROCOLA_OS o de noche, por 1f (el mismo numero)
+            float f255 = fade * 255f;                      // el entrecruzado y el paso a niveles, de una vez
             for (int i = 0; i < n; i++)
             {
                 int k = kd[i];   // 0 polvo, 1 mediana, 2 grande: manda la deriva Y el latido
@@ -1361,7 +1361,7 @@ namespace Rocola
                 // que guardarlo en double no gana ni un decimal y arrastra toda la cuenta a double para nada.
                 // El double que importa es el del RELOJ, que es lo que entra ahi dentro.
                 float tw = Titileo(t * spd[i] + ph[i]);
-                float br = (AireP[b] + tw * AireQ[b]) * f255 * RocolaOsBrilloEstrella(xs, i, x, y, k);   // ROCOLA OS g127: (XP) float br = (AireP[b] + tw * AireQ[b]) * f255; — el brillo de cada estrella (DN4 se encienden de una en una, DN6 y CL1 tras las nubes: clientes RocolaOsCieloEstrella); sin ROCOLA_OS o sin clientes, por 1f
+                float br = (AireP[b] + tw * AireQ[b]) * f255;
                 if (!(br > 0f)) br = 0f;   // con el titileo muy agrandado el valle se pasaria de rosca; y el "!" atrapa el NaN
                 uint a = (uint)(int)br; if (a > 255) a = 255;   // por entero: el mismo numero sin la conversion lenta
                 uint rgb = col[i], gb = AireGB[b];
@@ -1402,7 +1402,7 @@ namespace Rocola
                 if (libre < 0) { libre = 0; for (int i = 1; i < ranuras; i++) if (shoots[i].Life < shoots[libre].Life) libre = i; }
                 Form1.TiraFugazFestejo(srnd, w, h, out shoots[libre].X, out shoots[libre].Y, out shoots[libre].VX, out shoots[libre].VY,
                                        out shoots[libre].MaxLife, out shoots[libre].Wdt, out shoots[libre].Tail);
-                shoots[libre].Life = shoots[libre].MaxLife; shoots[libre].Col = RocolaOsColorFestejo(Form1.FestejoColor);   // ROCOLA OS g139: (XP) shoots[libre].Life = shoots[libre].MaxLife; shoots[libre].Col = Form1.FestejoColor; — el color de la fugaz de festejo de XP: el de la fecha (FI3), confeti (FI6) (clientes RocolaOsCieloFugaz); sin ROCOLA_OS, el dorado de XP
+                shoots[libre].Life = shoots[libre].MaxLife; shoots[libre].Col = Form1.FestejoColor;
                 shoots[libre].Nace = false; shoots[libre].On = true;
             }
             float lluvia = LluviaAhora;   // 0 fuera de las fechas: todo como siempre
@@ -2245,12 +2245,12 @@ namespace Rocola
             trasCielo = delegate
             {
                 aurDibujada = false;
-                if (!cieloMedioEsteCuadro) DibujaNieblas(); RocolaOsCapa(RocolaOsCieloCapa.TrasNieblas);   // ROCOLA OS g130: (XP) if (!cieloMedioEsteCuadro) DibujaNieblas();   // si no, ya van en la imagen intermedia (PerformanceGpu.cs) — la capa entre el cielo (con sus nebulosas) y la aurora: el sol (DN2), las nubes (DN6/CL1); sin ROCOLA_OS no hace nada
-                if (auCuadro.Has) { DrawAurora(auCuadro); DibujaReflejoAurora(); } RocolaOsCapa(RocolaOsCieloCapa.TrasAurora);   // ROCOLA OS g131: (XP) if (auCuadro.Has) { DrawAurora(auCuadro); DibujaReflejoAurora(); } — la capa delante de la raya del horizonte, bajo todo lo demas: adornos de fiesta (FI2), neblina (CL4); sin ROCOLA_OS no hace nada
+                if (!cieloMedioEsteCuadro) DibujaNieblas();   // si no, ya van en la imagen intermedia (PerformanceGpu.cs)
+                if (auCuadro.Has) { DrawAurora(auCuadro); DibujaReflejoAurora(); }
                 if (!granoUnidoEsteCuadro && !capaUnicaEsteCuadro) DibujaRuido();   // si no, va con la vineta: en una pasada, o en el cielo (G2)
             };
             cieloBase = CieloMedioBase;
-            trasEstrellas = delegate { if (!RocolaOsLuna()) DibujaLunaCielo(); DibujaLuna(); };   // ROCOLA OS g132: (XP) trasEstrellas = delegate { DibujaLunaCielo(); DibujaLuna(); };   // la luna del cielo, lejos; la estrella, delante — la luna: la de XP o la de quien la tome (DN3), y la capa con la luna (las nubes delante de ella, CL1); sin ROCOLA_OS, false y XP pinta su luna
+            trasEstrellas = delegate { DibujaLunaCielo(); DibujaLuna(); };   // la luna del cielo, lejos; la estrella, delante
         }
 
         private static int MilisegundosEspera(double restante)
@@ -2725,7 +2725,7 @@ namespace Rocola
             AvanzaAsistente(); // reloj fino de ESTE cuadro, independiente del timer de la UI
             double antesDibujo = AhoraMs();
             HuecosDePortadas();   // donde las portadas opacas tapan el cielo: ahi no se pinta (DibujoLigeroGpu.cs)
-            DecideAhorros(); RocolaOsCieloCuadro();   // ROCOLA OS g120: (XP) DecideAhorros();      // cielo a media resolucion y grano con vineta en una pasada (PerformanceGpu.cs) — el cuadro del cielo vivo: la escena (horizonte, pantalla, reposo), la calma y lo interpolado de la foto, antes de abrir el cuadro (RocolaOs/RocolaOs.CieloEnchufes.cs; sin ROCOLA_OS no hace nada)
+            DecideAhorros();      // cielo a media resolucion y grano con vineta en una pasada (PerformanceGpu.cs)
             VigiaPantalla.Hace("dibujar fondo, aurora y estrella");
             bool fondoOk = stars.Begin(Width, Height, pulse, pulseCrudo);
             VigiaPantalla.Hace("dibujar portadas e interfaz");
@@ -2743,7 +2743,7 @@ namespace Rocola
                     DibujaTeselasFondo(vinetaTex, vinetaTeselas, 0, 0, Width, Height, vinetaU, vinetaV, 0xFFFFFFFFu, adornoQuad);   // sin pintar su centro transparente ni bajo las portadas (DibujoLigeroGpu.cs)
                 }
             }
-            RocolaOsCapa(RocolaOsCieloCapa.TrasFondo); if (HaloSeleccion && ShowAlbum && GetContourRect != null)   // ROCOLA OS g133: (XP) if (HaloSeleccion && ShowAlbum && GetContourRect != null) — la capa detras de la interfaz y delante de todo el cielo: lluvia (CL2), fuegos (FI4); sin ROCOLA_OS no hace nada
+            if (HaloSeleccion && ShowAlbum && GetContourRect != null)
             {
                 Rectangle hr = GetContourRect();
                 if (hr.Width > 0 && hr.Height > 0)
@@ -2814,14 +2814,14 @@ namespace Rocola
             // UI ENCIMA del fondo y los cubos: la textura principal anclada ARRIBA (a su tamano real: en
             // navegacion es solo la franja superior) y la franja de estado anclada ABAJO.
             bool uiPropia = gw.Has && gw.Bmp == null && !gw.Robada;   // se anima la PROPIA textura de UI (abriendo el buscador)
-            RocolaOsCapa(RocolaOsCieloCapa.AntesDeLaInterfaz); if (!(gw.Has && gw.HideUi)) DrawPaletteOld();   // ROCOLA OS g134: (XP) if (!(gw.Has && gw.HideUi)) DrawPaletteOld(); — la capa encima de las portadas y debajo de la interfaz de XP (barras, pastillas, letras): el vidrio de las pastillas (VI3); sin ROCOLA_OS no hace nada
+            if (!(gw.Has && gw.HideUi)) DrawPaletteOld();
             if (((uiTex != IntPtr.Zero && uiBmpW > 0 && uiBmpH > 0) || uiVacia) && !(gw.Has && gw.HideUi))
             {
                 uint uiAlfa = (uint)(SceneAlpha() * PaletteAlpha() * ControlsOpacity * AtrUiAlfa * 255);
                 if (uiAlfa > 0 && !uiVacia) DibujaTeselas(uiTex, uiTeselas, 0, 0, uiBmpW, uiBmpH, uiU, uiV, (uiAlfa << 24) | 0xFFFFFFu, uiQuad);   // sin lo transparente ni lo invisible (DibujoLigeroGpu.cs)
                 if (uiAlfa > 0) DibujaInterrogacion(uiAlfa / 255f);   // la interrogacion dorada de AYUDA, animada (AyudaCasillaGpu.cs)
             }
-            DibujaAtraccion(); RocolaOsCapa(RocolaOsCieloCapa.Escaparate);   // ROCOLA OS g135: (XP) DibujaAtraccion();   // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs); fuera de la atraccion, nada — la capa del escaparate: papel picado y globos (FI5, FI6), la pastilla del clima (CL5); sin ROCOLA_OS no hace nada
+            DibujaAtraccion();   // el escaparate y lo mas pedido esta noche (AtraccionGpu.cs); fuera de la atraccion, nada
             // Y ENCIMA las piezas vivas (la tarjeta y la tecla elegidas). Van despues de la textura de UI a
             // proposito: en ella estan las versiones SIN elegir, y estas las tapan. Se rellenan opacas, asi que
             // el resultado es identico a tenerlas horneadas dentro (comprobado pixel a pixel: pruebas/mover.cs).
@@ -2870,7 +2870,7 @@ namespace Rocola
                 uint botAlfa = (uint)((1-idleBlend)*255);   // con el reposo del todo abierto va a opacidad cero: no se manda
                 if (botAlfa > 0) DibujaTeselas(uiBotTex, uiBotTeselas, 0, Height - uiBotH, uiBotW, Height, uiBotU, uiBotV, (botAlfa << 24) | 0x00FFFFFFu, uiBotQuad);   // (DibujoLigeroGpu.cs)
             }
-            RocolaOsCapa(RocolaOsCieloCapa.AntesDelEstado); if (idleBlend > 0 && idleTex != IntPtr.Zero)   // ROCOLA OS g138: (XP) if (idleBlend > 0 && idleTex != IntPtr.Zero) — la capa antes del panel del reposo con musica: el vidrio de la franja AHORA SUENA (VI2); sin ROCOLA_OS no hace nada
+            if (idleBlend > 0 && idleTex != IntPtr.Zero)
             {
                 float py = StatusTopY;
                 SetTexQuadA(adornoQuad, 0, py, Width, py + idleH, idleU, idleV, ((uint)(idleBlend*255) << 24) | 0x00FFFFFFu);
@@ -2907,7 +2907,7 @@ namespace Rocola
                 DibujaHaloGenero(cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, 1f);   // el color del genero detras de la portada (EstiloGpu.cs)
                 stars.DrawCube(miniTex, miniU, miniV, cs.Mini.X, cs.Mini.Y, cs.Mini.W, cs.Mini.H, cs.Mini.Angle, 1f, cs.Mini.Tilt);
             }
-            RocolaOsCapa(RocolaOsCieloCapa.AntesDeLaFicha); DibujaFicha();   // ROCOLA OS g137: (XP) DibujaFicha();   // la ficha rapida del disco: encima de la pared y las barras, debajo del viaje y de los avisos — la capa antes de la ficha rapida del disco: el vidrio de la ficha (VI1); sin ROCOLA_OS no hace nada
+            DibujaFicha();   // la ficha rapida del disco: encima de la pared y las barras, debajo del viaje y de los avisos
             // TRANSICION entre cubos (viaje + giro + bamboleo + destello) ENCIMA de todo. Solo mientras vive.
             if (tr.Has && tr.Bmp != null && transTex != IntPtr.Zero && tr.Alpha > 0.004f && tr.W > 1f && tr.H > 1f)
             {
@@ -3842,7 +3842,7 @@ namespace Rocola
                 // por mucho que se mueva su borde nunca asoma. Es lo mismo que hace NieblaDeriva.
                 float mx = Width * HazDeriva, my = Height * HazDeriva;
                 float ox = EnMargen((float)Math.Sin(HazFase) * mx + hazEmpuje, mx), oy = (float)Math.Cos(HazFase) * my;
-                DibujaTeselasFondo(hazTex, hazTeselas, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV, RocolaOsNiebla(0xFFFFFFFFu), nieblaQuad);   // ROCOLA OS g125: (XP) DibujaTeselasFondo(hazTex, hazTeselas, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV, 0xFFFFFFFFu, nieblaQuad);   // solo lo que no es transparente ni queda bajo una portada (DibujoLigeroGpu.cs) — el color de la via lactea: como la nebulosa (DN1); sin ROCOLA_OS o de noche, 0xFFFFFFFF
+                DibujaTeselasFondo(hazTex, hazTeselas, -mx + ox, -my + oy, Width + mx + ox, Height + my + oy, hazU, hazV, 0xFFFFFFFFu, nieblaQuad);   // solo lo que no es transparente ni queda bajo una portada (DibujoLigeroGpu.cs)
             }
         }
 
@@ -3852,7 +3852,7 @@ namespace Rocola
         // Solo lo que no es transparente (DibujoLigeroGpu.cs): sin teselas, el cuadrilatero entero de siempre.
         private void NieblaDeriva(float mx, float my, float dx, float dy, uint argb)
         {
-            DibujaTeselasFondo(nebTex, nebTeselas, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, RocolaOsNiebla(argb), nieblaQuad);   // ROCOLA OS g124: (XP) DibujaTeselasFondo(nebTex, nebTeselas, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb, nieblaQuad);   // sin pintar debajo de las portadas — el color de la nebulosa: de dia mas tenue y hecha velo (DN1); sin ROCOLA_OS o de noche, el mismo argb
+            DibujaTeselasFondo(nebTex, nebTeselas, -mx + dx, -my + dy, Width + mx + dx, Height + my + dy, nebU, nebV, argb, nieblaQuad);   // sin pintar debajo de las portadas
         }
 
         // ESCALERA DE TONOS: aqui esta lo que hace que se lea la intensidad. NO se dibuja subiendo el brillo
@@ -4388,7 +4388,7 @@ namespace Rocola
         private int aurMallaN, aurBrilloN, aurMallaAncho, aurMallaAlto; private float aurMallaBase; private bool aurMallaOk; private int aurMallaSalto; private bool aurMallaSuelo;   // la ultima malla armada
         private void DrawAurora(GpuAurora au)
         {
-            bool updateWave = SampleWave(ref au) | RocolaOsAuroraCambia();   // ROCOLA OS g129: (XP) bool updateWave = SampleWave(ref au); — la aurora se rehace tambien si cambio la luz de la raya (DN5) o los colores de la fecha (FI1); sin ROCOLA_OS, false
+            bool updateWave = SampleWave(ref au);
             // au es una copia: no modificar el espectro ni el renderizador CPU.
             if (OndasSuaves) { au.Alto *= 0.78f; au.Dim *= 0.85f; au.DimFilo *= 0.65f; }
             if (au.Alto < 2f || au.Dim <= 0.02f) return;
@@ -4466,7 +4466,7 @@ namespace Rocola
                 aurLc[i] = cPie;
                 float li = (AurLineaBase + AurLineaPico * v) * au.Dim * au.DimFilo;
                 if (li < 0f) li = 0f; else if (li > 1f) li = 1f;
-                aurLi[i] = li; RocolaOsAuroraColumna(i, fx, v, suelo, puntos);   // ROCOLA OS g128: (XP) aurLi[i] = li; — la columna de la aurora recien calculada: sus colores (FI1, clientes RocolaOsCieloAurora) y la raya del horizonte con la luz de la hora (DN5); sin ROCOLA_OS no hace nada
+                aurLi[i] = li;
             }
             // TRES pasadas, de ida y vuelta entre los dos arreglos: una sola no basta para el fondo de los
             // valles, que es lo mas puntiagudo que hay en la silueta. Se dibuja el resultado -el mismo para el
