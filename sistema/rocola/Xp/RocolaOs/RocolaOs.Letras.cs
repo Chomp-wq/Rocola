@@ -48,6 +48,8 @@ namespace Rocola
         private static readonly bool SinPausa = Environment.GetEnvironmentVariable("ROCOLA_LETRAS_SIN_PAUSA") == "1";   // (pruebas)
 
         internal static Dictionary<string, string[]> Indice { get { return Volatile.Read(ref indice); } }
+        // (revision) las palabras del indice en orden (ordinal): la ultima a medio escribir se busca por mitades, no recorriendo todo el indice
+        private static string[] claves;
 
         // LA PANTALLA DA LA FOTO de las rutas de los MP3 de la biblioteca (copias: el hilo no toca nada de XP)
         internal static void Repasa(List<string> rutas)
@@ -166,6 +168,8 @@ namespace Rocola
             }
             Dictionary<string, string[]> i = new Dictionary<string, string[]>(d.Count, StringComparer.Ordinal);
             foreach (KeyValuePair<string, List<string>> kv in d) i[kv.Key] = kv.Value.ToArray();
+            string[] cs = new string[i.Count]; i.Keys.CopyTo(cs, 0); Array.Sort(cs, StringComparer.Ordinal);
+            Volatile.Write(ref claves, cs);   // (antes que el indice: si se leen a destiempo, solo una palabra que aun no esta: TryGetValue)
             EnElIndice = canciones; Palabras = i.Count;
             Volatile.Write(ref indice, i.Count > 0 ? i : null);
         }
@@ -216,7 +220,16 @@ namespace Rocola
                 string[] l;
                 if (d.TryGetValue(toks[t], out l)) foreach (string x in l) estas.Add(x);
                 else if (t == toks.Count - 1 && toks[t].Length >= 3)
-                    foreach (KeyValuePair<string, string[]> kv in d) if (kv.Key.StartsWith(toks[t], StringComparison.Ordinal)) foreach (string x in kv.Value) estas.Add(x);
+                {
+                    string[] cs = Volatile.Read(ref claves);
+                    if (cs != null)
+                    {
+                        int k = Array.BinarySearch(cs, toks[t], StringComparer.Ordinal);
+                        if (k < 0) k = ~k;
+                        for (; k < cs.Length && cs[k].StartsWith(toks[t], StringComparison.Ordinal); k++)
+                            if (d.TryGetValue(cs[k], out l)) foreach (string x in l) estas.Add(x);
+                    }
+                }
                 foreach (string x in estas) { int c; cuenta.TryGetValue(x, out c); cuenta[x] = c + 1; }
             }
             foreach (KeyValuePair<string, int> kv in cuenta) if (kv.Value >= hacen) r.Add(kv);
