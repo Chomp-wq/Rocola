@@ -71,17 +71,68 @@ g20-g24, g40-g57, g60-g62, g70-g87, g90-g98, g100-g101; 20 archivos de `Codigo/`
 
 ### Las pruebas
 
-EN CURSO (20-11-2026, tercera sesión, después del corte): lo de abajo es lo ya medido; falta lo marcado «falta».
+Corridas del 20 al 21-11-2026 en cuatro sesiones (dos reinicios de la máquina y un corte de la orden de fondo; lo cortado se volvió a correr
+entero y no cuenta). La máquina, de 4 núcleos, compartida con otros agentes (carga de 0 a 12). Bitácora de las corridas:
+`/root/rocola-trabajo/fase11/junta-segunda/bateria.log` (fuera del repositorio).
 
-Los programas: JIT (`dotnet build -c Release`) y NativeAOT (`dotnet publish -p:PublishAot=true`) del código de `9621d34` (el de
-`junta-2` desde entonces: los commits de después solo tocan pruebas y documentos), en `/root/rocola-trabajo/fase11/junta-segunda/jit` y
-`.../aot`. JIT: 0 errores y 13 avisos, los mismos 13 de `avisos-base.txt` (archivo y línea; ninguno nuevo). NativeAOT: sale con 0, 0 avisos
-IL/AOT (13 avisos de C#, los mismos).
+Los programas: JIT (`dotnet build -c Release`) y NativeAOT (`dotnet publish -p:PublishAot=true`) del código de `9621d34` (el de `junta-2`
+desde entonces: los commits de después solo tocan pruebas y documentos). JIT: 0 errores y 13 avisos, los mismos 13 de `avisos-base.txt`
+(archivo y línea; ninguno nuevo). NativeAOT: sale con 0, 0 avisos IL/AOT (13 avisos de C#, los mismos).
 
-- `ganchos.py --base 69e6547`: TODO BIEN; 63 ganchos en 25 archivos; `Codigo/` devolviendo los ganchos: 112 archivos iguales a `69e6547`.
+- `ganchos.py --base 69e6547`: TODO BIEN; 63 ganchos en 25 archivos; `Codigo/` devolviendo los ganchos: 112 archivos iguales a `69e6547`
+  (20 con ganchos).
 - `diff-xp.py --sin-ganchos` (112 archivos): 5 135 líneas quitadas, 4 868 puestas y 229 sin marca, las de la base.
-- Baterías de `Pruebas/RocolaOs` ya corridas (pasadas/total): pantalla 71/71 JIT y AOT; navegador-archivos 51/51 JIT y AOT; pared-generos
-  69/69 JIT y AOT; catálogo 156/156 JIT y AOT; andamio 101/101 JIT (tras `58f5824`) y AOT; asistente 29/29 JIT (tras `0c7584a`) y AOT;
-  sustitución 97/97 JIT y AOT; spotify-xp 160/160 JIT. falta: spotify-xp AOT (la corrida con carga 7 a 12 dio 136/140, ver abajo).
-- Nivel 0 (JIT y AOT de arriba): lo de antes del corte y las escenas JIT, ver abajo. falta: escenas AOT, cierre, importa, otra vez el
-  recorrido ctrlf3 y las escenas que salen MAL corridas con la base.
+
+Las baterías de `Pruebas/RocolaOs` (pasadas/total):
+
+| Batería | JIT | NativeAOT |
+|---|---|---|
+| `pantalla` | 71/71 | 71/71 |
+| `navegador-archivos` | 51/51 | 51/51 |
+| `pared-generos` | 69/69 | 69/69 |
+| `catalogo` | 156/156 | 156/156 |
+| `andamio` | 101/101 (tras `58f5824`; antes 99/101, fallaba igual en la rama principal) | 101/101 |
+| `asistente` | 29/29 (tras `0c7584a`; antes 28/29) | 29/29 |
+| `sustitucion` | 97/97 | 97/97 |
+| `spotify-xp` | 160/160 | **159/160** |
+
+- `spotify-xp` tiene ahora 160 (140 en la junta 1): las partes `pulso` y `vigilante` (20) solo corren con `PULSO=` (el `libpulse.so.0` de
+  `rocola-pulso`), y aquí se le dio. En NativeAOT: la corrida con carga 7 a 12 (`aot4`, sin `PULSO`) dio 136/140 (el XP de
+  `apagado-sin` que no sonó, la traza y `rocola_error.txt` de `fabrica`, y la medida de «Probar» de XP, 13,9 s, la de la junta 1); `aot5`
+  la cortó el reinicio; `aot6` (carga 3 a 4) dio **159/160**. El que falla es «fabrica: rocola_error.txt igual de largo que sin ROCOLA_OS»
+  (15 y 9 renglones): la corrida con `ROCOLA_OS=1` tiene dos avisos de XP «Pantalla parada 512 ms / 532 ms, en: presentar cuadro de la
+  tarjeta» (la tarjeta por software tardó en presentar), ningún aviso de Rocola OS; en `aot4` era al revés (la de XP tenía los renglones de
+  más). Es la máquina cargada, no la junta; no se tocó la prueba.
+
+El nivel 0 (`nivel0.sh` con los programas de arriba; la base, `424ade7`, con su JIT en `.../junta-segunda/base-jit`):
+
+- BIEN: previo, código (112 archivos con las mismas líneas y CRLF que `69e6547`), `ganchos.py`, `diff-xp.py`, banco (semillas 7, 11 y 5
+  IGUAL), cintas (29 iguales, 6 616 cuadros), ventanas (hoja 86, pantalla 32 JIT y 32 NativeAOT, PantallaVistas 78; 0 fallan),
+  `cierre_rocola_os.sh` 43/43 JIT y 43/43 NativeAOT, `Pruebas/Importa` 145/145 JIT y NativeAOT.
+- Arneses: 15 BIEN, VistasFondo ACEPTADO (solo la línea de marca) y **VistasVistasB MAL** por la regla de `nivel0.sh` («0 con excepción»):
+  0 distintas de 3 108 con las dos letras, pero con DejaVu 18 casos `capsula-*-mide` dan `ArgumentException`, los mismos 18 en la
+  referencia congelada (lo dice ya `PORT_vistas-disco.md`). No es de la junta.
+- Recorridos: atracción, ayuda, botones, buscador y video BIEN; hojas, pared y pared2 ACEPTADO (lo de siempre); **ctrlf3 MAL** (capas
+  quietas 56 de 61; sin explicar `c32.2` y `c8`, la capa de la página de Sonido, 966x764). **Con la base sale igual** (`base424c`: las
+  mismas 5 capas distintas y las mismas 2 sin explicar): es el modo noche «de 22 a 7 h» de `PORT_xp-1718.md` contra la referencia
+  congelada de antes, no la junta.
+- Escenas JIT (24): 13 BIEN/IGUAL (arranque, video a la segunda, buscador, cierreq, altf4, kill9, asistente, captura, f2, f2sin, aviso,
+  f12, f12vigia), sigterm ACEPTADO y 10 MAL: moneda, tab, f3sigterm, salirq, f2barras, f3vistas, f3grises, f3teclas, f3raton y f3billar.
+  **Con la base salen las mismas 10 MAL** (`base424`), con las mismas diferencias (el interruptor «Modo noche (de 22 a 7 h)» en vez de
+  «de 23», la página de Sonido con el botón nuevo «Voz, golpe y retumbe...» 6 px más abajo, los estados y `rocola_config.txt` con las
+  claves nuevas del 17 y 18-11); salirq son solo cuentas de relojes (en la base, las del encargo `MedidasBitacora.cs:129`). Todo de
+  `PORT_xp-1718.md`, que cambió a propósito la XP de la referencia congelada; ninguna escena distinta por la junta.
+- Escenas NativeAOT (7): arranque, cierreq, kill9, buscador y f12 IGUAL; f3vistas y f3teclas MAL, las mismas diferencias que en JIT (y
+  que en la base JIT).
+
+No se corrió: la prueba de QEMU (`Pruebas/Qemu/pantalla.py`, `e718fe7`) ni ninguna compilación del sistema (el navegador pide la
+COMPLETA). Nada probado en el A4.
+
+### Lo que queda
+
+- Nada falla por la junta. Lo que sale MAL en el nivel 0 sale igual en la base (`424ade7`) y viene de `PORT_xp-1718.md` (la XP del 17 y
+  18-11 contra la referencia congelada) o del arnés VistasVistasB (las 18 excepciones de la referencia); habría que darle a `nivel0.sh` esas
+  diferencias como aceptadas (no se hizo aquí: es de la oleada 0).
+- `spotify-xp` NativeAOT 159/160 por un aviso de «Pantalla parada» con la máquina cargada; se puede volver a correr con la máquina libre.
+- La prueba de QEMU de la hoja Pantalla con las pestañas nuevas, y la compilación COMPLETA (paquetes de WPE WebKit y cog), cuando el dueño
+  la pida.
