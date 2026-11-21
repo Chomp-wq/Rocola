@@ -48,7 +48,8 @@ namespace Rocola
     internal static class RocolaOsNavegador
     {
         internal const string Nombre = "navegador";
-        internal const string ClaveInicio = "navegador_inicio", ClaveTope = "navegador_tope_mb", ClaveTeclado = "navegador_teclado";
+        internal const string ClaveInicio = "navegador_inicio", ClaveTope = "navegador_tope_mb", ClaveTeclado = "navegador_teclado", ClaveDescargasTope = "descargas_tope_mb";
+        internal const int SalioPorTopeDescargas = 6;   // (rocola-navegador: una descarga paso el tope de las descargas y se cerro)
         internal const string Carpeta = "navegador";
         private static volatile bool delante;
         internal static bool Delante { get { return delante; } }
@@ -182,6 +183,7 @@ namespace Rocola
                 si.Environment["ROCOLA_XP_DATOS"] = Form1.CarpetaDatos;
                 si.Environment["ROCOLA_NAVEGADOR_TOPE_MB"] = RocolaOs.AjusteEntero(ClaveTope).ToString(CultureInfo.InvariantCulture);
                 si.Environment["ROCOLA_NAVEGADOR_TECLADO"] = RocolaOs.Ajuste(ClaveTeclado);
+                si.Environment["ROCOLA_NAVEGADOR_DESCARGAS_TOPE_MB"] = RocolaOs.AjusteEntero(ClaveDescargasTope).ToString(CultureInfo.InvariantCulture);
                 si.Environment["ROCOLA_NAVEGADOR_DUENO"] = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
                 Process p = Process.Start(si);
                 proceso = p; Veces++;
@@ -236,6 +238,7 @@ namespace Rocola
                     RocolaOsClave.Texto(RocolaOsNavegador.ClaveInicio, "", RocolaOsUrlVale, true, "la pagina con que abre el navegador (vacio: la de inicio de la rocola, con su campo para escribir la direccion)"),
                     RocolaOsClave.Entero(RocolaOsNavegador.ClaveTope, 128, 32, 256, true, "el tope de lo que guarda el navegador (MB; va en lo aprendido, datos.img, de 512 MB): al abrirlo y al cerrarlo, si pasa, se borra la cache"),
                     RocolaOsClave.Texto(RocolaOsNavegador.ClaveTeclado, "us", RocolaOsTecladoVale, true, "la distribucion del teclado en el navegador (la de XKB: us, latam, es...)"),
+                    RocolaOsClave.Entero(RocolaOsNavegador.ClaveDescargasTope, 64, 16, 256, true, "el tope de las descargas del navegador (MB; en /rocola/datos/xp/descargas, en lo aprendido): si una descarga lo pasa, se cierra el navegador y se borra lo que bajaba"),
                 },
                 ParaAlCerrar = razon =>
                 {
@@ -329,7 +332,8 @@ namespace Rocola
                 bOlvida.Enabled = va && oc != 0 && !RocolaOsNavegador.Abierto;
                 lAj.Text = "navegador_inicio = " + (string.IsNullOrEmpty(ini) ? "(vacío: la de la rocola)" : ini)
                     + "\nnavegador_teclado = " + RocolaOs.Ajuste(RocolaOsNavegador.ClaveTeclado) + "  (us, latam, es...)"
-                    + "\nnavegador_tope_mb = " + tope;
+                    + "\nnavegador_tope_mb = " + tope
+                    + "\ndescargas_tope_mb = " + RocolaOs.AjusteEntero(RocolaOsNavegador.ClaveDescargasTope) + "  (lo que baja va a Archivos -> Descargas)";
             };
             if (va) RocolaOsNavegador.Mira();
             bAbre.Click += delegate
@@ -420,6 +424,7 @@ namespace Rocola
                 int c = RocolaOsNavegador.UltimoCodigo;
                 if (cerrar) res = "Se cerró con Ctrl+Alt+F1 (" + s + " s abierto).";
                 else if (c == 0) res = "El navegador se cerró (" + s + " s abierto).";
+                else if (c == RocolaOsNavegador.SalioPorTopeDescargas) res = "Se cerró: una descarga pasaba el tope de las descargas (" + RocolaOs.AjusteEntero(RocolaOsNavegador.ClaveDescargasTope) + " MB)\no los datos se llenaban; lo que bajaba se borró (Archivos -> Descargas).";
                 else res = "El navegador se cerró con el código " + c + (s < 5 ? " al abrirse: ver /run/rocola-navegador.txt en la consola." : " (" + s + " s abierto).");
             }
             catch (Exception ex) { RocolaOs.Falla(RocolaOsNavegador.Nombre, "usar el navegador", ex); res = "Falló: " + ex.Message; }

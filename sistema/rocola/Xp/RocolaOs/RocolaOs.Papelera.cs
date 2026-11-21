@@ -111,7 +111,7 @@ namespace Rocola
                     string de = raiz.Tipo == RocolaOsArchivos.TDescargas ? DeDescargas : DeDatos;
                     EscribeInfo(idDir, de, rel, cuando, bytes, carpeta);
                     string dest = Path.Combine(c, nombre);
-                    if (carpeta) Directory.Move(cual, dest); else File.Move(cual, dest, false);
+                    Mueve(cual, dest);
                     t = new RocolaOsTirado { Id = id, Dir = idDir, Cosa = dest, Nombre = nombre, De = de, Ruta = rel, Cuando = cuando, Bytes = bytes, Carpeta = carpeta, Llave = !carpeta && RocolaOsArchivos.EsLlave(cual, raiz.Ruta) };
                     return null;
                 }
@@ -122,6 +122,28 @@ namespace Rocola
                     return "No se pudo: " + ex.Message;
                 }
             }
+        }
+        // MOVER SIN PISAR NI SEGUIR ENLACES: rename(2) de la cosa misma (un enlace se mueve el), con RENAME_NOREPLACE (renameat2, glibc 2.28+): si
+        // ya hay algo en el destino falla en vez de pisarlo, sin hueco entre mirar y mover. Si el sistema de archivos no lo sabe hacer (EINVAL),
+        // se mira antes y rename. Nunca copia (misma carpeta de datos, mismo disco: EXDEV seria un error).
+        [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "renameat2", SetLastError = true)]
+        private static extern int renameat2_(int dfd1, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPUTF8Str)] string viejo, int dfd2, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPUTF8Str)] string nuevo, uint flags);
+        [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "rename", SetLastError = true)]
+        private static extern int rename_([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPUTF8Str)] string viejo, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPUTF8Str)] string nuevo);
+        private const int AT_FDCWD = -100, EINVAL = 22, ENOSYS = 38, EEXIST = 17;
+        internal static void Mueve(string de, string a)
+        {
+            int r = -1, e = ENOSYS;
+            try { r = renameat2_(AT_FDCWD, de, AT_FDCWD, a, 1); if (r != 0) e = System.Runtime.InteropServices.Marshal.GetLastPInvokeError(); }
+            catch (EntryPointNotFoundException) { }
+            if (r == 0) return;
+            if (e == EINVAL || e == ENOSYS)
+            {
+                if (File.Exists(a) || Directory.Exists(a) || RocolaOsArchivos.EsEnlace(a)) throw new IOException("ya hay algo en " + a);
+                if (rename_(de, a) == 0) return;
+                e = System.Runtime.InteropServices.Marshal.GetLastPInvokeError();
+            }
+            throw new IOException(e == EEXIST ? "ya hay algo en " + a : "no se pudo mover (errno " + e + ")");
         }
         private static int sec;
         private static string NuevoId()
@@ -229,7 +251,7 @@ namespace Rocola
                 if (destino == null) return "No hay un nombre libre para devolverlo.";
                 try
                 {
-                    if (t.Carpeta) Directory.Move(t.Cosa, destino); else File.Move(t.Cosa, destino, false);
+                    Mueve(t.Cosa, destino);
                 }
                 catch (Exception ex) { return "No se pudo: " + ex.Message; }
                 try { Directory.Delete(t.Dir, true); } catch { }
