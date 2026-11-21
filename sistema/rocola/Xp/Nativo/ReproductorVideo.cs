@@ -168,7 +168,16 @@ namespace Rocola
             if (mpv == IntPtr.Zero) return;
             Mpv.mpv_set_property_string(mpv, "pause", "no");
             estado = (int)EstadoVideo.Abriendo;
-            Mpv.Orden(mpv, "loadfile", archivo, "replace");
+            string af = afSiguiente; afSiguiente = null;
+            if (af == null) { Mpv.Orden(mpv, "loadfile", archivo, "replace"); return; }
+            // El filtro va SOLO con este archivo (opcion por archivo de loadfile, con el largo delante: «%N%», por las comas de lavfi): ponerlo
+            // en la propiedad «af» del reproductor rehacia los filtros del video que aun suena (de video a video) en sus ultimos momentos.
+            // mpv 0.38 y despues (el del sistema, 0.40) llevan el indice antes de las opciones; 0.37 no: lo que no entiende lo rechaza sin hacer nada.
+            string op = "af=%" + System.Text.Encoding.UTF8.GetByteCount(af) + "%" + af;
+            int r = Mpv.Orden(mpv, "loadfile", archivo, "replace", "-1", op);
+            if (r < 0) r = Mpv.Orden(mpv, "loadfile", archivo, "replace", op);
+            if (r < 0) Mpv.Orden(mpv, "loadfile", archivo, "replace");
+            if (traza) Console.Error.WriteLine("video: af «" + af + "»" + (r < 0 ? " (mpv no lo acepto: " + r + ")" : ""));
         }
         // Suelta el archivo (en XP: URL = "")
         internal void QuitaArchivo()
@@ -193,13 +202,9 @@ namespace Rocola
         }
         // El filtro de audio de mpv (su propiedad «af», una cadena de libavfilter; "" = ninguno). Lo pone Rocola OS de noche, al empezar cada video
         // (RocolaOs/RocolaOs.NocheVideo.cs, gancho g102); en XP el WMP no tenia nada asi y sin Rocola OS nadie lo llama.
-        internal void FiltroAudio(string af)
-        {
-            IntPtr m = mpv;
-            if (m == IntPtr.Zero) return;
-            int r = Mpv.mpv_set_property_string(m, "af", af ?? "");
-            if (traza) Console.Error.WriteLine("video: af «" + (af ?? "") + "»" + (r < 0 ? " (mpv no lo acepto: " + r + ")" : ""));
-        }
+        // Se guarda y va con el siguiente Carga, solo para ese archivo (el de despues, sin nada salvo que se vuelva a pedir).
+        internal void FiltroAudio(string af) { afSiguiente = af ?? ""; }
+        private string afSiguiente;
         private void AplicaVolumen()
         {
             if (mpv == IntPtr.Zero) return;

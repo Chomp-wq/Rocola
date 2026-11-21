@@ -4,8 +4,8 @@
 //
 // En XP los videos no pasan por la cadena de sonido: el reproductor de Windows Media solo recibe el volumen, y de noche se le baja lo mismo que
 // a la musica (NV5a, Form1.Sonido.cs: FactorVideoNoche). En rocola-xp los toca mpv (Nativo/ReproductorVideo.cs), que si deja ponerle filtros de
-// libavfilter por su propiedad «af»: de noche, al EMPEZAR cada video (gancho g102, en StartVideoItem justo antes de abrirlo: nunca a media
-// reproduccion, que daria un chasquido), el mismo estante de graves de 120 Hz que la musica (los graves de noche de ese momento: lowshelf con
+// libavfilter («af»): de noche, al EMPEZAR cada video (gancho g102, en StartVideoItem justo antes de abrirlo, como opcion SOLO de ese archivo
+// en su loadfile: nunca a media reproduccion, que daria un chasquido, ni en el video que aun suena si se pasa de un video a otro), el mismo estante de graves de 120 Hz que la musica (los graves de noche de ese momento: lowshelf con
 // Q 0,7071, el de SalaLocal) y el mismo corte del grave (dos highpass de Butterworth, Q 0,5412 y 1,3066: el cuarto orden de la curva del
 // subgrave), con el avance del momento: el corte a la frecuencia que quita lo mismo que la mezcla de la musica a 0,7 veces el corte
 // (Form1.CorteEquivalenteHz). Estos dos son de fase minima (mpv no tiene la fase lineal de la cadena): en un video da igual, no hay limitador

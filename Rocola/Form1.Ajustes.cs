@@ -1628,7 +1628,7 @@ namespace Rocola
                         vGraN.ForeColor = nocheViva ? cVol : cApagado; nGraN.ForeColor = nocheViva ? cTexto : cApagado;
                         vCorN.Text = barCorN.Value == 0 ? "apagado" : ((30 + 10 * barCorN.Value) + " Hz");   // NV2
                         barCorN.Enabled = nocheViva; vCorN.ForeColor = nocheViva ? cVol : cApagado; nCorN.ForeColor = nocheViva ? cTexto : cApagado;
-                        vMad.Text = barMad.Value + " %"; vMadH.Text = (barMadH.Value % 24) + " h";   // NV4
+                        vMad.Text = barMad.Value > barNoche.Value ? barNoche.Value + " % (noche)" : barMad.Value + " %"; vMadH.Text = (barMadH.Value % 24) + " h";   // NV4 (por encima del de la noche suena el de la noche: MadDb)
                         bool madViva = (swNoche.Checked && swMad.Checked) || probMad;
                         barMad.Enabled = madViva; barMadH.Enabled = madViva;
                         vMad.ForeColor = madViva ? cFue : cApagado; vMadH.ForeColor = madViva ? cFue : cApagado; nMadH.ForeColor = madViva ? cTexto : cApagado;

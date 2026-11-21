@@ -133,6 +133,17 @@ class Noche
                 }
         }
         Check(pasoAntes, "de 66 a 90 % la rampa da el MISMO paso que antes, bit a bit" + pasoMal);
+        // (21-11-2026, revision) con la madrugada APAGADA su porcentaje no cuenta: al 80 % y la madrugada al 50 %, el paso de siempre
+        // (antes de arreglarlo, 0,684 en vez de 0,5: la rampa de 20 s llegaba en unos 9 s y «Probar» un 27 % mas rapido)
+        fPct.SetValue(null, 80); fMadP.SetValue(null, 50); fMad.SetValue(null, false);
+        float b80 = 0.95f - (1f - 0.5f) * 500 / 20000f, s80 = lin80 + (1f - 0.5f) * 500 / 20000f;
+        Check(rampa(0.95f, lin80, 500, 20000) == b80 && rampa(lin80, 1f, 500, 20000) == s80,
+              "con la madrugada apagada al 50 % y la noche al 80 %, la rampa da el paso de antes (bit a bit)");
+        fMad.SetValue(null, true);
+        float lin50m = (float)Math.Pow(10, -10.0 / 20);
+        Check(rampa(1f, lin80, 1000, 20000) < 1f - (1f - 0.5f) * 1000 / 20000 && Math.Abs(rampa(1f, lin80, 1000, 20000) - (1f - (1f - lin50m) * 1000 / 20000)) < 1e-5f,
+              "con la madrugada encendida al 50 %, el paso mayor (el de la madrugada)");
+        fMad.SetValue(null, false); fMadP.SetValue(null, 70);
         fPct.SetValue(null, 65); float lin65 = (float)Math.Pow(10, db(65) / 20); fPct.SetValue(null, 65);
         Check(rampa(1f, lin65, 1000, 20000) < 1f - (1f - 0.5f) * 1000 / 20000, "y al 65 % (" + db(65).ToString("0.00") + " dB, mas de medio volumen) ya el paso mayor");
         fPct.SetValue(null, 80);
@@ -597,6 +608,17 @@ class Noche
         MethodInfo mArma = TF.GetMethod("ArmaCadena", T), mSigueA = TF.GetMethod("SigueA", T);
         Check(Codigo.Llama(Codigo.Llamadas(mArma), "DeNoche") && Codigo.Llama(Codigo.Llamadas(mArma), "NocheCorteHz"), "ArmaCadena arma el corte de noche (GraveMono.DeNoche) con NocheCorteHz");
         Check(mSigueA != null && Codigo.LeeCampo(new List<MethodBase> { mSigueA }, "Noche"), "SigueA pasa el corte de noche a la siguiente del mismo disco");
+        // (21-11-2026, revision) Hereda solo sigue con la memoria si el corte es el mismo: en el relevo de un disco continuo la siguiente se
+        // arma con el corte de la que suena (corteNocheRelevo; 0 si la que suena no tenia la etapa) y el nuevo vale desde la siguiente que no siga.
+        bool armaRelevo = Codigo.LeeCampo(new List<MethodBase> { mArma }, "corteNocheRelevo"), poneRelevo = false;
+        foreach (MethodBase m in Codigo.TodosLosMetodos(TF))
+        {
+            List<string> lm = Codigo.Llamadas(m);
+            if (Codigo.EscribeCampo(new List<MethodBase> { m }, "corteNocheRelevo") && Codigo.Llama(lm, "ArmaCadena") && Codigo.Llama(lm, "SiguienteDelDisco") && Codigo.Llama(lm, "get_CorteNoche")) poneRelevo = true;
+        }
+        object eC = mDeNoche.Invoke(null, new object[] { new FuenteN(new float[8], fs, 2), 100f });
+        Check(armaRelevo && poneRelevo && (float)TG.GetProperty("CorteNoche", T).GetValue(eC, null) == 100f,
+              "en el relevo de un disco continuo la siguiente toma el corte de noche de la que suena (un corte nuevo a medio disco no deja el empalme sin memoria)");
         fCorte.SetValue(null, 0); fMad.SetValue(null, false);
         float hz0 = (float)mHz.Invoke(null, null);
         fMad.SetValue(null, true); float hzM = (float)mHz.Invoke(null, null);

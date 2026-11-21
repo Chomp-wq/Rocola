@@ -235,7 +235,7 @@ namespace Rocola
         {
             if (actual == meta) return meta;
             if (msPasados <= 0) return actual;
-            float paso = Math.Max(1f - 0.5f, 1f - Math.Min(MadLin(), Math.Min(actual, meta))) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si baja mas que eso (de 50 a 65 %, desde el 20-11-2026), de 1 a lo mas bajo de la noche (o de la madrugada, NV4: MadLin nunca es mas alta que NocheLin), de donde esta o de a donde va: la noche entera, o el deslizador de 50 a 90 % y de vuelta, en rampaMs o menos (la subida de las 7 y el interruptor no esperan a la rampa: van por la curva del avance, AvanzaModoNoche)
+            float paso = Math.Max(1f - 0.5f, 1f - Math.Min(nocheMadrugada ? MadLin() : NocheLin(), Math.Min(actual, meta))) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si baja mas que eso (de 50 a 65 %, desde el 20-11-2026), de 1 a lo mas bajo de la noche (o de la madrugada si esta encendida, NV4: MadLin nunca es mas alta que NocheLin; apagada no cuenta, y si la rampa va o viene de ella ya lo cubre min(actual, meta)), de donde esta o de a donde va: la noche entera, o el deslizador de 50 a 90 % y de vuelta, en rampaMs o menos (la subida de las 7 y el interruptor no esperan a la rampa: van por la curva del avance, AvanzaModoNoche)
             if (actual < meta) { actual += paso; if (actual > meta) actual = meta; }
             else { actual -= paso; if (actual < meta) actual = meta; }
             return actual;
@@ -1527,7 +1527,7 @@ namespace Rocola
             // en fase lineal, con la mezcla que pone el modo noche (GraveMono.NocheMezcla: de dia 0, y la cancion pasa tal cual, bit a bit).
             // Se arma siempre que haya corte (para que «Probar» y la bajada se oigan en la que ya suena); el corte nuevo vale desde la siguiente.
             NAudio.Wave.ISampleProvider alLocal = c.Mono;
-            float corteNoche = NocheCorteHz();
+            float corteNoche = corteNocheRelevo >= 0f ? corteNocheRelevo : NocheCorteHz();   // (en el relevo de un disco continuo, el de la que suena: Form1.SinPausa.cs)
             if (corteNoche > 0f) { c.Noche = GraveMono.DeNoche(c.Mono, corteNoche); c.Noche.Cebado = audioTailDelay; alLocal = c.Noche; }
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.

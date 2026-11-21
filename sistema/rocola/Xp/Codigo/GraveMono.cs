@@ -264,6 +264,7 @@ namespace Rocola
                 : this(s, corteHz, anchoEstereo, subgraveHz, true) { anchoOn = conAncho; subOn = conSubgrave; }
 
             // NV2: el corte del grave de noche a 'corteHz' (sin cruce ni ancho: solo la curva del subgrave), con la mezcla de NocheMezcla.
+            internal float CorteNoche { get { return deNoche ? subHz : 0f; } }   // el corte de la etapa de noche (0 si no es esa etapa: el relevo de un disco continuo lo sigue, Form1.SinPausa.cs)
             internal static GraveMono DeNoche(NAudio.Wave.ISampleProvider s, float corteHz)
             {
                 GraveMono g = new GraveMono(s, 0f, 1f, corteHz, false, false);
