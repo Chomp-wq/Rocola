@@ -216,9 +216,9 @@ namespace Rocola
             }
             else v *= MasterLin();   // sin medida no hay nada que emparejar: que al menos siga a "Subir TODO"
             // EL MODO NOCHE, AQUI FUERA (y no en MasterLin): la rama del video medido se salta la ganancia general, y esos videos -la
-            // mayoria- seguirian a todo volumen a las tres de la manana. A la perilla del reproductor de Windows se le aplica el % del
-            // deslizador tal cual (al 80 %, la perilla al 80 % de lo que iba), siguiendo la rampa. El sondeo del video lo vuelve a leer
-            // cada 400 ms, asi que el que ya suena baja solo.
+            // mayoria- seguirian a todo volumen a las tres de la manana. Desde el 20-11-2026 (NV5a) a la perilla del reproductor se le aplican
+            // los MISMOS dB que a la musica (FactorVideoNoche: antes, el % del deslizador tal cual), siguiendo la rampa, y de madrugada la
+            // madrugada. El sondeo del video lo vuelve a leer cada 400 ms, asi que el que ya suena baja solo.
             v *= FactorVideoNoche();
             int r = (int)Math.Round(v);
             if (r < 0) r = 0; else if (r > 100) r = 100;   // el WMP no pasa de 100: un video muy bajito solo llega hasta ahi
@@ -271,7 +271,7 @@ namespace Rocola
                 int vol0 = VideoVolumeFor(path);
                 video.Volumen = vol0;   // EN LINUX: settings.volume (y settings.autoStart = true: Carga empieza a tocar en cuanto abre, como el WMP con autoStart)
                 videoVolSet = vol0;
-                video.Carga(path);   // con autoStart=true deberia arrancar solo   // EN LINUX: URL = path
+                RocolaOsNocheVideo(video); video.Carga(path);   // con autoStart=true deberia arrancar solo   // EN LINUX: URL = path   // ROCOLA OS g102: (XP) video.Carga(path); — de noche, a mpv el mismo estante de graves y el mismo corte del grave que a la musica, con el avance del momento, al empezar cada video (NV5b; RocolaOs/RocolaOs.NocheVideo.cs); sin Rocola OS o con «noche_video» apagada, lo de XP
                 try { video.Toca(); } catch { }   // empujon explicito: autoStart no siempre engancha al instanciar el ActiveX   // EN LINUX: controls.play()
 
                 videoOn = true;

@@ -137,9 +137,12 @@ if [[ " $partes " == *" importa "* ]]; then
 	# lo del 17 y 18-11-2026: el ecualizador del dueno, la noche y la marca del volumen parejo pasan tal cual (las lee el codigo de XP)
 	si "rocola_config.txt: eq_dueno= (la memoria del sonido normal) tal cual" contiene "$T/rocola_config.txt" "eq_dueno=1.5;0.0;-2.0;0.0;0.0;3.0;0.0;0.0;-1.5;0.0"
 	si "rocola_config.txt: eq_dueno_billar= (la del modo billar) tal cual" contiene "$T/rocola_config.txt" "eq_dueno_billar=0.0;2.5;0.0;0.0;-4.0;0.0;0.0;1.0;0.0;6.0"
-	si "rocola_config.txt: noche_graves=, noche_desde= y noche_desde_22= tal cual" bash -c 'grep -qx "noche_graves=5" <(tr -d "\r" < "$1") && grep -qx "noche_desde=23" <(tr -d "\r" < "$1") && grep -qx "noche_desde_22=1" <(tr -d "\r" < "$1")' sh "$T/rocola_config.txt"
+	si "rocola_config.txt: noche_desde= y noche_desde_22= tal cual" bash -c 'grep -qx "noche_desde=23" <(tr -d "\r" < "$1") && grep -qx "noche_desde_22=1" <(tr -d "\r" < "$1")' sh "$T/rocola_config.txt"
 	si "rocola_config.txt: parejo_v2=1 (va con la tabla de XP), una sola vez" bash -c '[ "$(tr -d "\r" < "$1" | grep -c "^parejo_v2=")" = 1 ] && tr -d "\r" < "$1" | grep -qx "parejo_v2=1"' sh "$T/rocola_config.txt"
 	si "y la marca dice que la marca del volumen parejo va con la tabla de XP" contiene "$T/rocola_importado_xp.txt" "parejo_v2=1 (con la tabla de XP)"
+	for k in noche_graves=10 noche_graves_8=1 noche_corte=100 noche_madrugada=0 noche_madrugada_desde=2 noche_madrugada_pct=60; do   # (20-11-2026, lo de los vecinos)
+		si "rocola_config.txt: $k tal cual (el modo noche para los vecinos, 20-11-2026)" contiene "$T/rocola_config.txt" "$k"
+	done
 	si "el modelo de IAS/, tal cual" igual "$T/IAS/rocola_ia.bin" "$XPC/IAS/rocola_ia.bin"
 	si "y su copia anterior" igual "$T/IAS/rocola_ia.bin.anterior-1" "$XPC/IAS/rocola_ia.bin.anterior-1"
 	si "el suelto «Rocola_EQ_IA.bin», como rocola_eq_ia.bin (rocola-xp lo pasa a IAS/)" igual "$T/rocola_eq_ia.bin" "$XPC/Rocola_EQ_IA.bin"
@@ -284,7 +287,7 @@ if [[ " $partes " == *" importa "* ]]; then
 	si "(rocola-xp con lo importado) dsee_genero= se ignora y no se vuelve a guardar" nocontiene "$T/rocola_config.txt" "dsee_genero"
 	si "(rocola-xp con lo importado) y sin error por ella" bash -c '! grep -qi "dsee" "$1" 2> /dev/null' sh "$T/rocola_error.txt"
 	si "(rocola-xp con lo importado) eq_dueno= y eq_dueno_billar= los mismos" bash -c 'tr -d "\r" < "$1" | grep -qx "eq_dueno=1.5;0.0;-2.0;0.0;0.0;3.0;0.0;0.0;-1.5;0.0" && tr -d "\r" < "$1" | grep -qx "eq_dueno_billar=0.0;2.5;0.0;0.0;-4.0;0.0;0.0;1.0;0.0;6.0"' sh "$T/rocola_config.txt"
-	si "(rocola-xp con lo importado) noche_graves=5 y la noche desde las 23 respetada (con noche_desde_22=1)" bash -c 'tr -d "\r" < "$1" | grep -qx "noche_graves=5" && tr -d "\r" < "$1" | grep -qx "noche_desde=23" && tr -d "\r" < "$1" | grep -qx "noche_desde_22=1"' sh "$T/rocola_config.txt"
+	si "(rocola-xp con lo importado) noche_graves=10 (con noche_graves_8=1) y la noche desde las 23 respetada (con noche_desde_22=1)" bash -c 'tr -d "\r" < "$1" | grep -qx "noche_graves=10" && tr -d "\r" < "$1" | grep -qx "noche_desde=23" && tr -d "\r" < "$1" | grep -qx "noche_desde_22=1"' sh "$T/rocola_config.txt"
 	foto "$D/sdb1/Rocola Vieja" > "$W/foto-x3-despues.txt"
 	si "(XP sin parejo_v2=1) su carpeta sin tocar (la tabla sigue alli)" bash -c 'cmp -s "$1" "$2" && [ -s "$3/rocola_billar_nivel.txt" ]' sh "$W/foto-x3-antes.txt" "$W/foto-x3-despues.txt" "$X3"
 	# (b) una rocola-xp de antes del 18-11 (su tabla aprendida con la presencia, sin la marca) y una XP con la marca: la tabla de rocola-xp

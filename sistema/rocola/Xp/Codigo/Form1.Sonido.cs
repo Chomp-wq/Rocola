@@ -78,9 +78,29 @@ namespace Rocola
         // momento (rampa de 1,5 s, para oir la diferencia) y vuelve solo. Si la rocola se ENCIENDE ya de noche, arranca en el nivel de la
         // noche al momento.
         //
-        // N1, DE NOCHE, MENOS GRAVE HACIA AFUERA (17-11-2026): ademas del porcentaje, el grave baja nocheGraves dB (noche_graves=, de 0 a 6,
-        // 4 de fabrica; 0 = apagado) con el MISMO avance de la bajada: el estante de 120 Hz de SalaLocal (el de «Graves del local») lo
-        // resta de su objetivo (SalaLocal.GravesNocheDb, continuo con decimales). De dia vale 0 y la etapa sale bit a bit como antes.
+        // N1, DE NOCHE, MENOS GRAVE HACIA AFUERA (17-11-2026): ademas del porcentaje, el grave baja nocheGraves dB (noche_graves=, de 0 a 12
+        // desde el 20-11-2026, 8 de fabrica; antes de 0 a 6 y 4; 0 = apagado) con el MISMO avance de la bajada: el estante de 120 Hz de
+        // SalaLocal (el de «Graves del local») lo resta de su objetivo (SalaLocal.GravesNocheDb, continuo con decimales). De dia vale 0 y la
+        // etapa sale bit a bit como antes.
+        //
+        // LO QUE SE HIZO PARA LOS VECINOS (20-11-2026, el dueno: «Del modo noche haz lo que me recomiendes»; las medidas y el porque en
+        // AUDIO_NOCHE_VECINOS_MODEST_2026-11-20.md: lo que atraviesa el muro es el grave). Ninguna etapa nueva sube ni baja el volumen sola: son
+        // filtros fijos que entran con la misma bajada lenta (nada que de brincos, como pidio el dueno el 18-11-2026).
+        //  - NV1: «Graves de noche» de 0 a 12 dB, 8 de fabrica (un 4 guardado -el de fabrica de antes, que se escribia siempre- pasa a 8 UNA vez,
+        //    con la marca noche_graves_8=1; cualquier otro valor guardado se respeta).
+        //  - NV2: «Cortar el grave mas hondo» (noche_corte=, en Hz: 80 de fabrica, de 40 a 120; 0 lo apaga): de noche, lo de debajo de ese
+        //    corte se quita con la curva del subgrave (Butterworth de cuarto orden en FASE LINEAL: no mueve los picos; GraveMono.cs, una etapa
+        //    aparte detras del grave en mono: GraveMono.DeNoche), mezclada segun el avance de la noche. La mezcla va PAREJA EN dB donde el corte
+        //    ya quita de verdad (a 0,7 veces el corte, 12,6 dB: MezclaDeCorte), asi que entra tan despacio como el volumen.
+        //    NV1 y NV2 juntos (NV3), medido con canciones sinteticas en la cadena de verdad: afuera -3 dB los graves, -5,7 los dB(C) y -5,8
+        //    los golpes mas que la noche de antes, por -1,4 dB de lo que se oye dentro.
+        //  - NV4: «Mas bajo de madrugada» (noche_madrugada=1, encendido; noche_madrugada_desde=1, la 1 de la manana; noche_madrugada_pct=70,
+        //    de 50 a 90): desde esa hora, OTRA bajada de una hora, pareja en dB, hasta ese porcentaje (nunca mas alto que el de la noche), con
+        //    los graves de noche a 12 dB (o los del mando, si son mas) y el corte del grave (el del mando; si esta apagado, 80 Hz). A las 7 todo
+        //    sube junto, en los 20 s de siempre. Medido al 70 %: afuera -6,5 dB los graves y -9,3 los dB(C), dentro -3,8 de lo que se oye.
+        //  - NV5a: los videos bajan los MISMOS dB que la musica (FactorVideoNoche = FactorNoche), no el % del deslizador en la perilla (al
+        //    50 % la musica bajaba 10 dB y el video 6).
+        // «Probar» pone la noche entera (volumen, graves y corte) y «Probar la madrugada» la madrugada entera, hasta otro toque.
         private static bool nocheOn = true;                        // "noche=" en config (0 lo apaga del todo)
         private static int nocheDesde = 22;                        // "noche_desde=" (22 de fabrica desde el 17-11-2026; antes 23)
         private static int nocheHasta = BusinessDayStartHour;      // "noche_hasta=" (las 7: cuando empieza el dia del negocio)
@@ -88,8 +108,17 @@ namespace Rocola
         internal const int NochePctMin = 50, NochePctMax = 90;   // 50 desde el 20-11-2026 (antes 70; el dueno: «El modo noche ahora tendra el slider desde 50 hasta 90%»)
         private const int NocheRampaMs = 20000, NochePruebaRampaMs = 1500, NochePruebaMs = 30 * 60 * 1000;   // la prueba se queda hasta otro toque; si se olvida, 30 min
         internal const int NocheBajadaMs = 3600000;                // la bajada de la noche: una hora
-        private static int nocheGraves = 4;                        // "noche_graves=": dB de grave que se quitan de noche (0 a 6; 0 = apagado)
-        internal const int NocheGravesMax = 6;
+        private static int nocheGraves = 8;                        // "noche_graves=": dB de grave que se quitan de noche (0 a 12, 8 de fabrica desde el 20-11-2026; antes 0 a 6 y 4; 0 = apagado)
+        internal const int NocheGravesMax = 12;
+        private static int nocheCorte = 80;                        // NV2 "noche_corte=": el corte del grave de noche, en Hz (40 a 120; 0 = apagado)
+        internal const int NocheCorteMin = 40, NocheCorteMax = 120, NocheCorteMadrugada = 80;
+        private static bool nocheMadrugada = true;                 // NV4 "noche_madrugada=": la segunda bajada (1 = encendida de fabrica)
+        private static int nocheMadDesde = 1;                      // NV4 "noche_madrugada_desde=": desde que hora (la 1 de la manana)
+        private static int nocheMadPct = 70;                       // NV4 "noche_madrugada_pct=": de 50 a 90 (lo que se oye; nunca mas que nochePct)
+        internal const int NocheMadGraves = 12;                    // NV4: los graves de noche de madrugada (o los del mando, si son mas)
+        private double madAvance;                                  // NV4: cuanto de la madrugada va (0 a 1), por reloj, como nocheAvance
+        private float gravesAhora, corteAhora;                     // el grave de noche (dB) y el corte (0 a 1) que van AHORA (siguen a su meta con la rampa)
+        private bool nochePruebaMad;                               // «Probar la madrugada» (y no solo la noche)
         private float nocheFactor = 1f;                            // donde esta la rampa AHORA (1 = de dia)
         private double nocheAvance;                                // cuanto de la noche va (0 = de dia, 1 = en el nivel de la noche), por reloj
         private int nocheUltMs;                                    // reloj de la ultima vuelta
@@ -100,15 +129,21 @@ namespace Rocola
         private static float NocheDb() { return (float)(10.0 * Math.Log(Math.Max(1, Math.Min(100, nochePct)) / 100.0, 2.0)); }
         private static int linDe = -1; private static float linVal = 1f;
         private static float NocheLin() { int p = nochePct; if (p != linDe) { linVal = (float)Math.Pow(10.0, NocheDb() / 20.0); linDe = p; } return linVal; }   // (una vez por porcentaje)
+        // NV4: la madrugada, con la misma cuenta, y nunca mas alta que la noche.
+        private static float MadDb() { float m = (float)(10.0 * Math.Log(Math.Max(1, Math.Min(100, nocheMadPct)) / 100.0, 2.0)), n = NocheDb(); return m < n ? m : n; }
+        private static int madDeP = -1, madDeN = -1; private static float madVal = 1f;
+        private static float MadLin() { int p = nocheMadPct, n = nochePct; if (p != madDeP || n != madDeN) { madVal = (float)Math.Pow(10.0, MadDb() / 20.0); madDeP = p; madDeN = n; } return madVal; }
 
         // El rango CRUZA LA MEDIANOCHE: «hora >= 23 && hora < 7» es siempre falso. Va un O, no un Y (con su prueba: pruebas/noche.cs).
-        private static bool EsDeNoche(DateTime t)
+        private static bool EsDeNoche(DateTime t) { return EnRango(t.Hour, nocheDesde, nocheHasta); }
+        private static bool EnRango(int h, int a, int b)
         {
-            int h = t.Hour, a = nocheDesde, b = nocheHasta;
             if (a == b) return false;              // rango vacio
             if (a < b) return h >= a && h < b;     // rango normal, dentro del mismo dia
             return h >= a || h < b;                // el que cruza la medianoche
         }
+        // NV4: la madrugada, de noche_madrugada_desde= a noche_hasta= (la 1 a las 7) y siempre dentro de la noche.
+        private static bool EsMadrugada(DateTime t) { return EsDeNoche(t) && EnRango(t.Hour, nocheMadDesde, nocheHasta); }
         private bool ProbandoNoche { get { return nochePruebaHasta != 0 && unchecked(Environment.TickCount - nochePruebaHasta) < 0; } }
         // A donde TIENE que llegar la rampa: 1 de dia; de noche (o probando), lo que diga el deslizador.
         // (la hora se mira una vez por segundo, no en cada vuelta del temporizador de animacion)
@@ -116,39 +151,88 @@ namespace Rocola
         private bool EsDeNocheAhora()
         {
             int t = Environment.TickCount;
-            if (nocheMirada == 0 || unchecked(t - nocheMirada) >= 1000) { nocheAhora = EsDeNoche(DateTime.Now); nocheMirada = t | 1; }
+            if (nocheMirada == 0 || unchecked(t - nocheMirada) >= 1000) { DateTime ya = DateTime.Now; nocheAhora = EsDeNoche(ya); madAhora = EsMadrugada(ya); nocheMirada = t | 1; }
             return nocheAhora;
         }
-        private float MetaNoche() { return ((nocheOn && EsDeNocheAhora()) || ProbandoNoche) ? NocheLin() : 1f; }   // el nivel de la noche entero (donde arranca una rocola prendida de noche)
+        private bool madAhora;
+        private bool EsMadrugadaAhora() { EsDeNocheAhora(); return madAhora; }   // (con la misma mirada de una vez por segundo)
+        // El nivel de la noche entero (donde arranca una rocola prendida de noche): la noche, y de madrugada la madrugada.
+        private float MetaNoche()
+        {
+            bool esNoche = nocheOn && EsDeNocheAhora(), prob = ProbandoNoche;
+            if (!esNoche && !prob) return 1f;
+            bool mad = (esNoche && nocheMadrugada && EsMadrugadaAhora()) || (prob && nochePruebaMad);
+            return FactorDeAvances(1.0, mad ? 1.0 : 0.0);
+        }
         // El volumen que toca con ese avance: PAREJO EN dB (avance 0 = 1, avance 1 = NocheLin).
         private static float FactorDeAvance(double avance) { if (avance <= 0.0) return 1f; if (avance >= 1.0) return NocheLin(); return (float)Math.Pow(10.0, NocheDb() * avance / 20.0); }
-        // El avance de la noche (0 a 1) que lleva ese volumen, en dB: lo que se usa para los videos y para el grave de noche.
-        private static float AvanceDeFactor(float f)
+        // NV4: con la madrugada (b, 0 a 1) encima de la noche (a): de la noche a la madrugada, tambien pareja en dB. Sin madrugada, lo de antes.
+        private static float FactorDeAvances(double a, double b)
         {
-            float lin = NocheLin(); if (lin >= 1f || f >= 1f) return 0f; if (f <= lin) return 1f;
-            return (float)(Math.Log(f) / Math.Log(lin));
+            if (b <= 0.0) return FactorDeAvance(a);
+            if (a >= 1.0 && b >= 1.0) return MadLin();
+            double db = NocheDb() * Math.Min(1.0, Math.Max(0.0, a)) + (MadDb() - NocheDb()) * Math.Min(1.0, b);
+            return (float)Math.Pow(10.0, db / 20.0);
         }
         internal static float GravesNocheDe(float avance) { return nocheGraves <= 0 ? 0f : nocheGraves * avance; }
+        // Los graves de noche con los dos avances: de madrugada, NocheMadGraves (o los del mando, si son mas).
+        internal static float GravesDeAvances(double a, double b)
+        {
+            float g = GravesNocheDe((float)Math.Min(1.0, Math.Max(0.0, a)));
+            if (b <= 0.0) return g;
+            return g + (Math.Max(nocheGraves, NocheMadGraves) - (nocheGraves <= 0 ? 0 : nocheGraves)) * (float)Math.Min(1.0, b);
+        }
+        // NV2: cuanto del corte del grave (0 a 1): de noche con el mando; de madrugada siempre (con el mando apagado, a 80 Hz).
+        internal static float CorteDeAvances(double a, double b)
+        {
+            double c = nocheCorte > 0 ? Math.Min(1.0, Math.Max(0.0, a)) : 0.0;
+            if (b > c) c = Math.Min(1.0, b);
+            return (float)c;
+        }
+        // El corte con el que se arma cada cancion (GraveMono.DeNoche): el del mando o, con el mando apagado y la madrugada puesta, 80 Hz.
+        // 0 = sin la etapa (con todo apagado, la cadena de siempre).
+        internal static float NocheCorteHz() { return nocheCorte > 0 ? nocheCorte : (nocheMadrugada ? NocheCorteMadrugada : 0); }
+        // La mezcla del corte (lo filtrado frente a lo que entra) para que la bajada sea PAREJA EN dB a 0,7 veces el corte, donde la curva ya
+        // quita 12,6 dB (g = 0,2335): (1 - g^c) / (1 - g). Asi a la mitad del avance alli se quita la mitad de los dB; 0 y 1, exactos.
+        internal static readonly double CorteG = Math.Pow(1.0 + Math.Pow(1.0 / 0.7, 8.0), -0.5);
+        internal static float MezclaDeCorte(float c)
+        {
+            if (c <= 0f) return 0f; if (c >= 1f) return 1f;
+            return (float)((1.0 - Math.Pow(CorteG, c)) / (1.0 - CorteG));
+        }
+        // El corte que da la misma bajada en un filtro de cuarto orden de verdad (para los videos de Rocola OS, que no pasan por la cadena):
+        // la frecuencia a la que un Butterworth de cuarto orden quita a 0,7 veces el corte los mismos dB que la mezcla. 0 = sin corte.
+        internal static float CorteEquivalenteHz(float hz, float c)
+        {
+            if (hz <= 0f || c <= 0f) return 0f; if (c >= 1f) return hz;
+            double q = Math.Pow(CorteG, -2.0 * c) - 1.0;
+            return q <= 0.0 ? 0f : (float)(0.7 * hz * Math.Pow(q, 1.0 / 8.0));
+        }
         // Cuanto hay que bajar AHORA (el valor de la rampa). Antes de la primera vuelta del reloj, el destino (un video que empezara en ese
         // hueco saldria mudo con el campo aun en cero).
         private float FactorNoche() { return nocheArrancada ? nocheFactor : MetaNoche(); }
         // «Probar» (Ctrl+F3 -> Sonido): el nivel de la noche (y su grave) al momento, HASTA OTRO TOQUE (decision del dueno del 17-11-2026:
         // «Que se quede hasta que lo vuelva a pulsar»; antes, 15 s). Sigue aunque se cierre la ventana, para oirlo por el local; si se
         // olvida, se quita solo a los 30 min, y no sobrevive a un reinicio. Al quitarla vuelve rapido (de dia) o se queda (si ya es de noche).
-        internal void PruebaNoche()
+        internal void PruebaNoche() { PruebaNocheDe(false); }
+        // NV4 (20-11-2026): «Probar la madrugada», lo mismo con la madrugada entera. Tocar el otro boton cambia de prueba sin quitarla.
+        internal void PruebaMadrugada() { PruebaNocheDe(true); }
+        private void PruebaNocheDe(bool mad)
         {
-            if (ProbandoNoche) nochePruebaHasta = (Environment.TickCount - 1) | 1;   // ya estaba: se quita (AvanzaModoNoche la da por acabada y vuelve rapido)
+            if (ProbandoNoche && nochePruebaMad == mad) nochePruebaHasta = (Environment.TickCount - 1) | 1;   // ya estaba: se quita (AvanzaModoNoche la da por acabada y vuelve rapido)
             else nochePruebaHasta = (Environment.TickCount + NochePruebaMs) | 1;
+            nochePruebaMad = mad;
             nochePruebaRapida = true;
         }
         internal int SegundosPruebaNoche { get { return ProbandoNoche ? Math.Max(1, unchecked(nochePruebaHasta - Environment.TickCount) / 1000 + 1) : 0; } }
+        internal bool ProbandoMadrugada { get { return ProbandoNoche && nochePruebaMad; } }
 
         // Un paso de la rampa, por MILISEGUNDOS DE RELOJ (no por vueltas: el medidor de Ctrl+F3 llama al tick a mano).
         private static float AvanzaRampa(float actual, float meta, int msPasados, int rampaMs)
         {
             if (actual == meta) return meta;
             if (msPasados <= 0) return actual;
-            float paso = Math.Max(1f - 0.5f, 1f - Math.Min(NocheLin(), Math.Min(actual, meta))) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si baja mas que eso (de 50 a 65 %, desde el 20-11-2026), de 1 a lo mas bajo de la noche, de donde esta o de a donde va: la noche entera, o el deslizador de 50 a 90 % y de vuelta, en rampaMs o menos (la subida de las 7 y el interruptor no esperan a la rampa: van por la curva del avance, AvanzaModoNoche)
+            float paso = Math.Max(1f - 0.5f, 1f - Math.Min(nocheMadrugada ? MadLin() : NocheLin(), Math.Min(actual, meta))) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si baja mas que eso (de 50 a 65 %, desde el 20-11-2026), de 1 a lo mas bajo de la noche (o de la madrugada si esta encendida, NV4: MadLin nunca es mas alta que NocheLin; apagada no cuenta, y si la rampa va o viene de ella ya lo cubre min(actual, meta)), de donde esta o de a donde va: la noche entera, o el deslizador de 50 a 90 % y de vuelta, en rampaMs o menos (la subida de las 7 y el interruptor no esperan a la rampa: van por la curva del avance, AvanzaModoNoche)
             if (actual < meta) { actual += paso; if (actual > meta) actual = meta; }
             else { actual -= paso; if (actual < meta) actual = meta; }
             return actual;
@@ -160,6 +244,7 @@ namespace Rocola
             if (msPasados <= 0) return avance;
             if (haciaNoche) { avance += (double)msPasados / NocheBajadaMs; if (avance > 1.0) avance = 1.0; }
             else { avance -= (double)msPasados / NocheRampaMs; if (avance < 0.0) avance = 0.0; }
+            if (avance < 1e-9) avance = 0.0; else if (avance > 1.0 - 1e-9) avance = 1.0;   // (20-11-2026) los restos de redondeo: en los extremos, 0 y 1 exactos (de dia, el grave y el corte en 0 de verdad)
             return avance;
         }
 
@@ -167,10 +252,17 @@ namespace Rocola
         private void AvanzaModoNoche()
         {
             bool esNoche = nocheOn && EsDeNocheAhora();
-            float meta = MetaNoche();
+            bool esMad = esNoche && nocheMadrugada && EsMadrugadaAhora();   // NV4: la madrugada, solo dentro de la noche
             int ahora = Environment.TickCount;
-            // Al encender NO se hace la rampa: se arranca ya en el nivel que toca.
-            if (!nocheArrancada) { nocheArrancada = true; nocheUltMs = ahora; nocheFactor = meta; nocheAvance = esNoche ? 1.0 : 0.0; nocheAvisada = esNoche; SalaLocal.GravesNocheDb = GravesNocheDe(AvanceDeFactor(meta)); return; }
+            // Al encender NO se hace la rampa: se arranca ya en el nivel que toca (volumen, graves y corte).
+            if (!nocheArrancada)
+            {
+                nocheArrancada = true; nocheUltMs = ahora; nocheAvance = esNoche ? 1.0 : 0.0; madAvance = esMad ? 1.0 : 0.0; nocheAvisada = esNoche;
+                double a0 = nocheAvance, b0 = madAvance;
+                if (ProbandoNoche) { a0 = 1.0; if (nochePruebaMad) b0 = 1.0; }
+                nocheFactor = FactorDeAvances(a0, b0); gravesAhora = GravesDeAvances(a0, b0); corteAhora = CorteDeAvances(a0, b0);
+                PublicaNoche(); return;
+            }
             int dt = unchecked(ahora - nocheUltMs); nocheUltMs = ahora;
             if (dt < 0 || dt > 5000) dt = 0;   // el reloj dio la vuelta, o el equipo estuvo dormido: no dar un salto
             if (nochePruebaHasta != 0 && !ProbandoNoche) { nochePruebaHasta = 0; nochePruebaRapida = true; }   // se acabo la prueba: vuelve rapido
@@ -180,13 +272,31 @@ namespace Rocola
                 // Al EMPEZAR la noche no hay aviso: baja una hora, tan despacio que los clientes no lo noten. El de cuando acaba se queda.
                 if (!esNoche) ShowToast("Se acabo el modo noche: vuelve el volumen de siempre", Color.FromArgb(38, 78, 132));
             }
-            // Lo que toca ahora: la noche baja por su avance (una hora, pareja en dB); «Probar» va directo al nivel entero con su rampa rapida.
-            bool enCurva = !ProbandoNoche && !nochePruebaRapida && nocheFactor == FactorDeAvance(nocheAvance); nocheAvance = AvanzaAvance(nocheAvance, esNoche, dt);   // (20-11-2026) si ya va por la curva del avance (acotada: baja en una hora, sube en 20 s), la sigue sin rampa: al 50 % la rampa se quedaba atras y la subida de las 7 tardaba 23 s
-            if (ProbandoNoche) meta = NocheLin(); else meta = FactorDeAvance(nocheAvance);
+            // Lo que toca ahora: la noche baja por su avance (una hora, pareja en dB), y de madrugada la madrugada por el suyo (otra hora); «Probar»
+            // va directo al nivel entero (de la noche o de la madrugada) con su rampa rapida.
+            // (20-11-2026) lo que ya va por la curva de los avances (acotada: baja en una hora, sube en 20 s) la sigue sin rampa: al 50 % la rampa se quedaba
+            // atras y la subida de las 7 tardaba 23 s. Cada uno por su lado (el volumen, el grave y el corte): lo que se movio con un mando, «Probar» o un
+            // ajuste nuevo no esta en la curva y va por su rampa.
+            bool libre = !ProbandoNoche && !nochePruebaRapida;
+            bool enCurva = libre && nocheFactor == FactorDeAvances(nocheAvance, madAvance), gCurva = libre && gravesAhora == GravesDeAvances(nocheAvance, madAvance), cCurva = libre && corteAhora == CorteDeAvances(nocheAvance, madAvance);
+            nocheAvance = AvanzaAvance(nocheAvance, esNoche, dt);
+            madAvance = AvanzaAvance(madAvance, esMad, dt);   // (a las 7, o al apagar algo, vuelve en los 20 s de siempre)
+            double a = nocheAvance, b = madAvance;
+            if (ProbandoNoche) { a = 1.0; if (nochePruebaMad) b = 1.0; }
+            float meta = FactorDeAvances(a, b);
+            int rampa = nochePruebaRapida ? NochePruebaRampaMs : NocheRampaMs;
             float antes = nocheFactor;
-            nocheFactor = enCurva ? meta : AvanzaRampa(nocheFactor, meta, dt, nochePruebaRapida ? NochePruebaRampaMs : NocheRampaMs);
-            if (nocheFactor == meta) nochePruebaRapida = false;
-            SalaLocal.GravesNocheDb = GravesNocheDe(AvanceDeFactor(nocheFactor));   // N1: el grave de noche, con el mismo avance (de dia, 0)
+            nocheFactor = enCurva ? meta : AvanzaRampa(nocheFactor, meta, dt, rampa);
+            // N1/NV1 y NV2: el grave de noche y el corte siguen a su meta (los dos avances) con la misma rampa: en la bajada de una hora van
+            // pegados a ella; con el mando, «Probar» o la manana, enteros en rampaMs (12 dB o el corte entero), nunca de golpe.
+            float gMeta = GravesDeAvances(a, b), cMeta = CorteDeAvances(a, b);
+            gravesAhora = gCurva ? gMeta : SigueMeta(gravesAhora, gMeta, NocheGravesMax * (float)dt / rampa);
+            corteAhora = cCurva ? cMeta : SigueMeta(corteAhora, cMeta, (float)dt / rampa);
+            if (nocheFactor == meta && gravesAhora == gMeta && corteAhora == cMeta) nochePruebaRapida = false;
+            PublicaNoche();   // de dia, 0 y 0: las etapas salen bit a bit como antes
+            // El volumen parejo del billar (VolumenParejo.cs) no aprende de una cancion que sono con la noche puesta (20-11-2026): mide delante del
+            // limitador, y con la noche mas baja aprenderia a subirla de dia.
+            if (nocheFactor != 1f || gravesAhora != 0f || corteAhora != 0f) { CadenaCancion cs = cadenaSonando; if (cs != null && cs.Margen != null) cs.Margen.Descarta = true; }
             // Y se empuja a la cancion que YA suena (y a la preparada, y al video): si no, no se oiria hasta la siguiente.
             if (nocheFactor != antes)
             {
@@ -196,13 +306,24 @@ namespace Rocola
             }
         }
 
-        // El de los videos: la misma rampa, llevada a la perilla del reproductor (de 1 a nochePct/100).
-        private float FactorVideoNoche()
+        // Lo que van AHORA el grave de noche y el corte, a las cadenas (las que suenan y las que se arman).
+        private void PublicaNoche() { SalaLocal.GravesNocheDb = gravesAhora; GraveMono.NocheMezcla = MezclaDeCorte(corteAhora); }
+        private static float SigueMeta(float actual, float meta, float paso)
         {
-            float lin = NocheLin(); if (lin >= 1f) return 1f;
-            float avance = AvanceDeFactor(FactorNoche()); if (avance < 0f) avance = 0f; else if (avance > 1f) avance = 1f;   // en dB, como la bajada
-            return 1f - avance * (1f - nochePct / 100f);
+            if (actual == meta) return meta;
+            if (!(paso > 0f)) return actual;
+            if (actual < meta) { actual += paso; if (actual > meta) actual = meta; }
+            else { actual -= paso; if (actual < meta) actual = meta; }
+            return actual;
         }
+        // Para los videos de Rocola OS (el filtro de mpv): los graves de noche (dB) y el corte (Hz equivalente) de este momento.
+        internal float GravesNocheAhora { get { return gravesAhora; } }
+        internal float CorteNocheAhoraHz { get { return CorteEquivalenteHz(NocheCorteHz(), corteAhora); } }
+
+        // El de los videos: NV5a (20-11-2026), los MISMOS dB que la musica, con la misma rampa. La perilla del reproductor se toma por lineal en
+        // amplitud (lo que supone la cuenta de VideoVolumeFor, y lo que rocola-xp le pone a mpv); antes se le aplicaba el % del deslizador tal
+        // cual (al 80 % la perilla al 80 %: -1,9 dB frente a los -3,2 de la musica; al 50 %, -6 frente a -10).
+        private float FactorVideoNoche() { return FactorNoche(); }
 
         // LA TARJETA DE SONIDO A UNA FRECUENCIA FIJA (A4, pedido el 12-10-2026). En Windows XP, si la tarjeta trabaja a
         // 48 kHz y la cancion viene a 44,1 kHz, la conversion la hace el mezclador de Windows, que es de calidad baja (ensucia
@@ -1399,10 +1520,16 @@ namespace Rocola
             c.Mono.SoloSiHaceFalta(loc.EstrechoSoloSiHaceFalta);   // y solo si hace falta (S3)
             // Lo que llega de cebado (los retardos de hasta aqui): en un disco continuo pasa sin tocar los filtros heredados (GraveMono.cs).
             c.Mono.Cebado = audioTailDelay;
+            // NV2, EL CORTE DEL GRAVE DE NOCHE (20-11-2026, GraveMono.DeNoche): detras del grave en mono, la curva del subgrave al corte de noche,
+            // en fase lineal, con la mezcla que pone el modo noche (GraveMono.NocheMezcla: de dia 0, y la cancion pasa tal cual, bit a bit).
+            // Se arma siempre que haya corte (para que «Probar» y la bajada se oigan en la que ya suena); el corte nuevo vale desde la siguiente.
+            NAudio.Wave.ISampleProvider alLocal = c.Mono;
+            float corteNoche = corteNocheRelevo >= 0f ? corteNocheRelevo : NocheCorteHz();   // (en el relevo de un disco continuo, el de la que suena: Form1.SinPausa.cs)
+            if (corteNoche > 0f) { c.Noche = GraveMono.DeNoche(c.Mono, corteNoche); c.Noche.Cebado = audioTailDelay; alLocal = c.Noche; }
             // EL LOCAL (SalaLocal.cs): claridad, partes suaves y balance, con sus mandos de Ctrl+F3 (apagados de fabrica:
             // apagados no tocan ni una muestra). Delante del bajo psicoacustico y del limitador, que cuida los picos.
             float nivelLocal = NivelLocalDe(t, tap.Gain);   // en el billar, el nivel de ESTA cancion; si no, normTarget (CadenaBillar.cs)
-            c.Sala = new SalaLocal(c.Mono, tap, nivelLocal, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos);
+            c.Sala = new SalaLocal(alLocal, tap, nivelLocal, loc.Claridad, loc.Suaves, balanceDb, loc.Graves, loc.Agudos);
             c.Sala.Cebado = audioTailDelay;
             // RETUMBE DINAMICO (RetumbeDinamico.cs, 27-10-2026): detras del EQ automatico y la claridad (que ya cortan ese rango: su corte se descuenta
             // del presupuesto) y delante del compresor. Apagado (de fabrica) no toca ni una muestra.

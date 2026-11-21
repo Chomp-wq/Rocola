@@ -37,6 +37,7 @@ namespace Rocola
             internal SpectralTap Sbr;
             internal DeepBassProvider Bajo;
             internal GraveMono Mono;             // el grave en mono (GraveMono.cs)
+            internal GraveMono Noche;            // NV2: el corte del grave de noche (GraveMono.DeNoche), si hay corte (20-11-2026)
             internal SalaLocal Sala;             // claridad, partes suaves, balance, graves y agudos del local (SalaLocal.cs)
             internal PresenciaSala Presencia;    // el compresor suave de la sala ruidosa (PresenciaSala.cs)
             internal SuavizaEses Eses;           // suavizar las eses (T9, Eses.cs)
@@ -73,6 +74,7 @@ namespace Rocola
 
         private Encadenado secuencia;            // lo que alimenta la salida abierta
         private CadenaCancion cadenaSonando;     // la de lo que la pantalla da por sonando
+        private float corteNocheRelevo = -1f;    // NV2 (21-11-2026): al armar la siguiente de un disco continuo, el corte de noche de la que suena (0 sin la etapa; -1 fuera del relevo): sin el, un corte nuevo no heredaria la memoria del filtro y quitaria medio grave al empalmar
         private CadenaCancion cadenaPreparada;   // la siguiente: lista, o entrando y aun sin recoger
         private LevelTap tapMedido;              // de que cancion es la medida en vivo de los campos de medida
         // Se prepara cuando a la que suena le quedan 12 s: tiempo de sobra en una maquina lenta, y lo bastante
@@ -135,7 +137,7 @@ namespace Rocola
             try
             {
                 lector.Volume = FixedVolume;
-                c = ArmaCadena(sig.Song, lector, iaMejorada, 0);
+                corteNocheRelevo = SiguienteDelDisco(nowPlaying, sig) ? (cadenaSonando.Noche != null ? cadenaSonando.Noche.CorteNoche : 0f) : -1f; try { c = ArmaCadena(sig.Song, lector, iaMejorada, 0); } finally { corteNocheRelevo = -1f; }   // NV2: en un disco continuo el corte de noche sigue el de la que suena; el nuevo, desde la siguiente que no siga
                 c.Item = sig;
                 SellaInicioReloj(c); c.CebadoInicial = 0; // Encadenado descarta el cebado de los relevos
                 if (!Encadenado.MismoFormato(c.Salida.WaveFormat, s.WaveFormat))
@@ -336,6 +338,7 @@ namespace Rocola
             if (nueva == null || vieja == null) return;
             if (nueva.Tap != null) nueva.Tap.Sigue(vieja.Tap);
             if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
+            if (nueva.Noche != null) nueva.Noche.Sigue(vieja.Noche);
             if (nueva.Sala != null) nueva.Sala.Sigue(vieja.Sala);
             if (nueva.Presencia != null) nueva.Presencia.Sigue(vieja.Presencia);
             if (nueva.Eses != null) nueva.Eses.Sigue(vieja.Eses);

@@ -99,6 +99,14 @@
 // quitar el subgrave). Ahora el ancho que se aplica sigue al pedido en una rampa de 25 ms, y el subgrave entra y sale mezclando lo
 // filtrado con lo que entra en esos 25 ms (al apagarlo el filtro sigue hasta acabar la mezcla). Fuera de esos 25 ms la cuenta es
 // la de siempre, bit a bit: en estado estable lo unico que hay de mas es una comparacion por cuadro.
+//
+// EL CORTE DEL GRAVE DE NOCHE (NV2, 20-11-2026; el modo noche, Form1.Sonido.cs). Lo que atraviesa el muro del vecino es el grave: de noche
+// se quita lo de debajo de noche_corte= (80 Hz de fabrica) con ESTA MISMA curva del subgrave (Butterworth de cuarto orden en fase lineal,
+// por bloques y leyendo por delante), en una etapa aparte detras del grave en mono (DeNoche: sin cruce ni ancho, solo el subgrave, canal por
+// canal). Su mezcla no la pone un interruptor sino el modo noche: NocheMezcla (0 de dia, 1 con la noche entera), que la etapa lee al empezar
+// cada lectura y sigue con la rampa de 25 ms de siempre; la bajada de una hora la reparte el modo noche (pareja en dB, MezclaDeCorte). Con la
+// mezcla en 0 pasa tal cual, bit a bit, sin leer por delante (de dia, como si no estuviera); al subir, entra en bloques como el subgrave al
+// encenderlo, y al volver a 0 sale igual.
 using System;
 
 namespace Rocola
@@ -210,6 +218,10 @@ namespace Rocola
             // sin escalon, y sin dejar pasar mas que eso.
             private readonly int nUnion;
             private bool unionLado;
+            // NV2: la etapa del corte de noche (DeNoche) y su mezcla. NocheMezcla la pone el modo noche (Form1.PublicaNoche): 0 de dia.
+            internal static volatile float NocheMezcla;
+            private bool deNoche;
+            private double subMeta = 1.0;                 // a donde va la mezcla con el subgrave encendido: 1 (el interruptor) o la de noche
             private readonly double aVigila, aEnergia, pasoVuelta;
             private double vm1, vm2, vs1, vs2, em, es;    // vigilancia: grave del medio y del lado, y su energia
             // EL FILTRO EN FASE LINEAL (ver la cabecera). K: medio filtro; M: la FFT; B: cuadros por bloque (M = B + 2K).
@@ -250,6 +262,15 @@ namespace Rocola
 
             public GraveMono(NAudio.Wave.ISampleProvider s, float corteHz, float anchoEstereo, float subgraveHz, bool conAncho, bool conSubgrave)
                 : this(s, corteHz, anchoEstereo, subgraveHz, true) { anchoOn = conAncho; subOn = conSubgrave; }
+
+            // NV2: el corte del grave de noche a 'corteHz' (sin cruce ni ancho: solo la curva del subgrave), con la mezcla de NocheMezcla.
+            internal float CorteNoche { get { return deNoche ? subHz : 0f; } }   // el corte de la etapa de noche (0 si no es esa etapa: el relevo de un disco continuo lo sigue, Form1.SinPausa.cs)
+            internal static GraveMono DeNoche(NAudio.Wave.ISampleProvider s, float corteHz)
+            {
+                GraveMono g = new GraveMono(s, 0f, 1f, corteHz, false, false);
+                g.deNoche = true;
+                return g;
+            }
 
             private GraveMono(NAudio.Wave.ISampleProvider s, float corteHz, float anchoEstereo, float subgraveHz, bool ajusta)
             {
@@ -492,7 +513,7 @@ namespace Rocola
             // ¿Hace falta el subgrave? Encendido, o apagandose (la mezcla aun no llego a 0). Al empezar la cancion, la mezcla ya es la del mando.
             private bool SubQuiere()
             {
-                if (!subListo) { subListo = true; subMezcla = subOn ? 1.0 : 0.0; }
+                if (!subListo) { subListo = true; subMezcla = subOn ? subMeta : 0.0; }
                 return subOn || subMezcla != 0.0;
             }
 
@@ -725,6 +746,7 @@ namespace Rocola
             private int SubLee(float[] buffer, int offset, int count)
             {
                 int hechos = 0, ch = sCh;
+                if (deNoche) { float nm = NocheMezcla; subOn = nm > 0f; subMeta = nm > 1f ? 1.0 : nm; }   // NV2: la mezcla la pone el modo noche
                 if (sMedia) { buffer[offset] = sOtra; sMedia = false; hechos = 1; }
                 while (hechos < count)
                 {
@@ -757,7 +779,7 @@ namespace Rocola
                         if (!SubBloque()) { if (!sFinFiltra && sAcabo) sFinFiltra = subMezcla != 0.0; break; }
                         continue;
                     }
-                    double meta = subOn ? 1.0 : 0.0, mz = subMezcla, ps = pasoSub, iu = 1.0 / nUnion;
+                    double meta = subOn ? subMeta : 0.0, mz = subMezcla, ps = pasoSub, iu = 1.0 / nUnion;
                     int t = sT, fin = sSalen, nu = sUnionN, k0 = sK;
                     float[] xl = sL, xr = sR, lr = sLr, li = sLi, rr = sRr, ri = sRi;
                     double el = sEl, er = sEr;
