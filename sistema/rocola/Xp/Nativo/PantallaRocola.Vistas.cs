@@ -237,7 +237,9 @@ namespace Rocola
         private sealed class Tramo { internal SKBitmap Mapa; internal int Version; internal bool Vacio; internal CapaPantalla Capa, CapaCorte; }   // Vacio (rapido-general): al repintarse no se pinto nada en el (ni el fondo ni ninguna vista): todo transparente
         private static readonly List<Tramo> tramos = new List<Tramo>();
         private static int versionTramo;
-        internal static int TramosRepintados, TramosSinRepintar;   // (pruebas: cuantas veces se pinto un tramo y cuantas se ahorro)
+#if RAPIDO_GENERAL_PRUEBA
+        internal static int TramosRepintados, TramosSinRepintar;   // (pruebas: cuantas veces se pinto un tramo y cuantas se ahorro; solo en Pruebas/RapidoGeneral)
+#endif
         private static object[] fotoLista = new object[0]; private static int fotoN;
         private static readonly List<int> cortesVentana = new List<int>();
         // (rapido-general) el nombre del tipo, una vez por tipo (en NativeAOT GetType().Name arma la cadena cada vez: era en cada cuadro)
@@ -250,8 +252,8 @@ namespace Rocola
         }
         internal static void CapasDeLaVentana(List<CapaPantalla> salida)
         {
-            if (lista.Count == 0 && FondoDeLaVentana == null) { SueltaTramos(0); return; }
-            if (ventana != null && !ventana.Visible) { SueltaTramos(0); return; }   // (form1-sin-form) la ventana de la rocola aun sin ensenar, o ya desechada
+            if (lista.Count == 0 && FondoDeLaVentana == null) { SueltaTramos(0); SueltaFoto(); return; }
+            if (ventana != null && !ventana.Visible) { SueltaTramos(0); SueltaFoto(); return; }   // (form1-sin-form) la ventana de la rocola aun sin ensenar, o ya desechada
             // (rapido-general) la foto de la lista en un arreglo que se reusa de un cuadro al otro (antes, ToArray en cada cuadro); solo se miran
             // sus 'nl' primeros, y lo que sobra de la foto anterior se suelta
             int nl = lista.Count;
@@ -288,10 +290,14 @@ namespace Rocola
                 // (rapido-general) un tramo que ya estaba todo transparente y en el que tampoco ahora se pintaria nada (ni el fondo ni ninguna vista
                 // que se vea) se queda como esta: sin borrar sus 3 MB ni crear un lienzo (el mismo resultado: transparente, y nadie se pinta)
                 bool sigueVacio = !nuevo && tr.Vacio && !(t == 0 && FondoDeLaVentana != null && !tapaTodo) && !AlgunaSePinta(l, hasta, corte);
+#if RAPIDO_GENERAL_PRUEBA
                 if ((repinta || nuevo) && sigueVacio) TramosSinRepintar++;
+#endif
                 if ((repinta || nuevo) && !sigueVacio)
                 {
+#if RAPIDO_GENERAL_PRUEBA
                     TramosRepintados++;
+#endif
                     if (nuevo) { if (tr.Mapa != null) tr.Mapa.Dispose(); tr.Mapa = new SKBitmap(new SKImageInfo(Math.Max(1, Ancho), Math.Max(1, Alto), SKColorType.Bgra8888, SKAlphaType.Premul)); }
                     bool pinto = false;
                     using (SKCanvas g = new SKCanvas(tr.Mapa))
@@ -340,7 +346,19 @@ namespace Rocola
             }
             return false;
         }
-        private static void SueltaTramos(int quedan) { for (int i = quedan; i < tramos.Count; i++) if (tramos[i].Mapa != null) { tramos[i].Mapa.Dispose(); tramos[i].Mapa = null; } }
+        // (rapido-general) los tramos que sobran sueltan su mapa y lo que agarraban sus capas reusadas (el mapa, la textura de la tarjeta o su vista)
+        private static void SueltaTramos(int quedan)
+        {
+            for (int i = quedan; i < tramos.Count; i++)
+            {
+                Tramo tr = tramos[i];
+                if (tr.Mapa != null) { tr.Mapa.Dispose(); tr.Mapa = null; }
+                if (tr.Capa != null) tr.Capa.Mapa = null;
+                if (tr.CapaCorte != null) { tr.CapaCorte.Clave = null; tr.CapaCorte.Mapa = null; }
+            }
+        }
+        // (rapido-general) la foto de la lista ya no agarra las vistas del ultimo cuadro (desechadas, con sus mapas y portadas)
+        private static void SueltaFoto() { if (fotoN > 0) { Array.Clear(fotoLista, 0, fotoN); fotoN = 0; } }
         private static bool PintaRecortada(object[] l, int i, IVista v, SKCanvas g)   // (rapido-general) true si la pinto (si no, el tramo puede quedar vacio)
         {
             Rectangle r = v.Bounds;

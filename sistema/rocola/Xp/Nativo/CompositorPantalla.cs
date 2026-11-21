@@ -129,7 +129,9 @@ namespace Rocola
                 Console.WriteLine(sb.ToString());
             }
             DibujaCapas(lista, false);
+#if RAPIDO_GENERAL_PRUEBA
             if (Prueba != null) Prueba(this, lista);   // (pruebas: Pruebas/RapidoGeneral, que compone lo mismo sin saltarse nada y compara)
+#endif
             // las capas que ya no estan, fuera
             List<object> fuera = null;
             foreach (KeyValuePair<object, CapaGl> k in capas) if (!k.Value.Vista) { if (fuera == null) fuera = new List<object>(); fuera.Add(k.Key); }
@@ -142,10 +144,68 @@ namespace Rocola
             foreach (ReproductorVideo r in rs) r.TrasPresentar();
             PantallaTarjeta.Tocada();   // lo puesto en OpenGL ya no es lo del dispositivo de la tarjeta (Nativo/PantallaTarjeta.cs)
         }
-        // (pruebas) lo que se llama con lo compuesto, antes de las capturas y la flecha (Pruebas/RapidoGeneral); null en la rocola
+#if RAPIDO_GENERAL_PRUEBA
+        // ---- (pruebas: solo en Pruebas/RapidoGeneral, con la constante RAPIDO_GENERAL_PRUEBA; nada de esto entra en la rocola) ----
+        // lo que se llama con lo compuesto, antes de las capturas y la flecha
         internal static Action<CompositorPantalla, List<CapaPantalla>> Prueba;
-        // (pruebas) la pantalla compuesta otra vez desde cero con TODAS las capas (sin saltarse nada), como antes de rapido-general
-        internal void ComponeTodo(List<CapaPantalla> lista) { ComponeOtraVez(lista, true); }
+        // LA PANTALLA COMO ANTES DE RAPIDO-GENERAL, APARTE: en un framebuffer propio y con texturas propias que se suben enteras cada vez
+        // (todas las capas, sin saltarse ninguna, como el compositor de antes la primera vez que veia cada capa), sin tocar las texturas ni las
+        // versiones del compositor de verdad (asi la prueba ve tambien el caso de una capa que se salto y vuelve a verse, y lo que se presenta
+        // es lo compuesto por el de verdad). Da los puntos, fila 0 abajo, como LeePantalla.
+        private uint refFbo, refColor; private readonly List<uint> refTex = new List<uint>();
+        internal byte[] ComponeReferencia(List<CapaPantalla> lista)
+        {
+            if (refFbo == 0)
+            {
+                uint t, f; GL.GenTextures(1, &t); GL.GenFramebuffers(1, &f); refColor = t; refFbo = f;
+                GL.BindTexture(GL.TEXTURE_2D, t);
+                GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GlMas.NEAREST); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GlMas.NEAREST);
+                GL.TexImage2D(GL.TEXTURE_2D, 0, (int)GL.RGBA, ancho, alto, 0, GL.RGBA, GL.UNSIGNED_BYTE, null);
+                GL.BindFramebuffer(GL.FRAMEBUFFER, f);
+                GL.FramebufferTexture2D(GL.FRAMEBUFFER, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, t, 0);
+            }
+            GL.BindFramebuffer(GL.FRAMEBUFFER, refFbo);
+            GL.Viewport(0, 0, ancho, alto);
+            GL.ClearColor(0, 0, 0, 1); GL.Clear(GL.COLOR_BUFFER_BIT);
+            GL.UseProgram(programa);
+            GL.Uniform2f(lugarM, 2f / ancho, 2f / alto);
+            GL.Uniform1i(lugarS, 0); GL.Uniform1f(lugarRgba, 0f);
+            GL.ActiveTexture(GL.TEXTURE0);
+            int k = 0;
+            foreach (CapaPantalla c in lista)   // (lo mismo que DibujaCapas con 'todo', pero con sus propias texturas)
+            {
+                if (c.DeTextura)
+                {
+                    if (c.Textura == 0 || c.AnchoGl <= 0) continue;
+                    GL.Disable(GL.BLEND);
+                    GL.BindTexture(GL.TEXTURE_2D, c.Textura);
+                    GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, (int)GlMas.NEAREST); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, (int)GlMas.NEAREST);
+                    GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, (int)GL.CLAMP_TO_EDGE); GL.TexParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, (int)GL.CLAMP_TO_EDGE);
+                    if (c.Rgba) GL.Uniform1f(lugarRgba, 1f);
+                    if (c.Rgba) Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, Math.Min(1f, (float)c.Rect.Width / c.AnchoGl), Math.Min(1f, (float)c.Rect.Height / c.AltoGl), 1f);
+                    else Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, 1f, 1f, 1f);
+                    if (c.Rgba) GL.Uniform1f(lugarRgba, 0f);
+                    continue;
+                }
+                if (c.Mapa == null) continue;
+                if (k == refTex.Count) refTex.Add(0);
+                CapaGl g = new CapaGl { Tex = refTex[k] };
+                Sube(c.Mapa, g);
+                refTex[k] = g.Tex; k++;
+                GL.Enable(GL.BLEND); GL.BlendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
+                GL.BindTexture(GL.TEXTURE_2D, g.Tex);
+                Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, 1f, 1f, c.Opacidad);
+            }
+            GL.Disable(GL.BLEND);
+            byte[] px = new byte[ancho * alto * 4];
+            GL.PixelStorei(GL.PACK_ALIGNMENT, 4);
+            fixed (byte* p = px) GL.ReadPixels(0, 0, ancho, alto, GL.RGBA, GL.UNSIGNED_BYTE, p);
+            GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
+            GL.Viewport(0, 0, ancho, alto);
+            return px;
+        }
+        // (solo para ROCOLA_MIDE_COSTE) volver a componer en la pantalla con las texturas del compositor: 'todo', todas las capas (las mezclas de
+        // antes; no cuenta las subidas ni lo del procesador que se ahorro: ver FASE11_rapido-general.md)
         internal void ComponeOtraVez(List<CapaPantalla> lista, bool todo)
         {
             GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
@@ -158,7 +218,7 @@ namespace Rocola
             DibujaCapas(lista, todo);
             GL.Disable(GL.BLEND);
         }
-        // (pruebas) la pantalla compuesta, fila 0 abajo (glReadPixels)
+        // la pantalla compuesta, fila 0 abajo (glReadPixels)
         internal byte[] LeePantalla()
         {
             byte[] px = new byte[ancho * alto * 4];
@@ -167,6 +227,7 @@ namespace Rocola
             fixed (byte* p = px) GL.ReadPixels(0, 0, ancho, alto, GL.RGBA, GL.UNSIGNED_BYTE, p);
             return px;
         }
+#endif
         // LAS CAPAS, de abajo arriba ('todo': sin saltarse nada, solo para las pruebas)
         private void DibujaCapas(List<CapaPantalla> lista, bool todo)
         {

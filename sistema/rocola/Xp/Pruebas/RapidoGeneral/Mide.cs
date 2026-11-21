@@ -81,7 +81,7 @@ namespace Rocola
                 CompositorPantalla.Prueba = delegate (CompositorPantalla comp, List<CapaPantalla> lista)
                 {
                     if (++cuenta % k != 0) return;
-                    byte[] a = comp.LeePantalla(); comp.ComponeTodo(lista); byte[] b = comp.LeePantalla();
+                    byte[] a = comp.LeePantalla(); byte[] b = comp.ComponeReferencia(lista);   // (la de antes, aparte: su framebuffer y sus texturas)
                     int d = 0; for (int i = 0; i < a.Length; i += 4) if (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2] || a[i + 3] != b[i + 3]) d++;
                     mgComparados++; if (d > 0) { mgDistintos++; if (d > mgPeor) mgPeor = d; lock (mgLog) mgLog.WriteLine("distinto\t" + PantallaRocola.AhoraMs.ToString("0", mgc) + "\t" + d); }
                 };
