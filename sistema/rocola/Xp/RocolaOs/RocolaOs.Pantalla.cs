@@ -105,6 +105,9 @@ namespace Rocola
         internal const int PantallaArranquesMax = 2;          // arranques seguidos sin llegar a ConfirmaSegundos con el modo guardado: lo automatico
         internal const int PantallaConfirmaSegundos = 60;
         internal const int PantallaPruebaSegundos = 15;       // la prueba de un modo nuevo («¿Se ve bien?»)
+        internal const long RetomaGraciaMs = 15000;           // al volver del navegador, un fallo al poner el modo no es del modo (LatidoPantalla)
+        internal const int RetomaReintentosMax = 10;
+        internal static int ReintentosAlRetomar;              // (en el hilo de la pantalla; Retoma lo pone en 0)
 
         private static ISuperficie laPantalla;                 // la que abrio g86 (solo si la funcion va)
         private static RocolaOsAjustesPantalla pantalla;       // lo guardado (en el hilo de la pantalla, despues de abrirla)
@@ -344,6 +347,22 @@ namespace Rocola
             }
             // EL CONTROLADOR NO ACEPTO EL MODO al presentar (no deberia: CambiaModo y el arranque lo prueban antes): a lo automatico
             string f = m.UltimoFallo;
+            if (f != null && RocolaOsNavegador.Delante) return;   // (con el navegador delante la tarjeta es de cog: nada se presenta)
+            // AL VOLVER DEL NAVEGADOR (Retoma: drmSetMaster sin mirar lo que devuelve, y el siguiente cuadro vuelve a poner el modo): si cog aun
+            // tenia el mando de la tarjeta, ese drmModeSetCrtc falla aunque el modo sea bueno. En los primeros 15 s no cuenta como fallo del modo:
+            // se toma otra vez el mando y se pone el mismo modo (cada latido, hasta 10 veces); solo si sigue fallando despues, lo de siempre
+            if (f != null && RocolaOsNavegador.RetomadaMs > 0 && Environment.TickCount64 - RocolaOsNavegador.RetomadaMs < RetomaGraciaMs
+                && ReintentosAlRetomar < RetomaReintentosMax)
+            {
+                ReintentosAlRetomar++;
+                string e2;
+                try { ISuperficie s = laPantalla; if (s != null) s.Recupera(); } catch (Exception ex) { Falla(NombrePantalla, "tomar otra vez la pantalla", ex); }
+                if (CambiaModoPantalla(m.Actual.Indice, out e2))
+                    Apunta(NombrePantalla, "al volver del navegador el controlador no acepto " + m.Actual.Clave + " (" + f + "): el mismo modo otra vez, bien (intento " + ReintentosAlRetomar + ")");
+                else
+                    Apunta(NombrePantalla, "al volver del navegador el controlador no acepto " + m.Actual.Clave + " (" + f + "); otra vez: " + e2 + " (intento " + ReintentosAlRetomar + ")");
+                return;
+            }
             if (f != null && m.Actual.Clave != pantallaAutomatica && m.Automatico >= 0)
             {
                 string mal = m.Actual.Clave;

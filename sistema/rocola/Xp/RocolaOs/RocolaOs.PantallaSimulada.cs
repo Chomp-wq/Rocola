@@ -7,7 +7,9 @@
 //   ROCOLA_KMS_SIMULADO="1920x1080@60*,1920x1080@50,1280x1024@75,1024x768@75,1024x768@60;gamma=256;lut=0;ctm=0;falla=1280x1024@75;controlador=radeon"
 //     los modos (con «*» el preferido del monitor; «i» al final, entrelazado), y despues, separados por «;»: gamma= el tamano de la tabla
 //     de la llamada de siempre (0: sin tabla), lut= el de GAMMA_LUT (0: sin la propiedad), ctm=1 si tiene matriz de color, falla= los
-//     modos que el controlador no acepta (separados por «/»), controlador= su nombre.
+//     modos que el controlador no acepta (separados por «/»), controlador= su nombre, retoma=N: al retomar la pantalla (Recupera, al volver del
+//     navegador) el mando de la tarjeta no vuelve a la primera: UltimoFallo como un drmModeSetCrtc que no acepta y las N siguientes peticiones
+//     de modo fallan (como si cog aun lo tuviera)
 //   ROCOLA_KMS_SIMULADO_TRAZA=RUTA   cada cosa que se le pide, una linea (modo, falla, gamma con la tabla entera, ctm, fabrica, fin)
 using System;
 using System.Collections.Generic;
@@ -34,7 +36,9 @@ namespace Rocola
         public int Alto { get; private set; }
         public string Descripcion { get; private set; }
         public string FalloAlArrancar { get; private set; }
-        public string UltimoFallo { get { return null; } }
+        public string UltimoFallo { get { return ultimoFallo; } }
+        private string ultimoFallo;
+        private int fallaAlRetomar, quedanAlRetomar;
         public string Controlador { get; private set; }
 
         internal RocolaOsPantallaSimulada(string spec)
@@ -63,6 +67,7 @@ namespace Rocola
                 else if (c == "ctm") ctm = v == "1";
                 else if (c == "falla") foreach (string f in v.Split('/')) { if (f.Trim().Length > 0) fallan.Add(f.Trim()); }
                 else if (c == "controlador") Controlador = v;
+                else if (c == "retoma") fallaAlRetomar = int.Parse(v, ci);
             }
             traza = Environment.GetEnvironmentVariable("ROCOLA_KMS_SIMULADO_TRAZA");
             // EL MODO: lo automatico de siempre y, si alguien lo pide (g86), el guardado; si el «controlador» no lo acepta, lo automatico
@@ -106,7 +111,13 @@ namespace Rocola
 
         public void Presenta() { GL.Finish(); }
         public void Suelta() { }
-        public void Recupera() { }
+        public void Recupera()
+        {
+            Apunta("recupera");
+            if (fallaAlRetomar <= 0 || quedanAlRetomar > 0 || ultimoFallo != null) return;   // (una vez por retomar: los reintentos no la rearman)
+            quedanAlRetomar = fallaAlRetomar; ultimoFallo = "drmModeSetCrtc -13 (simulado: el mando de la tarjeta aun no vuelve)";
+            Apunta("falla al retomar " + modos[actual].Clave);
+        }
 
         public ModoPantalla[] Modos { get { return (ModoPantalla[])modos.Clone(); } }
         public int Automatico { get { return automatico; } }
@@ -116,7 +127,9 @@ namespace Rocola
             error = null;
             if (indice < 0 || indice >= modos.Length) { error = "ese modo no es del monitor"; return false; }
             if (fallan.Contains(modos[indice].Clave)) { error = "el controlador no lo acepta (simulado)"; Apunta("falla " + modos[indice].Clave); return false; }
+            if (quedanAlRetomar > 0) { quedanAlRetomar--; error = "drmModeSetCrtc -13 (simulado: sin el mando)"; Apunta("falla sin el mando " + modos[indice].Clave); return false; }
             Pon(indice);
+            ultimoFallo = null;
             return true;
         }
         public int TamanoGamma { get { return lutTam > 0 ? lutTam : gammaTam; } }

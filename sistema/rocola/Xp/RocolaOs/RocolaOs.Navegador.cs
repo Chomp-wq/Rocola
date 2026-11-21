@@ -52,6 +52,7 @@ namespace Rocola
         internal const string Carpeta = "navegador";
         private static volatile bool delante;
         internal static bool Delante { get { return delante; } }
+        internal static long RetomadaMs;   // cuando se retomo la pantalla por ultima vez (0: nunca), en el hilo de la pantalla
 
         // la orden del sistema (las pruebas: ROCOLA_NAVEGADOR_ORDEN, con un cog de mentira)
         internal static string Orden { get { string o = Environment.GetEnvironmentVariable("ROCOLA_NAVEGADOR_ORDEN"); return string.IsNullOrEmpty(o) ? "/usr/bin/rocola-navegador" : o; } }
@@ -155,6 +156,7 @@ namespace Rocola
         internal static void Retoma()
         {
             if (!delante) return;
+            RetomadaMs = Environment.TickCount64; RocolaOs.ReintentosAlRetomar = 0;   // (la hoja Pantalla: un fallo justo despues no es del modo)
             try { ISuperficie s = RocolaOs.LaSuperficie; if (s != null) s.Recupera(); } catch (Exception ex) { RocolaOs.Falla(Nombre, "retomar la pantalla", ex); }
             // los colores del monitor de la hoja Pantalla (el navegador pudo dejar otra tabla)
             try

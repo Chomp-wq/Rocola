@@ -188,7 +188,7 @@ if [[ " $partes " == *" fabrica "* ]]; then
   vp=$(awk '$3 == "rocola-soloist" {print $1; exit}' "$o/hijos.txt" 2>/dev/null)
   si "fabrica: y el vigilante se fue con la rocola (se cierra con la senal; pid ${vp:-?} ya no esta)" bash -c "[ -n '$vp' ] && ! kill -0 '$vp' 2>/dev/null && grep -q 'Vigilante: se cierra (senal' '$d/rocola_soloist.txt'"
   # (sin los avisos «Pantalla parada ... ms» de XP y su renglon «(sin excepcion)»: solo dependen de la carga de la maquina)
-  sinparadas() { sed 's/^[0-9-]* [0-9:.]* *//' "$1" 2>/dev/null | awk '/^\[Pantalla parada /{s=1; next} s && /^\(sin excepcion\)/{s=0; next} {s=0} !/^\r?$/' | wc -l; }
+  sinparadas() { sed 's/^[0-9-]* [0-9:.]* *//' "$1" 2>/dev/null | awk '/^\[Pantalla parada /{s=3; next} s > 0 {s--; if (/^\(sin excepcion\)/) s=0; next} !/^\r?$/' | wc -l; }
   ea=$(sinparadas "$W/datos-fabrica-xp/rocola_error.txt"); eo=$(sinparadas "$d/rocola_error.txt")
   si "fabrica: rocola_error.txt igual de largo que sin ROCOLA_OS sin contar las «Pantalla parada» ($ea y $eo renglones: ningun aviso raro)" test "$ea" = "$eo"
   if python3 -c "import PIL" 2>/dev/null; then
