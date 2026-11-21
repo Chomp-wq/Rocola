@@ -184,7 +184,11 @@ medir un video): la conversión es un proceso aparte que escribe un archivo, com
 - Prueba: escenas nuevas `atiempo` (un ffmpeg de 12 s, pedida mientras se convierte: se espera, suena entera, cobrada una vez, nada
   devuelto ni anotado, la nota junto a la copia) y `rota` (la copia es basura: se tira y se rehace, el crédito vuelve sin marcarla dañada
   y a la segunda suena; al arrancar se borran la de un original que cambió y la de uno que ya no está, y se quedan la de un disco que no
-  está y la que no tiene nota); `lenta` comprueba además que no queda en `rocola_incompatibles.txt`. Resultado: ver la tabla de abajo.
+  está y la que no tiene nota); `lenta` comprueba además que no queda en `rocola_incompatibles.txt`. Resultado: **57 de 57 en JIT y 57
+  de 57 en NativeAOT** (atiempo: WAV listo en 12,5 s, cobrada una vez, 6,00 s oídos de 6; rota: «Not a WAVE file», otra copia en 1,9 s,
+  crédito devuelto y a la segunda 6,00 s). La sustitución (`Pruebas/RocolaOs/sustitucion/prueba.sh`, por `LeeMp3`), JIT: **97 de 97**.
+  Compila JIT y NativeAOT con los mismos 13 avisos (0 de IL/AOT); `ganchos.py` TODO BIEN (53 en 19 archivos); `diff-xp.py --sin-ganchos`
+  las mismas 5 135 / 4 868 / 229.
 - **Lo que no se cambió**, y por qué: (1) las medidas viejas hechas sobre la basura de un archivo leído como MP3 antes del 17-11: si
   existen se importan y se aplican a la convertida (solo se tiran si la duración difiere más de 1 s); no comprobado si alguna casa, y
   la XP de antes casi siempre fallaba al abrirlas (`BuildCleanMp3` sin cuadros útiles devuelve null), así que no se tocó. (2)
