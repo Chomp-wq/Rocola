@@ -715,7 +715,7 @@ namespace Rocola
         {
             if (thumbDir == null)
             {
-                string d = DatosGrandes.Ruta("rocola_miniaturas");   // EN LINUX: (XP) RutaDatos(...): con ROCOLA_IA_DATOS, en el disco de la rocola; con 2 000 discos son unos 280 MB y lo aprendido mide 512 MB (Nativo/DatosGrandes.cs)
+                string d = DatosGrandes.Ruta("rocola_miniaturas");   // ROCOLA OS g07: (XP) string d = RutaDatos("rocola_miniaturas"); — con ROCOLA_IA_DATOS, en el disco de la rocola; con 2 000 discos son unos 280 MB y lo aprendido mide 512 MB (Nativo/DatosGrandes.cs)
                 try { if (!Directory.Exists(d)) Directory.CreateDirectory(d); } catch { }
                 thumbDir = d;
             }
@@ -734,7 +734,7 @@ namespace Rocola
             catch { identidad += "|sin-archivo"; }
             ulong h = Fnv64(identidad);
             // Version nueva: nunca reutilizar el JPEG anterior, que perdia alfa y calidad.
-            return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png");
+            return RocolaOsSpotifyCatalogoMiniatura(coverPath, Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png"));   // ROCOLA OS g43: (XP) return Path.Combine(CarpetaMiniaturas(), h.ToString("x16") + "_" + ThumbPx + "_v2.png"); — la miniatura de una portada de Spotify va a /run, no a rocola_miniaturas: nada de Spotify al disco (RocolaOs/RocolaOs.SpotifyCatalogo.cs; lo demas, la de XP)
         }
 
         // CARATULAS EN JPEG (interruptor de Ctrl+F3, apagado de fabrica). La identidad de arriba no cambia; con el
