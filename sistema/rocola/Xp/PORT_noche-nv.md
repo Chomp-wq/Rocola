@@ -40,4 +40,22 @@ puestas y 229 sin marca, las mismas 229 de antes** (eran 5 135 / 4 868 / 229): l
 
 ## Pruebas (20-11-2026, en la máquina de 4 núcleos compartida)
 
-PRUEBAS_AQUI
+| Qué | Resultado |
+|---|---|
+| Compilar JIT (`dotnet build -c Release --no-incremental`) | 0 errores, los 13 avisos de `avisos-base.txt` (0 nuevos; `clasifica.py avisos`: BIEN) |
+| Publicar NativeAOT (`-p:PublishAot=true`) | sale con 0, los mismos 13 avisos, 0 de IL/AOT |
+| `ganchos.py` | TODO BIEN (50 ganchos con g102; 112 archivos comparados con ca9802f, 18 con ganchos) |
+| `diff-xp.py --sin-ganchos` (112 archivos) | 5 147 quitadas, 4 880 puestas, 229 sin marca (las mismas 229) |
+| Baterías de XP sobre rocola-xp.dll (JIT, .NET 10; las fuentes de prueba con la lectura de NAudio 3, `LoadFrom`, cada rocola-xp de `compara-cadena` en su `AssemblyLoadContext`) | `noche` 136/136, `cadenaentera` 91/91, `billar18` 35/35, `billarparejo` 8/8, `gravemono` 54/55 (el que falla, «leer no reserva memoria», falla igual con la rocola-xp de antes: lo reserva el adaptador de la lectura de NAudio 3 de la prueba) |
+| `compara-cadena` (la rocola-xp de antes, de noche-50, contra la nueva; de día) | 16 iguales bit a bit, 0 distintas |
+| `Pruebas/RocolaOs/noche-video/prueba.sh` (NV5b), JIT y NativeAOT | 9 de 9 en los dos: sin Rocola OS el filtro ni se toca y el video sale como el archivo (50 Hz − 1 kHz = 9,54 dB); con `noche_video` de noche, `af` puesto y −14,61 dB (el 50 Hz baja 24,15 dB, lo mismo que mpv suelto con ese filtro) con el 1 kHz igual (64,04 / 64,04 dB); de día, `af` vacío y 9,54 dB. (El WAV del plugin `file` de ALSA dice s32 y lleva float32: se lee con `mide.py --float`.) |
+| spotify-xp, escena «noche» (con la corrida nueva de la madrugada), JIT y NativeAOT | TODO BIEN (55) en los dos. La madrugada: antes de la 1, la noche entera y quieta (−3,27 / −3,23 dB frente al día, 0,0 dB/min); desde la 1, −0,0326 (Spotify) y −0,0321 / −0,0320 (XP) dB/min (esperado −0,0321), salto 0,0001-0,0004 dB, Spotify contra XP 0,0005-0,0006 dB/min |
+| `Pruebas/Importa` (JIT) | TODO BIEN (151; antes 145: las seis claves nuevas tal cual) |
+| Ctrl+F3 en rocola-xp (captura fuera de pantalla, `Pruebas/Windows/corre.sh`) | la página de Sonido con el botón «Graves, corte y madrugada...» y su hoja: todo cabe y se lee |
+
+Con Mono, de la rocola de XP: los dos perfiles a 0 avisos; `noche` 136/136 (también con la hora local a las 2 y a las 23),
+`compara-cadena` 16 iguales (también a las 23), `cadenaentera` 91, `billar18` 35, `billarparejo` 8, `gravemono` 55, `subgrave` 68,
+`todojunto` 13, `transiciones` 46, `ventanaf3` 9 405, `ajustes` 4, `videoaudio` 10.
+
+No se corrió `nivel0.sh` entero (las escenas de Ctrl+F3 → Sonido contra la referencia congelada ya no son las suyas a propósito). Nada
+oído ni probado en el A4 ni en el bar.

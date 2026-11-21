@@ -64,7 +64,7 @@ compartida con el grupo andamio.
 | `escenas` | las 24 escenas de la junta 17 (arranque, moneda, video, tab, buscador, cierreq, altf4, sigterm, f3sigterm, kill9, asistente, captura, salirq, f2, f2barras, f2sin, aviso, f3vistas, f3grises, f3teclas, f3raton, f3billar, f12, f12vigia), cada una alternada con la referencia con trazas y comparada con su ruido (`compara_escena.py`) | IGUALES salvo lo aceptado | T_ESCENAS |
 | `aot` | `dotnet publish -p:PublishAot=true` y las 7 escenas de NativeAOT (arranque, cierreq, kill9, buscador, f3vistas, f3teclas, f12) alternadas con la referencia | salida 0, 0 avisos IL/AOT; las 7 IGUALES | T_AOT |
 | `cierre` | `cierre_rocola_os.sh` (`--version` y SIGUSR1, con y sin hojas y con video) en JIT y en NativeAOT | 43 de 43 en los dos | T_CIERRE |
-| `importa` | `Pruebas/Importa/prueba.sh` (el importador de lo aprendido en XP y lo grande fuera de lo aprendido) en JIT y en NativeAOT | 145 de 145 en los dos | T_IMPORTA |
+| `importa` | `Pruebas/Importa/prueba.sh` (el importador de lo aprendido en XP y lo grande fuera de lo aprendido) en JIT y en NativeAOT | 151 de 151 (145 antes de `PORT_noche-nv.md`) | T_IMPORTA |
 
 ## Lo aceptado (lo decide `clasifica.py`)
 
