@@ -226,7 +226,14 @@ for e in $escenas; do
     espera $e; para_falso; kill $APIPID 2>/dev/null; wait $APIPID 2>/dev/null; o="$W/$e"; f="$o/falso/peticiones.txt"; a="$o/api/peticiones.txt"
     u1=$(ultimo $o "$F1"); echo "   $u1"; sed 's/^/   genius: /' "$f"
     si "$e: sale con 0" test "$(cat $o/salio)" = 0
+    if [ $e = genius ]; then
     si "$e: UNA pregunta a Genius (a los 0,8 s de dejar de escribir), con la frase entera y la llave en la cabecera" bash -c "[ \$(grep -c '^/search ' '$f') = 1 ] && grep -q '^/search per_page=5&q=bajo la lluvia por la avenida | ua=rocola-xp/1 | auth=bien' '$f'"
+    else
+    # (choque: el buscador de XP solo «posa» la consulta al quedarse quieta, asi que la de la «x» estuvo a la vista mas de 0,8 s y tambien
+    # se pregunta; la frase entera, UNA vez)
+    si "$e: la frase entera UNA vez a Genius (y como mucho la de la «x», que estuvo a la vista)" bash -c "[ \$(grep -c '^/search per_page=5&q=bajo la lluvia por la avenida | ' '$f') = 1 ] && [ \$(grep -c '^/search ' '$f') -le 2 ]"
+    si "$e: la de Spotify no sale como NO ESTA" bash -c "! echo '$u1' | grep -q 'noesta:Tema Tema'"
+    fi
     si "$e: la llave nunca en la direccion de la peticion" nocontiene "$f" "$LLAVE"
     si "$e: 1a delante, TU cancion (Lluvia Inventada)" test "$(lugar "$u1" "2:Los Probados - 01 Lluvia Inventada")" = 1
     si "$e: 2a, la de Spotify (Tema Tema de Mentira, por la busqueda «titulo artista»)" bash -c "[ $(lugar "$u1" "spotify:Los Inventados - Tema Tema de Mentira") = 2 ] && grep -q 'q=tema tema de mentira los inventados' '$a'"

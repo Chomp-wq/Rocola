@@ -125,7 +125,7 @@ teclas «c» y «s» son la moneda (67) y saltar (83) en esos datos, así que la
 | `tres` | «viento frio tarde» está entera en la letra de la 05, pero son 3 palabras: no sale |
 | `apagado`, `cero` | Sin `ROCOLA_OS`, y con `ROCOLA_OS=1` y las cuatro apagadas: ni el archivo, ni `/run`, ni una petición, nada en la traza; y en `cero`, la traza igual a la de `apagado` quitando lo de RocolaOs (`compara_trazas.py --ignora RocolaOs: --holgura 80`) |
 | `genius` | Con la llave falsa y el modo Spotify: UNA pregunta a Genius (con la frase entera y la llave bien en la cabecera, nunca en la dirección); delante, la tuya, la de Spotify (por la búsqueda «título artista») y la NO ESTÁ, en ese orden; la 4.ª de Genius (el remix de la misma) no es otra tarjeta; la llave en ningún archivo de los datos (salvo el suyo), `/run`, la salida ni la traza; nada de Genius guardado |
-| `choque` | La de `genius`, y desde 0,75 s después de escribir (Genius ya preguntó) hasta 3,6 s se teclea y se borra una «x» cada 0,12 s: cada tecla es otra búsqueda de lo escrito en Spotify justo cuando el hilo de Genius pide «título artista». Las mismas comprobaciones: la de Spotify sigue en su sitio (con el programa de `117ac6f` salía «noesta:Tema Tema de Mentira» tras esperar 10 s, y Genius preguntaba dos veces: también la frase con la «x», ya borrada) |
+| `choque` | La de `genius`, y desde 0,75 s después de escribir (Genius ya preguntó) hasta 3,6 s se teclea y se borra una «x» cada 0,12 s: cada tecla es otra búsqueda de lo escrito en Spotify justo cuando el hilo de Genius pide «título artista». Las mismas comprobaciones (salvo «UNA pregunta»: el buscador de XP solo «posa» la consulta al quedarse quieta, así que la de la «x» estuvo a la vista más de 0,8 s y también se pregunta; la frase entera, una vez), y que la de Spotify no sale como NO ESTÁ: la de Spotify sigue en su sitio (con el programa de `117ac6f` salía «noesta:Tema Tema de Mentira» tras esperar 10 s, y Genius preguntaba dos veces: también la frase con la «x», ya borrada) |
 | `sinllave` | Encendida sin llave: 0 peticiones, la bitácora lo dice, y la letra de tus MP3 sí |
 | `suena` | La rocola toca «Amor de Prueba» (21 s, LRC de 10 versos cada 2 s): UNA petición a LRCLIB con título, artista, disco y duración; la letra sincronizada de LRCLIB; los versos avanzan en orden; el siguiente es el que le sigue; al acabar, nada suena; la letra en `/run` y nada en los datos; el estado sin texto |
 
@@ -157,3 +157,23 @@ teclas «c» y «s» son la moneda (67) y saltar (83) en esos datos, así que la
 - **Elegir la tarjeta NO ESTÁ no se probó en la rocola entera** (las teclas del buscador con portadas en las pruebas son delicadas); lo que
   hace es una línea (el aviso de XP).
 - **El repaso con la biblioteca real y en el A4**: sin medir (20 ms por archivo a nice 19; con 20 000 MP3, unos 7 minutos la primera vez).
+
+## 5. La revisión del 21-11-2026
+
+Un revisor miró la rama. Cada punto se comprobó en el código antes de tocar nada:
+
+| Punto | Qué se vio | Qué se hizo |
+|---|---|---|
+| GRAVE: la búsqueda de Spotify de Genius (`DeSpotify`) usaba `Busca`, que guarda **una sola** búsqueda pendiente | Cierto. Una tecla en esos 300 ms la reemplazaba sin contestar; el hilo esperaba 10 s y la de Spotify salía como **NO ESTÁ** toda la sesión. Reproducido con la escena nueva `choque` contra el programa de `117ac6f`: «noesta:Tema Tema de Mentira». Se vio además que Genius preguntaba **dos veces** (también la frase con la «x» ya borrada) | `BuscaAparte` (un pedido propio en la cola del catálogo, que siempre contesta); si Spotify no contesta, esa no sale (ni NO ESTÁ); `Mirando` olvida lo que esperaba para una frase que ya no se mira |
+| La letra de lo que suena se apuntaba como intentada antes de mirar el freno y la red | Cierto: una canción que sonaba en el freno, sin red o tras salir de la memoria y de `/run` no volvía a tener letra en toda la sesión | Solo queda «sin letra» lo que LRCLIB contestó que no tiene; lo demás se intenta otra vez la siguiente vez que suene pasado el freno; `/run` se toca al leerla |
+| La prueba del freno no probaba el freno | Cierto (la segunda corrida era otro proceso y las tres vueltas eran la misma canción) | `--prueba-letra-cielo` con `cancion=` y `pausa=`, `ROCOLA_LETRA_FRENO_MS`, y cinco comprobaciones en una sola corrida (escena `orden`) |
+| Duda: LRCLIB pide disco y duración | No se pudo mirar (lrclib.net no está en la red de la sesión); su documentación los da por obligatorios | Si `/api/get` dice 400, o 404 sin disco o sin duración, `/api/search` por título y artista (la duración más cercana, a 3 s). El LRCLIB falso ahora contesta 400 sin ellos |
+| L3 con 2 palabras que cuentan | Cierto («los tigres del norte» pedía 2 de 2) | Al menos 3 que cuentan (`PalabrasQueCuentan`); Genius sigue con la frase de 4 palabras |
+| g40 podía repetir la canción de Spotify que Genius ya puso delante | Cierto (objetos distintos, mismo `spotify:`) | g40 se salta las canciones cuya `spotify:` ya va en la lista |
+| Duda: el coste de `Busca` en cada tecla | La última palabra a medio escribir recorría **todo** el índice | Las palabras del índice en orden y la búsqueda por mitades; sin medir con una biblioteca real |
+| Genius con las frases a medio escribir (con los botones de la rocola, cada palabra nueva es una frase) | Cierto, pero menos grave de lo que parece: cada frase cuesta 1 a Genius (tope 300 por sesión) y lo de Spotify **se recuerda por consulta** (mismo «título artista» = 0 peticiones) | No se cambió (apagado de fábrica; decidir cuánto esperar es del dueño si lo enciende) |
+| Los artistas de Spotify encima de las tarjetas de Genius | Ya estaba en §4 | Sin cambio |
+| `rocola_letras_mp3.txt` guarda para siempre los MP3 que ya no están | Cierto; solo palabras sueltas, crece poco | Sin cambio (quitarlos al compactar, sin la biblioteca a la vista, borraría lo de un disco desconectado) |
+| USLT del ID3v2.3 con desincronización de toda la etiqueta | Cierto: las cabeceras de los marcos no se desincronizan; da null, nada se rompe | Sin cambio |
+| El repaso sin `ionice` | Con los planificadores CFQ/BFQ la prioridad de disco sale del nice (19 = la más baja de las normales); con mq-deadline no cuenta | Sin cambio; sin medir en un disco duro |
+| Elegir la tarjeta NO ESTÁ | Los caminos de XP que se miraron comprueban null | Sigue sin probarse en la rocola entera (ya estaba en §4) |
