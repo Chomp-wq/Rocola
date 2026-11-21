@@ -79,6 +79,10 @@ namespace Rocola
         // paraba): lo que llego al anillo en ese rato no es de esta y no se oye (la fuente empieza donde iba el anillo al empezar esta)
         internal string ItemAlPedir = "";
         internal bool Contaminada;
+        // (rapido-spotify) EL PLAY ADELANTADO: la pidio el hilo de Spotify al acabar la de antes (Adelantada), antes de que XP abra su fuente; la
+        // fuente la toma al empezar a leerse (Adoptada). Mientras no la toma nadie la oye (sin lector, Soloist no puede escribir en el anillo).
+        internal bool Adelantada;
+        internal volatile bool Adoptada;
         internal RocolaOsSpotifyPeticion(string uri, string titulo, int duracionMs) { Uri = uri; Titulo = titulo ?? ""; DuracionMs = duracionMs; }
     }
 
@@ -105,8 +109,54 @@ namespace Rocola
         internal static string UltimoError = "";
         internal static string Ws0 = "";               // (pruebas) el ws.addr:ws.port con que se conecto
 
-        // LA PIDE UNA FUENTE (hilo del sonido): solo marca; el hilo de Spotify la atiende en menos de 50 ms
-        internal static void Pide(RocolaOsSpotifyPeticion p) { Volatile.Write(ref actual, p); }
+        // LA PIDE UNA FUENTE (hilo del sonido): solo marca y (rapido-spotify) despierta al hilo de Spotify, que la atiende al momento en vez de
+        // en su siguiente vuelta (despierta cada 50 ms: de media 25 ms mas para el «play»). Set no espera a nadie (un aviso al nucleo).
+        internal static void Pide(RocolaOsSpotifyPeticion p) { Volatile.Write(ref actual, p); despierta.Set(); }
+
+        // (rapido-spotify) LA SIGUIENTE DE LA COLA DE XP SI ES DE SPOTIFY (la publica la pantalla: el latido y al pedir; null si no es de Spotify o
+        // no hay), y la que ya se le pidio a Soloist por adelantado. Entre dos de Spotify seguidas, XP cierra la salida cuando acaba de sonar
+        // lo que guarda la tarjeta (~1,2 s despues de que Soloist acabo la de antes) y solo entonces la fuente de la siguiente mandaba el
+        // «play»: a eso se sumaba lo que Soloist tarda en empezar (la red). Ahora el «play» se manda en cuanto la de antes acaba de llegar
+        // (Remata, si acabo bien), y Soloist empieza mientras suena la cola de la de antes. Nada se oye ni se cobra distinto: la fuente la
+        // toma al abrirse (TomaAdelantada) y desde ahi es la de siempre; si XP abre otra, o no la abre en 30 s, se deja (y se pausa).
+        internal sealed class Siguiente { internal string Uri, Titulo; internal int DuracionMs; }
+        private static Siguiente siguiente;
+        internal static void PonSiguiente(Siguiente s) { Volatile.Write(ref siguiente, s); }
+        // DE UNA DE XP A UNA DE SPOTIFY: la pantalla lo pide cuando a la de XP que suena le quedan 2,5 s por leer (y la tarjeta guarda ~1,2 s mas);
+        // el hilo de Spotify lo atiende en su vuelta si no hay ninguna de Spotify viva (las de Spotify las adelanta Remata)
+        private static int adelantoDesdeXp;
+        internal static void PideAdelantoDesdeXp() { if (Interlocked.Exchange(ref adelantoDesdeXp, 1) == 0) despierta.Set(); }
+        private static RocolaOsSpotifyPeticion adelantada;
+        internal const int AdelantoMaxMs = 30000;
+        internal static long Adelantadas, AdelantadasUsadas;
+        // (revision) la salvaguarda (Remata): una adelantada que sono mas de 300 ms menos que su duracion apaga el adelanto para siempre
+        internal const int AdelantoFaltaMaxMs = 300;
+        internal const string ArchivoSinAdelanto = "rocola_spotify_sin_adelanto.txt";
+        private static int adelantoApagado = -1;   // -1 sin leer (lo lee el hilo de Spotify la primera vez), 0 va, 1 apagado
+        private static bool AdelantoApagado
+        {
+            get
+            {
+                int v = Volatile.Read(ref adelantoApagado);
+                if (v < 0) { bool hay = false; try { hay = File.Exists(RocolaOs.Datos(ArchivoSinAdelanto)); } catch { } v = hay ? 1 : 0; Volatile.Write(ref adelantoApagado, v); }
+                return v == 1;
+            }
+        }
+        private static void ApagaAdelanto(string por)
+        {
+            if (Interlocked.Exchange(ref adelantoApagado, 1) == 1) return;
+            Apunta("EL PLAY ADELANTADO SE APAGA para siempre (" + por + "): Soloist no espera sin lector; desde ahora el play al abrir la fuente, como antes");
+            try { File.WriteAllText(RocolaOs.Datos(ArchivoSinAdelanto), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + "\t" + por + "\n"); } catch { }
+        }
+        // la fuente, en su primera lectura (hilo del sonido, sin esperar): la adelantada si es la suya y sigue viva (si no, null: la de siempre)
+        internal static RocolaOsSpotifyPeticion TomaAdelantada(string uri)
+        {
+            RocolaOsSpotifyPeticion q = Volatile.Read(ref adelantada);
+            if (q == null || q.Uri != uri || Volatile.Read(ref q.Motivo) != 0 || Volatile.Read(ref q.Fase) == RocolaOsSpotifyPeticion.Acabada) return null;
+            if (Interlocked.CompareExchange(ref adelantada, null, q) != q) return null;
+            q.Adoptada = true;
+            return q;
+        }
 
         // ---------- las rutas ----------
         internal static string CarpetaSoloist
@@ -283,7 +333,9 @@ namespace Rocola
             if (ws != null) CierraWs("la conexion se cerro");
             if (ahora < proximoIntentoMs) return;
             string puerto = LeePuerto();
-            if (puerto == null) { proximoIntentoMs = ahora + 1000; return; }
+            // (rapido-spotify) sin ws.port (Soloist aun arrancando, o reiniciandose): se vuelve a mirar a los 250 ms (antes 1 s: la sesion llegaba
+            // hasta 1 s despues de que Soloist ya escuchaba). Es un archivo chico en la carpeta de Soloist, solo mientras no hay conexion.
+            if (puerto == null) { proximoIntentoMs = ahora + 250; return; }
             ClientWebSocket w = new ClientWebSocket();
             try
             {
@@ -622,8 +674,23 @@ namespace Rocola
         internal const int FueraMs = 10000;
         private static void Peticiones(long ahora)
         {
+            if (Interlocked.Exchange(ref adelantoDesdeXp, 0) == 1)
+            {   // (rapido-spotify) solo si no hay ninguna de Spotify viva (ni sonando ni por rematar: una sustitucion invisible, por ejemplo)
+                RocolaOsSpotifyPeticion act = Actual;
+                if (act == null || act.Rematada) Adelanta(null);
+            }
             RocolaOsSpotifyPeticion n = Actual;
-            if (n != null && !vivas.Contains(n) && !n.Rematada) vivas.Add(n);
+            if (n != null && !vivas.Contains(n) && !n.Rematada)
+            {
+                // (rapido-spotify) XP abrio OTRA (no la adelantada): la adelantada se deja sin pausar (el play de la nueva la sustituye)
+                RocolaOsSpotifyPeticion ad = Volatile.Read(ref adelantada);
+                if (ad != null && !ReferenceEquals(ad, n) && Interlocked.CompareExchange(ref adelantada, null, ad) == ad)
+                {
+                    vivas.Remove(ad);
+                    Apunta("el play adelantado de " + ad.Uri + " no se uso: XP abrio " + n.Uri);
+                }
+                vivas.Add(n);
+            }
             RocolaOsSpotifyEstado st = Estado;
             if (st.Ws && st.Sesion) fueraDesdeMs = 0; else if (fueraDesdeMs == 0) fueraDesdeMs = ahora;
             bool fuera = fueraDesdeMs != 0 && ahora - fueraDesdeMs > FueraMs;
@@ -632,6 +699,19 @@ namespace Rocola
                 RocolaOsSpotifyPeticion p = vivas[i];
                 int f = Volatile.Read(ref p.Fase);
                 if (f == RocolaOsSpotifyPeticion.Acabada) { Remata(p); vivas.RemoveAt(i); i--; continue; }
+                // (rapido-spotify) UNA ADELANTADA QUE NADIE TOMO: se acabo antes (un celular, Soloist fuera...) o XP no la abrio en 30 s. Se deja; si
+                // Soloist aun la toca, en pausa (nadie la oye ni la pago esta peticion: el credito sigue en la cola de XP)
+                if (p.Adelantada && !p.Adoptada && (Volatile.Read(ref p.Motivo) != 0 || ahora - Volatile.Read(ref p.MandadaMs) > AdelantoMaxMs))
+                {
+                    if (Interlocked.CompareExchange(ref adelantada, null, p) == p)
+                    {
+                        vivas.RemoveAt(i); i--;
+                        if (Volatile.Read(ref p.Motivo) == 0 && Estado.ItemUri == p.Uri && (Estado.Status == "playing" || Estado.Status == "buffering")) PausaNuestra();
+                        Apunta("el play adelantado de " + p.Uri + " no se uso" + (Volatile.Read(ref p.Motivo) != 0 ? " (" + RocolaOsSpotifyPeticion.Motivos[Volatile.Read(ref p.Motivo)] + ")" : " en 30 s"));
+                        continue;
+                    }
+                    if (!p.Adoptada) continue;   // (la esta tomando la fuente ahora mismo: la siguiente vuelta la ve adoptada)
+                }
                 // (revision «sonido-hilos-y-fallos») SOLOIST FUERA mas de 10 s (el WebSocket caido o sin sesion: se cayo, caduco, no tiene la
                 // llave, no hay internet para entrar) y a esta le toca o espera: no puede sonar. Acaba YA y su credito vuelve (R4 y R9), en vez
                 // de 15 s de silencio por cada una de la cola. La fuente la remata al momento (Frontera y Motivo antes de mandar play).
@@ -657,7 +737,7 @@ namespace Rocola
                         Evalua(ahora);
                     }
                 }
-                else if (f == RocolaOsSpotifyPeticion.Mandada && !p.Reintentada && ahora - Volatile.Read(ref p.MandadaMs) > 4000 && st.Ws && st.Sesion)
+                else if (f == RocolaOsSpotifyPeticion.Mandada && !p.Reintentada && !(p.Adelantada && !p.Adoptada) && ahora - Volatile.Read(ref p.MandadaMs) > 4000 && st.Ws && st.Sesion)
                 {   // a los 4 s Soloist aun no la toca: se le pide otra vez (una vez)
                     p.Reintentada = true;
                     Apunta("play otra vez " + p.Uri + " (a los 4 s seguia «" + st.ItemUri + "» " + st.Status + ")");
@@ -668,6 +748,7 @@ namespace Rocola
                 {
                     // el WebSocket caido mas de 10 s, o el anillo sin sonido mas de 5 s estando en «playing» (R4)
                     if (!st.Ws && ahora - st.WsCambioMs > 10000) Termina(p, RocolaOsSpotifyPeticion.WsCaido);
+                    else if (p.Adelantada && !p.Adoptada) p.UltimoEscritoMs = ahora;   // (rapido-spotify: sin lector Soloist no puede escribir)
                     else if (st.Status == "playing")
                     {
                         // (la prueba del sistema entero en QEMU, sistema/ACT_qemu_spotify.md) solo cuenta mientras el anillo esta VACIO para la
@@ -688,8 +769,16 @@ namespace Rocola
             if (p.Rematada) return;
             p.Rematada = true;
             if (Volatile.Read(ref p.Motivo) == 0) Volatile.Write(ref p.Motivo, p.FinMotivo);
+            // (revision) LA SALVAGUARDA DEL PLAY ADELANTADO: probado solo con el Soloist falso, que sin lector no avanza. Si un Soloist de verdad
+            // avanzara por su reloj sin poder escribir (y se comiera el principio), la adelantada acabaria bien pero mas corta que su duracion:
+            // entonces el adelanto se apaga para siempre en esta rocola (rocola_spotify_sin_adelanto.txt) y todo vuelve a ser como antes de
+            // rapido-spotify (el play al abrir la fuente). Lo mas que se pierde es el principio de UNA cancion.
+            int durAd = Volatile.Read(ref p.DuracionMs);
+            if (p.Adelantada && p.Adoptada && !p.Devolver && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && durAd > 0 && p.SegundosSonados * 1000 < durAd - AdelantoFaltaMaxMs)
+                ApagaAdelanto("la adelantada " + p.Uri + " sono " + p.SegundosSonados.ToString("0.0", CultureInfo.InvariantCulture) + " s de " + (durAd / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s");
             string s = Estado.Status;
-            if (ReferenceEquals(p, Actual) && (s == "playing" || s == "buffering")) { PausaNuestra(); }
+            if (ReferenceEquals(p, Actual) && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && !p.Devolver && Adelanta(p)) { }   // (rapido-spotify)
+            else if (ReferenceEquals(p, Actual) && (s == "playing" || s == "buffering")) { PausaNuestra(); }
             string seg = p.SegundosSonados.ToString("0.0", CultureInfo.InvariantCulture);
             if (p.Devolver)
             {
@@ -703,6 +792,34 @@ namespace Rocola
                 Apunta("acabo " + p.Uri + " (" + p.Titulo + "): " + RocolaOsSpotifyPeticion.Motivos[p.FinMotivo] + ", sono " + seg + " s");
             }
         }
+        // (rapido-spotify) EL PLAY ADELANTADO de la siguiente de la cola de XP, si es de Spotify, con Soloist dentro y si no hay ya una: lo mismo que
+        // hace Peticiones con una nueva (la bocina activa, shuffle y repeat apagados, donde va el anillo, si Soloist tocaba otra cosa), pero sin
+        // fuente aun. «acabada»: la de Spotify que acaba de acabar (null: viene de una de XP). true = se mando (y no hace falta la pausa).
+        private static bool Adelanta(RocolaOsSpotifyPeticion acabada)
+        {
+            Siguiente sg = Volatile.Read(ref siguiente);
+            RocolaOsSpotifyEstado st = Estado;
+            if (sg == null || (acabada != null && sg.Uri == acabada.Uri) || !st.Ws || !st.Sesion || Volatile.Read(ref adelantada) != null || parar || CerrandoLaRocola) return false;
+            if (AdelantoApagado) return false;
+            foreach (RocolaOsSpotifyPeticion v in vivas) if (v.Uri == sg.Uri && Volatile.Read(ref v.Fase) != RocolaOsSpotifyPeticion.Acabada) return false;   // (ya la abrio XP)
+            long ahora = Environment.TickCount64;
+            RocolaOsSpotifyPeticion q = new RocolaOsSpotifyPeticion(sg.Uri, sg.Titulo, sg.DuracionMs) { Adelantada = true };
+            if (!st.Activa) { ultimaActivacionMs = 0; Activa(ahora, "para tocar (adelantado)"); }
+            ArreglaOpciones(ahora, true);
+            Interlocked.Exchange(ref q.EscritoAlPedir, Anillo.Escrito);
+            q.ItemAlPedir = st.ItemUri ?? "";
+            q.Contaminada = st.ItemUri != q.Uri && (st.Status == "playing" || st.Status == "buffering");
+            pausaNuestra = false;
+            if (!Manda("{\"type\":\"command\",\"command\":\"play\",\"uri\":" + Json(q.Uri) + "}")) return false;
+            Volatile.Write(ref q.MandadaMs, ahora);
+            Volatile.Write(ref q.Fase, RocolaOsSpotifyPeticion.Mandada);
+            vivas.Add(q);
+            Volatile.Write(ref adelantada, q);
+            Interlocked.Increment(ref Adelantadas);
+            Apunta("play adelantado " + q.Uri + " (" + q.Titulo + "): la siguiente de la cola, al acabar " + (acabada != null ? acabada.Uri : "la de XP que suena"));
+            return true;
+        }
+
         // LO QUE LA ROCOLA NO PIDIO NO SUENA (R3): desde un celular, autoplay, radio o la cola de Spotify: pausa al momento, sin cobrar
         private static void NoPedido(long ahora)
         {

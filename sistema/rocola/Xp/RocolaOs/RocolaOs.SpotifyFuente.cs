@@ -102,9 +102,12 @@ namespace Rocola
                 long ahora = Environment.TickCount64;
                 if (p == null)
                 {   // LA PRIMERA LECTURA: ahora si se le pide a Soloist
-                    p = new RocolaOsSpotifyPeticion(uri, titulo, duracionCatalogoMs);
+                    // (rapido-spotify) o ya se le pidio al acabar la de antes (el play adelantado): se toma esa, y lo que Soloist ya dejo en el anillo
+                    // desde su play no se tira (es suyo: la fuente empieza donde dice su EscritoAlPedir, como siempre)
+                    RocolaOsSpotifyPeticion ya = RocolaOsSpotify.TomaAdelantada(uri);
+                    p = ya ?? new RocolaOsSpotifyPeticion(uri, titulo, duracionCatalogoMs);
                     inicioMs = ultimoSonidoMs = ahora;
-                    if (a != null) a.Tira();
+                    if (a != null && ya == null) a.Tira();
                     if (Interlocked.Exchange(ref contado, 1) == 0) Interlocked.Increment(ref RocolaOsSpotify.LectoresAbiertos);
                     RocolaOsSpotify.Pide(p);
                 }

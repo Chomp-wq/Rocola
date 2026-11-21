@@ -75,6 +75,7 @@ abre() {
       SOLOIST_FALSO_LOG="$o/falso.txt" VIGILANTE_FALSO_LOG="$o/vigilante.txt" \
       "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
   ROCOLA=$!
+  date +%s%3N > "$o/inicio_ms"   # (rapido-spotify: la hora de Unix del arranque, para contar lo que pidio en un rato: tiempos.txt de la API falsa)
   ( sleep "$seg"; kill -TERM $ROCOLA 2>/dev/null; sleep 30; kill -KILL $ROCOLA 2>/dev/null ) & VIG=$!
 }
 espera() { wait $ROCOLA; echo $? > "$W/$1/salio"; rm -f "$W/$1/sonado.raw"; kill $VIG 2>/dev/null; wait $VIG 2>/dev/null; kill $APIPID 2>/dev/null; wait $APIPID 2>/dev/null; }
@@ -180,7 +181,15 @@ PY
     si "$e: ninguna peticion a la API de Spotify (/v1: $(v1 $a))" test "$(v1 $a)" = 0
     if [ $e = hojea ]; then
       si "hojea: pasaron las 500 paginas de la A ($(est $o paginas_vistas) vistas)" test "$(est $o paginas_vistas)" -ge 500
-      si "hojea: portadas pedidas al Cover Art Archive: $(grep -c 'GET /release-group/' $a) (las de la 1a pagina y las de donde se paro; $(est $o portadas_dejadas) dejadas sin pedir)" test "$(grep -c 'GET /release-group/' $a)" -le 90
+      # (rapido-spotify) desde que las de las paginas de al lado y las de la primera pagina de las letras de al lado se bajan por adelantado
+      # (de la pagina donde empieza y de donde se para: hasta 7 paginas de 18 cada vez), lo que se cuenta es lo pedido MIENTRAS se hojea (de
+      # los 12,5 a los 52 s: ARRIBA mantenido), que tiene que seguir siendo casi nada; el total, solo se dice
+      hj=$(awk -v i="$(cat $o/inicio_ms)" '$4 ~ /^\/release-group\// && $1 >= i + 12500 && $1 <= i + 52000' "$o/api/tiempos.txt" | wc -l)
+      # (revision) mientras se hojea, como la base (unos 16; el defecto de 6a49a70 pedia 64-148): 30 como mucho. Y el total con tope (la
+      # base, 90 como mucho; con lo adelantado, 174-186): 200, para ver si el adelanto vuelve a gastar de mas en la red y el disco del bar
+      ht=$(grep -c 'GET /release-group/' $a)
+      si "hojea: portadas pedidas al Cover Art Archive mientras se hojea: $hj de 30 como mucho ($(est $o portadas_dejadas) dejadas sin pedir)" test "$hj" -le 30
+      si "hojea: portadas pedidas en total: $ht de 200 como mucho (las de la 1a pagina, las de donde se paro y las de al lado de las dos)" test "$ht" -le 200
       si "hojea: la memoria con tope (el mayor tamano en la memoria: $(est $o memoria_mb_max) MB; los objetos de .NET: $(est $o gc_mb_max) MB)" test "$(est $o gc_mb_max)" -le 250
       si "hojea: en la memoria como mucho 4 letras ($(est $o en_memoria))" test "$(est $o en_memoria | wc -c)" -le 5
     else
@@ -230,14 +239,16 @@ PY
     si "abre: en total 5 peticiones a /v1 ($(v1 $a))" test "$(v1 $a)" = 5 ;;
   portadas)
     # LAS PORTADAS DEL CATALOGO: al verse (la pagina 1 y luego la 2), del Cover Art Archive (falso), a su cache en el disco de la rocola; sin
-    # portada (404), la casilla de XP sin caratula; a la 2a vez, del disco (ninguna peticion)
+    # portada (404), la casilla de XP sin caratula; a la 2a vez, del disco (ninguna peticion). (rapido-spotify) Y por adelantado las de las
+    # paginas de al lado y la que sigue hacia donde se va: con la 1 y la 2 vistas, de la 1 a la 4 (72 casillas), y la primera pagina de las
+    # dos letras de al lado (36): 108 como mucho
     apifalsa $e "$CAT"; d=$(datos $e encendido)
     abre $e "$d" "$BASE,14:38,18:40" 22 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/disco-portadas/ia-xp"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; n1=$(grep -c 'GET /release-group/' $a)
     pc="$W/disco-portadas/catalogo/portadas"
     echo "   portadas: $n1 pedidas ($(grep -c 'release-group.* 404' $a) sin portada), $(ls $pc/*.jpg 2>/dev/null | wc -l) en la cache, $(ls $pc/miniaturas 2>/dev/null | wc -l) miniaturas"
     si "portadas: sale con 0" test "$(cat $o/salio)" = 0
-    si "portadas: solo las de 2 paginas (de 36 casillas): $n1" test "$n1" -le 36 -a "$n1" -ge 20
+    si "portadas: solo las de 2 paginas vistas, las 2 de al lado y la 1a de las 2 letras de al lado, por adelantado (de 108 casillas): $n1" test "$n1" -le 108 -a "$n1" -ge 20
     si "portadas: las 404 son las de los mbid que acaban en 0 (el falso) y no se guardan" bash -c "! ls '$pc' | grep -q '0\.jpg$'"
     si "portadas: las miniaturas de XP de estas portadas van a su cache (no a rocola_miniaturas)" bash -c "[ \$(ls '$pc/miniaturas' | wc -l) -ge 1 ]"
     si "portadas: la previa de 32 px no va a previews32 (nada de la cache del catalogo en el indice de XP)" bash -c "! grep -qa 'disco-portadas/catalogo' '$d'/rocola_miniaturas/previews32* 2>/dev/null"

@@ -121,6 +121,38 @@ namespace Rocola
             int n = 0;
             for (int i = 0; i < queue.Count; i++) { PlayItem it = queue[i]; if (it != null && !it.IsVideo && it.Song != null && RocolaOsSpotify.EsUriDeCancion(it.Song.Path)) n++; }
             Volatile.Write(ref RocolaOsSpotify.EnCola, n);
+            RocolaOsSpotifyPublicaSiguiente();
+            RocolaOsSpotifyAdelantaDesdeXp();
+            RocolaOsSpotifyCatalogoLatido();   // (rapido-spotify: al abrirse el buscador, la llave y las conexiones de la API ya calientes)
+        }
+
+        // (rapido-spotify) LA SIGUIENTE DE LA COLA DE XP (la que PlayNext tomara: queue[0]), para el play adelantado del hilo de Spotify: la de
+        // Spotify, o nada. En el latido y al pedir (la pantalla; solo lee la cola de XP)
+        private void RocolaOsSpotifyPublicaSiguiente()
+        {
+            PlayItem it = queue.Count > 0 ? queue[0] : null;
+            string u = it != null && !it.IsVideo && it.Song != null ? it.Song.Path : null;
+            if (u == null || !RocolaOsSpotify.EsUriDeCancion(u)) { RocolaOsSpotify.PonSiguiente(null); return; }
+            RocolaOsSpotifyPista pi;
+            RocolaOsSpotify.Pistas.TryGetValue(u, out pi);
+            RocolaOsSpotify.PonSiguiente(new RocolaOsSpotify.Siguiente { Uri = u, Titulo = it.Song.Title ?? "", DuracionMs = pi != null ? pi.DuracionMs : 0 });
+        }
+
+        // (rapido-spotify) DE UNA DE XP A UNA DE SPOTIFY: a la de XP que suena le quedan 2,5 s o menos por leer y la siguiente de la cola es de
+        // Spotify: su play adelantado (Soloist empieza mientras acaba la de XP; nadie lo oye hasta que XP abre la suya). En el latido (la pantalla,
+        // lo mismo que lee el reloj de la cancion de XP: reader).
+        private void RocolaOsSpotifyAdelantaDesdeXp()
+        {
+            if (nowPlaying == null || nowPlaying.IsVideo || videoOn || nowPlaying.Song == null || queue.Count == 0) return;
+            if (RocolaOsSpotify.EsUriDeCancion(nowPlaying.Song.Path)) return;   // (de Spotify: lo adelanta el hilo de Spotify al rematarla)
+            PlayItem sig = queue[0];
+            if (sig == null || sig.IsVideo || sig.Song == null || !RocolaOsSpotify.EsUriDeCancion(sig.Song.Path)) return;
+            IAudioSource r = reader;
+            if (r == null) return;
+            double quedan;
+            try { quedan = (r.TotalTime - r.CurrentTime).TotalSeconds; } catch { return; }
+            if (quedan < 0 || quedan > 2.5) return;
+            RocolaOsSpotify.PideAdelantoDesdeXp();
         }
 
         // ================================================================== I6
@@ -160,6 +192,7 @@ namespace Rocola
             }
             if (r == AddResult.Added)
             {
+                RocolaOsSpotifyPublicaSiguiente();   // (rapido-spotify: por si es la siguiente, sin esperar al latido)
                 Interlocked.Increment(ref RocolaOsSpotify.Cobradas);
                 int puesto = queue.IndexOf(it) + 1;   // 0: ya suena
                 RocolaOsSpotify.Apunta("COBRADA " + p.Uri + " «" + (p.Titulo ?? "") + "» de «" + (p.Artista ?? "") + "»: 1 credito, "
