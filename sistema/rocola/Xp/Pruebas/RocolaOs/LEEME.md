@@ -17,6 +17,7 @@ Los archivos:
 - (`ganchos.py` es del grupo andamio: lo corre el paso `ganchos`.)
 - `apagones/prueba.sh`: la auditoría de apagones (`FASE11_apagones.md`): `kill -9`, caída, `SIGTERM`, `SIGUSR1`, `SIGHUP`, cortes justo
   al guardar (strace), `dirsync` y el importador; el corte de luz de verdad está en `sistema/rocola/Pruebas/Qemu/apagones.py`.
+  Sus datos de partida (los tres tonos) los arma `apagones/datos.sh`; `prueba.sh` lo llama solo si faltan.
 
 ## Cómo se corre
 
