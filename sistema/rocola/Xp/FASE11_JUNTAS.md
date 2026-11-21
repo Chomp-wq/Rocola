@@ -189,3 +189,113 @@ Las baterías afectadas, otra vez en JIT con el programa de `bd39d2b` (bitácora
   ni un hueco dentro de cada una» con un hueco en la de 440 Hz: la máquina cargada; otra vez con carga 11, BIEN (y las otras tres escenas
   que miran huecos, BIEN en las dos corridas). Repetida entera con `34df01d`: 160/160.
 - Ninguna en NativeAOT en esta revisión (lo cambiado son las pruebas y, en `bd39d2b`, `RocolaOs.Navegador.cs`, `RocolaOs.Pantalla.cs` y la pantalla simulada, solo con `ROCOLA_OS`; el NativeAOT de la junta, arriba).
+
+## Junta 3: lo de Ctrl+F4, el modo noche, los apagones, la letra y el cielo (21-11-2026)
+
+Rama `junta-3` (en `.claude/worktrees/junta-3`), sobre la rama principal `claude/modest-carson-fa2v2n` en `26a2bed`. Merges con `--no-ff`
+(sin rebase), en este orden:
+
+| # | Rama | Hasta | Lo que trae | Documento |
+|---|---|---|---|---|
+| 1 | `junta-2` | `d9ab792` | La segunda compilación: Ctrl+F4 (Pantalla, Navegador y Archivos), la pared con el catálogo, el pre-mapeo de géneros | arriba, «Junta 2» |
+| 2 | `archivos-papelera` | `134d08e` | Descargas y Papelera en «Archivos» de Ctrl+F4 (sale de `junta-2`) | `FASE11_navegador-archivos.md` |
+| 3 | `xp-1718-linux` | `086854b` | La importación de XP con `parejo_v2` y la conversión con ffmpeg de los «MP3» que no lo son (g110-g113) | `PORT_xp-1718.md`, «Lo de Linux» |
+| 4 | `noche-50` | `9478303` | El modo noche de 50 a 90 % (`Rocola/` y `Codigo/`) | `PORT_xp-1718.md`, «El modo noche de 50 a 90 %» |
+| 5 | `noche-nv` | `c01578f` | NV3-NV5 (lo de los vecinos) y su revisión; g102 (el filtro de mpv de noche) | `PORT_noche-nv.md` |
+| 6 | `apagones` | `a8b075f` | La auditoría contra los apagones y lo arreglado (dirsync en `/rocola/datos`) | `FASE11_apagones.md` |
+| 7 | `letras` | `5126eb1` | Buscar por la letra (L3; Genius apagado) y la fuente de la letra (LRCLIB, la USLT del MP3) | `FASE11_letras.md` |
+| 8 | `cielo-nucleo` | `1fb1a6e` | El núcleo del cielo vivo, DN1 y DN5 (g120-g139) | `FASE11_cielo-nucleo.md` |
+
+### Los choques y cómo se resolvieron
+
+- `RocolaOs/GANCHOS.tsv` (en xp-1718-linux, noche-nv, letras y cielo-nucleo): las filas de los dos lados.
+- `Pruebas/Importa/mundo.py` y `prueba.sh` (en noche-50 y noche-nv, contra xp-1718-linux): la configuración de XP falsa lleva las claves
+  de las tres ramas (lo del 17 y 18-11, `noche_pct=50` y las de los vecinos), y se comprueba todo lo de las tres. Un solo valor chocaba:
+  `noche_graves=` (5 en xp-1718-linux, 10 con `noche_graves_8=1` en noche-nv): queda 10, el de noche-nv, también en la comprobación de
+  rocola-xp abierta después de importar.
+- `PORT_xp-1718.md` (xp-1718-linux y noche-50 añadían cada una su sección al final): las dos, una detrás de otra.
+- Sin choque de git pero sí de números: los ganchos de `letras` (abajo).
+- `AGENTS.md`: solo `apagones` lo cambió (una entrada arriba); sin choque. `Rocola/Form1.Sonido.cs` y `Codigo/Form1.Sonido.cs`: solo los
+  cambiaron noche-50 y noche-nv (xp-1718-linux solo puso g110 y g111 en `Codigo/`), y git los juntó solo; `Codigo/` queda igual que en
+  noche-nv salvo los ganchos.
+
+### Los ganchos renumerados
+
+Ninguno repetido entre ramas salvo **g110 y g111**: los tomaron `xp-1718-linux` (`Codigo/Form1.Sonido.cs`: la conversión en `OpenAudio` y
+en `LectorMedida`) y `letras` (`Codigo/Form1.Biblioteca.cs`: la letra en la lista del buscador y la tarjeta «NO ESTÁ EN LA ROCOLA`).
+Entró antes xp-1718-linux, así que los de letras pasan a **g114 y g115**: en sus dos marcas de `Codigo/Form1.Biblioteca.cs`,
+`GANCHOS.tsv`, `RocolaOs.Letras.cs`, `RocolaOs.LetrasGenius.cs`, `RocolaOs.SpotifyCatalogo.cs` (dos comentarios) y `FASE11_letras.md`
+(dicho allí). Los demás no se tocan: g85-g87, g90-g98, g100-g101 (junta-2), g102 (noche-nv), g110-g113 (xp-1718-linux), g120-g139
+(cielo-nucleo). En total **90 ganchos en 28 archivos** (84 en 23 archivos de `Codigo/`). Las líneas de g110 y g111 se movieron con lo
+que noche-nv añadió en `Form1.Sonido.cs` (1511 → 1638 y 621 → 742); las demás siguen en su sitio.
+
+### La base nueva de los ganchos
+
+**`d5bc2b0`**: el código de la junta con los 90 ganchos devueltos (su línea de antes, en `Codigo/` y fuera, en `Nativo/`); el commit
+siguiente, `67eda45`, los vuelve a poner. Su `Codigo/` es byte a byte el de `a76d008` (la base de noche-nv): ninguna otra rama cambió
+`Rocola/`. La nombran `ganchos.py`, `nivel0.sh` (`BASE=`), la cabecera de `GANCHOS.tsv`, `Pruebas/RocolaOs/LEEME.md` y la prueba del
+andamio (que aún decía `69e6547`). Si la rama se junta con squash o rebase, ese número cambia: `--base` / `BASE=`.
+
+### Lo que se arregló en la junta (commits propios)
+
+- `1cb623a`: la prueba del cielo esperaba de `diff-xp.py --sin-ganchos` las cuentas de antes del modo noche (5 135 / 4 868 / 229);
+  con noche-nv son 5 147 / 4 880 / 229 (las de `nivel0.sh`). Era el único MAL del cielo en JIT (59 de 60).
+- `3270072`: **spotify-xp, escena `fabrica`, «ni una petición a la red» con `ROCOLA_OS=1`: 3 conexiones**. Con cielo-nucleo juntado,
+  rocola-xp sin ninguna llave pide el lugar (ipapi.co) y el clima (Open-Meteo) a los 20 s: es lo decidido por el dueño (CL, encendido de
+  fábrica, sin llave), y la prueba de la junta 1 lo contaba como red de Spotify (salían por el proxy de la máquina, 127.0.0.1:33575). La
+  escena le da ahora al clima, al lugar, a LRCLIB y a Genius un sumidero (`127.0.0.1:7`, nada escucha): esas no cuentan y se dicen
+  aparte (3); lo de Spotify (`127.0.0.1:9`) y lo demás, igual. Ojo: **las demás baterías que abren con `ROCOLA_OS=1` sin darle al cielo
+  un clima falso también salen a internet** a por el lugar y el clima (no lo comprueban); no se cambiaron.
+
+### Las pruebas
+
+Corridas el 21-11-2026 en la máquina de 4 núcleos compartida (carga 3 a 6). Programas de `67eda45` (lo de después solo toca pruebas y
+documentos): JIT (`dotnet build -c Release`) y NativeAOT (`dotnet publish -r linux-x64 -p:PublishAot=true`), los dos con 0 errores y los
+13 avisos de `avisos-base.txt` (`clasifica.py avisos`: BIEN, ninguno nuevo); NativeAOT con 0 avisos IL/AOT. Bitácora y salidas en
+`/root/rocola-trabajo/fase11/junta-3/` (fuera del repositorio).
+
+- XP con Mono (`pruebas/todo.sh noche cadenaentera billar18 billarparejo nomp3 ecualizador`): la rocola a 0 avisos en los dos perfiles,
+  todas en verde; una por una: `noche` 145/145, `cadenaentera` 91/91, `billar18` 35/35, `billarparejo` 8/8, `nomp3` 23/23,
+  `ecualizador` 77/77. `compara-cadena` (el `Rocola.exe` de la rama principal, `26a2bed`, contra el de la junta; los dos perfiles): 16
+  iguales bit a bit, 0 distintas (fuerza el día). `Rocola/` y `pruebas/` son los de noche-nv.
+- `ganchos.py`: TODO BIEN (90 ganchos en 28 archivos; 112 archivos de `Codigo/` iguales a `d5bc2b0`, 23 con ganchos).
+- `diff-xp.py --sin-ganchos` (112 archivos): 5 147 quitadas, 4 880 puestas, 229 sin marca (las de noche-nv; 84 ganchos devueltos).
+- Nivel 0 (`nivel0.sh`, pasos previo, código, ganchos y cintas, con el JIT de la junta): **5 BIEN**; las cintas de la tarjeta sin
+  `ROCOLA_OS`, **29 iguales (6 616 cuadros), 0 distintas**: la pantalla sin Rocola OS sigue siendo la de XP. No se corrieron los demás
+  pasos del nivel 0 (arneses, banco, recorridos, escenas, cierre: en la junta 2 lo que salía MAL salía igual en la base).
+
+Las baterías de `Pruebas/RocolaOs` y `Pruebas/Importa` (pasadas/total):
+
+| Batería | JIT | NativeAOT |
+|---|---|---|
+| `andamio` | 101/101 | 101/101 |
+| `asistente` | 29/29 | 29/29 |
+| `pantalla` | 76/76 | 76/76 |
+| `navegador-archivos` | 62/62 | 62/62 |
+| `pared-generos` | 69/69 (con el catálogo de verdad) | 69/69 |
+| `convierte` | 57/57 | 57/57 |
+| `letras` | 88/88 | 88/88 |
+| `apagones` | 36/36 | 36/36 |
+| `cielo` | 60/60 (tras `1cb623a`; antes 59/60) | 59/60, y `escenas` otra vez 29/29 |
+| `noche-video` | 9/9 | 9/9 |
+| `Importa` | 181/181 | 181/181 |
+| `sustitucion` | 97/97 | 97/97 |
+| `catalogo` | 156/156 | 156/156 |
+| `spotify-xp` (con `PULSO`) | 185/187, y `celular` y `noche` otra vez 65/65 (antes de `3270072`: 186/187) | **187/187** |
+
+- `spotify-xp` JIT: la primera corrida (antes de `3270072`) dio 186/187, solo la de la red de arriba. La segunda, con el arreglo, 185/187:
+  «celular: el estado: devueltas=2, no_pedidas>=2, sesion=0» y «probar xp: se queda hasta el otro toque, 15 s después (13,8 s abajo)»
+  (la tolerancia de 13,9 a 16,2 s por el latido de 1 s, la de la junta 1). Las dos habían salido BIEN en la primera corrida y otra vez
+  BIEN al repetir esas dos escenas (65/65); NativeAOT, 187/187. Es la máquina cargada, no la junta.
+- `cielo` NativeAOT: «las fases de las capturas (bitácora de la pared vacía)» MAL una vez; la escena `escenas` repetida, 29/29 (BIEN
+  también en las dos de JIT). La escena dura 52 s y la comprobación necesita las seis fases en la bitácora con la máquina cargada.
+
+### Lo que queda
+
+- Nada falla por la junta después de `1cb623a` y `3270072`. Lo que salió MAL una vez y BIEN al repetir (`spotify-xp` celular y «Probar»
+  en JIT, `cielo` escenas en NativeAOT) es de la carga.
+- Las baterías que abren rocola-xp con `ROCOLA_OS=1` y sin clima falso salen a internet (lugar y clima del cielo). No es un fallo del
+  programa (lo decidió el dueño) pero las pruebas dicen «sin red»: habría que darles `ROCOLA_CLIMA_API`/`ROCOLA_LUGAR_API` de un
+  sumidero, batería por batería.
+- No se corrió: el nivel 0 entero, el `cierre_rocola_os.sh`, la prueba de QEMU ni ninguna compilación del sistema (el navegador pide la
+  COMPLETA). Lo pendiente de cada rama sigue en su documento. Nada probado en el A4.
