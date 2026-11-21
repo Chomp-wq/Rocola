@@ -37,6 +37,7 @@ namespace Rocola
         internal uint Textura; internal int AnchoGl, AltoGl; internal bool Rgba;
         internal string Tipo;               // (pruebas: ROCOLA_CAPTURA_CAPAS) «dibujo2d», «hoja», «vista»; las de textura, «tarjeta»
         internal string Nombre;             // (pruebas: ROCOLA_TRAZA_CAPAS) de quien es la textura
+        internal bool Vacia;                // (rapido-general) lo pintado por procesador, todo transparente (nada se pinto en el): no se sube ni se mezcla
     }
 
     internal sealed unsafe class CompositorPantalla
@@ -127,8 +128,68 @@ namespace Rocola
                 foreach (CapaPantalla c in lista) sb.Append(' ').Append(c.DeTextura ? (c.Nombre + "#" + c.Textura + (c.Rgba ? "rgba" : "")) : "dibujo").Append('@').Append(c.Rect.X).Append(',').Append(c.Rect.Y).Append(',').Append(c.Rect.Width).Append('x').Append(c.Rect.Height);
                 Console.WriteLine(sb.ToString());
             }
-            foreach (CapaPantalla c in lista)
+            DibujaCapas(lista, false);
+            if (Prueba != null) Prueba(this, lista);   // (pruebas: Pruebas/RapidoGeneral, que compone lo mismo sin saltarse nada y compara)
+            // las capas que ya no estan, fuera
+            List<object> fuera = null;
+            foreach (KeyValuePair<object, CapaGl> k in capas) if (!k.Value.Vista) { if (fuera == null) fuera = new List<object>(); fuera.Add(k.Key); }
+            if (fuera != null) foreach (object c in fuera) { uint t = capas[c].Tex; if (t != 0) GL.DeleteTextures(1, &t); capas.Remove(c); }
+            GL.Disable(GL.BLEND);
+            Composiciones++;
+            if (conFlecha) { Flecha(); Capturas(lista); }   // (pruebas: ROCOLA_CAPTURA_FLECHA=1)
+            else { Capturas(lista); Flecha(); }   // como las capturas de Windows: sin la flecha
+            sup.Presenta();
+            foreach (ReproductorVideo r in rs) r.TrasPresentar();
+            PantallaTarjeta.Tocada();   // lo puesto en OpenGL ya no es lo del dispositivo de la tarjeta (Nativo/PantallaTarjeta.cs)
+        }
+        // (pruebas) lo que se llama con lo compuesto, antes de las capturas y la flecha (Pruebas/RapidoGeneral); null en la rocola
+        internal static Action<CompositorPantalla, List<CapaPantalla>> Prueba;
+        // (pruebas) la pantalla compuesta otra vez desde cero con TODAS las capas (sin saltarse nada), como antes de rapido-general
+        internal void ComponeTodo(List<CapaPantalla> lista)
+        {
+            GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
+            GL.Viewport(0, 0, ancho, alto);
+            GL.ClearColor(0, 0, 0, 1); GL.Clear(GL.COLOR_BUFFER_BIT);
+            GL.UseProgram(programa);
+            GL.Uniform2f(lugarM, 2f / ancho, 2f / alto);
+            GL.Uniform1i(lugarS, 0); GL.Uniform1f(lugarRgba, 0f);
+            GL.ActiveTexture(GL.TEXTURE0);
+            DibujaCapas(lista, true);
+            GL.Disable(GL.BLEND);
+        }
+        // (pruebas) la pantalla compuesta, fila 0 abajo (glReadPixels)
+        internal byte[] LeePantalla()
+        {
+            byte[] px = new byte[ancho * alto * 4];
+            GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
+            GL.PixelStorei(GL.PACK_ALIGNMENT, 4);
+            fixed (byte* p = px) GL.ReadPixels(0, 0, ancho, alto, GL.RGBA, GL.UNSIGNED_BYTE, p);
+            return px;
+        }
+        // LAS CAPAS, de abajo arriba ('todo': sin saltarse nada, solo para las pruebas)
+        private void DibujaCapas(List<CapaPantalla> lista, bool todo)
+        {
+            // (rapido-general) LO QUE NO SE VE NO SE COMPONE (el mismo resultado, punto por punto): lo que queda debajo de la ultima capa de
+            // textura que tapa la pantalla entera (se pone sin mezcla: la tarjeta a pantalla completa) y lo pintado por procesador que quedo
+            // todo transparente (con ONE, ONE_MINUS_SRC_ALPHA un punto transparente deja el de debajo tal cual) ni se sube ni se mezcla; su
+            // textura, si ya la tenia, se guarda (se sube cuando vuelva a verse, si cambio). Con la tarjeta, las dos capas de la ventana de la
+            // rocola son asi: dos mezclas de 1024x768 de nada por cuadro (y su subida de 3 MB cada vez que una vista de encima se repinta).
+            int tapa = 0;
+            if (!todo)
+            for (int i = lista.Count - 1; i > 0; i--)
             {
+                CapaPantalla c = lista[i];
+                if (c.DeTextura && c.Textura != 0 && c.AnchoGl > 0 && c.Rect.X <= 0 && c.Rect.Y <= 0 && c.Rect.Right >= ancho && c.Rect.Bottom >= alto) { tapa = i; break; }
+            }
+            for (int i = 0; i < lista.Count; i++)
+            {
+                CapaPantalla c = lista[i];
+                if (!todo && (i < tapa || (!c.DeTextura && c.Vacia)))
+                {
+                    CapaGl q;
+                    if (!c.DeTextura && c.Clave != null && capas.TryGetValue(c.Clave, out q)) q.Vista = true;
+                    continue;
+                }
                 if (c.DeTextura)
                 {
                     if (c.Textura == 0 || c.AnchoGl <= 0) continue;
@@ -155,17 +216,6 @@ namespace Rocola
                 GL.BindTexture(GL.TEXTURE_2D, g.Tex);
                 Cuadro(c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height, 1f, 1f, c.Opacidad);
             }
-            // las capas que ya no estan, fuera
-            List<object> fuera = null;
-            foreach (KeyValuePair<object, CapaGl> k in capas) if (!k.Value.Vista) { if (fuera == null) fuera = new List<object>(); fuera.Add(k.Key); }
-            if (fuera != null) foreach (object c in fuera) { uint t = capas[c].Tex; if (t != 0) GL.DeleteTextures(1, &t); capas.Remove(c); }
-            GL.Disable(GL.BLEND);
-            Composiciones++;
-            if (conFlecha) { Flecha(); Capturas(lista); }   // (pruebas: ROCOLA_CAPTURA_FLECHA=1)
-            else { Capturas(lista); Flecha(); }   // como las capturas de Windows: sin la flecha
-            sup.Presenta();
-            foreach (ReproductorVideo r in rs) r.TrasPresentar();
-            PantallaTarjeta.Tocada();   // lo puesto en OpenGL ya no es lo del dispositivo de la tarjeta (Nativo/PantallaTarjeta.cs)
         }
         // LA FLECHA DEL RATON, encima de todo cuando XP la ensena (Cursor.Show; en la pantalla de la rocola XP la esconde): la flecha o la
         // mano (Cursors.Hand), dibujadas una vez como las de Windows XP (blanca con borde negro; la mano, con el dedo arriba).

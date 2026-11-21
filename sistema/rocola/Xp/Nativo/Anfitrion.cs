@@ -77,9 +77,11 @@ namespace Rocola
         // de cada capa dura lo que la hoja se ve (escondida y vuelta a ensenar, su textura se sube de nuevo).
         private sealed class ClavesDeHoja { internal readonly object Mapa = new object(), Tarjeta = new object(); }
         private readonly Dictionary<Hoja, ClavesDeHoja> clavesDeHoja = new Dictionary<Hoja, ClavesDeHoja>();
+        private readonly List<CapaPantalla> capasDelCuadro = new List<CapaPantalla>();
+        private readonly List<Hoja> hojasFuera = new List<Hoja>();
         private List<CapaPantalla> Capas()
         {
-            List<CapaPantalla> r = new List<CapaPantalla>();
+            List<CapaPantalla> r = capasDelCuadro; r.Clear();   // (rapido-general: la misma lista de un cuadro al otro: el compositor solo la usa en el cuadro)
             List<CapaPantalla> hojas = null, bajo = null;
             foreach (Hoja h in Hoja.Abiertas)
             {
@@ -96,11 +98,17 @@ namespace Rocola
                 {
                     CapaPantalla t = new CapaPantalla();
                     t.Clave = k.Tarjeta; t.Rect = h.ClienteEnPantalla; t.Opacidad = 1f;
-                    t.DeTextura = true; t.Textura = h.TexturaGl; t.AnchoGl = h.AnchoGl; t.AltoGl = h.AltoGl; t.Nombre = h.GetType().Name; t.Tipo = "tarjeta";
+                    t.DeTextura = true; t.Textura = h.TexturaGl; t.AnchoGl = h.AnchoGl; t.AltoGl = h.AltoGl; t.Nombre = PantallaRocola.NombreDelTipo(h); t.Tipo = "tarjeta";
                     destino.Add(t);
                 }
             }
-            if (clavesDeHoja.Count > 0) foreach (Hoja h in new List<Hoja>(clavesDeHoja.Keys)) if (h.IsDisposed || !h.Visible) clavesDeHoja.Remove(h);
+            if (clavesDeHoja.Count > 0)
+            {
+                List<Hoja> fuera = hojasFuera; fuera.Clear();   // (rapido-general: sin copiar las claves en cada cuadro)
+                foreach (Hoja h in clavesDeHoja.Keys) if (h.IsDisposed || !h.Visible) fuera.Add(h);
+                foreach (Hoja h in fuera) clavesDeHoja.Remove(h);
+                fuera.Clear();
+            }
             PantallaRocola.CapasDeLaVentana(r);
             if (hojas != null) r.AddRange(hojas);
             if (bajo != null) r.InsertRange(0, bajo);
