@@ -9,6 +9,29 @@ static unsafe class Prueba
     static SKBitmap Mapa(int w, int h, int clase, Random r)
     {
         SKBitmap b = new SKBitmap(new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Premul));
+        if (clase == 6)
+        {
+            // como una capa de la interfaz de verdad: transparente, con texto suavizado, pastillas redondeadas con sombra difuminada y degradados
+            b.Erase(SKColors.Transparent);
+            using (SKCanvas cv = new SKCanvas(b))
+            using (SKFont f = new SKFont(SKTypeface.Default, 22))
+            using (SKPaint t = new SKPaint { IsAntialias = true, Color = SKColors.White })
+            using (SKPaint sombra = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 140), ImageFilter = SKImageFilter.CreateBlur(6, 6) })
+            using (SKPaint caja = new SKPaint { IsAntialias = true })
+            {
+                for (int i = 0; i < 18; i++)
+                {
+                    float x = 20 + (i % 6) * 165, y = 40 + (i / 6) * 230;
+                    cv.DrawRoundRect(new SKRect(x + 4, y + 6, x + 154, y + 206), 14, 14, sombra);
+                    caja.Shader = SKShader.CreateLinearGradient(new SKPoint(x, y), new SKPoint(x, y + 200), new[] { new SKColor(40, 60, 120, 200), new SKColor(10, 10, 30, 230) }, SKShaderTileMode.Clamp);
+                    cv.DrawRoundRect(new SKRect(x, y, x + 150, y + 200), 14, 14, caja);
+                    cv.DrawText("Artista " + i, x + 10, y + 170, f, t);
+                    cv.DrawText("Disco de prueba", x + 10, y + 195, f, t);
+                }
+                for (int k = 0; k < 12; k++) cv.DrawText("LETRA ABCDEFGHIJKLMNOPQRSTUVWXYZ " + k, 30, 720 + (k % 2) * 24, f, t);
+            }
+            return b;
+        }
         uint* p = (uint*)b.GetPixels(); int paso = b.RowBytes / 4;
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
@@ -72,9 +95,18 @@ static unsafe class Prueba
                             Compara("Escribe " + que, Escribe(true, b, z, f, origen, paso), Escribe(false, b, z, f, origen, paso));
                         }
             }
+        using (SKBitmap b = Mapa(1024, 768, 6, r))   // y la interfaz dibujada, entera y en un trozo corrido, en los tres formatos
+            foreach (Rectangle z in new[] { new Rectangle(0, 0, 1024, 768), new Rectangle(3, 5, 1001, 700) })
+                for (int f = 0; f < 3; f++)
+                {
+                    int paso = Pixeles.Paso((FormatoPuntos)f, z.Width);
+                    Compara("Lee dibujada " + z + " formato=" + f, Lee(true, b, z, f, paso), Lee(false, b, z, f, paso));
+                    byte[] origen = Lee(false, b, z, f, paso);
+                    Compara("Escribe dibujada " + z + " formato=" + f, Escribe(true, b, z, f, origen, paso), Escribe(false, b, z, f, origen, paso));
+                }
         Console.WriteLine("pixeles-igual: " + casos + " comparaciones, " + mal + " distintas");
         // lo que tarda: mediana de 41 vueltas de cada uno, alternando
-        foreach (var caso in new[] { (256, 256, 0, "portada opaca 256x256"), (1024, 768, 5, "interfaz 1024x768 casi transparente"), (1024, 768, 3, "1024x768 0/255 con algo a medias"), (256, 256, 2, "256x256 al azar (lo peor)") })
+        foreach (var caso in new[] { (256, 256, 0, "portada opaca 256x256"), (1024, 768, 5, "interfaz 1024x768 casi transparente"), (1024, 768, 3, "1024x768 0/255 con algo a medias"), (256, 256, 2, "256x256 al azar (lo peor)"), (1024, 768, 6, "interfaz 1024x768 dibujada (texto, sombras, degradados)") })
             using (SKBitmap b = Mapa(caso.Item1, caso.Item2, caso.Item3, r))
             {
                 int paso = caso.Item1 * 4; IntPtr d = System.Runtime.InteropServices.Marshal.AllocHGlobal(paso * caso.Item2);

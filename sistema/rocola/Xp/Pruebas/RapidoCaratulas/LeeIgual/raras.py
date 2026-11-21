@@ -30,7 +30,19 @@ rgb(100, 100).convert("L").save(f"{d}/gris.png")
 rgba(90, 60).convert("LA").save(f"{d}/grisalfa.png")
 pal = rgb(80, 80).convert("P", palette=Image.ADAPTIVE, colors=64); pal.info["transparency"] = 3; pal.save(f"{d}/paleta-trns.png", transparency=3)
 rgb(80, 80).convert("P", palette=Image.ADAPTIVE, colors=16).save(f"{d}/paleta.png")
-rgba(120, 77).save(f"{d}/entrelazada.png", interlace=1) if False else None
+# PNG entrelazadas (Adam7) a mano (PIL no las escribe): RGBA, RGB y una RGBA cortada a la mitad
+def png_adam7(path, arr, corta=False):
+    h, w, c = arr.shape; raw = b""
+    for x0, y0, dx, dy in ((0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)):
+        sub = arr[y0::dy, x0::dx]
+        if sub.shape[0] == 0 or sub.shape[1] == 0: continue
+        raw += b"".join(b"\x00" + sub[y].tobytes() for y in range(sub.shape[0]))
+    def ch(t, x): return struct.pack(">I", len(x)) + t + x + struct.pack(">I", zlib.crc32(t + x) & 0xffffffff)
+    b = b"\x89PNG\r\n\x1a\n" + ch(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6 if c == 4 else 2, 0, 0, 1)) + ch(b"IDAT", zlib.compress(raw)) + ch(b"IEND", b"")
+    open(path, "wb").write(b[: len(b) // 2] if corta else b)
+png_adam7(f"{d}/entrelazada.png", rng.integers(0, 256, (77, 120, 4), dtype=np.uint8))
+png_adam7(f"{d}/entrelazada-rgb.png", rng.integers(0, 256, (61, 93, 3), dtype=np.uint8))
+png_adam7(f"{d}/entrelazada-cortada.png", rng.integers(0, 256, (150, 140, 4), dtype=np.uint8), corta=True)
 rgb(64, 64).convert("1").save(f"{d}/unbit.png")
 g = rgb(60, 40).convert("P", palette=Image.ADAPTIVE, colors=32); g.save(f"{d}/trans.gif", transparency=5); rgb(60, 40).convert("P").save(f"{d}/simple.gif")
 fr = [rgb(40, 30).convert("P") for _ in range(3)]; fr[0].save(f"{d}/animada.gif", save_all=True, append_images=fr[1:], duration=100, loop=0)

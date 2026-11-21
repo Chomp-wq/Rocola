@@ -214,10 +214,18 @@ namespace Rocola.Nativo
                             Span<byte> destino = new Span<byte>((void*)d.Data, (int)n);
                             int hecho = 0, r;
                             while (hecho < n && (r = s.Read(destino.Slice(hecho))) > 0) hecho += r;
-                            if (hecho == n) return Lee(d, out formato);
+                            byte[] uno = new byte[1];
+                            int mas = hecho == n ? s.Read(uno, 0, 1) : 0;
+                            if (hecho == n && mas == 0) return Lee(d, out formato);
+                            // (el Stream dio menos o mas de lo que decia su Length: lo de siempre, CopyTo hasta el final, con lo ya leido delante)
+                            using (MemoryStream ms = new MemoryStream())
+                            {
+                                ms.Write(destino.Slice(0, hecho));
+                                if (mas > 0) { ms.WriteByte(uno[0]); s.CopyTo(ms); }
+                                return Lee(ms.ToArray(), out formato);
+                            }
                         }
                     }
-                    throw new ArgumentException("no es una imagen");   // (el Stream se acorto mientras se leia: como un archivo cortado)
                 }
             }
             using (MemoryStream ms = new MemoryStream()) { s.CopyTo(ms); return Lee(ms.ToArray(), out formato); }

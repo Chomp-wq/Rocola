@@ -30,6 +30,7 @@ namespace Rocola
         private static readonly object cerrojo = new object();
         private static bool decidida;
         private static string carpeta;   // null: la carpeta de datos (como XP)
+        private static bool fallo;       // ROCOLA_IA_DATOS puesta pero sin poder usarse: lo grande cayo en la carpeta de datos (datos.img)
 
         // La carpeta de lo grande, o null si es la carpeta de datos.
         private static string Carpeta
@@ -57,11 +58,15 @@ namespace Rocola
                     {
                         // a la salida de errores: el lanzador la apunta en su registro
                         try { Console.Error.WriteLine("rocola-xp: no se puede usar ROCOLA_IA_DATOS=" + d + " (" + ex.Message + "): el material de la IA, las miniaturas y el respaldo van a la carpeta de datos"); } catch { }
+                        fallo = true;
                         return carpeta = null;
                     }
                 }
             }
         }
+        // (rapido-caratulas) Lo grande tenia que ir al disco de la rocola y cayo en la carpeta de datos: lo que ahorra tiempo a costa de mas
+        // disco (las miniaturas PNG de g220, un 20 % mas grandes) vuelve a lo de XP.
+        internal static bool CayoEnDatos { get { _ = Carpeta; lock (cerrojo) return fallo; } }
 
         // La ruta de un archivo (o carpeta) de lo grande: en ROCOLA_IA_DATOS, o en la carpeta de datos (lo mismo que RutaDatos de XP).
         internal static string Ruta(string nombre)

@@ -46,28 +46,34 @@ namespace Rocola
         // g220: la miniatura nueva en PNG (SaveThumb, Codigo/Form1.Biblioteca.cs). Sin la funcion, lo de siempre (Imagenes.GuardaPng).
         internal static void RocolaOsGuardaMiniaturaPng(SKBitmap thumb, string tmp)
         {
-            if (!RocolaOs.Encendida(RocolaOsCaratulasNombre)) { Imagenes.GuardaPng(thumb, tmp); return; }
+            // (con ROCOLA_IA_DATOS sin poder usarse, las miniaturas van a datos.img, de 512 MB: ahi no se gasta el 20 % de mas)
+            if (!RocolaOs.Encendida(RocolaOsCaratulasNombre) || DatosGrandes.CayoEnDatos) { Imagenes.GuardaPng(thumb, tmp); return; }
             using (FileStream fs = File.Create(tmp)) RocolaOsGuardaPngRapida(thumb, fs);
         }
         // g221: la primera pagina de la letra de antes y de la de despues, en la fila baja (CoverSettle_Tick, despues de lo de XP). La misma
-        // rueda que NextGpuPage (las letras con discos; la estrella y los videos solo si su lista ya esta hecha: aqui no se arma nada).
+        // rueda que GotoLetter, la de REGRESAR+izq/der (las letras con discos; la estrella y los videos solo si su lista ya esta hecha: aqui no
+        // se arma nada; la de Spotify, si es la de al lado, no se adelanta ni se salta).
         private void RocolaOsAdelantaLetras()
         {
             if (!RocolaOs.Encendida(RocolaOsCaratulasNombre)) return;
 #if ROCOLA_GPU
             if (!gpuEnabled || libBuilding) return;
-            int idx = LetrasOrden.IndexOf(currentLetter);
-            if (idx < 0) return;
+            // el MISMO orden y la misma rueda que GotoLetter (g46: con Spotify, su letra despues de VIDEO; en una pared del buscador, ninguna)
+            string order = RocolaOsSpotifyCatalogoOrden(LetrasOrden);
+            int n = order.Length;
+            if (n == 0) return;
+            int idx = order.IndexOf(currentLetter);
+            if (idx < 0) idx = 0;
             for (int lado = -1; lado <= 1; lado += 2)
-                for (int k = 1; k < LetrasOrden.Length; k++)
+                for (int k = 1; k <= n; k++)
                 {
-                    char c = LetrasOrden[((idx + lado * k) % LetrasOrden.Length + LetrasOrden.Length) % LetrasOrden.Length];
+                    char c = order[((idx + lado * k) % n + n) % n];
                     if (c == currentLetter) break;
                     if (!letterAvailable.Contains(c)) continue;
-                    List<Album> lista = null;
+                    List<Album> lista = null;   // la letra de Spotify no es de XP: no se adelanta (pero si es la de al lado, tampoco se salta)
                     if (c == VideoMark) lista = videoAlbums;
                     else if (c == TopMark) lista = topDiscs;
-                    else byLetter.TryGetValue(c, out lista);
+                    else if (c != RocolaOsSpotifyMarca) byLetter.TryGetValue(c, out lista);
                     if (lista != null) PrefetchPage(lista, 0);
                     break;
                 }
