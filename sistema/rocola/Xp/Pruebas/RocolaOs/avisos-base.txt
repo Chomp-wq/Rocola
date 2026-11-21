@@ -4,13 +4,14 @@
 # (20-11-2026, PORT_xp-1718.md: los cambios de la rocola de XP del 17 y 18-11-2026 corren 12 lineas las de Form1.Datos.cs y 56 las de
 # Form1.Sonido.cs; los mismos 13 avisos.)
 # (20-11-2026, PORT_noche-nv.md: el modo noche para los vecinos corre 14 lineas las de Form1.Datos.cs y 122 las de Form1.Sonido.cs; los mismos 13.)
+# (21-11-2026, PORT_noche-nv.md: juntada noche-50, su arreglo de la subida corre 5 lineas mas las de Form1.Sonido.cs; los mismos 13.)
 Codigo/FlotanteNLayer.cs(360): SYSLIB0054
 Codigo/Form1.Datos.cs(2407): SYSLIB0054
 Codigo/Form1.Datos.cs(2417): SYSLIB0054
 Codigo/Form1.Datos.cs(2483): SYSLIB0054
 Codigo/Form1.DiagnosticoCompleto.cs(371): SYSLIB0054
-Codigo/Form1.Sonido.cs(3392): SYSLIB0054
-Codigo/Form1.Sonido.cs(3410): SYSLIB0054
+Codigo/Form1.Sonido.cs(3397): SYSLIB0054
+Codigo/Form1.Sonido.cs(3415): SYSLIB0054
 Codigo/Form1.cs(375): CA2022
 Codigo/MedidasBitacora.cs(214): SYSLIB0054
 Codigo/Mp3Ligero.cs(199): CA2022

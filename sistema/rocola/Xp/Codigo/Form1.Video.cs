@@ -271,7 +271,7 @@ namespace Rocola
                 int vol0 = VideoVolumeFor(path);
                 video.Volumen = vol0;   // EN LINUX: settings.volume (y settings.autoStart = true: Carga empieza a tocar en cuanto abre, como el WMP con autoStart)
                 videoVolSet = vol0;
-                video.Carga(path);   // con autoStart=true deberia arrancar solo   // EN LINUX: URL = path
+                RocolaOsNocheVideo(video); video.Carga(path);   // con autoStart=true deberia arrancar solo   // EN LINUX: URL = path   // ROCOLA OS g102: (XP) video.Carga(path); — de noche, a mpv el mismo estante de graves y el mismo corte del grave que a la musica, con el avance del momento, al empezar cada video (NV5b; RocolaOs/RocolaOs.NocheVideo.cs); sin Rocola OS o con «noche_video» apagada, lo de XP
                 try { video.Toca(); } catch { }   // empujon explicito: autoStart no siempre engancha al instanciar el ActiveX   // EN LINUX: controls.play()
 
                 videoOn = true;
