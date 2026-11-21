@@ -386,7 +386,7 @@ namespace Rocola
         internal void CieloAmplio(int w, int h, float midY, uint top, uint mid, uint bot)
         {
             if (gpu == null) return;
-            if (CieloSuave) { DibujaCieloSuave(ArmaCieloSuave(w + 8f, h, midY, top, mid, bot, 8f)); return; }   // C1 (PulidoGpu.cs)
+            if (RocolaOsPintaCielo(w + 8f, h, midY, top, mid, bot, 8f, false)) return; if (CieloSuave) { DibujaCieloSuave(ArmaCieloSuave(w + 8f, h, midY, top, mid, bot, 8f)); return; }   // ROCOLA OS g122: (XP) if (CieloSuave) { DibujaCieloSuave(ArmaCieloSuave(w + 8f, h, midY, top, mid, bot, 8f)); return; }   // C1 (PulidoGpu.cs) — los colores del cielo (la imagen intermedia del cielo a media resolucion): el mismo cielo que g121; false y XP pinta el suyo
             if (skyAmplio == null) skyAmplio = new Tarjeta.Vtx[18];
             float ancho = w + 8f;
             SetQuad(skyAmplio, 0, 0, 0, ancho, midY, top, top, mid, mid);
@@ -502,7 +502,7 @@ namespace Rocola
             f.W = w; f.H = h; f.Div = div; f.Nieblas = Nieblas; f.Ver = nieblasVer; f.MidY = midY; f.NebFase = NebFase; f.HazFase = HazFase;
             f.NebEmpuje = nebEmpuje; f.HazEmpuje = hazEmpuje; f.Top = top; f.Mid = mid; f.Bot = bot; f.Neb1 = NebColor; f.Neb2 = NebColor2;
             f.Cine = NebulosasCine; f.Capa = capa; f.Suave = stars.CieloSuave; f.Prof = stars.ColoresProfundos; f.NebTex = nebTex; f.HazTex = hazTex; f.RuidoTex = ruido; f.VinetaTex = vineta;
-            bool repinta = !firmaValida || !f.Igual(firmaHecha) || firmaHecha.Gen != stars.MediaGen || stars.MediaTW <= 0;
+            bool repinta = RocolaOsCieloRepinta() | !firmaValida || !f.Igual(firmaHecha) || firmaHecha.Gen != stars.MediaGen || stars.MediaTW <= 0;   // ROCOLA OS g123: (XP) bool repinta = !firmaValida || !f.Igual(firmaHecha) || firmaHecha.Gen != stars.MediaGen || stars.MediaTW <= 0; — la imagen intermedia del cielo se vuelve a pintar si cambio lo de Rocola OS (DN1, el velo, los tintes); sin ROCOLA_OS, false
             if (repinta)
             {
                 firmaValida = false;

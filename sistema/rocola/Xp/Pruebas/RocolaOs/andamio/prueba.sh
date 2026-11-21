@@ -47,7 +47,7 @@ if [[ " $partes " == *" ganchos "* ]]; then
   python3 "$GP" > "$W/ganchos.txt" 2>&1; r=$?
   sed 's/^/   /' "$W/ganchos.txt"
   si "ganchos.py con el manifiesto: sale con 0 y TODO BIEN" test $r = 0 -a "$(tail -1 "$W/ganchos.txt")" = "TODO BIEN"
-  si "ganchos.py: los 112 archivos de Codigo/ comparados con la base" contiene "$W/ganchos.txt" "112 archivos comparados con 69e6547"   # (junta 2: la base es 69e6547 desde PORT_xp-1718.md)
+  si "ganchos.py: los 112 archivos de Codigo/ comparados con la base" contiene "$W/ganchos.txt" "112 archivos comparados con d5bc2b0"   # (junta 3: la base es d5bc2b0; en la junta 2, 69e6547)
   # manifiestos estropeados a proposito (con --manifiesto): cada uno tiene que salir con 1 y decir por que
   estropea() {   # NOMBRE "lo que tiene que decir" PROGRAMA_DE_AWK
     local n="$1" dice="$2"; awk -F'\t' -v OFS='\t' "$3" "$M" > "$W/m-$n.tsv"
@@ -56,7 +56,7 @@ if [[ " $partes " == *" ganchos "* ]]; then
   }
   estropea movido "SE MOVIO" '$1=="g03"{$3=$3+1} {print}'
   estropea falta "y no esta en el manifiesto" '$1!="g05"{print}'
-  estropea antes "NO queda como en 69e6547" '$1=="g02"{$4=$4"x"} {print}'
+  estropea antes "NO queda como en d5bc2b0" '$1=="g02"{$4=$4"x"} {print}'
   estropea marca "no lleva su marca" '$1=="g04"{$1="g44"} {print}'
   estropea repetido "esta dos veces" '{print} $1=="g06"{print}'
   estropea fuera "en Nativo/Form1.Ventana.cs no esta la linea" '$1=="g22"{$5=$5" "} {print}'
