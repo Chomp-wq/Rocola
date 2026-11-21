@@ -367,7 +367,7 @@ junta con squash o rebase, ese número cambia: `--base` / `BASE=`.
 
 ### Las pruebas
 
-Corridas el 21-11-2026 (17:10-21:30) en la máquina de 4 núcleos compartida (carga 2 a 5). Programas de `40a88fc` (lo de después solo
+Corridas el 21-11-2026 (17:10-22:00) en la máquina de 4 núcleos compartida (carga 2 a 5 en JIT; 4 a 11 en NativeAOT, con otro agente). Programas de `40a88fc` (lo de después solo
 toca documentos): JIT (`dotnet build -c Release`) y NativeAOT (`dotnet publish -r linux-x64 -p:PublishAot=true`), los dos con 0 errores
 y los 13 avisos de `avisos-base.txt` (`clasifica.py avisos`: BIEN, ninguno nuevo); NativeAOT con 0 avisos IL/AOT. Salidas en
 `/root/rocola-trabajo/fase11/junta-4/` (fuera del repositorio; `baterias.log` con cada una).
@@ -396,23 +396,32 @@ Las baterías de `Pruebas/RocolaOs` y `Pruebas/Importa` (pasadas/total):
 | `asistente` | 29/29 | — |
 | `pantalla` | 76/76 | — |
 | `navegador-archivos` | 62/62 | — |
-| `pared-generos` | 70/70 (con el catálogo de verdad; una más que en la junta 3, de rapido-spotify) | {AOT-pared} |
+| `pared-generos` | 70/70 (con el catálogo de verdad; una más que en la junta 3, de rapido-spotify) | 70/70 |
 | `convierte` | 57/57 | — |
 | `letras` | 88/88 | — |
 | `apagones` | 36/36 | 36/36 |
-| `cielo` | 62/62 (las dos nuevas de fábrica, BIEN) | {AOT-cielo} |
+| `cielo` | 62/62 (las dos nuevas de fábrica, BIEN) | 62/62 |
 | `noche-video` | 9/9 | — |
 | `Importa` | 181/181 | — |
-| `sustitucion` | 97/97 | {AOT-sustitucion} |
-| `catalogo` | 156/156 | {AOT-catalogo} |
-| `spotify-xp` (con `PULSO`) | **216/216** (las escenas nuevas de rapido-spotify incluidas) | {AOT-spotify} |
+| `sustitucion` | 97/97 | 97/97 |
+| `catalogo` | 156/156 | 155/156; `sinllave` otra vez 4/4 |
+| `spotify-xp` (con `PULSO`) | **216/216** (las escenas nuevas de rapido-spotify incluidas) | 215/216; `noche` otra vez 54/55 y 54/55 (abajo) |
 
+- `catalogo` NativeAOT, `sinllave` MAL una vez: la traza con `ROCOLA_OS` contra la de sin él, quitando lo de Rocola OS, con el encargo
+  `MedidasBitacora.cs:129` (el vigía de la pantalla, uno cada 25 ms) 833 veces frente a 704 (holgura 80). Es la cuenta de la que avisa
+  `FASE11_rapido-general.md` («Para la junta: la escena salirq»: la pantalla contesta antes y caben más vueltas; siempre de más, la misma
+  lógica). Repetida sola, 4/4. En JIT, BIEN.
+- `spotify-xp` NativeAOT, «Probar» del modo noche (la tolerancia de 13,9 a 16,2 s por el latido de 1 s, la de las juntas 1 y 3): en la
+  corrida entera, «probar sp» 13,9 s; repetida la escena `noche` dos veces con la máquina a carga 7-11 (otro agente compilando), una vez
+  «probar50 sp» 13,5 s y otra «probar sp» 13,9 s, cada vez otra de las cuatro y las demás BIEN (14,0-15,0 s); cada una de las cuatro salió
+  BIEN al menos una vez, y en JIT las cuatro BIEN. Es la carga contra una tolerancia justa, no la junta (ninguna de las tres ramas toca el
+  modo noche ni el latido); queda como en la junta 3: ensanchar la tolerancia o medir contra el latido, si se quiere que no falle.
 - `spotify-xp`, escena `fabrica`: 0 conexiones a internet con y sin `ROCOLA_OS`; al sumidero `127.0.0.1:7`, 1 con `ROCOLA_OS=1` (en la
   junta 3 eran 3: el lugar y el clima del cielo ya no se piden, ahora apagado).
 
 ### Lo que queda
 
-- Nada falla por la junta.
+- Nada falla por la junta (lo de NativeAOT de arriba sale BIEN al repetir o es la tolerancia de «Probar» con la máquina cargada).
 - **Para la versión del cielo**: los cuatro grupos (sol/luna/estrellas, nubes y clima, fiestas, vidrio), la hoja «Imagen» de Ctrl+F4 y
   volver a poner `DeFabrica = true` en las cuatro funciones (y quitar `CIELO_DE_FABRICA` de la batería o dejarla comprobando lo apagado);
   la letra dibujada en el cielo (K6).
