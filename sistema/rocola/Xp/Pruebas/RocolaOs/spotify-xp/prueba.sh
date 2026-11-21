@@ -146,9 +146,11 @@ if [[ " $partes " == *" fabrica "* ]]; then
   a="$W/fabrica-xp"; o="$W/fabrica-os"; d="$W/datos-fabrica-os"; b="$d/rocola_spotify.txt"
   red() { grep -cE 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null; }
   progs() { grep -c ' execve(' "$1/strace.txt" 2>/dev/null; }
-  # los programas abiertos entre las dos miradas (de los 18 a los 38 s: el vigilante ya esperando)
+  # los programas abiertos entre las dos miradas (de los 18 a los 38 s: el vigilante ya esperando); solo los que de verdad se abrieron
+  # (no los intentos por cada carpeta del PATH que no lo tiene, ENOENT) y sin las envolturas que la sesion de pruebas pone delante en el
+  # PATH (/root/.claude/...: un «rm» que vuelve a abrir /usr/bin/rm), que no son del vigilante
   progs2() { local t1 t2; t1=$(sed -n 1p "$1/vigilante-cpu.txt" 2>/dev/null | cut -d' ' -f2); t2=$(sed -n 2p "$1/vigilante-cpu.txt" 2>/dev/null | cut -d' ' -f2)
-    [ -n "$t1" ] && [ -n "$t2" ] && awk -v a="$t1" -v b="$t2" '$2+0 >= a && $2+0 <= b && / execve\(/' "$1/strace.txt" | grep -c . || echo -1; }
+    [ -n "$t1" ] && [ -n "$t2" ] && awk -v a="$t1" -v b="$t2" '$2+0 >= a && $2+0 <= b && / execve\(/ && !/ENOENT/ && !/execve\("\/root\/\.claude\//' "$1/strace.txt" | grep -c . || echo -1; }
   si "fabrica: las dos salen con 0" test "$(cat $a/salio)$(cat $o/salio)" = 00
   si "fabrica: con ROCOLA_OS=1 y sin rocola_os.txt, el modo encendido (de fabrica)" bash -c "grep -F 'encendidas:' '$d/rocola_os_bitacora.txt' | grep -qw spotify"
   si "fabrica: ...y sin llaves la bitacora del catalogo lo dice (SIN llave)" contiene "$d/rocola_os_bitacora.txt" "SIN llave"
