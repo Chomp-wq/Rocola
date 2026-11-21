@@ -177,3 +177,11 @@ Un revisor miró la rama. Cada punto se comprobó en el código antes de tocar n
 | USLT del ID3v2.3 con desincronización de toda la etiqueta | Cierto: las cabeceras de los marcos no se desincronizan; da null, nada se rompe | Sin cambio |
 | El repaso sin `ionice` | Con los planificadores CFQ/BFQ la prioridad de disco sale del nice (19 = la más baja de las normales); con mq-deadline no cuenta | Sin cambio; sin medir en un disco duro |
 | Elegir la tarjeta NO ESTÁ | Los caminos de XP que se miraron comprueban null | Sigue sin probarse en la rocola entera (ya estaba en §4) |
+
+**Resultados tras la revisión (21-11-2026, máquina compartida), con el programa de `a62ebeb` (y las pruebas de `0909f79`):** compila en JIT
+y en NativeAOT con 0 errores y los 13 avisos de siempre (ninguno de `RocolaOs/`), **0 avisos IL/AOT**, el ejecutable de 13,8 MB. La batería
+`letras`: **88 BIEN, 0 MAL en JIT y 88 BIEN, 0 MAL en NativeAOT** (orden 30, apagado 5, cero 5, l3 10, tres 3, genius 11, choque 12,
+sinllave 4, suena 8). Con el programa de antes (`117ac6f`), la escena `choque` dio 8 BIEN y 3 MAL (la de Spotify como NO ESTÁ y dos
+preguntas a Genius), y en `orden` las del freno, la del respaldo `/api/search` y la de tocar `/run` fallaron (9 MAL). `ganchos.py`: TODO
+BIEN (112 archivos, 17 con ganchos; esta revisión no toca `Codigo/`). El nivel 0 no se volvió a correr: nada de lo cambiado corre sin
+`ROCOLA_OS` (los ganchos devuelven antes de llegar a ello), y la escena `apagado` y la `cero` dan lo mismo que antes.
