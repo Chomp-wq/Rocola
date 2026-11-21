@@ -47,7 +47,7 @@ if [[ " $partes " == *" ganchos "* ]]; then
   python3 "$GP" > "$W/ganchos.txt" 2>&1; r=$?
   sed 's/^/   /' "$W/ganchos.txt"
   si "ganchos.py con el manifiesto: sale con 0 y TODO BIEN" test $r = 0 -a "$(tail -1 "$W/ganchos.txt")" = "TODO BIEN"
-  si "ganchos.py: los 109 archivos de Codigo/ comparados con la base" contiene "$W/ganchos.txt" "109 archivos comparados con fc7b667"
+  si "ganchos.py: los 112 archivos de Codigo/ comparados con la base" contiene "$W/ganchos.txt" "112 archivos comparados con 69e6547"   # (junta 2: la base es 69e6547 desde PORT_xp-1718.md)
   # manifiestos estropeados a proposito (con --manifiesto): cada uno tiene que salir con 1 y decir por que
   estropea() {   # NOMBRE "lo que tiene que decir" PROGRAMA_DE_AWK
     local n="$1" dice="$2"; awk -F'\t' -v OFS='\t' "$3" "$M" > "$W/m-$n.tsv"
@@ -56,7 +56,7 @@ if [[ " $partes " == *" ganchos "* ]]; then
   }
   estropea movido "SE MOVIO" '$1=="g03"{$3=$3+1} {print}'
   estropea falta "y no esta en el manifiesto" '$1!="g05"{print}'
-  estropea antes "NO queda como en fc7b667" '$1=="g02"{$4=$4"x"} {print}'
+  estropea antes "NO queda como en 69e6547" '$1=="g02"{$4=$4"x"} {print}'
   estropea marca "no lleva su marca" '$1=="g04"{$1="g44"} {print}'
   estropea repetido "esta dos veces" '{print} $1=="g06"{print}'
   estropea fuera "en Nativo/Form1.Ventana.cs no esta la linea" '$1=="g22"{$5=$5" "} {print}'
@@ -66,7 +66,7 @@ fi
 orden() {   # DATOS ROCOLA_OS ARGUMENTOS...: la orden de prueba, con su salida en $W/o.txt
   local d="$1" v="$2"; shift 2
   if [ "$v" = "-" ]; then env -u ROCOLA_OS ROCOLA_DATOS="$d" ROCOLA_PANTALLA=fuera:64x64 timeout 60 "${RX[@]}" --prueba-rocola-os "$@" > "$W/o.txt" 2>&1
-  else env ROCOLA_OS="$v" ROCOLA_DATOS="$d" ROCOLA_PANTALLA=fuera:64x64 timeout 60 "${RX[@]}" --prueba-rocola-os "$@" > "$W/o.txt" 2>&1; fi
+  else env ROCOLA_CATALOGO_URL=http://127.0.0.1:9/catalogo ROCOLA_PORTADAS_CATALOGO=http://127.0.0.1:9 ROCOLA_OS="$v" ROCOLA_DATOS="$d" ROCOLA_PANTALLA=fuera:64x64 timeout 60 "${RX[@]}" --prueba-rocola-os "$@" > "$W/o.txt" 2>&1; fi
   oc=$?
 }
 if [[ " $partes " == *" orden "* ]]; then
@@ -138,7 +138,7 @@ fi
 abre() {
   local n="$1" d="$2" pulsa="$3" seg="$4" sen="$5"; shift 5
   local o="$W/$n"; rm -rf "$o"; mkdir -p "$o/run"
-  ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" \
+  ( cd "$d" && exec env ROCOLA_CATALOGO_URL=http://127.0.0.1:9/catalogo ROCOLA_PORTADAS_CATALOGO=http://127.0.0.1:9 ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" \
       ROCOLA_CAPTURA_SALE=0 ROCOLA_TRAZA_VENTANAS="$o/traza.txt" "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
   local p=$!
   sleep "$seg"; [ "$sen" != NADA ] && kill -"$sen" $p 2>/dev/null; local t0; t0=$(date +%s.%N)

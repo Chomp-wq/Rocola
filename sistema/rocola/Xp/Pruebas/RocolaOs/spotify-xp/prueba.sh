@@ -39,10 +39,12 @@ cuenta() { local n; n=$(grep -cF -- "$2" "$1" 2>/dev/null); echo "${n:-0}"; }
 entre() { python3 -c "import sys; v=float(sys.argv[1]); sys.exit(0 if float(sys.argv[2]) <= v <= float(sys.argv[3]) else 1)" "$1" "$2" "$3"; }
 
 # ---------- lo que hace falta: el Soloist falso y la tarjeta con reloj ----------
-if [ ! -f "$FALSO/soloist-falso.dll" ] || [ "$G/SoloistFalso/Program.cs" -nt "$FALSO/soloist-falso.dll" ]; then
+# (se rehace si su Program.cs no es el de esta rama: la carpeta la comparten los agentes de varias ramas; antes contaba la fecha)
+if [ ! -f "$FALSO/soloist-falso.dll" ] || ! cmp -s "$G/SoloistFalso/Program.cs" "$FALSO/Program.cs"; then
   echo "(compilando el Soloist falso en $FALSO)"
   flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$G/SoloistFalso/SoloistFalso.csproj" -c Release -o "$FALSO" --disable-build-servers \
     -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$FALSO/obj/" > "$W/falso-build.txt" 2>&1 || { cat "$W/falso-build.txt"; exit 1; }
+  cp "$G/SoloistFalso/Program.cs" "$FALSO/Program.cs"
 fi
 A=$W/../alsa; mkdir -p "$A"
 if [ ! -f "$A/libasound_module_pcm_reloj.so" ] || [ "$XP/Pruebas/Windows/alsa/reloj.c" -nt "$A/libasound_module_pcm_reloj.so" ]; then gcc -shared -fPIC -DPIC -O2 -o "$A/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound || exit 1; fi
@@ -59,7 +61,7 @@ abre() {
 pcm_type.reloj { lib "$A/libasound_module_pcm_reloj.so" }
 pcm.reloj { type reloj  file "$o/sonado.raw"  registro "$o/registro.txt" }
 EOC
-  ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf \
+  ( cd "$d" && exec env ROCOLA_CATALOGO_URL=http://127.0.0.1:9/catalogo ROCOLA_PORTADAS_CATALOGO=http://127.0.0.1:9 ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf \
       ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" ROCOLA_CAPTURA_SALE=0 ROCOLA_TRAZA_VENTANAS="$o/traza.txt" \
       ROCOLA_SOLOIST_DATOS="$o/soloist" ROCOLA_SOLOIST_BIN="$G/vigilante-falso.sh" SOLOIST_FALSO_BIN="$FALSO" \
       SOLOIST_FALSO_LOG="$o/falso.txt" VIGILANTE_FALSO_LOG="$o/vigilante.txt" "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
@@ -144,9 +146,11 @@ if [[ " $partes " == *" fabrica "* ]]; then
   a="$W/fabrica-xp"; o="$W/fabrica-os"; d="$W/datos-fabrica-os"; b="$d/rocola_spotify.txt"
   red() { grep -cE 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null; }
   progs() { grep -c ' execve(' "$1/strace.txt" 2>/dev/null; }
-  # los programas abiertos entre las dos miradas (de los 18 a los 38 s: el vigilante ya esperando)
+  # los programas abiertos entre las dos miradas (de los 18 a los 38 s: el vigilante ya esperando); solo los que de verdad se abrieron
+  # (no los intentos por cada carpeta del PATH que no lo tiene, ENOENT) y sin las envolturas que la sesion de pruebas pone delante en el
+  # PATH (/root/.claude/...: un «rm» que vuelve a abrir /usr/bin/rm), que no son del vigilante
   progs2() { local t1 t2; t1=$(sed -n 1p "$1/vigilante-cpu.txt" 2>/dev/null | cut -d' ' -f2); t2=$(sed -n 2p "$1/vigilante-cpu.txt" 2>/dev/null | cut -d' ' -f2)
-    [ -n "$t1" ] && [ -n "$t2" ] && awk -v a="$t1" -v b="$t2" '$2+0 >= a && $2+0 <= b && / execve\(/' "$1/strace.txt" | grep -c . || echo -1; }
+    [ -n "$t1" ] && [ -n "$t2" ] && awk -v a="$t1" -v b="$t2" '$2+0 >= a && $2+0 <= b && / execve\(/ && !/ENOENT/ && !/execve\("\/root\/\.claude\//' "$1/strace.txt" | grep -c . || echo -1; }
   si "fabrica: las dos salen con 0" test "$(cat $a/salio)$(cat $o/salio)" = 00
   si "fabrica: con ROCOLA_OS=1 y sin rocola_os.txt, el modo encendido (de fabrica)" bash -c "grep -F 'encendidas:' '$d/rocola_os_bitacora.txt' | grep -qw spotify"
   si "fabrica: ...y sin llaves la bitacora del catalogo lo dice (SIN llave)" contiene "$d/rocola_os_bitacora.txt" "SIN llave"
@@ -185,8 +189,10 @@ if [[ " $partes " == *" fabrica "* ]]; then
   si "fabrica: el vigilante, esperando, gasta menos del 0,5 % de un nucleo (${cpu%% *} %) y abre como mucho un programa por segundo ($pe en 20 s)" bash -c "echo '${cpu%% *} >= 0 && ${cpu%% *} < 0.5 && $pe >= 0 && $pe <= 20' | bc | grep -q 1"
   vp=$(awk '$3 == "rocola-soloist" {print $1; exit}' "$o/hijos.txt" 2>/dev/null)
   si "fabrica: y el vigilante se fue con la rocola (se cierra con la senal; pid ${vp:-?} ya no esta)" bash -c "[ -n '$vp' ] && ! kill -0 '$vp' 2>/dev/null && grep -q 'Vigilante: se cierra (senal' '$d/rocola_soloist.txt'"
-  ea=$(sed 's/^[0-9-]* [0-9:.]* *//' "$W/datos-fabrica-xp/rocola_error.txt" 2>/dev/null | grep -vc '^$'); eo=$(sed 's/^[0-9-]* [0-9:.]* *//' "$d/rocola_error.txt" 2>/dev/null | grep -vc '^$')
-  si "fabrica: rocola_error.txt igual de largo que sin ROCOLA_OS ($ea y $eo renglones: ningun aviso raro)" test "$ea" = "$eo"
+  # (sin los avisos «Pantalla parada ... ms» de XP y su renglon «(sin excepcion)»: solo dependen de la carga de la maquina)
+  sinparadas() { sed 's/^[0-9-]* [0-9:.]* *//' "$1" 2>/dev/null | awk '/^\[Pantalla parada /{s=3; next} s > 0 {s--; if (/^\(sin excepcion\)/) s=0; next} !/^\r?$/' | wc -l; }
+  ea=$(sinparadas "$W/datos-fabrica-xp/rocola_error.txt"); eo=$(sinparadas "$d/rocola_error.txt")
+  si "fabrica: rocola_error.txt igual de largo que sin ROCOLA_OS sin contar las «Pantalla parada» ($ea y $eo renglones: ningun aviso raro)" test "$ea" = "$eo"
   if python3 -c "import PIL" 2>/dev/null; then
     for c in disco pared buscador; do
       dif=$(python3 - "$W/fabrica-xp-$c.png" "$W/fabrica-os-$c.png" <<'EOP'

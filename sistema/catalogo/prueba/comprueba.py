@@ -89,12 +89,52 @@ def main():
         ok(f1 > ac.fama(10 ** 6, 10 ** 4, 10, 'CO', 'Regional') > ac.fama(10 ** 6, 10 ** 4, 10, 'US', 'Regional')
            > ac.fama(10 ** 6, 10 ** 4, 10, 'US', 'Rock'), 'factores de pais y de genero')
         ok(ac.fama(10 ** 12, 10 ** 12, 10 ** 6, 'MX', 'Regional') == 1000000 and ac.fama(0, 0, 0, '', 'Rock') == 0, 'fama de 0 a 1e6')
+        # el pre-mapeo de los nombres de genero (las trampas de GenreLabel)
+        for n, g in (('A Flock of Inventadas', 'Pop'), ('Clasicos del Garage', 'Rock'), ('Dancehall Inventado', 'Reggae'),
+                     ('Bandas Sonoras Inventadas', 'Soundtrack'), ('Hardcore Inventado', 'Punk'), ('Folk Pop Inventado', 'Folk'),
+                     ('Dubstep Tropical', 'Electronica'), ('Jazz Latino Inventado', 'Jazz'), ('Alabanza Inventada', 'Cristiana'),
+                     ('Gabber Inventado', 'Electronica')):
+            ok(art.get(n, {}).get('genero') == g, 'pre-mapeo: %s es %s (sale %r)' % (n, g, art.get(n, {}).get('genero')))
+        ok('Cine Raro Nomas' not in art, 'pre-mapeo: «pornographic film» no da genero (no Hip-Hop por «rap»)')
+        reglas = ac.lee_reglas_genero()
+        for nombres, g in (((('New Romantic', 'nuevo romanticismo')), 'Pop'), (('new wave', 'new wave'), 'Pop'),
+                           (('synth-pop', 'synth pop'), 'Pop'), (('dance-pop', 'dance pop'), 'Pop'), (('electropop',), 'Pop'),
+                           (('classic rock', ''), 'Rock'), (('garage rock',), 'Rock'), (('hard rock', 'hard rock'), 'Rock'),
+                           (('album rock',), 'Rock'), (('blues rock', 'rock blues'), 'Rock'), (('instrumental rock',), 'Rock'),
+                           (('baroque pop', 'pop barroco'), 'Pop'), (('dancehall',), 'Reggae'), (('rocksteady',), 'Reggae'),
+                           (('lovers rock',), 'Reggae'), (('soundtrack', 'banda sonora'), 'Soundtrack'),
+                           (('film score composer', 'compositor de bandas sonoras'), 'Soundtrack'),
+                           (('hardcore punk',), 'Punk'), (('post-hardcore', 'Post-hardcore'), 'Punk'),
+                           (('New York hardcore', ''), 'Punk'), (('hardcore hip-hop', 'hip hop hardcore'), 'Hip-Hop'),
+                           (('hardcore', 'hardcore techno'), 'Electronica'), (('hardcore', 'Hardcore (música)'), 'Punk'),
+                           (('happy hardcore',), 'Electronica'), (('folk-pop', 'folk-pop'), 'Folk'), (('punk-pop',), 'Punk'),
+                           (('dark-pop',), 'Pop'), (('K-pop', 'K-pop'), 'K-Pop'), (('J-pop',), 'K-Pop'),
+                           (('dubstep',), 'Electronica'), (('tropical house', 'house tropical'), 'Electronica'),
+                           (('future bass',), 'Electronica'), (('Latin jazz', 'jazz latino'), 'Jazz'), (('Latin pop', 'pop latino'), 'Latino'),
+                           (('Latin trap', 'trap latino'), 'Reggaeton'), (('urbano music', 'música urbana latina'), 'Reggaeton'),
+                           (('salsa',), 'Tropical'), (('salsa romántica',), 'Tropical'), (('cumbia villera',), 'Regional'),
+                           (('cumbia pop',), 'Regional'), (('alternative country', 'country alternativo'), 'Country'),
+                           (('classic country',), 'Country'), (('western swing',), 'Country'), (('new jack swing',), 'Soul'),
+                           (('funk carioca',), 'Latino'), (('Romantic music', 'música del Romanticismo'), 'Clasica'),
+                           (('Latin ballad', 'balada romántica'), 'Bolero'), (('latin ballad',), 'Bolero'), (('bolero',), 'Bolero'),
+                           (('contemporary worship music', 'música cristiana contemporania'), 'Cristiana'),
+                           (('praise & worship',), 'Cristiana'), (('chiptune',), 'Electronica'), (('township music',), 'World'),
+                           (('Piedmont blues',), 'Soul'), (('amapiano',), 'Electronica'), (('kan ha diskan',), 'Folk'),
+                           (('stoner doom', 'Stoner doom'), 'Metal'), (('doo-wop',), 'Oldies'), (('dark wave', 'Dark wave'), 'Gotico'),
+                           (('Cuban rumba', 'Rumba cubana'), 'Tropical'), (('rumba flamenca',), 'Flamenco'),
+                           (('pornographic film', 'cine pornográfico'), 'Otros'), (('street photography', 'fotografía callejera'), 'Otros'),
+                           (('military band', 'banda de música militar'), 'Otros'), (('banda music', 'Banda sinaloense'), 'Regional'),
+                           (('regional Mexican', 'música regional mexicana'), 'Regional'), (('art song', 'canción artística'), 'Otros')):
+            sale = ac.genero_de(nombres, reglas)
+            ok(sale == g, 'pre-mapeo de %r: %s (sale %s)' % (nombres, g, sale))
         # genero por etiquetas de MusicBrainz
         if modo == 'normal':
+            ok(art.get('Etiquetas Trampa', {}).get('fuente') == 'm' and art['Etiquetas Trampa']['genero'] == 'Pop',
+               'etiquetas de MusicBrainz con el pre-mapeo: new romantic 4 + dubstep 2 = Pop')
             ok(art.get('Etiquetas Nomas', {}).get('fuente') == 'm' and art['Etiquetas Nomas']['genero'] == 'Tropical',
                'genero por etiquetas de MusicBrainz (salsa 5 votos > cumbia 3)')
         else:
-            ok('Etiquetas Nomas' not in art, '--solo-cc0: sin etiquetas de MusicBrainz no hay genero')
+            ok('Etiquetas Nomas' not in art and 'Etiquetas Trampa' not in art, '--solo-cc0: sin etiquetas de MusicBrainz no hay genero')
             ok(all(a['fuente'] == 'w' for a in art.values()), '--solo-cc0: todo de Wikidata')
     elif modo == 'tope':
         tope, cap = 12, int(ac.MAX_GENERO_LETRA * 12)

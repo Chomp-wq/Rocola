@@ -1,0 +1,90 @@
+#!/bin/sh
+# LA PANTALLA DE ROCOLA OS DESDE LA CONSOLA DE MANTENIMIENTO (Ctrl+Alt+F2, usuario root). La resolucion, los hercios y los colores del
+# monitor se eligen en la rocola con Ctrl+F4 -> Pantalla (peticion del dueno del 15-11-2026) y quedan guardados para siempre en
+# /rocola/datos/xp/rocola_pantalla.txt; rocola-xp los pone al arrancar. Si un modo deja la pantalla a oscuras, esto lo deshace:
+#   rocola-pantalla auto     borra lo guardado: la pantalla vuelve a lo automatico (lo de siempre: el modo que da el monitor, 1024x768 si
+#                            lo tiene) y los colores a los de fabrica. Si la rocola estaba abierta, se vuelve a abrir ya (conservando los
+#                            creditos y la cola); si no, vale al volver a ella (Ctrl+Alt+F1).
+#   rocola-pantalla estado   lo guardado, en palabras
+#   rocola-pantalla modos    los modos que da el monitor, por cada salida conectada (de /sys/class/drm/*/modes; los hercios de cada uno
+#                            se ven en Ctrl+F4)
+# La rocola misma ya se protege: un modo nuevo se prueba 15 s («¿Se ve bien?») y vuelve solo si nadie contesta, y con 2 arranques seguidos
+# que no llegan a 60 s en pie con el modo guardado vuelve sola a lo automatico (FASE11_pantalla.md). BusyBox: sin stat.
+XPD=${ROCOLA_XP_DATOS:-${ROCOLA_DATOS:-/rocola/datos}/xp}
+RUN=${ROCOLA_RUN:-/run}
+DRM=${ROCOLA_DRM:-/sys/class/drm}
+F=$XPD/rocola_pantalla.txt
+
+# lo guardado: el valor de una clave (la ultima, como lo lee la rocola), o vacio; si falta el bueno, el .bak (como LeeLineasSeguro)
+archivo() { if [ -s "$F" ]; then echo "$F"; elif [ -s "$F.bak" ]; then echo "$F.bak"; fi; }
+valor() { a=$(archivo); [ -n "$a" ] || return 0; sed -n "s/^$1=//p" "$a" | tail -n 1; }
+
+# los rocola-xp abiertos como rocola (no el importador), como rocola-sonido
+xp_abierta() {
+	for p in $(pidof rocola-xp 2>/dev/null); do
+		e=$(awk '{print $3}' "/proc/$p/stat" 2>/dev/null); [ -n "$e" ] && [ "$e" != Z ] || continue
+		tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | grep -qx -- --importa-xp && continue
+		echo "$p"
+	done
+}
+
+case "${1:-}" in
+auto)
+	if [ -z "$(archivo)" ] && [ ! -e "$F.tmp" ]; then echo "No hay nada guardado: la pantalla ya es la automatica, con los colores de fabrica."; exit 0; fi
+	rm -f "$F" "$F.bak" "$F.tmp" || { echo "No se pudo borrar $F"; exit 1; }
+	echo "Listo: se borro lo guardado de la pantalla. La rocola usara lo automatico y los colores de fabrica."
+	p=$(xp_abierta)
+	if [ -n "$p" ]; then
+		# (abierta: se cierra conservando el estado -SIGUSR1, nunca SIGTERM: regla del 8-11-2026- y el lanzador la vuelve a abrir; la
+		# marca le dice que no es una caida. Despues de cerrarse se borra otra vez, por si guardo algo al cerrar)
+		echo "rocola-pantalla auto" > "$RUN/rocola-xp-reinicio"
+		kill -USR1 $p 2>/dev/null
+		i=0; while [ -n "$(xp_abierta)" ] && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
+		p=$(xp_abierta); [ -n "$p" ] && kill -KILL $p 2>/dev/null
+		rm -f "$F" "$F.bak" "$F.tmp"
+		echo "La rocola se vuelve a abrir ya con la pantalla automatica."
+	else
+		echo "Vale al volver a la rocola (Ctrl+Alt+F1)."
+	fi
+	;;
+estado)
+	a=$(archivo)
+	if [ -z "$a" ]; then
+		echo "Pantalla: automatica, colores de fabrica (no hay nada guardado en $F)."
+	else
+		m=$(valor modo); [ -z "$m" ] && m=auto
+		if [ "$m" = auto ]; then echo "Modo: automatico"; else echo "Modo: $m (guardado en Ctrl+F4)"; fi
+		b=$(valor brillo); c=$(valor contraste); g=$(valor gamma); t=$(valor temperatura); s=$(valor saturacion)
+		if [ -z "$b$c$g$t$s" ]; then echo "Colores: de fabrica"
+		else echo "Colores: brillo ${b:-0}, contraste ${c:-100} %, gamma ${g:-100} (100 = 1,00), temperatura ${t:-0} (menos = mas calido), saturacion ${s:-100} %"; fi
+		n=$(valor sin_confirmar); [ -n "$n" ] && [ "$n" != 0 ] && echo "Arranques con el modo guardado sin llegar a 60 s en pie: $n (con 2 seguidos vuelve sola a lo automatico)"
+		mm=$(valor modo_malo); [ -n "$mm" ] && echo "El ultimo modo que no sirvio: $mm"
+		[ "$a" != "$F" ] && echo "(leido de la copia $a: falta $F)"
+	fi
+	v=$(sed -n 's/^pantalla=//p' "$RUN/rocola-vivo.txt" 2>/dev/null | tail -n 1)
+	[ -n "$v" ] && echo "Ahora (la rocola abierta): $v"
+	echo "Para volver a lo automatico: rocola-pantalla auto"
+	;;
+modos)
+	hay=0
+	for d in "$DRM"/card*-*; do
+		[ -f "$d/status" ] || continue
+		[ "$(cat "$d/status" 2>/dev/null)" = connected ] || continue
+		hay=1
+		echo "${d##*/} (conectada):"
+		if [ -s "$d/modes" ]; then awk '!v[$0]++ { printf "  %s\n", $0 }' "$d/modes"
+		else echo "  (el monitor no dio ningun modo: la rocola pone 1024x768 a 60 Hz)"; fi
+	done
+	if [ $hay = 0 ]; then
+		echo "Ninguna salida de pantalla conectada (o el monitor esta apagado):"
+		for d in "$DRM"/card*-*; do [ -f "$d/status" ] && echo "  ${d##*/}: $(cat "$d/status" 2>/dev/null)"; done
+	fi
+	;;
+*)
+	echo "uso: rocola-pantalla auto | estado | modos"
+	echo "  auto     borra lo guardado en Ctrl+F4 -> Pantalla: lo automatico y los colores de fabrica"
+	echo "  estado   lo guardado, en palabras"
+	echo "  modos    los modos que da el monitor"
+	[ -z "${1:-}" ] && exit 0 || exit 2
+	;;
+esac

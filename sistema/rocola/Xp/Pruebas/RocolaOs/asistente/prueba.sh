@@ -20,17 +20,21 @@ DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 CAPTURAS=${CAPTURAS:-}
 FALSO=${FALSO:-$T0/falso}
 CAT="$G/../catalogo"; SX="$G/../spotify-xp"
-if [ ! -f "$API/api-falsa.dll" ] || [ "$CAT/ApiFalsa/Program.cs" -nt "$API/api-falsa.dll" ]; then
+# (se rehace si su Program.cs no es el de esta rama: la carpeta la comparten los agentes de varias ramas; antes contaba la fecha)
+if [ ! -f "$API/api-falsa.dll" ] || ! cmp -s "$CAT/ApiFalsa/Program.cs" "$API/Program.cs"; then
   echo "(compilando la API falsa en $API)"; mkdir -p "$API"
   flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$CAT/ApiFalsa/ApiFalsa.csproj" -c Release -o "$API" --disable-build-servers \
     -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$API/obj/" > "$API/build.txt" 2>&1 || { cat "$API/build.txt"; exit 1; }
+  cp "$CAT/ApiFalsa/Program.cs" "$API/Program.cs"
 fi
 AL=$T0/alsa; mkdir -p "$AL"
 [ -f "$AL/libasound_module_pcm_reloj.so" ] || gcc -shared -fPIC -DPIC -O2 -o "$AL/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound || exit 1
-if [ ! -f "$FALSO/soloist-falso.dll" ] || [ "$SX/SoloistFalso/Program.cs" -nt "$FALSO/soloist-falso.dll" ]; then
+# (se rehace si su Program.cs no es el de esta rama: la carpeta la comparten los agentes de varias ramas; antes contaba la fecha)
+if [ ! -f "$FALSO/soloist-falso.dll" ] || ! cmp -s "$SX/SoloistFalso/Program.cs" "$FALSO/Program.cs"; then
   echo "(compilando el Soloist falso en $FALSO)"; mkdir -p "$FALSO"
   flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$SX/SoloistFalso/SoloistFalso.csproj" -c Release -o "$FALSO" --disable-build-servers \
     -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$FALSO/obj/" > "$FALSO/build.txt" 2>&1 || { cat "$FALSO/build.txt"; exit 1; }
+  cp "$SX/SoloistFalso/Program.cs" "$FALSO/Program.cs"
 fi
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
 rm -rf "$W"; mkdir -p "$W"
@@ -52,6 +56,7 @@ abre() {
   printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj  file "%s"  registro "%s" }\n' "$AL/libasound_module_pcm_reloj.so" "$o/sonado.raw" "$o/registro.txt" > "$o/alsa.conf"
   ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" \
       ROCOLA_CAPTURA_SALE=0 ROCOLA_TRAZA_VENTANAS="$o/traza.txt" ROCOLA_SPOTIFY_API="http://127.0.0.1:$P/v1" ROCOLA_SPOTIFY_CUENTAS="http://127.0.0.1:$P" \
+      ROCOLA_CATALOGO_URL="http://127.0.0.1:$P/catalogo" ROCOLA_PORTADAS_CATALOGO="http://127.0.0.1:$P" \
       ROCOLA_SOLOIST_DATOS="$o/soloist" ROCOLA_SOLOIST_BIN="$SX/vigilante-falso.sh" SOLOIST_FALSO_BIN="$FALSO" \
       SOLOIST_FALSO_LOG="$o/falso.txt" VIGILANTE_FALSO_LOG="$o/vigilante.txt" \
       "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
@@ -191,7 +196,7 @@ for e in $escenas; do
     espera $e; o="$W/$e"
     si "$e: sale con 0" test "$(cat $o/salio)" = 0
     if [ $e = sinllave ]; then
-      si "sinllave: ni la ayuda con Spotify ni una peticion a la API" bash -c "! grep -q 'asistente' '$(bit $d)' && [ \$(grep -c ' /v1/' '$o/api/peticiones.txt') = 0 ]"
+      si "sinllave: ni la ayuda con Spotify ni una peticion a la API" bash -c "! grep -qF '[asistente]' '$(bit $d)' && [ \$(grep -c ' /v1/' '$o/api/peticiones.txt') = 0 ]"
       R=${RUIDO:-/root/rocola-trabajo/port/ventanas/ruido/sigterm.json}
       python3 "$XP/Pruebas/Ventanas/guiones/compara_trazas.py" "$W/xp/traza.txt" "$o/traza.txt" --ignora RocolaOs: --holgura 80 > "$o/compara.txt" 2>&1; r=$?
       sed 's/^/   /' "$o/compara.txt" | head -8

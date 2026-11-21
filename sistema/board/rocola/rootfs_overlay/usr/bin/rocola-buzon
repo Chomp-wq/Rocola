@@ -17,7 +17,7 @@
 # reiniciar_equipo y apagar sin «ya», y el diagnostico) dependia de que el programa mirara /run/rocola-reinicia-programa y compania, y
 # rocola-xp no lo hace (fase 11): esas ordenes no se aceptan y se contesta por que (antes se quedaban pendientes para siempre).
 #
-# LA LLAVE: rocola_buzon.txt en una memoria USB (o en la carpeta de XP), como rocola_github.txt: la llave en la primera linea y, si el
+# LA LLAVE: rocola_buzon.txt en una memoria USB (o en la carpeta de XP, o en los datos de rocola-xp, donde la deja Ctrl+F4 -> Archivos), como rocola_github.txt: la llave en la primera linea y, si el
 # buzon no es Chomp-wq/rocola-buzon, el repositorio en la segunda. Se copia a /rocola/datos/rocola_buzon.txt. Sin llave no hace nada.
 # Lo que dice: /run/rocola-buzon.txt (lo enseñaba Ctrl+F3 -> Internet de rocola-consola: fase 11). Para probarlo fuera: ROCOLA_API,
 # ROCOLA_DATOS, ROCOLA_RUN, ROCOLA_DISCO (y ROCOLA_XP_DATOS, ROCOLA_XP_BIN).
@@ -40,6 +40,8 @@ busca_llave() {
 	nom=${1:-rocola_buzon.txt}
 	for f in /rocola/discos/*/$nom /rocola/discos/*/*/$nom; do [ -f "$f" ] && { echo "$f"; return; }; done
 	[ -s "$RUN/rocola-datos-xp" ] && f=$(find "$(cat "$RUN/rocola-datos-xp")" -maxdepth 1 -iname $nom 2>/dev/null | head -1) && [ -n "$f" ] && { echo "$f"; return; }
+	# la que dejo el dueno en los datos de rocola-xp con Ctrl+F4 -> Archivos (20-11-2026; FASE11_navegador-archivos.md)
+	[ -s "$XPD/$nom" ] && { echo "$XPD/$nom"; return; }
 	for p in /sys/class/block/*; do
 		[ -e "$p/partition" ] || continue
 		dev=$(basename "$p"); disco=$(basename "$(readlink -f "$p/..")")
@@ -225,6 +227,8 @@ permitido() {
 		# (las de Spotify, 14-11-2026: la llave de Soloist, la de la API web y su sesion -la carpeta soloist/, que ya no pasa por */*-; sus
 		# bitacoras, rocola_soloist.txt y rocola_spotify.txt, si: no tienen secretos)
 		*llave*|*_api.txt*|*spotify_api*|soloist*|.*) return 1 ;;
+		# (20-11-2026: lo que Ctrl+F4 -> Archivos tiene por llave -se guarda 0600 y se ve tapado-, tampoco: RocolaOs.Archivos.cs, EsLlave)
+		*[Kk][Ee][Yy]*|*[Aa][Pp][Ii]*|*[Tt][Oo][Kk][Ee][Nn]*|*[Ss][Ee][Cc][Rr][Ee][Tt]*|*[Cc][Ll][Aa][Vv][Ee]*|*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]*|*[Cc][Oo][Nn][Tt][Rr][Aa][Ss]*|*[Cc][Rr][Ee][Dd][Ee][Nn][Cc][Ii][Aa][Ll]*|*.pem|*[Ll][Ll][Aa][Vv][Ee]*) return 1 ;;
 		rocola*.txt|rocola*.txt.1|rocola*.txt.bak|sistema.txt|rocola-arranque.txt|rocola-discos.txt|rocola-mpv.txt|dmesg.txt) return 0 ;;
 	esac
 	return 1

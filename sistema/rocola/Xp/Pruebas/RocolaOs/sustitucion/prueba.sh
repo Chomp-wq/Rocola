@@ -29,10 +29,12 @@ entre() { python3 -c "import sys; v=float(sys.argv[1]); sys.exit(0 if float(sys.
 
 # ---------- lo que hace falta: la API falsa, el Soloist falso y la tarjeta con reloj ----------
 compila() {   # PROYECTO FUENTE SALIDA DLL
-  if [ ! -f "$3/$4" ] || [ "$2" -nt "$3/$4" ]; then
+  # (se rehace si su Program.cs no es el de esta rama: la carpeta la comparten los agentes de varias ramas; antes contaba la fecha)
+  if [ ! -f "$3/$4" ] || ! cmp -s "$2" "$3/Program.cs"; then
     echo "(compilando $(basename "$1") en $3)"; mkdir -p "$3"
     flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$1" -c Release -o "$3" --disable-build-servers -p:UseSharedCompilation=false \
       -p:BaseIntermediateOutputPath="$3/obj/" > "$3/build.txt" 2>&1 || { cat "$3/build.txt"; exit 1; }
+    cp "$2" "$3/Program.cs"
   fi
 }
 compila "$CA/ApiFalsa/ApiFalsa.csproj" "$CA/ApiFalsa/Program.cs" "$API" api-falsa.dll
@@ -101,6 +103,7 @@ abre() {
   ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf \
       ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" ROCOLA_CAPTURA_SALE=0 ROCOLA_TRAZA_VENTANAS="$o/traza.txt" \
       ROCOLA_SPOTIFY_API="http://127.0.0.1:$P/v1" ROCOLA_SPOTIFY_CUENTAS="http://127.0.0.1:$P" \
+      ROCOLA_CATALOGO_URL="http://127.0.0.1:$P/catalogo" ROCOLA_PORTADAS_CATALOGO="http://127.0.0.1:$P" \
       ROCOLA_SOLOIST_DATOS="$o/soloist" ROCOLA_SOLOIST_BIN="$SX/vigilante-falso.sh" SOLOIST_FALSO_BIN="$FALSO" \
       SOLOIST_FALSO_LOG="$o/falso.txt" VIGILANTE_FALSO_LOG="$o/vigilante.txt" "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
   local p=$!

@@ -1,0 +1,67 @@
+<!doctype html>
+<!-- LA PAGINA DE INICIO DEL NAVEGADOR DE LA ROCOLA (Ctrl+F4 -> Navegador; rocola-navegador; FASE11_navegador-archivos.md). cog no tiene barra de
+     direcciones: aqui se escribe la direccion (o lo que se busca) y se va con Intro. Ctrl+Alt+Inicio vuelve aqui; Ctrl+Alt+F1, a la rocola.
+     Sin nada de fuera: ni letras ni scripts de internet. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rocola OS - Navegador</title>
+<style>
+  :root { --fondo: #0b0e20; --tarjeta: #161c38; --borde: #2e3a68; --texto: #dee6fa; --tenue: #8a95b6; --acento: #78d2ff; --verde: #48b684; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--fondo); color: var(--texto); font-family: "DejaVu Sans", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 48px 24px; }
+  h1 { font-size: 28px; margin: 0 0 6px; }
+  p.sub { color: var(--tenue); margin: 0 0 28px; }
+  form { display: flex; gap: 12px; }
+  input { flex: 1; font: inherit; font-size: 20px; padding: 14px 16px; color: var(--texto); background: var(--tarjeta);
+          border: 2px solid var(--borde); border-radius: 10px; outline: none; }
+  input:focus { border-color: var(--acento); }
+  button { font: inherit; font-size: 18px; font-weight: bold; padding: 0 22px; color: #fff; background: #1e6046; border: 1px solid var(--verde); border-radius: 10px; }
+  .atajos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 28px; }
+  .atajos a { display: block; padding: 16px; background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; color: var(--texto); text-decoration: none; }
+  .atajos a:focus, .atajos a:hover { border-color: var(--acento); outline: none; }
+  .atajos small { display: block; color: var(--tenue); margin-top: 4px; }
+  .teclas { margin-top: 36px; padding: 16px; border-left: 4px solid var(--acento); background: var(--tarjeta); border-radius: 8px; color: var(--tenue); line-height: 1.6; }
+  kbd { color: var(--texto); font-weight: bold; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Navegador de la rocola</h1>
+  <p class="sub">Escribe una dirección (o lo que buscas) y pulsa Intro. La música sigue sonando.</p>
+  <form id="f" autocomplete="off">
+    <input id="d" type="text" placeholder="claude.ai" autofocus spellcheck="false" autocapitalize="off">
+    <button type="submit">Ir</button>
+  </form>
+  <div class="atajos">
+    <a href="https://claude.ai/">Claude<small>claude.ai</small></a>
+    <a href="https://github.com/Chomp-wq/Rocola">El repositorio<small>github.com/Chomp-wq/Rocola</small></a>
+    <a href="https://developer.spotify.com/dashboard">Spotify para desarrolladores<small>las llaves de tu app</small></a>
+    <a href="https://genius.com/api-clients">Genius<small>la llave para buscar por la letra</small></a>
+    <a href="https://duckduckgo.com/">Buscar<small>duckduckgo.com</small></a>
+  </div>
+  <div class="teclas">
+    <kbd>Ctrl + Alt + F1</kbd>: cerrar el navegador y volver a la rocola.<br>
+    <kbd>Ctrl + Alt + Inicio</kbd>: volver a esta página (para escribir otra dirección).<br>
+    Las llaves que copies aquí van en Ctrl+F4 → Archivos (se guardan tapadas).
+  </div>
+</main>
+<script>
+  // lo escrito: una direccion (con punto y sin espacios) o, si no, una busqueda
+  document.getElementById('f').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var s = document.getElementById('d').value.trim();
+    if (!s) return;
+    var url;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) url = s;
+    else if (!/\s/.test(s) && /^[^\/]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(s)) url = 'https://' + s;
+    else if (/^(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+)(:\d+)?(\/.*)?$/i.test(s)) url = 'http://' + s;
+    else url = 'https://duckduckgo.com/?q=' + encodeURIComponent(s);
+    location.href = url;
+  });
+  document.getElementById('d').focus();
+</script>
+</body>
+</html>

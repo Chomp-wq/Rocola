@@ -55,7 +55,7 @@ la `version` cambió baja el `.tsv.gz` y lo comprueba con `sha256` y `bytes`.
 `rocola_catalogo_informe.txt`: los números por letra y por género (lo que entró y lo que quedó fuera), de dónde salió el género, los
 tiempos de cada paso y una muestra de unos 40 artistas conocidos para revisar a ojo (`muestra.txt`).
 
-**Para el grupo de la pared**: `prueba/rocola_catalogo_prueba.tsv.gz` es un catálogo chico (176 artistas, 652 discos), **todo
+**Para el grupo de la pared**: `prueba/rocola_catalogo_prueba.tsv.gz` es un catálogo chico (187 artistas, 673 discos), **todo
 inventado**, armado por el mismo programa con la copia inventada de `prueba/`; tiene las 27 letras, varios géneros por letra, nombres
 con acento, «Ñ», minúsculas y `#`, discos sin año, sin id de Spotify y sin portada. `sh sistema/catalogo/prueba/prueba.sh` comprueba
 que sigue saliendo igual byte a byte; si alguna vez cambia (`ACTUALIZA=1`), se dice.
@@ -84,9 +84,65 @@ están en MusicBrainz y Wikidata.
    latinas, fuera.
 3. **Género**: las reglas de `GenreLabel` de XP, **leídas del archivo** `sistema/rocola/Xp/Codigo/Form1.Fondo.cs` cada vez (el
    armador se para si salen menos de 30): una sola lista. Cada género de Wikidata se pasa entero por `GenreLabel` («nombre en inglés /
-   nombre en español», así manda el orden de las reglas de XP); cada uno pesa 1. Si Wikidata no da ninguna etiqueta, las etiquetas de
-   MusicBrainz que son géneros, cada una con sus votos. Gana la etiqueta con más peso; a igualdad, la regla que va antes en
-   `GenreLabel`. «Otros» no cuenta; sin género, el artista no entra.
+   nombre en español», así manda el orden de las reglas de XP) **después del pre-mapeo** (abajo); cada uno pesa 1. Si Wikidata no da
+   ninguna etiqueta, las etiquetas de MusicBrainz que son géneros, cada una con sus votos (también con el pre-mapeo). Gana la etiqueta
+   con más peso; a igualdad, la regla que va antes en `GenreLabel`. «Otros» no cuenta; sin género, el artista no entra.
+
+   **El pre-mapeo** (`PREMAPEO_EXACTO`, `PREMAPEO_FRASE` y `genero_de` en `arma_catalogo.py`, desde el 20-11-2026). `GenreLabel`
+   busca **pedazos de palabra** (`Has` = `Contains`), pensados para las etiquetas ID3 de los MP3 de la rocola; con los nombres de
+   Wikidata y MusicBrainz, casi todos en inglés, algunos caían mal: «A Flock of Seagulls» salía **Bolero** porque «new romantic» lleva
+   «romantic». Sin tocar `GenreLabel` ni su lista de géneros, cada nombre se compara antes (en minúsculas, sin acentos, con `-`, `_`,
+   `/`, `&` y `,` como espacio, sin lo que va entre paréntesis y sin « music» al final) con una tabla de nombres enteros
+   (`PREMAPEO_EXACTO`, unos 230) y con unas frases que valen como palabras enteras dentro del nombre (`PREMAPEO_FRASE`: «hardcore» →
+   Punk, «doom» → Metal, «worship» → Cristiana, «banda sonora» → Soundtrack, «photography» → Otros...); gana la coincidencia más
+   larga entre todos los nombres del género (el inglés y el español de Wikidata). Sin coincidencia, el nombre va a `GenreLabel` como
+   siempre (con «folk-pop», «punk-pop»... separados para que no sean «k-pop»). Lo que va a «Otros» no da género (nombres de Wikidata
+   que no son de música). El armador se para si el pre-mapeo usa una etiqueta que `GenreLabel` ya no tiene. Las trampas corregidas,
+   buscadas con los ~2 400 géneros de Wikidata de artistas con Spotify (P1902 + P136) y los ~2 200 géneros de MusicBrainz de hoy:
+
+   | Pedazo que engañaba | Ejemplos | Antes | Ahora |
+   |---|---|---|---|
+   | «romantic» | new romantic / nuevo romanticismo | Bolero | Pop |
+   | | Romantic music / música del Romanticismo, romantic classical | Bolero | Clasica |
+   | | romantic flow | Bolero | Reggaeton |
+   | «synth», «dance», «electro», «tecno» | synth-pop, dance-pop, electropop, techno-pop, electronic pop | Electronica | Pop |
+   | | electronic rock, dance-rock | Electronica | Rock |
+   | | dancehall (y dancehall pop, modern dancehall) | Electronica | Reggae |
+   | «classic», «instrumental», «piano», «symphon», «opera», «baroque», «orchestr» | classic rock, instrumental rock, piano rock, symphonic rock, rock opera | Clasica | Rock |
+   | | baroque pop, orchestral pop | Clasica | Pop |
+   | | classic country | Clasica | Country |
+   | «garage» | garage rock (y revival, garage psych) | DnB | Rock |
+   | «blues» | blues rock | Soul | Rock |
+   | «hardcore» | hardcore punk, post-hardcore, melodic hardcore, New York hardcore | Metal | Punk |
+   | | hardcore hip-hop | Metal | Hip-Hop |
+   | | happy hardcore, hardcore techno, UK hardcore, gabber y demás de baile | Metal | Electronica |
+   | «dub» | dubstep (y los suyos), dub techno | Reggae | Electronica |
+   | «bass» | future bass, bass house, UK bass, bass music | DnB | Electronica |
+   | | Miami bass | DnB | Hip-Hop |
+   | «tropical», «latin», «house» | tropical house | Tropical | Electronica |
+   | | Latin jazz / jazz latino | Latino | Jazz |
+   | | Latin trap / trap latino, urbano / música urbana latina | Hip-Hop, Latino | Reggaeton |
+   | «banda» | soundtrack / banda sonora | Regional | Soundtrack |
+   | «k-pop» | folk-pop | K-Pop | Folk |
+   | «hip» | contemporary worship, praise & worship | Hip-Hop | Cristiana |
+   | | chiptune | Hip-Hop | Electronica |
+   | | township music | Hip-Hop | World |
+   | «rap» | pornographic film, photography, biographical film | Hip-Hop | Otros (sin género) |
+   | «swing» | new jack swing | Jazz | Soul |
+   | | western swing | Jazz | Country |
+   | «funk» | funk carioca y el funk de Brasil | Soul | Latino |
+   | «rumba» | Cuban rumba, rhumba | Flamenco | Tropical |
+   | | Congolese rumba | Flamenco | World |
+   | «rock» | rocksteady, lovers rock | Rock | Reggae |
+   | «death», «doo» | deathrock / stoner doom, black doom | Metal / Oldies | Gotico / Metal |
+   | «ska», «edm», «piano», «tejan» | kan ha diskan, Piedmont blues, amapiano, cante alentejano | Reggae, Electronica, Clasica, Regional | Folk, Soul, Electronica, Folk |
+   | (ninguno: «Otros») | new wave, emo, screamo, oi!, shoegaze, dark wave, drill, grime, post-bop, big band, urban contemporary, Afrobeat(s), video game music | Otros | Pop, Punk, Rock, Gotico, Hip-Hop, Jazz, Soul, World, Soundtrack |
+
+   Lo que `GenreLabel` ya da bien se queda igual (alternative country → Country, salsa romántica → Tropical, Latin pop → Latino,
+   cumbia villera → Regional, K-pop y J-pop → K-Pop...). En los géneros de Wikidata de artistas con Spotify, el pre-mapeo cambia unos
+   150 géneros que suman ~5 800 artista-género (synth-pop 550, new wave 432, dance-pop 331, hardcore punk 320, electropop 315...), y
+   142 de los géneros de MusicBrainz; en el catálogo cambia el género de un artista solo si cambia su mayoría. Para añadir una trampa: el nombre normalizado en
+   `PREMAPEO_EXACTO` (o una frase en `PREMAPEO_FRASE` si es una familia) y un caso en `prueba/comprueba.py`.
 4. **Discos**: grupos de lanzamiento de tipo principal Album, sin los tipos secundarios Spokenword, Interview, Audiobook, Audio drama,
    Demo, DJ-mix, Mixtape/Street, Remix ni Field recording (en vivo, recopilaciones y bandas sonoras sí), acreditados a ese artista solo.
    Orden: escuchas de ListenBrainz; a igualdad, primero con id de Spotify, luego con portada, luego más ediciones, luego el más viejo
@@ -141,13 +197,16 @@ La prueba, sin red: `sh sistema/catalogo/prueba/prueba.sh`.
 
 ## Lo probado (15-11-2026)
 
-**Sin red, con la copia inventada** (`prueba/prueba.sh`, 2 s; también corre en GitHub al cambiar el flujo): 180 artistas, 688 grupos
-de lanzamiento y 1 239 ediciones inventados dan **176 artistas y 652 discos** (31 738 bytes); dos corridas dan los mismos bytes y son
+**Sin red, con la copia inventada** (`prueba/prueba.sh`, 2 s; también corre en GitHub al cambiar el flujo): 192 artistas, 711 grupos
+de lanzamiento y 1 273 ediciones inventados dan **187 artistas y 673 discos** (32 934 bytes; el 20-11-2026 se le añadieron 12 artistas
+con las trampas del pre-mapeo, al final para no mover los ids de los demás: los 176 de antes salen igual); dos corridas dan los mismos bytes y son
 iguales a `rocola_catalogo_prueba.tsv.gz`; `valida` pasa; `comprueba.py` mira 30 casos (letras con acento, «Ñ» y `#`; fuera los que no
 tienen Spotify, ni género, ni discos, ni nombre latino; alias; Spotify solo por Wikidata; empates de género por el orden de
 `GenreLabel`; hasta 6 discos sin repetidos, sin Remix ni sencillos ni discos de dos artistas; el id de Spotify de la edición oficial más
 vieja; año, portada de frente o de grupo y no de atrás; país directo, por subdivisión, subiendo dos saltos, por el área de inicio y no
-por un enlace que no es «part of»; orden a igual fama; factores de la fama); `--solo-cc0` deja fuera al que solo tenía etiquetas; con
+por un enlace que no es «part of»; orden a igual fama; factores de la fama; y desde el 20-11-2026 el pre-mapeo: 11 artistas de
+Wikidata y 1 por etiquetas de MusicBrainz con géneros trampa, como «A Flock of Inventadas» con new romantic + synth-pop → Pop, más 67
+nombres de género sueltos por `genero_de`); `--solo-cc0` deja fuera al que solo tenía etiquetas; con
 `--tope 12` ninguna letra pasa de 12 discos ni un género de 4; `valida` atrapa 8 archivos malos; `extrae` saca de un tar lo mismo.
 
 **Con datos de verdad, en chico** (no cabe aquí la copia de 7 GB): el orden de columnas de las 28 tablas es el de `CreateTables.sql` y

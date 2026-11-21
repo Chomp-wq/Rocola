@@ -47,10 +47,17 @@
    **HECHO en la rama `asistente-spotify`** (`FASE11_asistente-spotify.md`). Se juntó el 20-11-2026 en `junta-spotify` y se probó con la batería corta (abajo, «La junta del 20-11-2026»).
 8. **HECHO y JUNTADO** con el 7 (20-11-2026). **«AYUDA» siempre en la casilla de la ayuda** (petición del dueño del 15-11-2026): con Rocola OS activo, `AyudaCasillaGpu` no va
    compacta en 1024x768 (la cabecera cede el sitio). Lo hace el grupo del asistente (es su casilla). **HECHO en la rama `asistente-spotify`**, juntado con el 7.
-9. **Después del cumpleaños**: la ventana de Ctrl+F4 con la hoja «Pantalla» (resolución, hercios, colores del monitor, guardado para
+9. **HECHO y JUNTADO en la junta 2** (rama `pantalla-ctrlf4`, `FASE11_pantalla.md`; con Navegador y Archivos, `FASE11_navegador-archivos.md`). **Después del cumpleaños**: la ventana de Ctrl+F4 con la hoja «Pantalla» (resolución, hercios, colores del monitor, guardado para
    siempre, con prueba de 15 s y vuelta a lo automático). AGENTS.md, petición del 15-11-2026.
 
 10. **Velocidad de todo lo de Spotify** (petición del dueño del 20-11-2026: «Cuando esté implementado todo lo relacionado a Spotify, busca todas las maneras posibles de que todo cargue lo más rápido que se pueda»): cuando estén juntados el núcleo, el buscador, las paredes del buscador, la sustitución y la pared con el catálogo, un grupo mide y acelera: buscar (de la tecla a los resultados), abrir un disco o la pared de un artista, las portadas (Spotify y Cover Art Archive: adelantar las de la página de al lado, conexiones aparte, caché), pedir y que empiece a sonar (de PONER al primer sonido; precargar la siguiente de la cola en Soloist si su API lo permite), el arranque del modo, y la pared de 500 páginas al hojear; sin gastar más cuota de la API ni frenar la música. Ideas probadas en la demo de Windows (herramientas/prueba-spotify-windows-soloist: portadas en puertos aparte, aviso previo de portadas, biblioteca guardada, buscador al momento) y en el programa anterior (AGENTS.md, petición del 7-11-2026 de optimizar). Medido antes y después, con números.
+
+11. **HECHO y JUNTADO en la junta 2** (rama `junta-2`, `FASE11_JUNTAS.md`; era el punto 6 de la rama `pared-generos`). **Las letras con el catálogo** (`PLAN_PARED_GENEROS.md`, con la decisión del dueño del 20-11-2026: el orden de XP con los discos del
+   catálogo intercalados y la pastilla del género en cada casilla, no el orden por género): HECHO en la rama `pared-generos`
+   (`FASE11_pared-generos.md`, ganchos g90-g98). **No entra en la compilación del cumpleaños**: se junta después. Al juntar: la prueba del
+   catálogo (`Pruebas/RocolaOs/catalogo/prueba.sh`) ya le pasa `ROCOLA_CATALOGO_URL` a la API falsa (si no, con el modo encendido y la llave,
+   a los 45 s se miraría GitHub); los ganchos g94-g98 tocan `CaratulasSeparadasGpu.cs` (la casilla de la tarjeta) y g91-g92 `Form1.Pared.cs`:
+   si otro grupo tocó esas líneas, se renumera en la junta.
 
 ## La junta (15-11-2026, rama `junta-spotify`)
 

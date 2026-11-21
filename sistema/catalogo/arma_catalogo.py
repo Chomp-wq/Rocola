@@ -157,6 +157,10 @@ def lee_reglas_genero(ruta=None):
         raise SystemExit('GenreLabel ya no acaba en «Otros»: revisar el armador')
     if len(reglas) < 30:
         raise SystemExit('GenreLabel dio solo %d reglas (se esperan 30 o mas): revisar el armador' % len(reglas))
+    etiquetas = {e for e, _ in reglas} | {'Otros'}
+    malas = sorted({e for d in (PREMAPEO_EXACTO, PREMAPEO_FRASE) for e in d.values()} - etiquetas)
+    if malas:
+        raise SystemExit('El pre-mapeo de generos usa etiquetas que GenreLabel ya no tiene: %s' % ', '.join(malas))
     return reglas
 
 
@@ -169,6 +173,159 @@ def etiqueta_genero(texto, reglas):
             if p in g:
                 return etiqueta
     return 'Otros'
+
+
+# ---- EL PRE-MAPEO de los nombres de genero (en ingles y en español, de Wikidata y MusicBrainz) ANTES de GenreLabel ----------------
+# GenreLabel busca PEDAZOS de palabra (Has = Contains) pensados para las etiquetas ID3 de los MP3 de la rocola; con los nombres de
+# Wikidata y MusicBrainz algunos caen mal: «new romantic» lleva «romantic» (Bolero), «classic rock» lleva «classic» (Clasica),
+# «garage rock» lleva «garage» (DnB), «dubstep» lleva «dub» (Reggae), «soundtrack / banda sonora» lleva «banda» (Regional),
+# «folk-pop» lleva «k-pop», «worship» y «chiptune» llevan «hip», «pornographic» y «photography» llevan «rap»... Aqui se corrigen SIN
+# tocar GenreLabel ni su lista: cada nombre se compara (en minusculas, sin acentos, con «-», «_» y «/» como espacio, sin lo que va entre
+# parentesis y sin « music» al final) con PREMAPEO_EXACTO (el nombre entero) y con PREMAPEO_FRASE (palabras enteras dentro del
+# nombre); gana la coincidencia mas larga (de los dos nombres de Wikidata, el ingles y el español). Sin coincidencia, el nombre va a
+# GenreLabel como siempre. «Otros» = no da genero (nombres que no son de musica). El LEEME («El genero») lo explica; la prueba
+# (comprueba.py) tiene un caso por trampa.
+PREMAPEO_EXACTO = {
+    # Pop: new wave, new romantic, synth-pop y parientes (GenreLabel: Otros, Bolero o Electronica)
+    'new wave': 'Pop', 'nueva ola': 'Pop', 'new romantic': 'Pop', 'nuevo romanticismo': 'Pop',
+    'synth pop': 'Pop', 'synthpop': 'Pop', 'tecnopop': 'Pop', 'techno pop': 'Pop', 'tecno pop': 'Pop', 'technopop': 'Pop',
+    'electropop': 'Pop', 'electronic pop': 'Pop', 'pop electronico': 'Pop', 'dance pop': 'Pop', 'disco pop': 'Pop',
+    'baroque pop': 'Pop', 'pop barroco': 'Pop', 'orchestral pop': 'Pop', 'pop orquestal': 'Pop', 'hypnagogic pop': 'Pop',
+    'pop hipnagogico': 'Pop', 'garage pop': 'Pop', 'adult contemporary': 'Pop', 'carnavalskraker': 'Pop', 'doskpop': 'Pop',
+    'folk pop': 'Folk', 'punk pop': 'Punk', 'rock pop': 'Pop',
+    # Rock: classic rock, garage rock, hard rock, album rock y los que GenreLabel manda a Clasica, DnB, Soul o Electronica
+    'classic rock': 'Rock', 'rock clasico': 'Rock', 'garage rock': 'Rock', 'garage rock revival': 'Rock', 'garage psych': 'Rock',
+    'hard rock': 'Rock', 'album rock': 'Rock', 'album oriented rock': 'Rock', 'blues rock': 'Rock', 'rock blues': 'Rock',
+    'electronic rock': 'Rock', 'rock electronico': 'Rock', 'dance rock': 'Rock', 'piano rock': 'Rock', 'instrumental rock': 'Rock',
+    'rock instrumental': 'Rock', 'symphonic rock': 'Rock', 'rock sinfonico': 'Rock', 'symphonic prog': 'Rock', 'rock opera': 'Rock',
+    'opera rock': 'Rock', 'heavy psych': 'Rock', 'shoegaze': 'Rock', 'shoegazing': 'Rock', 'emo': 'Punk', 'screamo': 'Punk',
+    'oi!': 'Punk', 'sasscore': 'Punk',
+    # Reggae: dancehall, rocksteady, lovers rock (GenreLabel: Electronica o Rock)
+    'dancehall': 'Reggae', 'rocksteady': 'Reggae', 'rock steady': 'Reggae', 'lovers rock': 'Reggae', 'crack rock steady': 'Punk',
+    # Electronica: dubstep (GenreLabel: Reggae por «dub»), bass music (DnB por «bass»), hardcore de baile (Metal por «hardcore»)...
+    'dubstep': 'Electronica', 'post dubstep': 'Electronica', 'melodic dubstep': 'Electronica', 'riddim dubstep': 'Electronica',
+    'dubstyle': 'Electronica', 'deathstep': 'Electronica', 'dub techno': 'Electronica', 'dubtronica': 'Electronica',
+    'tropical house': 'Electronica', 'house tropical': 'Electronica', 'latin house': 'Electronica', 'garage house': 'Electronica',
+    'bass house': 'Electronica', 'future bass': 'Electronica', 'kawaii future bass': 'Electronica', 'bass music': 'Electronica',
+    'uk bass': 'Electronica', 'brazilian bass': 'Electronica', 'bubblegum bass': 'Electronica', 'colour bass': 'Electronica',
+    'melodic bass': 'Electronica', 'midtempo bass': 'Electronica', 'techno bass': 'Electronica', 'hardbass': 'Electronica',
+    'happy hardcore': 'Electronica', 'hardcore techno': 'Electronica', 'uk hardcore': 'Electronica', 'hardcore breaks': 'Electronica',
+    'breakbeat hardcore': 'Electronica', 'freeform hardcore': 'Electronica', 'uptempo hardcore': 'Electronica',
+    'industrial hardcore': 'Electronica', 'digital hardcore': 'Electronica', 'mainstream hardcore': 'Electronica',
+    'amapiano': 'Electronica', 'afropiano': 'Electronica', 'chiptune': 'Electronica', 'dungeon chip': 'Electronica',
+    'doomcore': 'Electronica', 'uk funky': 'Electronica', 'funkot': 'Electronica',
+    # DnB: los subgeneros con «funk» (GenreLabel: Soul)
+    'neurofunk': 'DnB', 'liquid funk': 'DnB', 'drumfunk': 'DnB',
+    # Punk: el hardcore punk y sus hijos (GenreLabel: Metal por «hardcore»; el resto de los «hardcore» va en la frase)
+    'hardcore punk': 'Punk', 'post hardcore': 'Punk', 'melodic hardcore': 'Punk', 'hardcore melodico': 'Punk',
+    # Hip-Hop: hardcore hip hop (Metal), drill, grime y otros que GenreLabel deja en Otros; Afroswing (Jazz por «swing»)
+    'hardcore hip hop': 'Hip-Hop', 'hip hop hardcore': 'Hip-Hop', 'drill': 'Hip-Hop', 'grime': 'Hip-Hop', 'horrorcore': 'Hip-Hop',
+    'dirty south': 'Hip-Hop', 'miami bass': 'Hip-Hop', 'afroswing': 'Hip-Hop',
+    # Reggaeton: lo urbano latino (GenreLabel: Hip-Hop por «trap» o Latino por «latin»); romantic flow (Bolero por «romantic»)
+    'latin trap': 'Reggaeton', 'trap latino': 'Reggaeton', 'urbano': 'Reggaeton', 'urbano latino': 'Reggaeton',
+    'musica urbana latina': 'Reggaeton', 'trapeton': 'Reggaeton', 'romantic flow': 'Reggaeton',
+    # Latino: el funk de Brasil (GenreLabel: Soul por «funk») y el tecnobrega (Electronica por «tecno»)
+    'funk carioca': 'Latino', 'baile funk': 'Latino', 'funk brasileiro': 'Latino', 'brazilian funk': 'Latino',
+    'funk ostentacao': 'Latino', 'funk automotivo': 'Latino', 'funk consciente': 'Latino', 'funk de bh': 'Latino',
+    'funk mandelao': 'Latino', 'funk melody': 'Latino', 'funk proibidao': 'Latino', 'brega funk': 'Latino', 'arrocha funk': 'Latino',
+    'funknejo': 'Latino', 'tecnobrega': 'Latino', 'tecno brega': 'Latino',
+    # Tropical: la rumba de Cuba y de salon (GenreLabel: Flamenco); merenhouse (Electronica por «house»)
+    'rumba cubana': 'Tropical', 'cuban rumba': 'Tropical', 'rhumba': 'Tropical', 'rumba de salon': 'Tropical',
+    'merenhouse': 'Tropical', 'merenrap': 'Tropical',
+    # Jazz: latin jazz (Latino), post-bop y big band (Otros), ragtime clasico (Clasica)
+    'latin jazz': 'Jazz', 'jazz latino': 'Jazz', 'post bop': 'Jazz', 'hard bop': 'Jazz', 'big band': 'Jazz', 'classic ragtime': 'Jazz',
+    # Soul: new jack swing (Jazz por «swing»), urban contemporary (Otros), piedmont blues (Electronica por «edm»)
+    'new jack swing': 'Soul', 'urban contemporary': 'Soul', 'piedmont blues': 'Soul',
+    # Country: classic country (Clasica), western swing (Jazz)
+    'classic country': 'Country', 'western swing': 'Country',
+    # Bolero: la balada latina (MusicBrainz «latin ballad»: Latino; la de Wikidata ya era Bolero por «balada romantica»)
+    'latin ballad': 'Bolero',
+    # Clasica: el Romanticismo de la musica clasica (GenreLabel: Bolero por «romantic»)
+    'romantic': 'Clasica', 'romantic classical': 'Clasica', 'romantic era': 'Clasica', 'musica del romanticismo': 'Clasica',
+    'romanticismo': 'Clasica', 'romanticism': 'Clasica', 'neoromanticism': 'Clasica', 'romantische oper': 'Clasica',
+    # Gotico: dark wave con espacio (GenreLabel: «darkwave» junto), deathrock (Metal por «death»)
+    'dark wave': 'Gotico', 'neoclassical dark wave': 'Gotico', 'neoclassical darkwave': 'Gotico', 'deathrock': 'Gotico',
+    # Industrial: death industrial (Metal por «death»)
+    'death industrial': 'Industrial',
+    # Metal: doomgaze (Oldies por «doo»; el resto de los «doom» va en la frase)
+    'doomgaze': 'Metal',
+    # Soundtrack: GenreLabel lo manda a Regional por «banda» (de «banda sonora»)
+    'banda sonora': 'Soundtrack', 'bandas sonoras': 'Soundtrack', 'film score composer': 'Soundtrack', 'video game music': 'Soundtrack',
+    'musica de videojuegos': 'Soundtrack',
+    # Folk: lo que cae en Reggae por «ska», en Regional por «tejan», en Electronica por «dance»...
+    'kan ha diskan': 'Folk', 'avtorskaya pesnya': 'Folk', 'piosenka aktorska': 'Folk', 'izvorna bosanska muzika': 'Folk',
+    'euskal kantagintza berria': 'Folk', 'cante alentejano': 'Folk', 'scottish country dance': 'Folk', 'contra dance': 'Folk',
+    'fife and drum': 'Folk', 'fife and drum blues': 'Folk',
+    # World: Africa y Asia que caen en Reggae, Hip-Hop, Soul, Regional o Flamenco
+    'maskanda': 'World', 'maskandi': 'World', 'boduberu': 'World', 'township jive': 'World', 'township bubblegum': 'World',
+    'township': 'World', 'wassoulou': 'World', 'congolese rumba': 'World', 'rumba congolena': 'World', 'la rumba congolena': 'World',
+    'afrobeat': 'World', 'afrobeats': 'World', 'bandari': 'World', 'haitian vodou drumming': 'World',
+    'indigenous music of north america': 'World', 'musica indigena de america del norte': 'World',
+    # Otros (no dan genero): nombres que no son de musica o de banda militar, y los que GenreLabel atrapa por un pedazo de palabra
+    'steampunk': 'Otros', 'drumline': 'Otros', 'drum and bugle corps': 'Otros', 'military band': 'Otros',
+    'banda de musica militar': 'Otros', 'brass band': 'Otros', 'banda de viento metal': 'Otros', 'bass instrument': 'Otros',
+    'therapy': 'Otros', 'travesti': 'Otros', 'transvestism': 'Otros', 'travestismo': 'Otros', 'soap opera': 'Otros',
+    'tap dance': 'Otros', 'multi instrumentalist': 'Otros', 'multiinstrumentista': 'Otros', 'graphical sound': 'Otros',
+    'parnassianism': 'Otros', 'parnasianismo': 'Otros', 'environmentalist': 'Otros', 'ambientalista': 'Otros',
+    'dark romanticism': 'Otros', 'romanticismo oscuro': 'Otros', 'romance novel': 'Otros', 'novela romantica': 'Otros',
+    'romantic poetry': 'Otros', 'poesia romantica': 'Otros',
+}
+PREMAPEO_FRASE = {
+    # (palabras enteras dentro del nombre) las familias con muchos nombres; el nombre exacto de arriba gana si es mas largo
+    'hardcore': 'Punk',                    # hardcore punk y sus hijos; los de baile y el hip hop van arriba por nombre
+    'doom': 'Metal',                       # «stoner doom», «black doom» (Oldies por «doo»)
+    'worship': 'Cristiana',                # «contemporary worship», «praise & worship» (Hip-Hop por «hip»)
+    'township': 'World',                   # «township music» (Hip-Hop por «hip»)
+    'banda sonora': 'Soundtrack', 'bandas sonoras': 'Soundtrack',
+    'new romantic': 'Pop', 'nuevo romanticismo': 'Pop', 'synth pop': 'Pop', 'dance pop': 'Pop', 'dancehall': 'Reggae',
+    'classic rock': 'Rock', 'garage rock': 'Rock', 'tropical house': 'Electronica', 'dubstep': 'Electronica',
+    'funk carioca': 'Latino', 'latin jazz': 'Jazz', 'jazz latino': 'Jazz', 'latin trap': 'Reggaeton', 'trap latino': 'Reggaeton',
+    'hardcore hip hop': 'Hip-Hop', 'hip hop hardcore': 'Hip-Hop', 'hardcore techno': 'Electronica', 'happy hardcore': 'Electronica',
+    'photography': 'Otros', 'fotografia': 'Otros', 'biographical': 'Otros', 'biografico': 'Otros', 'pornographic': 'Otros',
+    'pornografico': 'Otros',
+}
+
+
+def clave_premapeo(nombre):
+    """El nombre como lo compara el pre-mapeo: minusculas, sin acentos, sin «(...)», «-», «_», «/» y «&» como espacio, sin « music»
+    ni «musica » de mas."""
+    s = sin_acentos(re.sub(r'\([^)]*\)', ' ', nombre or ''))
+    s = ' '.join(re.sub(r'[-_/&,]+', ' ', s).split())
+    s = re.sub(r' music$', '', s)
+    return s
+
+
+def premapeo(nombre):
+    """(largo, etiqueta) de la coincidencia mas larga del pre-mapeo, o None."""
+    s = clave_premapeo(nombre)
+    if not s:
+        return None
+    mejor = None
+    if s in PREMAPEO_EXACTO:
+        mejor = (len(s), PREMAPEO_EXACTO[s])
+    for f, e in PREMAPEO_FRASE.items():
+        if len(f) > (mejor[0] if mejor else 0) and re.search(r'(^| )' + re.escape(f) + r'( |$)', s):
+            mejor = (len(f), e)
+    return mejor
+
+
+def _arregla_para_genrelabel(texto):
+    """Lo que GenreLabel lee: «folk-pop», «punk-pop», «dark-pop»... no son K-Pop ni J-Pop (el «k-»/«j-» va pegado a otra palabra)."""
+    return re.sub(r'(?<=[^\W\d_])([kj])-pop', r'\1 pop', texto, flags=re.I)
+
+
+def genero_de(nombres, reglas):
+    """La etiqueta de XP de un genero de Wikidata (nombres = (ingles, español)) o de una etiqueta de MusicBrainz (un nombre):
+    primero el pre-mapeo (la coincidencia mas larga de todos los nombres), si no GenreLabel con los nombres juntos («ingles / español»,
+    como siempre)."""
+    mejor = None
+    for n in nombres:
+        p = premapeo(n)
+        if p and (mejor is None or p[0] > mejor[0]):
+            mejor = p
+    if mejor:
+        return mejor[1]
+    return etiqueta_genero(_arregla_para_genrelabel(' / '.join(n for n in nombres if n).strip(' /')), reglas)
 
 
 def letra_xp(nombre):
@@ -775,7 +932,7 @@ def orden_arma(a):
             qids.update(v[1].split(','))
     c_gen = Cache(os.path.join(cache_dir, 'wd_generos.tsv'), 2)
     wikidata_generos(qids, c_gen, a.sin_red)
-    etiqueta_q = {q: etiqueta_genero((v[0] + ' / ' + v[1]).strip(' /'), reglas) for q, v in c_gen.d.items()}
+    etiqueta_q = {q: genero_de((v[0], v[1]), reglas) for q, v in c_gen.d.items()}
     tags = {}
     if not a.solo_cc0:
         generos_mb = {(c[2] or '').lower() for c in filas(tablas, 'genre')}
@@ -806,7 +963,7 @@ def orden_arma(a):
         x['fuente'] = 'w'
         if not peso and aid in tags:
             for n, votos in tags[aid]:
-                e = etiqueta_genero(n, reglas)
+                e = genero_de((n,), reglas)
                 if e != 'Otros':
                     peso[e] = peso.get(e, 0) + votos
             x['fuente'] = 'm'

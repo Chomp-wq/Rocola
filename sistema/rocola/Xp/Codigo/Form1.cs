@@ -2074,7 +2074,7 @@ namespace Rocola
                 return true;
             }
 #endif
-            if (keyData == (Tecla.Control | Tecla.F2))   // Ctrl+F2 = gestor de carpetas de musica (agregar/quitar; otros discos); EN LINUX: Keys -> Tecla, los mismos numeros
+            if (RocolaOsCtrlF4(keyData)) return true; if (keyData == (Tecla.Control | Tecla.F2))   // ROCOLA OS g85: (XP) if (keyData == (Tecla.Control | Tecla.F2)) — Ctrl+F4 abre la ventana de Rocola OS con las mismas reglas que Ctrl+F2 y Ctrl+F3 (RocolaOs/RocolaOs.Ventana.cs; sin ROCOLA_OS, false). Ctrl+F2 = gestor de carpetas de musica (agregar/quitar; otros discos); EN LINUX: Keys -> Tecla, los mismos numeros
             {
                 ShowMusicDirManager();
                 return true;

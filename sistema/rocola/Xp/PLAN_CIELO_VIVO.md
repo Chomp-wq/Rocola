@@ -76,7 +76,7 @@ por cuadro).
 
 Cada cambio en Codigo/ es un gancho de una linea `// ROCOLA OS gNNN: (XP) ...` en GANCHOS.tsv (Pruebas/RocolaOs/ganchos.py), que sin
 ROCOLA_OS o con la idea apagada hace exactamente lo de XP. Rangos para que los grupos no choquen (los de la segunda compilacion usan
-hasta g101; los de pantalla-ctrlf4 g80-g82 chocan con los del asistente de la rama principal y se renumeran en su junta):
+hasta g101; los de pantalla-ctrlf4, g80-g82, chocaban con los del asistente de la rama principal y en la junta 2 pasaron a g85-g87):
 
 | Rango | Grupo |
 |---|---|

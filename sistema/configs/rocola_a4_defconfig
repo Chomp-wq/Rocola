@@ -69,6 +69,22 @@ BR2_PACKAGE_ROCOLA_SPOTIFY=y
 # este mismo archivo: compila.sh)
 BR2_PACKAGE_ROCOLA_PULSO=y
 
+# EL NAVEGADOR DE CTRL+F4 (peticion del dueno del 20-11-2026: «en la ventana de ctrl f4, debes poner un navegador por si quiero desarrollar
+# en la misma rocola entrando a Claude»; sistema/rocola/Xp/FASE11_navegador-archivos.md): WPE WebKit con cog, por su plataforma DRM (pinta
+# directo en la tarjeta por KMS, como la rocola; el teclado y el raton por libinput). libinput necesita udev, y Rocola OS ya trae eudev desde
+# la etapa 1 (BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV, arriba: S10udevd): no hace falta Wayland ni un compositor, ni cambia el arranque.
+# Sin la plataforma de Wayland de cog (necesitaria un compositor). HTTPS con libsoup3 (glib-networking y GnuTLS) y los certificados de
+# siempre; xkeyboard-config para que libxkbcommon arme el teclado (sin el, cog no tendria teclas). Sin video ni audio de las paginas
+# (WPEWEBKIT_MULTIMEDIA: GStreamer entero), sin WebDriver ni el sandbox de bubblewrap. Lo abre /usr/bin/rocola-navegador. PAQUETES NUEVOS:
+# este cambio pide la compilacion COMPLETA (rapida.sh: lo de configs/ no lo sabe poner), y compilar WebKit es lo mas largo del sistema.
+BR2_PACKAGE_WPEWEBKIT=y
+BR2_PACKAGE_COG=y
+# BR2_PACKAGE_COG_PLATFORM_FDO is not set
+BR2_PACKAGE_COG_PLATFORM_DRM=y
+BR2_PACKAGE_COG_PROGRAMS_HOME_URI=""
+BR2_PACKAGE_LIBSOUP3_SSL=y
+BR2_PACKAGE_XKEYBOARD_CONFIG=y
+
 # La imagen: ext4 y GRUB de BIOS y de UEFI, un solo archivo disk.img para grabar en una memoria USB
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
