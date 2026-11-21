@@ -321,3 +321,102 @@ Un revisor no encontró nada grave. De lo que encontró, comprobado uno por uno:
 Corridas otra vez con el JIT de la junta (el código no cambió, solo pruebas y documentos): `letras` 88/88, `sustitucion` 97/97, `Importa`
 181/181, `spotify-xp` 167/167 (sin `PULSO`, por eso no las 187; la escena `fabrica`: 0 conexiones a internet con y sin `ROCOLA_OS`, 3 al sumidero). Salidas en `/root/rocola-trabajo/fase11/junta-3/rev/`. Nada probado en el A4.
 
+
+## Junta 4: la rapidez (carátulas, Spotify y lo general) y el cielo apagado de fábrica (21-11-2026)
+
+Rama `junta-3` (en `.claude/worktrees/junta-3`), sobre `44dc14c` (la junta 3 con su revisión). Merges con `--no-ff` (sin rebase), en este
+orden:
+
+| # | Rama | Hasta | Lo que trae | Documento |
+|---|---|---|---|---|
+| 1 | `rapido-caratulas` | `6cbd650` | Las carátulas locales más rápidas: `Nativo/` con los mismos bytes (`Imagenes`, `Mapas`, `Pixeles`), la función `caratulas-rapidas` con g220-g224 (`portadas_dct=` y `portadas_dos_lectores=`, encendidas de fábrica) | `FASE11_rapido-caratulas.md` |
+| 2 | `rapido-spotify` | `9473eb7` | Spotify más rápido (portadas del catálogo y de Spotify a la vez y por adelantado, el «play» adelantado, conectar antes); solo `RocolaOs/` y pruebas, sin ganchos (sale de `junta-2`) | `FASE11_rapido-spotify.md` |
+| 3 | `rapido-general` | `80f358b` | Lo general: el compositor no mezcla capas vacías, el texto de GDI+ sin objetos por llamada, los polígonos en un `SKPath` del hilo; solo `Nativo/` | `FASE11_rapido-general.md` |
+
+Y la **decisión de esta versión** (el dueño: «Cuando termines esto sube a github, ya lo demás que entre en otra versión»; el cielo vivo va
+en la siguiente): las cuatro funciones del cielo vivo (`cielo`, `fiestas`, `clima`, `vidrio`; `RocolaOs.Cielo.cs`) quedan **apagadas de
+fábrica** (`DeFabrica = false`, commit `40a88fc`): sin encenderlas en `rocola_os.txt` no hay cambio visible ni peticiones al lugar ni a
+Open-Meteo. Sus claves no cambian. Vuelven a encenderse de fábrica en la versión del cielo (anotado en `PLAN_CIELO_VIVO.md` y
+`FASE11_cielo-nucleo.md`). La batería del cielo las enciende ella con `ROCOLA_OS=1` (en `corre()`, si `rocola_os.txt` no dice ya
+`cielo=`, `fiestas=`, `clima=` o `vidrio=`) y comprueba aparte lo de fábrica (`CIELO_DE_FABRICA=1`): la cinta de la pared igual a la de la
+rama principal, el cielo no arranca, no pide el lugar ni el clima y no deja sus archivos (dos comprobaciones nuevas: 62 en vez de 60).
+
+### Los choques y cómo se resolvieron
+
+- `RocolaOs/GANCHOS.tsv` (rapido-caratulas): las filas de los dos lados; g220-g224 no estaban tomados.
+- rapido-spotify: sin choque; git juntó solo `spotify-xp/prueba.sh` y `pared-generos/prueba.sh` (con el sumidero `127.0.0.1:7` de la
+  revisión de la junta 3) y `RocolaOs.SpotifyCatalogo.cs` / `RocolaOs.SpotifyCatalogoApi.cs` (con los g114/g115 renumerados de letras).
+- rapido-general: sin choque de git, pero **g87** (`Nativo/CompositorPantalla.cs`) se movió de la línea 46 a la 47 (rapido-general le
+  añadió un campo, `Vacia`, a `CapaTextura` antes): arreglado en `GANCHOS.tsv` en el mismo merge. Los demás ganchos de `Nativo/`
+  (g86, g101 en `Anfitrion.cs`) siguen en su sitio.
+- Ningún gancho repetido: **95 ganchos en 29 archivos** (89 en 24 archivos de `Codigo/`).
+
+### La base nueva de los ganchos
+
+**`8c8cba0`**: el código de la junta con los 95 ganchos devueltos (`Codigo/` y fuera); el commit siguiente, `73a2de3`, los vuelve a poner
+(el código queda byte a byte como el merge de rapido-general, `41faf5f`). Su `Codigo/` es **byte a byte el de `d5bc2b0`** (la base de la
+junta 3): ninguna de las tres ramas cambió `Rocola/`; `Nativo/` lleva lo de rapido-caratulas y rapido-general. La nombran `ganchos.py`,
+`nivel0.sh` (`BASE=`), la cabecera de `GANCHOS.tsv`, `Pruebas/RocolaOs/LEEME.md` y la prueba del andamio (`73a2de3`). Si la rama se
+junta con squash o rebase, ese número cambia: `--base` / `BASE=`.
+
+### Lo que se arregló en la junta (commits propios)
+
+- Nada falló por la junta. Lo único propio es la decisión del cielo (arriba, `40a88fc`) y g87 (en el merge, `41faf5f`).
+- Al correr `LeeIgual` hay que darle la lista con rutas absolutas (`todas.txt.abs` de rapido-caratulas): con `todas.txt` (relativa) se
+  cae al leer la primera portada. Es de cómo se corre, no del programa.
+
+### Las pruebas
+
+Corridas el 21-11-2026 (17:10-21:30) en la máquina de 4 núcleos compartida (carga 2 a 5). Programas de `40a88fc` (lo de después solo
+toca documentos): JIT (`dotnet build -c Release`) y NativeAOT (`dotnet publish -r linux-x64 -p:PublishAot=true`), los dos con 0 errores
+y los 13 avisos de `avisos-base.txt` (`clasifica.py avisos`: BIEN, ninguno nuevo); NativeAOT con 0 avisos IL/AOT. Salidas en
+`/root/rocola-trabajo/fase11/junta-4/` (fuera del repositorio; `baterias.log` con cada una).
+
+- XP con Mono (`pruebas/todo.sh noche cadenaentera billar18 billarparejo nomp3 ecualizador`): TODAS EN VERDE; una por una: `noche`
+  145/145, `cadenaentera` 91/91, `billar18` 35/35, `billarparejo` 8/8, `nomp3` 23/23, `ecualizador` 77/77. `compara-cadena` (el
+  `Rocola.exe` de la rama principal, `e763255`, contra el de la junta; los dos perfiles): 16 iguales bit a bit, 0 distintas, en cpu y
+  en gpu. `Rocola/` y `pruebas/` son los de la junta 3.
+- `ganchos.py`: TODO BIEN (95 ganchos en 29 archivos; 112 archivos de `Codigo/` iguales a `8c8cba0`, 24 con ganchos).
+- `diff-xp.py --sin-ganchos` (112 archivos): 5 147 quitadas, 4 880 puestas, 229 sin marca (las de la junta 3).
+- Nivel 0 (`nivel0.sh`, pasos previo, código, ganchos, cintas y cierre, con el JIT y el NativeAOT de la junta): **7 BIEN**; las cintas
+  de la tarjeta sin `ROCOLA_OS`, **29 iguales (6 616 cuadros), 0 distintas**; `cierre_rocola_os.sh` 43/43 en JIT y en NativeAOT.
+- Las de las tres ramas: `RapidoCaratulas` **`LeeIgual` 21 663 comparaciones, 0 distintas** (con `todas.txt.abs`) y **`PixelesIgual`
+  1 200, 0 distintas** (NativeAOT), las dos contra `85c931b` como en la rama; `RapidoGeneral` (su programa de medir, NativeAOT, con el
+  código de la junta) la prueba de igualdad del compositor (`cmp5`: pared, buscador, Ctrl+F3, ayuda y botones con `d0` y `dcal`, cada 4
+  cuadros): **3 361 cuadros comparados, 0 distintos**, `vuelven=0` en las diez; `rapido-spotify` su medida (`mide.sh`, NativeAOT; no
+  comprueba nada, sus comprobaciones son las escenas `adelanto`, `adelantoxp` y `adelantoreloj` de `spotify-xp`): búsqueda 454 ms,
+  página 1 de la A lista a 3,7 s del arranque, las páginas de la pared en pantalla a 54-77 ms, abrir un disco del buscador ya a la vista
+  (adelantado; «-» como en la rama), lo de Soloist conectado a 248 ms (`rs-medidas.txt`).
+
+Las baterías de `Pruebas/RocolaOs` y `Pruebas/Importa` (pasadas/total):
+
+| Batería | JIT | NativeAOT |
+|---|---|---|
+| `andamio` | 101/101 | 101/101 |
+| `asistente` | 29/29 | — |
+| `pantalla` | 76/76 | — |
+| `navegador-archivos` | 62/62 | — |
+| `pared-generos` | 70/70 (con el catálogo de verdad; una más que en la junta 3, de rapido-spotify) | {AOT-pared} |
+| `convierte` | 57/57 | — |
+| `letras` | 88/88 | — |
+| `apagones` | 36/36 | 36/36 |
+| `cielo` | 62/62 (las dos nuevas de fábrica, BIEN) | {AOT-cielo} |
+| `noche-video` | 9/9 | — |
+| `Importa` | 181/181 | — |
+| `sustitucion` | 97/97 | {AOT-sustitucion} |
+| `catalogo` | 156/156 | {AOT-catalogo} |
+| `spotify-xp` (con `PULSO`) | **216/216** (las escenas nuevas de rapido-spotify incluidas) | {AOT-spotify} |
+
+- `spotify-xp`, escena `fabrica`: 0 conexiones a internet con y sin `ROCOLA_OS`; al sumidero `127.0.0.1:7`, 1 con `ROCOLA_OS=1` (en la
+  junta 3 eran 3: el lugar y el clima del cielo ya no se piden, ahora apagado).
+
+### Lo que queda
+
+- Nada falla por la junta.
+- **Para la versión del cielo**: los cuatro grupos (sol/luna/estrellas, nubes y clima, fiestas, vidrio), la hoja «Imagen» de Ctrl+F4 y
+  volver a poner `DeFabrica = true` en las cuatro funciones (y quitar `CIELO_DE_FABRICA` de la batería o dejarla comprobando lo apagado);
+  la letra dibujada en el cielo (K6).
+- La escena `salirq` del nivel 0 sale «solo cuentas» más a menudo con rapido-general (siempre de más, `FASE11_rapido-general.md`, «Para la
+  junta»): no se corrieron las escenas aquí; quien corra el nivel 0 entero puede aceptarla así.
+- No se corrió: el nivel 0 entero (arneses, banco, recorridos, escenas), la prueba de QEMU ni ninguna compilación del sistema (el navegador
+  pide la COMPLETA). Lo pendiente de cada rama sigue en su documento. Nada probado en el A4.
