@@ -69,7 +69,7 @@ namespace Rocola
             AlCerrarDeFuera = CierreDeFuera;   // SIGUSR1 (los reinicios propios de Rocola OS): WM_CLOSE de fuera a la ventana de la rocola, que conserva el estado
             bool cerrada = false;
             rocola.FormClosed += delegate { cerrada = true; };   // el aviso de la rocola al cerrarse (el FormClosed de XP)
-            RocolaOs.Arranca(rocola); rocola.Ventana.Ensena();   // ROCOLA OS g21: (antes) rocola.Ventana.Ensena(); — lo de Rocola OS arranca antes de ensenarse la ventana (RocolaOs.Arranca, RocolaOs/RocolaOs.cs: sin ROCOLA_OS no hace nada). (Application.Run: Visible = true) la ventana se ensena con los pasos de WinForms
+            rocola.Ventana.Ensena();   // (Application.Run: Visible = true) la ventana se ensena con los pasos de WinForms
             Corre(delegate { return !cerrada && !Saliendo && !rocola.IsDisposed; });
         }
     }

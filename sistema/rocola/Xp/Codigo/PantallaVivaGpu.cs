@@ -314,7 +314,7 @@ namespace Rocola
             if (albumView.Sliding || albumView.Page == null) return null;
             int i = albumView.Selected;
             if (i < 0 || i >= albumView.Page.Count) return null;
-            return RocolaOsSpotifyCatalogoElegido(albumView.Page[i]);   // ROCOLA OS g52: (XP) return albumView.Page[i]; — un disco de Spotify aun sin sus canciones que se queda elegido en la pared las pide (para que la ficha y el letrero de XP digan cuantas trae; RocolaOs/RocolaOs.SpotifyCatalogo.cs; devuelve el mismo disco)
+            return albumView.Page[i];
         }
 
         // Cuantas canciones, cuantos videos y cuanto dura el disco (-1 si falta la duracion de alguna). Las

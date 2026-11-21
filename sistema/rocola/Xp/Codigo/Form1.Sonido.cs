@@ -1452,7 +1452,7 @@ namespace Rocola
         {
             // La comparacion a ciegas se acaba antes de armar otra cancion: si no, se armaria con lo del tramo que suene (CompararCiegas.cs).
             if (ciegoActivo) TerminaCiego("Se acaba la cancion: comparacion cortada. ");
-            CadenaCancion c = new CadenaCancion(); t = RocolaOsCalidadCancion(t, source);   // ROCOLA OS g61: (XP) CadenaCancion c = new CadenaCancion(); — si el lector es la version de Spotify de una cancion tuya, la cadena se arma con una copia de tu cancion con la ruta de Spotify (sus medidas, ninguna de tu MP3); lo que se ve sigue siendo tu cancion (RocolaOs/RocolaOs.Calidad.cs; de XP, la misma t)
+            CadenaCancion c = new CadenaCancion();
             c.Cancion = t; c.Lector = source; c.IaMejorada = iaMejorada;
             OlvidaSiEsOtroArchivo(t.Path, source);   // en esa ruta hay hoy otro archivo: lo aprendido del de antes no vale
             c.Fuente = FuenteDeLector(t.Path, source);
@@ -1460,7 +1460,7 @@ namespace Rocola
             // NIVELADO: si esta cancion ya se oyo antes, se aplica la ganancia que la lleva al nivel comun; si es
             // nueva, va a su volumen original y se APRENDE su sonoridad en esta pasada (para nivelarla la proxima vez).
             // De una cancion retomada a medias no se aprende nada: seria la medida de un trozo.
-            bool entera = saltadoSeg <= 0 && !iaMejorada && RocolaOsSpotifyAprende(t.Path);   // ROCOLA OS g23: (XP) bool entera = saltadoSeg <= 0 && !iaMejorada; — de una de Spotify no se aprende ni su sonoridad ni su EQ: suena como una sin medir (R7; RocolaOs/RocolaOs.SpotifyPide.cs); sin Rocola OS o con una de XP, true
+            bool entera = saltadoSeg <= 0 && !iaMejorada;
             c.MedidaRuta = (entera && normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
             c.EqRuta = (entera && EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
             // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
@@ -1636,7 +1636,7 @@ namespace Rocola
             // pasar por BuildCleanMp3 (sus cuadros falsos sonaban a ruido). AudioStartFailed devuelve el credito, la marca danada y la anota en
             // rocola_incompatibles.txt. Los MP3 de verdad (y el MP3 dentro de un WAV) pasan igual que antes. Ver NoEsMp3.cs.
             NoEsMp3.Rechaza(path);
-            { IAudioSource rocolaOsSpotify = RocolaOsSpotifyAbre(path); if (rocolaOsSpotify != null) return rocolaOsSpotify; } string original = RutaOriginalDe(path);   // ROCOLA OS g13: (XP) string original = RutaOriginalDe(path); — con el modo Spotify (spotify=1), una ruta «spotify:track:» se abre con la fuente de Spotify, que lee el anillo de Soloist (RocolaOs/RocolaOs.SpotifyFuente.cs); apagado, null y lo de XP
+            string original = RutaOriginalDe(path);
             FuenteMedida inicio = CapturaFuente(original);
             try { return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, ComoEstereo(new FileAudioSource(path))))); }   // sin el hueco del codificador ni los silencios largos
             catch
