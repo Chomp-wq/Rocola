@@ -95,5 +95,6 @@ que antes de la junta.
 | rocola-xp NativeAOT (`-p:PublishAot=true`) | sale con 0, los mismos 13 avisos (BIEN), 0 de IL/AOT |
 | `noche-video/prueba.sh`, JIT | 9 de 9 (sin Rocola OS 9,54 dB y sin filtro; con `noche_video` de noche −14,61 dB igual que mpv suelto, 1 kHz 64,04 / 64,04 dB; de día 9,54 dB) |
 | spotify-xp, escena «noche», JIT | TODO BIEN (55). Las 22 h: −0,0544 (Spotify) y −0,0537 (XP) dB/min, salto 0,0002 dB; ya de noche −3,22 dB (80 %) y −10 dB (50 %), quieta; «Probar» 0,9 s (80 %) y 1,5 s (50 %); la madrugada desde la 1 −0,0326 / −0,0321 dB/min (esperado −0,0321), salto 0,0002 / 0,0004 dB |
-| noche-video y la escena «noche», NativeAOT | (en curso) |
+| `noche-video/prueba.sh`, NativeAOT | 9 de 9 (los mismos números que en JIT) |
+| spotify-xp, escena «noche», NativeAOT | la primera corrida, 53 BIEN y 2 MAL: «probar50» sp y xp con 13,6 s abajo (se pide más de 13,9; la pulsación de «Probar» entró tarde con la máquina cargada, carga 4,6-5; la bajada, −10,05 / −10,0 dB, la rampa de 1,6 s y la vuelta en 1,4 / 1,5 s, bien). Repetida: TODO BIEN (55): las 22 h −0,0542 / −0,0535 dB/min, salto 0,0002 / 0,0005 dB; «Probar» 14,9 s abajo (80 %) y 15,5 / 14,6 s (50 %), rampa 1,0 / 0,8 s y 1,6 / 1,5 s; la madrugada −0,0325 / −0,032 dB/min, salto 0,0001 / 0,0004 dB |
 No se corrió `nivel0.sh` entero. Nada oído ni probado en el A4 ni en el bar.
