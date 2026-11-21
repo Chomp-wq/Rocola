@@ -145,7 +145,8 @@ namespace Rocola
         // (pruebas) lo que se llama con lo compuesto, antes de las capturas y la flecha (Pruebas/RapidoGeneral); null en la rocola
         internal static Action<CompositorPantalla, List<CapaPantalla>> Prueba;
         // (pruebas) la pantalla compuesta otra vez desde cero con TODAS las capas (sin saltarse nada), como antes de rapido-general
-        internal void ComponeTodo(List<CapaPantalla> lista)
+        internal void ComponeTodo(List<CapaPantalla> lista) { ComponeOtraVez(lista, true); }
+        internal void ComponeOtraVez(List<CapaPantalla> lista, bool todo)
         {
             GL.BindFramebuffer(GL.FRAMEBUFFER, fboPantalla);
             GL.Viewport(0, 0, ancho, alto);
@@ -154,7 +155,7 @@ namespace Rocola
             GL.Uniform2f(lugarM, 2f / ancho, 2f / alto);
             GL.Uniform1i(lugarS, 0); GL.Uniform1f(lugarRgba, 0f);
             GL.ActiveTexture(GL.TEXTURE0);
-            DibujaCapas(lista, true);
+            DibujaCapas(lista, todo);
             GL.Disable(GL.BLEND);
         }
         // (pruebas) la pantalla compuesta, fila 0 abajo (glReadPixels)

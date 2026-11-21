@@ -40,6 +40,7 @@ namespace Rocola
         private static readonly CultureInfo mgc = CultureInfo.InvariantCulture;
         private StreamWriter mgLog; private DiagCaptura mgCap; private DiagInstantanea mgFoto;
         private readonly List<KeyValuePair<double, string>> mgTramos = new List<KeyValuePair<double, string>>();
+        private readonly List<double> mgCosteTodo = new List<double>(), mgCosteAhora = new List<double>();
         private int mgComparados, mgDistintos, mgPeor; private int mgSig; private string mgNombre; private long mgAllocUi, mgAllocTodo; private bool mgPrimer, mgLista, mgEnchufada;
         private static double MgDesdeProceso()
         {
@@ -82,6 +83,26 @@ namespace Rocola
                     byte[] a = comp.LeePantalla(); comp.ComponeTodo(lista); byte[] b = comp.LeePantalla();
                     int d = 0; for (int i = 0; i < a.Length; i += 4) if (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2] || a[i + 3] != b[i + 3]) d++;
                     mgComparados++; if (d > 0) { mgDistintos++; if (d > mgPeor) mgPeor = d; lock (mgLog) mgLog.WriteLine("distinto\t" + PantallaRocola.AhoraMs.ToString("0", mgc) + "\t" + d); }
+                };
+            }
+            // ROCOLA_MIDE_COSTE=K: cada K cuadros, lo que cuesta componer (hasta glFinish) como antes (todas las capas) y como ahora, alternando
+            if (int.TryParse(Environment.GetEnvironmentVariable("ROCOLA_MIDE_COSTE") ?? "", out k) && k > 0)
+            {
+                int cuenta = 0;
+                CompositorPantalla.Prueba = delegate (CompositorPantalla comp, List<CapaPantalla> lista)
+                {
+                    if (++cuenta % k != 0) return;
+                    bool primeroTodo = (cuenta / k) % 2 == 0;
+                    for (int v = 0; v < 2; v++)
+                    {
+                        bool todo = (v == 0) == primeroTodo;
+                        Rocola.Pantalla.GL.Finish();
+                        long t0 = Stopwatch.GetTimestamp();
+                        comp.ComponeOtraVez(lista, todo);
+                        Rocola.Pantalla.GL.Finish();
+                        double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+                        (todo ? mgCosteTodo : mgCosteAhora).Add(ms);
+                    }
                 };
             }
 #endif
@@ -162,7 +183,7 @@ namespace Rocola
         private void MgCierra()
         {
             if (mgLog == null) return;
-            try { MgCierraTramo(); if (mgComparados > 0) mgLog.WriteLine("compara\t" + mgComparados + "\t" + mgDistintos + "\t" + mgPeor); mgLog.WriteLine("cierre\t" + MgDesdeProceso().ToString("0", mgc)); mgLog.Dispose(); } catch { }
+            try { MgCierraTramo(); if (mgCosteTodo.Count > 0) { mgCosteTodo.Sort(); mgCosteAhora.Sort(); mgLog.WriteLine("coste\tantes p50=" + mgCosteTodo[mgCosteTodo.Count / 2].ToString("0.00", mgc) + " p90=" + mgCosteTodo[mgCosteTodo.Count * 9 / 10].ToString("0.00", mgc) + "\tahora p50=" + mgCosteAhora[mgCosteAhora.Count / 2].ToString("0.00", mgc) + " p90=" + mgCosteAhora[mgCosteAhora.Count * 9 / 10].ToString("0.00", mgc) + "\tn=" + mgCosteTodo.Count); } if (mgComparados > 0) mgLog.WriteLine("compara\t" + mgComparados + "\t" + mgDistintos + "\t" + mgPeor); mgLog.WriteLine("cierre\t" + MgDesdeProceso().ToString("0", mgc)); mgLog.Dispose(); } catch { }
             mgLog = null;
         }
     }
