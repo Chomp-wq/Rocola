@@ -19,3 +19,4 @@ variable `W` de cada uno) y toman el candado de lo pesado (`/root/rocola-trabajo
   (el complemento «file» de ALSA a una tuberia que lee `ritmo.py`, el de `Pruebas/Recorridos`) y 20 creditos: `escena4.txt` pide una
   cancion larga (150 s; `largo.mp3` puesto en lugar de la primera cancion de los cinco primeros discos de la A) y despues hojea como
   `escena2.txt`; `analiza4.py` resume las paginas (con `analiza2.py`), el colchon del sonido y los lectores (`Mide.cs`).
+- `hilos.py PROG SALIDA`: mientras corre la rocola, el nice y el procesador de cada hilo (para ver al lector de nice 19).

@@ -231,6 +231,51 @@ miniaturas guardadas (las dos primeras escenas) xp y ros solo se separan al salt
 tener sus portadas en memoria es eso, y no se puede comparar con el A4 (con la tarjeta, cuadros mucho más baratos). Lo que sí es de aquí y
 de allí es «en memoria»: lo que tarda el lector.
 
+### Con las dos propuestas (21-11-2026, `96832a9`-`98fb719`)
+
+**El banco de las portadas** (`bancos2.sh 2`, las mismas 300, NativeAOT en un núcleo, dos vueltas alternadas, carga 5,1 a 6,1): «rama»
+es esta rama antes de esto (`7d5b02c`, con `caratulas-rapidas`), «cero» esta con las dos claves en 0, «dct» con lo de fábrica. Frío, en ms
+por portada (p50 / p95 / la peor) y la suma de las 300:
+
+| Config. | vuelta 1 | vuelta 2 | JPEG de más de 1 450 px, p50 / p95 |
+|---|---|---|---|
+| rama | 9,3 / 57,3 / 119 (4,77 s) | 9,4 / 51,4 / 107 (4,74 s) | 39,6 / 94,0 · 39,3 / 99,3 |
+| cero | 10,9 / 52,2 / 128 (5,10 s) | 9,1 / 48,1 / 101 (4,54 s) | 42,5 / 97,9 |
+| **dct** | 8,8 / **23,2** / 76 (**3,33 s**) | 9,9 / **25,1** / 83 (**3,74 s**) | **16,5 / 56,9 · 18,0 / 74,4** |
+
+Con la miniatura guardada, las tres igual (0,49-0,57 s las 300). **Huellas** (la miniatura, la copia por guardar, el archivo guardado, la
+previa, los tonos y la paleta de cada portada): «cero» **igual byte a byte a la rama** en los dos modos y las dos vueltas (también el
+archivo guardado); sin `ROCOLA_OS` esta rama (`xp`) igual byte a byte a la rama sin `ROCOLA_OS`; «dct», otros puntos (lo esperado: §5).
+
+**La rocola entera, sin miniaturas guardadas** (`serie4.sh`, `e2e4.sh` sin música: lo mismo que `e2e3.sh`, con `rocola_os.txt` por
+configuración; tres vueltas alternadas; carga de la máquina de 4,6 a 9 durante todas; «cero»: las dos en 0, «dct» y «dos»: solo una,
+«ambas»: lo de fábrica). La escena de 1,5 s por página de antes ya no separa nada (con g220 el lector va por delante en todas: cuatro
+vueltas, todas las páginas a 0 ms en memoria): se usaron dos más duras:
+
+| Escena (sin miniaturas) | Config. | En memoria p50 / p90 / máx. (sin llegar) | Subidas p50 / p90 (sin llegar) | Miniaturas hechas | Con dos lectores |
+|---|---|---|---|---|---|
+| **Hojear rápido** (ARRIBA cada 0,5 s, un salto de letra cada 12 páginas, 30 s; `escena5.txt`) | cero | 0 / 119 / 782 (0) | 47 / 414 (4) | 1 093-1 095 | — |
+| | dct | 0 / **0** / 517 (0) | 48 / 322 (0) | 1 101 | — |
+| | dos | 0 / 197 / 474 (0) | 59 / 414 (6) | 1 080-1 092 | 4,3 % del tiempo |
+| | ambas | 0 / **0** / 403 (0) | 44 / 186 (3) | 1 089-1 101 | 1,1 % |
+| **Saltar de letra** (REGRESAR+derecha cada 1,2 s, 25 veces; `escena6.txt`) | cero | 0 / 518 / 848 (0) | 98 / 649 (0) | 1 008-1 067 | — |
+| | dos | 74 / 397 / 590 (0) | 151 / 530 (0) | 1 043-1 064 | 7,1 % |
+| | ambas | 0 / **64** / **195** (0) | 110 / 439 (0) | 1 067 | 0,7 % |
+
+Lo firme es la DCT: en las dos escenas el p90 de «en memoria» baja a 0-64 ms (de 119-518) y el peor a la mitad o menos. **El segundo
+lector no se nota aquí**: funciona (en una corrida de «dos» con la cuenta de `Mide.cs`, `RosAbiertos`/`RosDeFondo`: se abrió 12 veces en
+25 saltos y decodificó 45 portadas a nice 19, 0,6 s de procesador en total, contra 7 s del lector de XP), pero solo vive lo que tarda en
+repartirse la página que se ve (casi siempre ya iba a medias por el colchón de XP y g221), y entre «cero» y «dos» la diferencia es menor
+que lo que varía cada configuración de una vuelta a otra. Donde debería ayudar es con la tarjeta del A4 (la pantalla deja más procesador
+libre que aquí con llvmpipe) y en un salto lejos de lo adelantado (el buscador, una letra lejana): no se midió en el A4.
+
+**El sonido** (`e2e4.sh` con `MUSICA=1`: la canción larga sonando a tiempo real por la tubería de `ritmo.py`, la escena de saltar de letra,
+dos vueltas de «cero» y de «ambas»; el colchón de 200 ms del hilo de la música, `BombaSonido`, mirado cada 2 ms): sin contar los primeros
+5 s (el arranque), el menor de 83 a 98 ms y el p1 de 134 a 173 ms **en las dos** (cada renglón de 5 s, el menor baja 2-3 ms del anterior
+en las cuatro corridas igual: es de la tubería), la mediana 193 ms y **0 bloques en silencio** en las cuatro. Con música la pantalla de
+esta prueba va muy lenta (cuadros de 0,5 a 2,5 s en las dos configuraciones: el complemento «file» de ALSA escribe en la tubería y la
+espera; con `ROCOLA_ALSA=null` son de 40 ms), así que esas corridas solo valen para el sonido.
+
 ## Banco de las portadas (sin la pantalla)
 
 `bancos.sh 2` (en `/root/rocola-trabajo/fase11/rapido-caratulas`): `rocola-xp --banco-caratulas` con 300 portadas de la biblioteca
@@ -294,6 +339,16 @@ mismo de `a97c2f4`.
 
 La batería del andamio de Rocola OS (`Pruebas/RocolaOs/andamio/prueba.sh`, NativeAOT del código de esta rama, 21-11-2026; salida en `/root/rocola-trabajo/fase11/rapido-caratulas/andamio.out`): **99 BIEN y 2 MAL de 101**. Los dos MAL son de la prueba, no del programa ni de esta rama: `prueba.sh` (líneas 50 y 59) sigue esperando la base vieja de `ganchos.py` («109 archivos comparados con fc7b667», «NO queda como en fc7b667»), y desde `PORT_xp-1718.md` la base es `69e6547` con 112 archivos (lo mismo que dice el paso «ganchos» del nivel 0, BIEN). Lo demás (la orden, los ajustes de `rocola_os.txt`, las escenas sin la variable, con «0», con «1» y con la función de prueba, los cierres y el apagón), BIEN. No se tocó `prueba.sh` (no es de esta rama): queda para quien la cuide.
 
+**Las dos propuestas (21-11-2026).** `ganchos.py`: TODO BIEN, 112 archivos contra `69e6547` (g222-g224 los nuevos). `diff-xp.py
+--sin-ganchos`: 5 135 quitadas, 4 868 puestas, 229 sin marca (**las de la base**). `nivel0.sh rc2` con `PASOS="previo codigo ganchos
+compila banco cintas aot"` sobre el código con g222-g224 (21-11-2026, en `/root/rocola-trabajo/fase11/nivel0-rc2`): **13 BIEN y 2 MAL**:
+código, ganchos y diff-xp BIEN; JIT 0 errores y 13 avisos (los de la base, 0 nuevos); NativeAOT 0 avisos IL/AOT; **el banco del dibujo
+IGUAL** con las tres semillas; **las cintas, 29 iguales (6 616 cuadros)**; escenas NativeAOT arranque, cierreq, kill9, buscador y f12
+IGUAL; f3vistas y f3teclas MAL, **los mismos de siempre** (la hoja de Sonido de `PORT_xp-1718.md` y `rocola_config.txt`, capas `t1` y `t2`:
+arriba). Sin `ROCOLA_OS` los tres ganchos hacen lo de XP sin leer nada más (g222 `Imagenes.Lee`, g223 el mismo número, g224
+`DecodeCoverForPublication`). Después de esa batería solo se añadieron dos cuentas para las pruebas (`RosAbiertos`, `RosDeFondo`) y
+comentarios en `RocolaOs/`.
+
 ## Lo no probado
 
 - Nada en el A4 (ni la Radeon por KMS ni su procesador): ni cuánto tarda allí una página, ni si el regulador de XP está «bajo presión» con la
@@ -302,3 +357,5 @@ La batería del andamio de Rocola OS (`Pruebas/RocolaOs/andamio/prueba.sh`, Nati
 - El buscador, la ficha, lo que suena y la cola usan la misma caché de portadas que la pared (`RequestCover`/`LoadCover`/`GetCoverYa`): lo
   hecho les sirve igual, pero no se midieron aparte.
 - g221 con la letra de Spotify de verdad (el Soloist falso con discos en ♫): no se corrió; el orden es el mismo código que `GotoLetter` (arriba, §4).
+- La DCT y los dos lectores con portadas de verdad (fotos; las de aquí son inventadas, con bordes fuertes) ni con la tarjeta del A4; el
+  segundo lector en el buscador y en un salto lejano (donde más debería servir); una portada enorme con el de nice 19 en su turno.

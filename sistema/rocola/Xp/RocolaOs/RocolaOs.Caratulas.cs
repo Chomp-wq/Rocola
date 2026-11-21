@@ -174,6 +174,7 @@ namespace Rocola
         private int rosLectoresXp = 1;      // (bajo coverLock) los lectores que XP deja ahora (lo ultimo que dijo AdaptiveCoverReaders)
         private int rosDecodificanXp;       // (bajo coverLock) los que estan decodificando con la prioridad de XP (como mucho rosLectoresXp)
         [ThreadStatic] private static bool rosLectorAlFondo;   // este lector esta a nice 19
+        internal static int RosAbiertos, RosDeFondo;            // (cuentas, para las pruebas) cuantas veces se abrio el segundo y cuantas decodifico el de mas
         [DllImport("libc", SetLastError = true, EntryPoint = "setpriority")] private static extern int RosSetpriority(int cual, uint quien, int nice);
         // g223 (AdaptiveCoverReaders, siempre bajo coverLock): los lectores de XP, o uno mas mientras la fila alta tenga portadas sin miniatura
         private int RocolaOsLectoresPortadas(int xp)
@@ -202,6 +203,8 @@ namespace Rocola
                 deXp = rosDecodificanXp < rosLectoresXp;
                 if (deXp) rosDecodificanXp++;
             }
+            if (abre) System.Threading.Interlocked.Increment(ref RosAbiertos);
+            if (!deXp) System.Threading.Interlocked.Increment(ref RosDeFondo);
             try
             {
                 if (deXp && rosLectorAlFondo) { PrioridadHilo.AlArrancar(); rosLectorAlFondo = false; }   // la de XP (BelowNormal)
