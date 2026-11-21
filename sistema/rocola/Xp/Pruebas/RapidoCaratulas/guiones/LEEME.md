@@ -9,4 +9,6 @@ variable `W` de cada uno) y toman el candado de lo pesado (`/root/rocola-trabajo
 - `banco.sh` / `bancos.sh`: el banco de las portadas (`--banco-caratulas`), frío y con la miniatura guardada, base contra esta rama.
 - `e2e2.sh PROG SALIDA TECLAS TIEMPO`: la rocola entera fuera de pantalla con la biblioteca, en los núcleos 0 y 1 y llvmpipe en el 2 y el 3,
   con la función de prueba `medir-caratulas`; `serie.sh` alterna configuraciones; `analiza2.py` resume; `escena1-3.txt`, las teclas.
+- `e2e3.sh` / `serie3.sh`: lo mismo que `e2e2.sh` / `serie.sh`, apuntando además la carga al empezar y, sin miniaturas, cuántas hizo la
+  rocola (la repetición de la escena sin miniaturas, 21-11-2026).
 - `desaloja.py`: saca archivos de la caché del sistema (`posix_fadvise`), para medir en frío sin `drop_caches`.

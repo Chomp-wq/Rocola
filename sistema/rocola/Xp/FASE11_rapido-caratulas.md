@@ -58,13 +58,20 @@ La lectura de una imagen (`Image.FromStream` de XP) usaba dos decodificadores y 
 los bytes dos veces a arreglos del montón grande. Ahora un solo decodificador sobre `SKData` (memoria nativa) y directo a BGRA premultiplicado
 si Skia ya decodifica así; `Mapas.Copia` de un mapa entero, fila a fila sin lienzo. **Prueba de igualdad:** `Pruebas/RapidoCaratulas/LeeIgual`
 (cada imagen de la biblioteca inventada y unas raras —paleta, gris, alfa, 1×1, basura— por `byte[]`, por `Stream` y por un `Stream` que no se
-puede mover, y `Mapas.Copia` con cinco trozos, contra el código de la base): **15 569 comparaciones, 0 distintas**.
+puede mover, y `Mapas.Copia` con cinco trozos, contra el código de la base; desde la revisión, commit `7d5b02c`, también PNG entrelazadas
+—y una entrelazada cortada—, mapas con premultiplicado inválido —color mayor que el alfa, escrito a mano— por `Mapas.Copia`, que también
+usa la capa de la interfaz, y `Stream`s que dicen otro largo del que dan): **21 663 comparaciones, 0 distintas** (21-11-2026, sobre
+`7d5b02c`). `Lee(Stream)` con un `Stream` que da menos o más de lo que dice su `Length` vuelve a lo de siempre (copiar hasta el final),
+como la base.
 
 ### 2. g220: la miniatura nueva en PNG con zlib 1 (commit `5de0e44`; Rocola OS)
 
 `SaveThumb` (`Codigo/Form1.Biblioteca.cs`) guarda con el filtro «Up» y zlib 1 en vez de lo de fábrica de Skia: **3,3 ms en vez de 39,9** por
 miniatura (banco de PNG, 60 miniaturas, mediana), el archivo un 20 % más grande (108 KB en vez de 89) y, al leerla, **los mismos puntos**
 (PNG no pierde nada; lo comprueban las huellas del banco). Las miniaturas que ya están se leen igual: no se rehace ninguna.
+Si `ROCOLA_IA_DATOS` está puesta pero no se puede usar (`DatosGrandes.cs`: lo grande cae en la carpeta de datos, `datos.img` de 512 MB),
+g220 hace lo de XP (`DatosGrandes.CayoEnDatos`, commit `7d5b02c`): ahí no se gasta el 20 % de más. Sin `ROCOLA_IA_DATOS` (fuera de Rocola
+OS, donde el lanzador siempre la pone) sí lo gasta en la carpeta de datos.
 
 ### 3. `Nativo/Pixeles.cs`: la copia sin premultiplicar de cuatro en cuatro (commit `2c93736`; automático)
 
@@ -84,12 +91,23 @@ la base): **1 188 comparaciones, 0 distintas**. Lo que tarda (NativeAOT, mediana
 Es poco por portada; donde más ahorra es en las capas de la interfaz que se suben enteras. En el peor caso (puntos a medias repartidos al
 azar, que no es lo que pinta la rocola) es un 10-14 % más lento.
 
+Desde la revisión (commit `7d5b02c`), también una **interfaz dibujada** de 1024×768 (texto con antialias, sombras, degradados, sobre
+transparente): 21-11-2026, sobre `7d5b02c`, NativeAOT en un núcleo, cuatro corridas (carga 4,8): **antes 1,114 / 1,238 / 1,276 / 1,191 ms,
+ahora 1,161 / 1,254 / 1,329 / 1,244** (medianas de 41): de 1 a 4 % más lenta (0,02-0,05 ms por subida entera), a la par del ruido de la
+medida; la «casi transparente con un 10 % a medias al azar» 13-17 % más lenta (1,36-2,03 → 1,60-2,26 ms) y la portada opaca, la mitad
+(0,036-0,053 → 0,018-0,029 ms). Los mismos bytes en todos: **1 200 comparaciones, 0 distintas**. No se midió con capas sacadas de la rocola
+de verdad; se deja porque en lo que más se sube (portadas, y capas casi todas 0 o 255) gana el doble y en lo dibujado pierde a lo más un 4 %.
+
 ### 4. g221: las letras de al lado, adelantadas (commit `a97c2f4`; Rocola OS)
 
 En `CoverSettle_Tick` (`Codigo/Form1.Portadas.cs`), después de lo de XP, se encargan también **la primera página de la letra de antes y de
 la de después** (a donde lleva REGRESAR con izquierda o derecha), en la **misma cola baja** que el colchón de XP: el lector único de XP las
 atiende cuando no hay nada visible, con sus mismos topes, y la caché de memoria de XP (220 o 1 000) las guarda como a las demás. Son 36
-portadas como mucho por parada; la letra de Spotify no (no es música local).
+portadas como mucho por parada. Recorre **la misma rueda que `GotoLetter`** (`RocolaOsSpotifyCatalogoOrden(LetrasOrden)`, el orden de g46),
+así que adelanta justo las letras a las que lleva REGRESAR+izquierda/derecha: con el modo Spotify y su letra (♫) después de VIDEO, la de al
+lado de VIDEO es ♫ y la de al lado de ♫ son VIDEO y la primera letra con discos; ♫ misma no se adelanta (no es música local) pero tampoco se
+salta; en una pared del buscador (orden vacío), nada. (Arreglo de la revisión, commit `7d5b02c`: antes recorría `LetrasOrden` a secas y, con
+♫ al lado, adelantaba la letra equivocada —la de la estrella o VIDEO, 18 portadas de más en la cola baja— y desde ♫, ninguna.)
 
 ## Antes y después, con la rocola entera
 
@@ -115,14 +133,32 @@ portadas antes de la siguiente; los cuadros, la mediana de los p95 y p99 de cada
 | **Hojear hacia adelante** (ARRIBA cada 1,5 s y un salto de letra cada 8 páginas, 30 pasos; miniaturas guardadas) | base | 2 (60) | 0 / 0 (0), máx. 348 | 696 / 1 617 (11) | 168 / 325 |
 | | xp | 2 (60) | 0 / 0 (0), máx. 458 | 98 / 1 311 (3) | 131 / 216 |
 | | ros | 2 (60) | 0 / 0 (0), máx. 0 | 140 / 1 454 (8) | 131 / 271 |
-| **Hojear sin miniaturas guardadas** (la misma escena; la biblioteca como nueva: `rocola_miniaturas` y las previas apartadas en cada corrida) | base | 4 (120) | 1 300 / 1 723 (51) | 1 300 / 1 744 (52) | 88 / 167 |
+| **Hojear sin miniaturas guardadas** (la primera vez, 20-11-2026; abajo, la repetición; la misma escena; la biblioteca como nueva: `rocola_miniaturas` y las previas apartadas en cada corrida) | base | 4 (120) | 1 300 / 1 723 (51) | 1 300 / 1 744 (52) | 88 / 167 |
 | | xp | 4 (120) | 0 / 1 591 (26) | 132 / 1 591 (27) | 71 / 95 |
 | | **ros** | 4 (121) | **0 / 477** (2) | 51 / 1 320 (12) | 61 / 72 |
 
-Por vuelta, la mediana de «en memoria» sin miniaturas: base 478, 590, 1 541 y 1 064 ms; xp 1 545, 0, 0 y 0; ros 0, 0, 0 y 0 (la carga de la
-máquina al acabar cada una, de 2,8 a 14,8: la vuelta 1 de xp y la 3 de base fueron las de más carga). xp gana sin miniaturas por la lectura
-sin copias de más (en las originales grandes, el p95 de decodificar y reducir baja de 78-86 a 50-54 ms en el banco de abajo); ros, además,
-porque guardar cada miniatura nueva pasa de 38 a 3 ms (g220) y el calentador de miniaturas de XP (el de fondo) acaba antes. Con las
+**La escena sin miniaturas NO es concluyente** (lo vio la revisión). Por vuelta, la mediana de «en memoria» de esa tabla: base 478, 590,
+1 541 y 1 064 ms; xp 1 545, 0, 0 y 0; ros 0, 0, 0 y 0, con la carga de 2,8 a 14,8: dentro de una misma configuración va de 0 a 1 545. Y el
+banco de abajo da casi el mismo frío para base y xp (16,5-17,0 s contra 15,2-15,7 s las 300 portadas: un 5-8 %), así que el «1 300 → 0» de
+base a xp no se le puede achacar a la lectura sin copias de más. Se repitió (21-11-2026, sobre `7d5b02c`, `serie3.sh frio3`, cinco vueltas
+alternadas, la carga de 3,4 a 12,0 —más baja que la primera vez— y contando cuántas miniaturas había hecho la rocola al acabar, lo de la
+página y lo del calentador de fondo de XP):
+
+| Config. | Mediana de «en memoria» por vuelta (ms) | Sin llegar por vuelta (de 30) | Miniaturas hechas en 58 s por vuelta | Todas: p50 / p90 (sin llegar) |
+|---|---|---|---|---|
+| base | 0, 0, 938, 718, 0 | 1, 4, 11, 7, 1 | 612, 614, 571, 590, 629 | 182 / 1 504 (24) |
+| xp | 0, 105, 0, 212, 144 | 0, 5, 0, 1, 0 | 657, 612, 661, 637, 638 | 0 / 1 230 (6) |
+| ros | 0, **1 506**, 0, 0, 0 | 0, **26**, 0, 0, 0 | 698, **448**, 698, 695, 698 | 0 / 1 506 (26) |
+
+Lo que sí se ve: es **de todo o nada**. Si el lector único de XP va por delante del paseo (una página cada 1,5 s, con el colchón de dos
+páginas en la cola baja), cada página llega ya en memoria (0 ms); si se queda atrás al principio (la primera página tardó más), ya no
+alcanza y cada página se ve casi entera sin portadas (≈1,5 s). Por eso las medianas por vuelta saltan de 0 a 1 500 en la misma
+configuración, y cinco vueltas no bastan para separar base de xp: xp hizo un 4-6 % más miniaturas que base en el mismo tiempo (lo mismo que
+dice el banco) y se quedó atrás menos veces, pero no es una diferencia firme. ros hizo 695-698 (lo que pide la escena, o casi) en cuatro
+vueltas de cinco y en ellas fue siempre por delante; en la otra (ros-2: 448, carga 4,5) se quedó atrás desde la segunda
+página; esa vuelta y base-3 (la de base que más se quedó atrás) son las dos únicas de las quince con una «Pantalla parada» al arrancar
+(572 ms en ros-2, en un cuadro de la tarjeta), lo que apunta a la máquina compartida más que al cambio. Lo firme
+es el banco de abajo (guardar 38 → 3,3 ms con las mismas huellas); lo de la rocola entera sin miniaturas, solo una tendencia. Con las
 miniaturas guardadas (las dos primeras escenas) xp y ros solo se separan al saltar de letra (g221).
 
 **Lo que no dicen estos números.** Las «subidas» las manda el regulador de XP con los cuadros de llvmpipe (47-65 ms de trabajo: con más de
@@ -191,7 +227,11 @@ nueva o antes» ni I3). La misma batería sobre la rama principal sola (`424ade7
 capas (`c32.2`, `c46`, `c8`; `s0`...`s8vuelta`; `t1`, `t2`) y los mismos tamaños.
 
 Las pruebas propias de esta rama (`Pruebas/RapidoCaratulas`): `LeeIgual` 15 569 comparaciones, 0 distintas; `PixelesIgual` 1 188, 0
-distintas; las huellas del banco de las portadas, iguales en las seis corridas.
+distintas; las huellas del banco de las portadas, iguales en las seis corridas. Tras los arreglos de la revisión (`7d5b02c`, 21-11-2026):
+`LeeIgual` **21 663, 0 distintas**; `PixelesIgual` **1 200, 0 distintas**; `ganchos.py` TODO BIEN (112 archivos contra `69e6547`). El
+nivel 0 no se volvió a correr: `7d5b02c` solo toca `RocolaOs/` (g221), `Nativo/Imagenes.cs` (un `Stream` con otro largo, que en la rocola no
+llega: las dos llamadas pasan un `MemoryStream`), `Nativo/DatosGrandes.cs` (una marca) y las pruebas; sin `ROCOLA_OS` lo que se pinta es lo
+mismo de `a97c2f4`.
 
 La batería del andamio de Rocola OS (`Pruebas/RocolaOs/andamio/prueba.sh`, NativeAOT del código de esta rama, 21-11-2026; salida en `/root/rocola-trabajo/fase11/rapido-caratulas/andamio.out`): **99 BIEN y 2 MAL de 101**. Los dos MAL son de la prueba, no del programa ni de esta rama: `prueba.sh` (líneas 50 y 59) sigue esperando la base vieja de `ganchos.py` («109 archivos comparados con fc7b667», «NO queda como en fc7b667»), y desde `PORT_xp-1718.md` la base es `69e6547` con 112 archivos (lo mismo que dice el paso «ganchos» del nivel 0, BIEN). Lo demás (la orden, los ajustes de `rocola_os.txt`, las escenas sin la variable, con «0», con «1» y con la función de prueba, los cierres y el apagón), BIEN. No se tocó `prueba.sh` (no es de esta rama): queda para quien la cuide.
 
@@ -202,4 +242,4 @@ La batería del andamio de Rocola OS (`Pruebas/RocolaOs/andamio/prueba.sh`, Nati
 - Las «subidas» con una tarjeta de verdad (aquí las manda llvmpipe).
 - El buscador, la ficha, lo que suena y la cola usan la misma caché de portadas que la pared (`RequestCover`/`LoadCover`/`GetCoverYa`): lo
   hecho les sirve igual, pero no se midieron aparte.
-- Con la letra de Spotify al lado, g221 no adelanta esa (no es música local) ni salta por encima de ella.
+- g221 con la letra de Spotify de verdad (el Soloist falso con discos en ♫): no se corrió; el orden es el mismo código que `GotoLetter` (arriba, §4).
