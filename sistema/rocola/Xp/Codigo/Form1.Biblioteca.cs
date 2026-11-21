@@ -2669,7 +2669,7 @@ namespace Rocola
                             long calidad = MiniaturaCalidadJpeg;   // EN LINUX: ep.Param[0] = new EncoderParameter(Encoder.Quality, MiniaturaCalidadJpeg)
                             Imagenes.GuardaJpeg(thumb, tmp, (int)calidad);   // EN LINUX: thumb.Save(tmp, jpeg, ep): en JPEG con esa calidad (Nativo/Imagenes.cs)
                         }
-                    else Imagenes.GuardaPng(thumb, tmp); // Sin perdida; mismo alfa/aspecto en primera carga y cache.   // EN LINUX: thumb.Save(tmp, ImageFormat.Png)
+                    else RocolaOsGuardaMiniaturaPng(thumb, tmp);   // ROCOLA OS g220: (XP) else thumb.Save(tmp, ImageFormat.Png); // Sin perdida; mismo alfa/aspecto en primera carga y cache. — con Rocola OS la PNG sale con zlib 1 (3 ms en vez de 38, los mismos puntos: RocolaOs/RocolaOs.Caratulas.cs); sin el, Imagenes.GuardaPng como siempre
                     if (File.Exists(destino))
                     {
                         try

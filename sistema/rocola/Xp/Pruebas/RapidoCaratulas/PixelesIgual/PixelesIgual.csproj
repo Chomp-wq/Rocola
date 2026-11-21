@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- PIXELES-IGUAL (rapido-caratulas): Nativo/Pixeles.cs de ahora contra el de la base (copiado por pixelesigual.sh a viejo/, con otro espacio
+       de nombres): Lee y Escribe en los tres formatos, con mapas de muchas clases (opacos, transparentes, a medias, al azar), anchos y trozos;
+       los mismos bytes. Y lo que tarda cada uno (publicar en NativeAOT: la medida que vale). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>disable</Nullable><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization><ImplicitUsings>disable</ImplicitUsings><PublishAot>true</PublishAot><IlcInstructionSet>x86-64-v2,avx</IlcInstructionSet>
+    <Fuente Condition="'$(Fuente)' == ''">$(MSBuildThisFileDirectory)../../..</Fuente>
+    <Viejo Condition="'$(Viejo)' == ''">$(MSBuildThisFileDirectory)viejo</Viejo>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.116.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="**/*.cs" />
+    <Compile Include="Prueba.cs;$(Fuente)/Nativo/Pixeles.cs;$(Viejo)/*.cs" />
+  </ItemGroup>
+</Project>

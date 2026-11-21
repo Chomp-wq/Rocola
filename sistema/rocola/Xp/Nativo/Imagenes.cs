@@ -191,28 +191,94 @@ namespace Rocola.Nativo
         // sus miniaturas). Lo que no es una imagen lanza ArgumentException.
         public static SKBitmap Lee(byte[] datos, out FormatoImagen formato)
         {
-            formato = FormatoImagen.Argb32;
-            try
-            {
-                using (SKCodec codec = SKCodec.Create(new SKMemoryStream(datos)))
-                    if (codec != null)
-                    {
-                        if (codec.EncodedFormat == SKEncodedImageFormat.Gif) formato = FormatoImagen.Paleta8;
-                        else if (codec.Info.AlphaType == SKAlphaType.Opaque) formato = FormatoImagen.Rgb24;
-                    }
-            }
-            catch { }
-            using (SKBitmap b = SKBitmap.Decode(datos))
-            {
-                if (b == null) throw new ArgumentException("no es una imagen");
-                SKBitmap c = new SKBitmap(new SKImageInfo(b.Width, b.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
-                using (SKCanvas cv = new SKCanvas(c)) { cv.Clear(SKColors.Transparent); cv.DrawBitmap(b, 0, 0); }
-                return c;
-            }
+            using (SKData d = SKData.CreateCopy(datos)) return Lee(d, out formato);
         }
+        // (rapido-caratulas, 20-11-2026) La lectura de siempre se hacia con dos decodificadores (uno para el formato y SKBitmap.Decode, que
+        // abre otro) y con dos copias de la imagen entera: la que decodificaba Skia y la que se pintaba encima en BGRA premultiplicado. Y la
+        // de un Stream copiaba los bytes a un MemoryStream que crecia y luego a otro arreglo (ToArray): con una miniatura PNG de 90 KB o una
+        // portada de 2 MB, arreglos del monton de objetos grandes, que solo limpia una recoleccion completa (la que para todos los hilos).
+        // Ahora: un solo decodificador sobre los bytes en memoria nativa (SKData, fuera del recolector) y, si lo que Skia decodifica ya es BGRA
+        // (Bgra8888: JPEG en color, PNG de 8 bits en color o con paleta, GIF; ver LeeDirecto), directo al mapa final, sin la otra copia. Lo
+        // demas (gris, de 16 bits...) como siempre. Los mismos puntos y el mismo formato que antes (Pruebas/RapidoCaratulas: lee-igual).
         public static SKBitmap Lee(Stream s, out FormatoImagen formato)
         {
+            if (s.CanSeek)
+            {
+                long n = s.Length - s.Position;
+                if (n > 0 && n < int.MaxValue)
+                {
+                    using (SKData d = SKData.Create(n))
+                    {
+                        unsafe
+                        {
+                            Span<byte> destino = new Span<byte>((void*)d.Data, (int)n);
+                            int hecho = 0, r;
+                            while (hecho < n && (r = s.Read(destino.Slice(hecho))) > 0) hecho += r;
+                            byte[] uno = new byte[1];
+                            int mas = hecho == n ? s.Read(uno, 0, 1) : 0;
+                            if (hecho == n && mas == 0) return Lee(d, out formato);
+                            // (el Stream dio menos o mas de lo que decia su Length: lo de siempre, CopyTo hasta el final, con lo ya leido delante)
+                            using (MemoryStream ms = new MemoryStream())
+                            {
+                                ms.Write(destino.Slice(0, hecho));
+                                if (mas > 0) { ms.WriteByte(uno[0]); s.CopyTo(ms); }
+                                return Lee(ms.ToArray(), out formato);
+                            }
+                        }
+                    }
+                }
+            }
             using (MemoryStream ms = new MemoryStream()) { s.CopyTo(ms); return Lee(ms.ToArray(), out formato); }
+        }
+        private static SKBitmap Lee(SKData datos, out FormatoImagen formato)
+        {
+            formato = FormatoImagen.Argb32;
+            SKCodec codec = null;
+            try { codec = SKCodec.Create(datos); } catch { codec = null; }
+            try
+            {
+                if (codec != null)
+                {
+                    if (codec.EncodedFormat == SKEncodedImageFormat.Gif) formato = FormatoImagen.Paleta8;
+                    else if (codec.Info.AlphaType == SKAlphaType.Opaque) formato = FormatoImagen.Rgb24;
+                    SKBitmap directo = LeeDirecto(codec);
+                    if (directo != null) return directo;
+                }
+                // lo de siempre: SKBitmap.Decode (con lo que Skia decodifique) y pintado en BGRA premultiplicado. Sin decodificador (no es una
+                // imagen, o esta vacia), lo que lanzaba SKBitmap.Decode(byte[]): ArgumentNullException del decodificador nulo
+                if (codec == null) throw new ArgumentNullException("codec");
+                using (SKBitmap b = SKBitmap.Decode(codec))
+                {
+                    if (b == null) throw new ArgumentException("no es una imagen");
+                    SKBitmap c = new SKBitmap(new SKImageInfo(b.Width, b.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
+                    using (SKCanvas cv = new SKCanvas(c)) { cv.Clear(SKColors.Transparent); cv.DrawBitmap(b, 0, 0); }
+                    return c;
+                }
+            }
+            finally { if (codec != null) codec.Dispose(); }
+        }
+        // Lo que hacia SKBitmap.Decode(codec) (SkiaSharp 3.116: la medida y el tipo de color del decodificador, Unpremul pasa a Premul, sin
+        // espacio de color; vale Success o IncompleteInput) cuando eso ya es Bgra8888, decodificado directo en el mapa BGRA premultiplicado que
+        // salia de pintarlo encima: pintar un Bgra8888 premultiplicado (u opaco) sobre transparente, sin escalar y en un sitio entero, es
+        // copiarlo tal cual. Se decodifica con el MISMO tipo de alfa que pedia Decode (Opaque u Premul): Skia rellena lo que falta de una
+        // imagen cortada con negro opaco si el destino es opaco y con transparente si no (SkCodec::onGetFillValue). Otro tipo de color: null.
+        private static SKBitmap LeeDirecto(SKCodec codec)
+        {
+            SKImageInfo info = codec.Info;
+            if (info.ColorType != SKColorType.Bgra8888 || info.Width <= 0 || info.Height <= 0) return null;
+            SKAlphaType alfa = info.AlphaType == SKAlphaType.Unpremul ? SKAlphaType.Premul : info.AlphaType;
+            if (alfa != SKAlphaType.Opaque && alfa != SKAlphaType.Premul) return null;
+            SKImageInfo pide = new SKImageInfo(info.Width, info.Height, SKColorType.Bgra8888, alfa);   // (sin espacio de color, como Decode)
+            SKBitmap c = new SKBitmap(new SKImageInfo(info.Width, info.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
+            try
+            {
+                if (c.GetPixels() == IntPtr.Zero) { c.Dispose(); return null; }
+                SKCodecResult r = codec.GetPixels(pide, c.GetPixels());
+                if (r != SKCodecResult.Success && r != SKCodecResult.IncompleteInput) { c.Dispose(); return null; }
+                c.NotifyPixelsChanged();
+                return c;
+            }
+            catch { c.Dispose(); throw; }
         }
         // GUARDAR (Image.Save de XP): en JPEG con su calidad (75 la de fabrica del codificador de GDI+) o en PNG
         public static void GuardaJpeg(SKBitmap b, string ruta, int calidad = 75) { using (FileStream fs = File.Create(ruta)) Guarda(b, fs, true, calidad); }

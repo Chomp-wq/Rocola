@@ -346,7 +346,7 @@ namespace Rocola
                 false, 0,
 #endif
                 diskSlow, JpegActivo, CargaTrabajo.Procesadores);
-            for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); }
+            for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); } RocolaOsAdelantaLetras();   // ROCOLA OS g221: (XP) for (int d = 1; d <= colchon; d++) { PrefetchPage(all, page + d); PrefetchPage(all, page - d); } — con Rocola OS, despues de lo de XP, tambien la primera pagina de la letra de antes y de la de despues (a donde lleva REGRESAR con izquierda o derecha), en la fila baja (RocolaOs/RocolaOs.Caratulas.cs; sin el, nada)
         }
 
         // PAGINAS DE COLCHON (peticion del 13-10-2026: que los perfiles aprovechen el JPEG). Una miniatura JPEG pesa unas
@@ -596,7 +596,7 @@ namespace Rocola
                     {
                         identidadAntes = ThumbCachePath(key);
 #if ROCOLA_GPU
-                        if (gpuEnabled) thumb = DecodeCoverForPublication(key, identidadAntes, out miniaturaParaGuardar);
+                        if (gpuEnabled) thumb = RocolaOsDecodificaPortada(key, identidadAntes, out miniaturaParaGuardar);   // ROCOLA OS g224: (XP) if (gpuEnabled) thumb = DecodeCoverForPublication(key, identidadAntes, out miniaturaParaGuardar); — con Rocola OS y portadas_dos_lectores=1, abre el segundo lector si la portada es de la original y lo que se ve tiene mas esperando, y el lector que pasa de los de XP decodifica a nice 19 (RocolaOs/RocolaOs.Caratulas.cs); si no, DecodeCoverForPublication como siempre
                         else
 #endif
                         thumb = DecodeCoverWithIdentity(key, identidadAntes);
@@ -973,7 +973,7 @@ namespace Rocola
                 try
                 {
                     using (MemoryStream ms = new MemoryStream(data, 0, largo, false))
-                    using (SKBitmap src = Imagenes.Lee(ms, out FormatoImagen formatoSrc))   // EN LINUX: Image.FromStream(ms, false, false): los puntos y el formato que diria GDI+ (un JPEG o un PNG sin alfa, de 24 bits; un GIF, de paleta; con alfa, de 32 bits con alfa)
+                    using (SKBitmap src = RocolaOsLeeOriginal(ms, data, largo, ThumbPx, out FormatoImagen formatoSrc))   // ROCOLA OS g222: (XP) using (Image src = Image.FromStream(ms, false, false)) — con Rocola OS y portadas_dct=1, una JPEG grande sale ya reducida por la escala DCT (los dos lados en al menos el doble de la miniatura) y sigue por lo de XP; si no, Imagenes.Lee como siempre (RocolaOs/RocolaOs.Caratulas.cs)
                     {
                         SKBitmap thumb = null;   // EN LINUX: un SKBitmap
                         try

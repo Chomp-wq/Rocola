@@ -20,8 +20,24 @@ namespace Rocola.Nativo
         public static SKBitmap Copia(SKBitmap b, Rectangle r)
         {
             SKBitmap c = new SKBitmap(new SKImageInfo(r.Width, r.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
+            if (CopiaDirecta(b, r, c)) return c;
             using (SKCanvas cv = new SKCanvas(c)) { cv.Clear(SKColors.Transparent); cv.DrawBitmap(b, new SKRect(r.Left, r.Top, r.Right, r.Bottom), new SKRect(0, 0, r.Width, r.Height)); }
             return c;
+        }
+        // (rapido-caratulas, 20-11-2026) Pintar un trozo de un BGRA premultiplicado del mismo tamano en otro (sin escalar, en sitios enteros y
+        // todo dentro) sobre transparente es copiar sus bytes: fila a fila, sin lienzo. Cualquier otro caso (otro formato, un trozo que se sale),
+        // pintado como siempre. Los mismos puntos (Pruebas/RapidoCaratulas: lee-igual).
+        private static unsafe bool CopiaDirecta(SKBitmap b, Rectangle r, SKBitmap c)
+        {
+            if (b == null || b.ColorType != SKColorType.Bgra8888 || b.AlphaType != SKAlphaType.Premul) return false;
+            if (r.Width <= 0 || r.Height <= 0 || r.X < 0 || r.Y < 0 || r.Right > b.Width || r.Bottom > b.Height) return false;
+            byte* o = (byte*)b.GetPixels(), d = (byte*)c.GetPixels();
+            if (o == null || d == null) return false;
+            int ro = b.RowBytes, rd = c.RowBytes; long fila = (long)r.Width * 4;
+            for (int y = 0; y < r.Height; y++)
+                Buffer.MemoryCopy(o + (long)(r.Y + y) * ro + (long)r.X * 4, d + (long)y * rd, rd, fila);
+            c.NotifyPixelsChanged();
+            return true;
         }
     }
 
