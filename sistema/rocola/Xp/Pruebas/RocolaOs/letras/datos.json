@@ -1,0 +1,37 @@
+{
+ "llave": "llave-falsa-de-genius-0123456789",
+ "lrclib": {
+  "Amor de Prueba|Los Probados": {
+   "synced": "[ti:Amor de Prueba]\n[ar:Los Probados]\n[00:00.00]verso inventado numero 0\n[00:02.00]verso inventado numero 1\n[00:04.00]verso inventado numero 2\n[00:06.00]verso inventado numero 3\n[00:08.00]verso inventado numero 4\n[00:10.00]verso inventado numero 5\n[00:12.00]verso inventado numero 6\n[00:14.00]verso inventado numero 7\n[00:16.00]verso inventado numero 8\n[00:18.00]verso inventado numero 9\n[00:20.00]\n",
+   "plain": "verso inventado numero 0\nverso inventado numero 1\nverso inventado numero 2\nverso inventado numero 3\nverso inventado numero 4\nverso inventado numero 5\nverso inventado numero 6\nverso inventado numero 7\nverso inventado numero 8\nverso inventado numero 9"
+  },
+  "Solo Texto|Los Probados": {
+   "synced": null,
+   "plain": "primer renglon sin tiempos\nsegundo renglon sin tiempos"
+  },
+  "Doble Tiempo|Los Probados": {
+   "synced": "[offset:+500]\n[00:01.00][00:09.00]estribillo repetido\n[00:05.00]verso del medio\n",
+   "plain": null
+  }
+ },
+ "genius": {
+  "bajo la lluvia por la avenida": [
+   [
+    "Lluvia Inventada",
+    "Los Probados"
+   ],
+   [
+    "Tema Tema de Mentira",
+    "Los Inventados"
+   ],
+   [
+    "Cancion Desconocida (En Vivo)",
+    "Nadie Conocido"
+   ],
+   [
+    "Lluvia Inventada (Remix)",
+    "Los Probados"
+   ]
+  ]
+ }
+}

@@ -99,7 +99,7 @@ namespace Rocola
                 // (revision del asistente) lo contestado de memoria (lo mismo escrito otra vez, o AL VOLVER de una pared o de un disco) tambien
                 // cuenta en la casilla: XP acaba de poner solo los suyos y, con todo de Spotify, decia «Sin resultados» encima de las tarjetas
                 List<SearchItem> m = RocolaOsSpotifyCatalogoMezcla(res, b);
-                CuentaResultados(consulta, (lastMatches != null ? lastMatches.Count : 0) + m.Count - res.Count);
+                CuentaResultados(consulta, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas + m.Count - res.Count);   // (letras: + las de la letra que g114 metio en res)
                 return m;
             }
             RocolaOsSpotifyCatalogoApi.Busca(q, delegate (object r, string error)
@@ -140,7 +140,7 @@ namespace Rocola
                 if (n >= 0) searchOverlay.SelResult = n;
             }
             searchOverlay.Results = m;
-            CuentaResultados(rocolaOsSpEscrito, (lastMatches != null ? lastMatches.Count : 0) + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
+            CuentaResultados(rocolaOsSpEscrito, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
             searchOverlay.DatosVer++;   // (la cache de las tarjetas se rehace: la consulta es la misma)
             searchOverlay.Invalidate();
             RocolaOsSpotifyCatalogoApi.PideEstado();
@@ -151,10 +151,16 @@ namespace Rocola
             Dictionary<string, SearchItem> mas;
             RocolaOsSpotifyParedesArtistas(b, out artistas, out mas);   // (RocolaOs.SpotifyCatalogoParedes.cs)
             List<SearchItem> sp = new List<SearchItem>();
+            // (letras, revision) las de Spotify que ya van en la lista (las tarjetas de Genius, g114): no otra vez
+            HashSet<string> yaVan = null;
+            foreach (SearchItem it in xp)
+                if (it != null && it.Kind == 2 && it.TrackRef != null && it.TrackRef.Path != null && it.TrackRef.Path.StartsWith("spotify:", StringComparison.Ordinal))
+                    (yaVan ?? (yaVan = new HashSet<string>(StringComparer.Ordinal))).Add(it.TrackRef.Path);
             int n = 0;
             foreach (RocolaOsSpotifyCatalogoCancion c in b.Canciones)
             {
                 if (n >= 8) break;
+                if (yaVan != null && c != null && c.Uri != null && yaVan.Contains(c.Uri)) continue;
                 Album a = RocolaOsSpotifyCatalogoDiscoDe(c);
                 Track t = RocolaOsSpotifyCatalogoPista(c);
                 sp.Add(new SearchItem { Kind = 2, Display = (c.Artista.Length > 0 ? c.Artista + " - " : "") + c.Titulo, Key = "", AlbumRef = a, TrackRef = t });
