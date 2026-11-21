@@ -115,7 +115,15 @@ portadas antes de la siguiente; los cuadros, la mediana de los p95 y p99 de cada
 | **Hojear hacia adelante** (ARRIBA cada 1,5 s y un salto de letra cada 8 páginas, 30 pasos; miniaturas guardadas) | base | 2 (60) | 0 / 0 (0), máx. 348 | 696 / 1 617 (11) | 168 / 325 |
 | | xp | 2 (60) | 0 / 0 (0), máx. 458 | 98 / 1 311 (3) | 131 / 216 |
 | | ros | 2 (60) | 0 / 0 (0), máx. 0 | 140 / 1 454 (8) | 131 / 271 |
-TABLA_FRIO
+| **Hojear sin miniaturas guardadas** (la misma escena; la biblioteca como nueva: `rocola_miniaturas` y las previas apartadas en cada corrida) | base | 4 (120) | 1 300 / 1 723 (51) | 1 300 / 1 744 (52) | 88 / 167 |
+| | xp | 4 (120) | 0 / 1 591 (26) | 132 / 1 591 (27) | 71 / 95 |
+| | **ros** | 4 (121) | **0 / 477** (2) | 51 / 1 320 (12) | 61 / 72 |
+
+Por vuelta, la mediana de «en memoria» sin miniaturas: base 478, 590, 1 541 y 1 064 ms; xp 1 545, 0, 0 y 0; ros 0, 0, 0 y 0 (la carga de la
+máquina al acabar cada una, de 2,8 a 14,8: la vuelta 1 de xp y la 3 de base fueron las de más carga). xp gana sin miniaturas por la lectura
+sin copias de más (en las originales grandes, el p95 de decodificar y reducir baja de 78-86 a 50-54 ms en el banco de abajo); ros, además,
+porque guardar cada miniatura nueva pasa de 38 a 3 ms (g220) y el calentador de miniaturas de XP (el de fondo) acaba antes. Con las
+miniaturas guardadas (las dos primeras escenas) xp y ros solo se separan al saltar de letra (g221).
 
 **Lo que no dicen estos números.** Las «subidas» las manda el regulador de XP con los cuadros de llvmpipe (47-65 ms de trabajo: con más de
 30 ms el regulador se pone «bajo presión» y deja una portada visible cada 66 ms), así que aquí casi todo lo que tarda una página después de
@@ -124,7 +132,22 @@ de allí es «en memoria»: lo que tarda el lector.
 
 ## Banco de las portadas (sin la pantalla)
 
-TABLA_BANCO
+`bancos.sh 2` (en `/root/rocola-trabajo/fase11/rapido-caratulas`): `rocola-xp --banco-caratulas` con 300 portadas de la biblioteca
+inventada (la muestra fija `muestra300.txt`), NativeAOT, en **un** núcleo (`taskset -c 1`), dos vueltas alternadas de las tres
+configuraciones; «frío»: sin miniatura (decodificar la original, reducirla, la previa, los tonos y guardar la PNG); «guardada»: con la
+miniatura guardada y sacada de la caché del sistema. Carga de la máquina antes de cada corrida: 6,9 a 10,8. En ms por portada (p50 / p95, y
+la suma de las 300 en s):
+
+| Modo | Parte | base (vuelta 1 · 2) | xp (1 · 2) | ros (1 · 2) |
+|---|---|---|---|---|
+| frío | decodificar y reducir | 7,3 / 77,8 · 7,5 / 86,0 | 6,5 / 54,1 · 6,2 / 50,4 | 6,4 / 54,8 · 6,3 / 52,3 |
+| frío | guardar la miniatura | 37,7 / 46,9 · 38,3 / 46,1 | 38,6 / 47,1 · 38,1 / 45,3 | **3,3 / 4,1 · 3,4 / 4,3** |
+| frío | **total** | 46,9 / 113,5 (16,5 s) · 48,1 / 124,5 (17,0 s) | 47,1 / 92,2 (15,7 s) · 45,8 / 87,5 (15,2 s) | **10,0 / 58,4 (5,0 s) · 10,3 / 56,0 (5,1 s)** |
+| guardada | total | 2,25 / 5,16 (0,76 s) · 1,76 / 2,24 (0,55 s) | 1,67 / 2,32 (0,55 s) · 1,59 / 2,67 (0,55 s) | 1,76 / 2,02 (0,54 s) · 1,78 / 2,44 (0,59 s) |
+
+**Las huellas** (de cada portada: la miniatura, la previa de 32 px, los tonos y la paleta; y en «guardada», lo leído de la miniatura) de
+las seis corridas, **iguales** a las de base-1 en los dos modos (sin la columna del archivo guardado, que en ros es otro PNG con los mismos
+puntos).
 
 ## Lo que se probó y no ganó (y no se dejó)
 
@@ -147,7 +170,30 @@ TABLA_BANCO
 
 ## Las comprobaciones
 
-COMPROBACIONES
+`nivel0.sh` entero sobre `a97c2f4` (el código de esta rama; después solo cambió este documento, los guiones y un comentario), 89 min con la
+carga de la máquina de 8 a 10 (en `/root/rocola-trabajo/fase11/rapido-caratulas/n0`, resumen en `n0.out`): **16 BIEN, 5 ACEPTADO, 4 MAL**.
+
+| Paso | Resultado |
+|---|---|
+| código | BIEN: 112 archivos con las mismas líneas, CRLF y último byte que en `69e6547` |
+| `ganchos.py` | BIEN: TODO BIEN, 51 ganchos en 19 archivos (g220 y g221 los de esta rama) |
+| `diff-xp.py --sin-ganchos` | BIEN: 5 135 líneas quitadas, 4 868 puestas y 229 sin marca, **las mismas que la base** |
+| compilar JIT | BIEN: 0 errores, 13 avisos, los de `avisos-base.txt` (0 nuevos) |
+| NativeAOT | BIEN: 0 avisos IL/AOT (14 MB) |
+| banco del dibujo (semillas 7, 11 y 5) | BIEN: IGUAL las tres (3 000 líneas cada una) |
+| cintas de la tarjeta | BIEN: 29 iguales (6 616 cuadros), 0 distintas |
+| recorridos | 9 de 9 salieron con 0; atracción, botones y video BIEN; ayuda, buscador, hojas, pared y pared2 ACEPTADO (lo de siempre: las texturas de la hora y el ritmo, y la hoja de Sonido con lo que lleva medido el repaso); **ctrlf3 MAL** (5 capas de la hoja de Sonido) |
+| escenas NativeAOT | arranque, cierreq, kill9, buscador y f12 IGUAL; **f3vistas y f3teclas MAL** (la capa de la hoja de Sonido y `rocola_config.txt`) |
+
+**Los MAL no son de esta rama:** son los de la rama principal desde los cambios de XP del 17 y 18-11-2026 (`PORT_xp-1718.md`: Ctrl+F3 ->
+Sonido ya no es el de la copia congelada de la referencia, `aef2211`: el modo noche con sus graves, el botón del ecualizador, sin «Presencia
+nueva o antes» ni I3). La misma batería sobre la rama principal sola (`424ade7`, que solo difiere de `85c931b` en `AGENTS.md`; la corrió otra rama en `/root/rocola-trabajo/fase11/junta-segunda/n0base`) da los mismos MAL con las mismas
+capas (`c32.2`, `c46`, `c8`; `s0`...`s8vuelta`; `t1`, `t2`) y los mismos tamaños.
+
+Las pruebas propias de esta rama (`Pruebas/RapidoCaratulas`): `LeeIgual` 15 569 comparaciones, 0 distintas; `PixelesIgual` 1 188, 0
+distintas; las huellas del banco de las portadas, iguales en las seis corridas.
+
+La batería del andamio de Rocola OS (`Pruebas/RocolaOs/andamio/prueba.sh`, NativeAOT del código de esta rama, 21-11-2026; salida en `/root/rocola-trabajo/fase11/rapido-caratulas/andamio.out`): **99 BIEN y 2 MAL de 101**. Los dos MAL son de la prueba, no del programa ni de esta rama: `prueba.sh` (líneas 50 y 59) sigue esperando la base vieja de `ganchos.py` («109 archivos comparados con fc7b667», «NO queda como en fc7b667»), y desde `PORT_xp-1718.md` la base es `69e6547` con 112 archivos (lo mismo que dice el paso «ganchos» del nivel 0, BIEN). Lo demás (la orden, los ajustes de `rocola_os.txt`, las escenas sin la variable, con «0», con «1» y con la función de prueba, los cierres y el apagón), BIEN. No se tocó `prueba.sh` (no es de esta rama): queda para quien la cuide.
 
 ## Lo no probado
 
