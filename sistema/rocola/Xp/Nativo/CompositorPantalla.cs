@@ -46,7 +46,15 @@ namespace Rocola
         private readonly uint fboPantalla;
         private readonly int ancho, alto;
         private uint programa; private int lugarM, lugarA, lugarS, lugarRgba;
-        private sealed class CapaGl { internal uint Tex; internal int Version = -1, W, H; internal bool Vista; }
+        private sealed class CapaGl { internal uint Tex; internal int Version = -1, W, H; internal bool Vista;
+#if RAPIDO_GENERAL_PRUEBA
+            internal bool Saltada;   // (pruebas) el cuadro anterior en que se vio se salto (vacia o tapada)
+#endif
+        }
+#if RAPIDO_GENERAL_PRUEBA
+        internal static readonly bool Rompe = Environment.GetEnvironmentVariable("ROCOLA_MIDE_ROMPE") == "1";
+        internal static int Vuelven, VuelvenSubidas;   // (pruebas) capas saltadas que vuelven a componerse, y de esas las que se subieron al volver
+#endif
         private readonly Dictionary<object, CapaGl> capas = new Dictionary<object, CapaGl>();
         private readonly List<KeyValuePair<double, string>> capturas = new List<KeyValuePair<double, string>>();
         private readonly bool saleTrasCapturas;
@@ -249,7 +257,13 @@ namespace Rocola
                 if (!todo && (i < tapa || (!c.DeTextura && c.Vacia)))
                 {
                     CapaGl q;
-                    if (!c.DeTextura && c.Clave != null && capas.TryGetValue(c.Clave, out q)) q.Vista = true;
+                    if (!c.DeTextura && c.Clave != null && capas.TryGetValue(c.Clave, out q))
+                    {
+                        q.Vista = true;
+#if RAPIDO_GENERAL_PRUEBA
+                        q.Saltada = true;
+#endif
+                    }
                     continue;
                 }
                 if (c.DeTextura)
@@ -272,6 +286,10 @@ namespace Rocola
                 CapaGl g;
                 if (!capas.TryGetValue(c.Clave, out g)) { g = new CapaGl(); capas[c.Clave] = g; }
                 g.Vista = true;
+#if RAPIDO_GENERAL_PRUEBA
+                if (g.Saltada) { g.Saltada = false; Vuelven++; if (g.Version != c.Version || g.W != mapa.Width || g.H != mapa.Height) VuelvenSubidas++; }
+                if (Rompe && g.Tex != 0) { g.Version = c.Version; }   // (control negativo: ROCOLA_MIDE_ROMPE=1 nunca vuelve a subir una capa ya subida)
+#endif
                 if (g.Version != c.Version || g.W != mapa.Width || g.H != mapa.Height) Sube(mapa, g);
                 g.Version = c.Version;
                 GL.Enable(GL.BLEND); GL.BlendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);

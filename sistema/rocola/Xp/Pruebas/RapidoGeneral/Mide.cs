@@ -6,8 +6,10 @@
 //   arranque  ms_desde_el_proceso  (al llamar a Arranca: la rocola construida, antes de ensenarse)
 //   primer    ms_desde_el_proceso  (el primer cuadro presentado)
 //   lista     ms_desde_el_proceso  canciones discos   (la biblioteca publicada: ya se puede pedir)
-//   compara N M D  (con ROCOLA_MIDE_COMPARA=K: cada K cuadros la pantalla compuesta como antes de rapido-general, con todas las capas, contra
-//                  la de ahora: N cuadros comparados, M distintos, D el mayor numero de puntos distintos en uno)
+//   compara N M D vuelven= subidas= comparadas_al_volver=  (con ROCOLA_MIDE_COMPARA=K: cada K cuadros, y en cada cuadro en que una capa
+//                  que se salto vuelve a componerse, la pantalla compuesta como antes de rapido-general -aparte: ComponeReferencia, su framebuffer y
+//                  sus texturas-, contra la de ahora: N cuadros comparados, M distintos, D el mayor numero de puntos distintos en uno; las capas
+//                  saltadas que volvieron, las que se subieron al volver y en cuantos cuadros de esos se comparo)
 //   tramo NOMBRE cuadros p50 p95 p99 max medio procP50 presP50 h50 h100 gc0 gc1 gc2 MB_nuevos_pantalla KB_por_cuadro MB_nuevos_todos cpu%_nucleo hilos...
 using System;
 using System.Collections.Generic;
@@ -42,7 +44,7 @@ namespace Rocola
         private readonly List<KeyValuePair<double, string>> mgTramos = new List<KeyValuePair<double, string>>();
         private readonly List<double> mgCosteTodo = new List<double>(), mgCosteAhora = new List<double>();
         private int mgRep, mgSinRep;
-        private int mgComparados, mgDistintos, mgPeor; private int mgSig; private string mgNombre; private long mgAllocUi, mgAllocTodo; private bool mgPrimer, mgLista, mgEnchufada;
+        private int mgComparados, mgDistintos, mgPeor, mgComparadosVuelta; private int mgSig; private string mgNombre; private long mgAllocUi, mgAllocTodo; private bool mgPrimer, mgLista, mgEnchufada;
         private static double MgDesdeProceso()
         {
             try { using (Process p = Process.GetCurrentProcess()) return (DateTime.Now - p.StartTime).TotalMilliseconds; } catch { return -1; }
@@ -77,10 +79,13 @@ namespace Rocola
             int k;
             if (int.TryParse(Environment.GetEnvironmentVariable("ROCOLA_MIDE_COMPARA") ?? "", out k) && k > 0)
             {
-                int cuenta = 0;
+                int cuenta = 0, vueltas = 0;
                 CompositorPantalla.Prueba = delegate (CompositorPantalla comp, List<CapaPantalla> lista)
                 {
-                    if (++cuenta % k != 0) return;
+                    // cada K cuadros, y SIEMPRE en el cuadro en que una capa que se salto vuelve a componerse (el caso de «volver a verse y subir»)
+                    bool vuelve = CompositorPantalla.Vuelven != vueltas; vueltas = CompositorPantalla.Vuelven;
+                    if (vuelve) mgComparadosVuelta++;
+                    if (++cuenta % k != 0 && !vuelve) return;
                     byte[] a = comp.LeePantalla(); byte[] b = comp.ComponeReferencia(lista);   // (la de antes, aparte: su framebuffer y sus texturas)
                     int d = 0; for (int i = 0; i < a.Length; i += 4) if (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2] || a[i + 3] != b[i + 3]) d++;
                     mgComparados++; if (d > 0) { mgDistintos++; if (d > mgPeor) mgPeor = d; lock (mgLog) mgLog.WriteLine("distinto\t" + PantallaRocola.AhoraMs.ToString("0", mgc) + "\t" + d); }
@@ -191,7 +196,7 @@ namespace Rocola
         private void MgCierra()
         {
             if (mgLog == null) return;
-            try { MgCierraTramo(); if (mgCosteTodo.Count > 0) { mgCosteTodo.Sort(); mgCosteAhora.Sort(); mgLog.WriteLine("coste\tantes p50=" + mgCosteTodo[mgCosteTodo.Count / 2].ToString("0.00", mgc) + " p90=" + mgCosteTodo[mgCosteTodo.Count * 9 / 10].ToString("0.00", mgc) + "\tahora p50=" + mgCosteAhora[mgCosteAhora.Count / 2].ToString("0.00", mgc) + " p90=" + mgCosteAhora[mgCosteAhora.Count * 9 / 10].ToString("0.00", mgc) + "\tn=" + mgCosteTodo.Count); } if (mgComparados > 0) mgLog.WriteLine("compara\t" + mgComparados + "\t" + mgDistintos + "\t" + mgPeor); mgLog.WriteLine("cierre\t" + MgDesdeProceso().ToString("0", mgc)); mgLog.Dispose(); } catch { }
+            try { MgCierraTramo(); if (mgCosteTodo.Count > 0) { mgCosteTodo.Sort(); mgCosteAhora.Sort(); mgLog.WriteLine("coste\tantes p50=" + mgCosteTodo[mgCosteTodo.Count / 2].ToString("0.00", mgc) + " p90=" + mgCosteTodo[mgCosteTodo.Count * 9 / 10].ToString("0.00", mgc) + "\tahora p50=" + mgCosteAhora[mgCosteAhora.Count / 2].ToString("0.00", mgc) + " p90=" + mgCosteAhora[mgCosteAhora.Count * 9 / 10].ToString("0.00", mgc) + "\tn=" + mgCosteTodo.Count); } if (mgComparados > 0) mgLog.WriteLine("compara\t" + mgComparados + "\t" + mgDistintos + "\t" + mgPeor + "\tvuelven=" + CompositorPantalla.Vuelven + "\tsubidas=" + CompositorPantalla.VuelvenSubidas + "\tcomparadas_al_volver=" + mgComparadosVuelta); mgLog.WriteLine("cierre\t" + MgDesdeProceso().ToString("0", mgc)); mgLog.Dispose(); } catch { }
             mgLog = null;
         }
     }
