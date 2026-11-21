@@ -135,6 +135,15 @@ if [[ " $partes " == *" clima "* ]]; then
   # E: ROCOLA_CLIMA forzado: sin pedir nada
   corre clima-forzado "$prog" 12 "$DATOS0" ROCOLA_OS=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA="tormenta,90,12,30,180,15" ROCOLA_CLIMA_API=$SINRED ROCOLA_CIUDAD="$CIUDAD"; espera clima-forzado
   si "ROCOLA_CLIMA=tormenta: el clima del cielo forzado y sin pedirlo" bash -c "grep -q 'el clima del cielo: tormenta (forzado)' '$(bit clima-forzado)' && ! grep -q 'no se pudo pedir el clima' '$(bit clima-forzado)'"
+  # F: la funcion «cielo» encendida pero sin ninguna idea que use el sol (DN1-DN6 y VI5 en 0) y sin el clima, con ciudad_bar=0: no se pide el
+  # lugar por internet (nadie lo usaria)
+  falso clima-sinlugar --codigo 3 --nubes 50
+  mkdir -p "$W/clima-sinlugar"; copia "$DATOS0" "$W/clima-sinlugar/datos"
+  printf 'cielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\nvidrio_luz=0\nclima=0\nciudad_bar=0\n' > "$W/clima-sinlugar/datos/rocola_os.txt"
+  corre clima-sinlugar "$prog" 16 "=$W/clima-sinlugar/datos" ROCOLA_OS=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA_API=http://127.0.0.1:$P ROCOLA_LUGAR_API=http://127.0.0.1:$P/lugar; espera clima-sinlugar
+  kill $FALSO 2>/dev/null; wait $FALSO 2>/dev/null
+  si "sin ideas que usen el sol ni el clima: el cielo arranca y no se pide el lugar ni el clima" \
+     bash -c "grep -q '\\[cielo\\] arranca' '$(bit clima-sinlugar)' && ! grep -q . '$W/clima-sinlugar/peticiones.txt'"
 fi
 
 # ---------------------------------------------------------------- apagado y noche (las cintas)

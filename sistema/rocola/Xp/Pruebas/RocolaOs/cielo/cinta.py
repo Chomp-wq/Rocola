@@ -32,15 +32,16 @@ def lee(ruta):
 # LOS COLORES de los dibujos que tocan los ganchos del nucleo y no son el degradado: la nebulosa y la via lactea (DrawQuads: g124/g125), las
 # estrellas (DrawStars: g126/g127) y la aurora con su raya (DrawMeshAdd: g128). Sus vertices (28 bytes: x, y, z, rhw, color ARGB, u, v) van
 # tras la textura (8 bytes, si la hay), el modo (4) y el arreglo (largo y cuantos triangulos, 8). Se compara el conjunto de colores RGB (sin alfa)
-# y el alfa medio de cada uno: las estrellas y la aurora titilan y se mueven con el reloj (que no es el mismo en dos corridas), asi que su alfa
-# medio se compara con tolerancia y su RGB por lo que comparten (la aurora fluye: el suyo no se compara). Ademas, «Raya»: los vertices de la
-# aurora en la franja de la raya del horizonte (los 45 px de abajo de cada malla: la raya, su resplandor de 34 px y los 11 de abajo), con su
-# color medio (R, G, B) a 4 niveles y su alfa medio al 8 %: es lo que cambia DN5 (el color medio de la raya pasa de 118/83/202 a 171/162/210
-# a las 13:00).
+# y el alfa medio de cada uno. Las estrellas titilan y la aurora fluye y entra poco a poco al arrancar (por cuadros: con la maquina cargada, la
+# misma ventana de 1,5 s la agarra en otro punto), asi que de ellas solo se compara lo grueso: el alfa medio de las estrellas al 12 % (de dia,
+# con DN1, cae de 135 a 5) y el de la aurora a la mitad, sin sus RGB. Ademas, «Raya»: los vertices de la aurora en la franja de la raya del
+# horizonte (los 45 px de abajo de cada malla: la raya, su resplandor de 34 px y los 11 de abajo), con su color medio (R, G, B) a 8 niveles:
+# es lo que cambia DN5 (el color medio de la raya pasa de 118/83/202 a 171/162/210 a las 13:00; entre dos corridas de XP, hasta 6).
+# La nebulosa y la via lactea (DrawQuads) no se mueven: sus colores, los mismos, y su alfa medio al 3 %.
 COLORES = {14: (True, 'DrawQuads'), 8: (True, 'DrawStars'), 11: (False, 'DrawMeshAdd')}
-TOLERA_ALFA = {'DrawQuads': 0.03, 'DrawStars': 0.12, 'DrawMeshAdd': 0.12, 'Raya': 0.08}   # (relativa, del alfa medio)
-COMPARTE_RGB = {'DrawQuads': 1.0, 'DrawStars': 0.95, 'DrawMeshAdd': 0.0, 'Raya': 0.0}    # (lo que deben compartir los conjuntos RGB: 1 = los mismos)
-TOLERA_MEDIO = 4.0                                                                       # (el color medio de la raya, en niveles)
+TOLERA_ALFA = {'DrawQuads': 0.03, 'DrawStars': 0.12, 'DrawMeshAdd': 0.5, 'Raya': 0.5}   # (relativa, del alfa medio)
+COMPARTE_RGB = {'DrawQuads': 1.0, 'DrawStars': 0.0, 'DrawMeshAdd': 0.0, 'Raya': 0.0}    # (lo que deben compartir los conjuntos RGB: 1 = los mismos)
+TOLERA_MEDIO = 8.0                                                                       # (el color medio de la raya, en niveles)
 RAYA_PX = 45
 def colores(metodo, args, rgb, alfa, medio):
     con_tex, nom = COLORES[metodo]
@@ -59,6 +60,20 @@ def colores(metodo, args, rgb, alfa, medio):
             c = struct.unpack_from('<I', args, o + k * 28 + 16)[0]
             alfa['Raya'].append(c >> 24); rgb['Raya'].add(c & 0xFFFFFF)
             medio[0] += (c >> 16) & 255; medio[1] += (c >> 8) & 255; medio[2] += c & 255; medio[3] += 1
+
+# LA FORMA de un cuadro: sus llamadas en orden, sin las mallas sumadas (DrawMeshAdd) que van despues de las primeras estrellas: los destellos y
+# brillos de la estrella y del pulido de XP (PulidoGpu, Estrella3dGpu, el reflejo) salen a ratos por su reloj, y con la maquina cargada dos
+# corridas no los agarran en los mismos cuadros (las dos de la aurora y su raya van antes y si cuentan); y con ellos una pasada mas de
+# estrellas: dos llamadas iguales seguidas cuentan como una
+def forma(c):
+    out, estrellas = [], False
+    for (m, f) in c:
+        if m == 8: estrellas = True
+        if m == 11 and estrellas: continue
+        n = NOMBRES.get(m, str(m))
+        if out and out[-1] == n: continue
+        out.append(n)
+    return ' '.join(out)
 
 def resume(ruta):
     rgb = collections.defaultdict(set); alfa = collections.defaultdict(list); medio = [0, 0, 0, 0]
@@ -86,7 +101,7 @@ def resume(ruta):
     disp = max(cuadros, key=lambda k: len(cuadros[k]))
     cs = cuadros[disp]
     cielos = collections.Counter(f for c in cs for (m, f) in c if m in CIELO)
-    formas = collections.Counter(' '.join(NOMBRES.get(m, str(m)) for (m, f) in c) for c in cs)
+    formas = collections.Counter(forma(c) for c in cs)
     col = {nom: {'rgb': sorted(rgb[nom]), 'alfa': round(sum(alfa[nom]) / len(alfa[nom]), 2)} for nom in rgb if alfa[nom]}
     if medio[3] and 'Raya' in col: col['Raya']['medio'] = [round(x / medio[3], 1) for x in medio[:3]]
     return {'cuadros': len(cs), 'cielos': dict(cielos), 'formas': len(formas), 'forma_comun': formas.most_common(1)[0][0], 'formas_todas': dict(formas),
@@ -118,7 +133,9 @@ if __name__ == '__main__':
         if a['cuadros'] == 0 or b['cuadros'] == 0: mal.append('sin cuadros (%d y %d)' % (a['cuadros'], b['cuadros']))
         else:
             if set(a['cielos']) != set(b['cielos']): mal.append('los degradados del cielo no son los mismos: %s / %s' % (sorted(a['cielos']), sorted(b['cielos'])))
-            if a['forma_comun'] != b['forma_comun']: mal.append('la forma del cuadro mas comun no es la misma:\n  %s\n  %s' % (a['forma_comun'], b['forma_comun']))
+            # (con la maquina cargada la ventana de 1,5 s agarra pocos cuadros, y un dibujo que sale de vez en cuando, como una malla mas de la
+            # aurora, cambia cual es la mas comun: vale si la mas comun de una tambien sale en la otra)
+            if a['forma_comun'] != b['forma_comun'] and a['forma_comun'] not in b['formas_todas'] and b['forma_comun'] not in a['formas_todas']: mal.append('la forma del cuadro mas comun no es la misma:\n  %s\n  %s' % (a['forma_comun'], b['forma_comun']))
             soloA = set(a['formas_todas']) - set(b['formas_todas']); soloB = set(b['formas_todas']) - set(a['formas_todas'])
         print('cuadros %d y %d; degradados del cielo distintos: %d y %d (%s); formas de cuadro: %d y %d' % (a['cuadros'], b['cuadros'], len(a['cielos']), len(b['cielos']),
               ', '.join(sorted(a['cielos'])), a['formas'], b['formas']))
