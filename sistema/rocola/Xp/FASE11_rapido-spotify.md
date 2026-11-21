@@ -63,6 +63,28 @@ carga de la máquina (1 min) **entre 5 y 15** con otros agentes compilando: los 
 | mezcla: hueco de una de XP a una de Spotify | 2191 [2092-2219] n3 | 1627 [1550-1680] n3 | lo mismo, desde una de XP |
 | suena/mezcla: lo oído de cada canción | 8000 y 6000 ms enteras | 8000 y 6000 ms enteras | (nada se pierde: el play adelantado no se come el principio) |
 
+**El último programa (`fin3`) contra la base, 21-11-2026** (`medidas-025719.txt`, 2 vueltas alternadas, con la máquina MUY cargada: carga
+de 10 a 22). Todo va en la misma dirección que arriba, con menos ganancia en la pared porque los 12 hilos de portadas compiten con los
+otros agentes:
+
+| escena: lo medido | base | fin3 |
+|---|---|---|
+| arranque: Soloist escucha → conectada | 718 [484-952] | 504 [316-692] |
+| arranque: 1.a página de la A con portadas | 5260 [4817-5704] | 4692 [4314-5071] |
+| busca: 1.a búsqueda, resultados / última portada en pantalla | 740 / 1596 | 508 / 1158 |
+| disco: PONER → el disco a la vista | 245 [215-276] | 53 [32-74] |
+| artista: PONER → su pared a la vista | 549 [468-631] | 74 [54-94] |
+| artista: última portada de la 1.a / 2.a página en pantalla | 3143 / 3168 | 1243 / 1161 |
+| pared: mediana de las 5 páginas, última portada en pantalla | 2466 [2312-2621] | 1006 [438-1574] |
+| pared: cuadros p50/p95/p99/máx | 57/97/133/213 | 63/100/194/295 |
+| suena: hueco entre dos de Spotify | 1876 [1864-1889] | 1508 [1400-1616] |
+| mezcla: hueco de una de XP a una de Spotify | 2316 [2270-2362] | 1744 [1655-1833] |
+| suena/mezcla: lo oído de cada una (ms) | 8000, 6025 / 5975 | 8000, 6025 / 6075 |
+
+Los cuadros de la pared con `fin3` y la máquina así de cargada salen peores en p99 y máximo (194 y 295 frente a 133 y 213, n2): con carga
+5-8 eran iguales a la base (§ arriba, n6). Puede ser el ruido de la carga o el trabajo de decodificar más portadas a la vez (lo adelantado
+lo lee XP como cualquier portada); **queda por medir con la máquina tranquila**, y si se confirma, bajar los 12 hilos o el adelanto.
+
 Lo que más se nota: las portadas del catálogo al hojear (de ~2,1 s a ~0,2-0,3 s por página), la pared de un artista de Spotify (de ~2,8 s a
 ~0,6-0,8 s), abrir un disco o una pared desde la tarjeta que se estaba mirando (de 0,2-0,3 s a casi 0), el hueco entre canciones de Spotify
 (medio segundo menos) y la primera búsqueda (0,3-0,5 s menos).
@@ -161,5 +183,5 @@ solo con `spotify-prueba`), y las escenas `adelanto` y `adelantoxp` de la bater�
   adelantado de … no se uso» si no sirvió).
 - HTTP/2 y TLS de verdad (la API falsa es HTTP/1.1 en 127.0.0.1): el HEAD de calentar abre la conexión TLS de verdad en el bar, pero no se
   midió aquí.
-- Una medida final completa de las siete escenas con el último programa (`fin3`) no se hizo con la máquina tranquila: la tabla del §2 junta
+- La medida final de las siete escenas con el último programa (`fin3`) se hizo con la máquina muy cargada (carga 10-22); la primera tabla del §2 junta
   las vueltas de `fin` (el programa de antes de `4492c4a`, igual en todo salvo el adelanto de la pared) con dos de `fin3` en `pared`.
