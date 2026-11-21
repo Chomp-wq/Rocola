@@ -128,12 +128,12 @@ medir un video): la conversión es un proceso aparte que escribe un archivo, com
   medias de un apagón se borran al arrancar). Sin ffmpeg, con menos de 1 GB libre (más 16 veces el original) o si ffmpeg falla: lo de XP.
 - **Cómo suena como la canción de la rocola**: la canción sigue siendo la ruta del `.mp3` original para todo (la cola, el estado, lo más
   sonado, las estadísticas, lo aprendido, lo que se ve); solo cambia **qué archivo se lee**, en los dos sitios donde XP abre el sonido:
-  - **g110** (`Codigo/Form1.Sonido.cs:1511`, `OpenAudio`, antes del rechazo de XP): `RocolaOsConvertidaAbre` arma el lector como XP
+  - **g110** (`Codigo/Form1.Sonido.cs:1638`, antes 1511: se movió en la junta 3 al juntar noche-nv, `OpenAudio`, antes del rechazo de XP): `RocolaOsConvertidaAbre` arma el lector como XP
     (`SinSilencios`, `SellaFuenteAudio` con el sello **del original**, `ComoEstereo`, `FileAudioSource`) sobre el WAV, sin `SinRelleno`
     (el hueco del codificador es de los MP3). Si aún no está, se pide y se espera hasta **20 s** (en el hilo de la apertura; el medidor de
     Ctrl+F3, que abre en la pantalla, no espera). Si tarda más, un `IOException` «se esta convirtiendo»: por `AudioStartFailed` el crédito
     se devuelve y, como es de E/S (`EsArchivoDanado`), **no queda dañada**: la próxima vez suena. Sin ffmpeg, sin sitio o fallida: null.
-  - **g111** (`Codigo/Form1.Sonido.cs:621`, `LectorMedida`: el repaso, la duración, la tanda larga): `RocolaOsConvertidaMide` da la ruta
+  - **g111** (`Codigo/Form1.Sonido.cs:742`, antes 621: se movió en la junta 3, `LectorMedida`: el repaso, la duración, la tanda larga): `RocolaOsConvertidaMide` da la ruta
     del WAV (el mismo sonido; la medida se guarda bajo la ruta del original, la de quien mide). Si no está, se pide y ese hilo de fondo
     espera hasta 60 s; si no llega, la ruta original y XP la rechaza. Así el repaso la convierte en cuanto la encuentra.
   - Sin `ROCOLA_OS` o con la función apagada, los dos ganchos devuelven lo de XP sin leer nada; un MP3 de verdad (y el MP3 dentro de un
