@@ -43,7 +43,7 @@ namespace Rocola
         // Y con el margen que necesita el tono del local que le toca (T1, SalaLocal.MargenTonoDb).
         private float GananciaDe(Track t)
         {
-            if (t == null) return 1f;
+            if (t == null) return 1f; { float rocolaOsG; if (RocolaOsCalidadGanancia(t, out rocolaOsG)) return rocolaOsG; }   // ROCOLA OS g62: (XP) if (t == null) return 1f; — la version de Spotify de una cancion tuya se nivela con su medida bajo su ruta de Spotify o, la primera vez, con la mediana de las de Spotify medidas (SP3, V1, V2; RocolaOs/RocolaOs.Calidad.cs; de XP, false)
             List<Track> disco = RachaDeDisco(t);
             float g;
             if (!(disco != null && GananciaDeDisco(disco, t.Path, out g))) g = NormGainFor(t.Path);
