@@ -66,7 +66,7 @@ fi
 orden() {   # DATOS ROCOLA_OS ARGUMENTOS...: la orden de prueba, con su salida en $W/o.txt
   local d="$1" v="$2"; shift 2
   if [ "$v" = "-" ]; then env -u ROCOLA_OS ROCOLA_DATOS="$d" ROCOLA_PANTALLA=fuera:64x64 timeout 60 "${RX[@]}" --prueba-rocola-os "$@" > "$W/o.txt" 2>&1
-  else env ROCOLA_OS="$v" ROCOLA_DATOS="$d" ROCOLA_PANTALLA=fuera:64x64 timeout 60 "${RX[@]}" --prueba-rocola-os "$@" > "$W/o.txt" 2>&1; fi
+  else env ROCOLA_CATALOGO_URL=http://127.0.0.1:9/catalogo ROCOLA_PORTADAS_CATALOGO=http://127.0.0.1:9 ROCOLA_OS="$v" ROCOLA_DATOS="$d" ROCOLA_PANTALLA=fuera:64x64 timeout 60 "${RX[@]}" --prueba-rocola-os "$@" > "$W/o.txt" 2>&1; fi
   oc=$?
 }
 if [[ " $partes " == *" orden "* ]]; then
@@ -138,7 +138,7 @@ fi
 abre() {
   local n="$1" d="$2" pulsa="$3" seg="$4" sen="$5"; shift 5
   local o="$W/$n"; rm -rf "$o"; mkdir -p "$o/run"
-  ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" \
+  ( cd "$d" && exec env ROCOLA_CATALOGO_URL=http://127.0.0.1:9/catalogo ROCOLA_PORTADAS_CATALOGO=http://127.0.0.1:9 ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=null ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" \
       ROCOLA_CAPTURA_SALE=0 ROCOLA_TRAZA_VENTANAS="$o/traza.txt" "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
   local p=$!
   sleep "$seg"; [ "$sen" != NADA ] && kill -"$sen" $p 2>/dev/null; local t0; t0=$(date +%s.%N)

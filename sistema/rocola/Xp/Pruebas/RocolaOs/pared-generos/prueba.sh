@@ -20,25 +20,29 @@ CAPTURAS=${CAPTURAS:-}
 FALSO=${FALSO:-$T/falso}
 CAT=$W/catalogo
 CA="$G/../catalogo"; SX="$G/../spotify-xp"
-if [ ! -f "$API/api-falsa.dll" ] || [ "$CA/ApiFalsa/Program.cs" -nt "$API/api-falsa.dll" ]; then
+# (se rehace si su Program.cs no es el de esta rama: la carpeta la comparten los agentes de varias ramas; antes contaba la fecha)
+if [ ! -f "$API/api-falsa.dll" ] || ! cmp -s "$CA/ApiFalsa/Program.cs" "$API/Program.cs"; then
   echo "(compilando la API falsa en $API)"; mkdir -p "$API"
   flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$CA/ApiFalsa/ApiFalsa.csproj" -c Release -o "$API" --disable-build-servers \
     -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$API/obj/" > "$API/build.txt" 2>&1 || { cat "$API/build.txt"; exit 1; }
   rm -rf "$API/obj"
+  cp "$CA/ApiFalsa/Program.cs" "$API/Program.cs"
 fi
 AL=$(dirname "$FALSO")/alsa; mkdir -p "$AL"
 [ -f "$AL/libasound_module_pcm_reloj.so" ] || gcc -shared -fPIC -DPIC -O2 -o "$AL/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound || exit 1
-if [ ! -f "$FALSO/soloist-falso.dll" ] || [ "$SX/SoloistFalso/Program.cs" -nt "$FALSO/soloist-falso.dll" ]; then
+# (se rehace si su Program.cs no es el de esta rama: la carpeta la comparten los agentes de varias ramas; antes contaba la fecha)
+if [ ! -f "$FALSO/soloist-falso.dll" ] || ! cmp -s "$SX/SoloistFalso/Program.cs" "$FALSO/Program.cs"; then
   echo "(compilando el Soloist falso en $FALSO)"; mkdir -p "$FALSO"
   flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$SX/SoloistFalso/SoloistFalso.csproj" -c Release -o "$FALSO" --disable-build-servers \
     -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$FALSO/obj/" > "$FALSO/build.txt" 2>&1 || { cat "$FALSO/build.txt"; exit 1; }
   rm -rf "$FALSO/obj"
+  cp "$SX/SoloistFalso/Program.cs" "$FALSO/Program.cs"
 fi
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
 rm -rf "$W"; mkdir -p "$W"
 python3 "$G/catalogo.py" "$CAT" > "$W/catalogo.txt" || exit 1
 cat "$W/catalogo.txt"
-bien=0; mal=0
+bien=0; mal=0; falta=0
 si() { local d="$1"; shift; if "$@"; then echo "BIEN  $d"; bien=$((bien + 1)); else echo "MAL   $d"; mal=$((mal + 1)); fi; }
 contiene() { grep -qF -- "$2" "$1" 2>/dev/null; }
 nocontiene() { ! grep -qF -- "$2" "$1" 2>/dev/null; }
@@ -266,16 +270,18 @@ PY
     si "descarga 4: uno que no es el de su sha256 no se usa: sigue el de antes ($(est $W/${e}4 catalogo), $(est $W/${e}4 catalogo_discos) discos)" bash -c "grep -q 'no es el que dice su sha256' '$W/datos-${e}4/rocola_os_bitacora.txt' && [ '$(est $W/${e}4 catalogo_discos)' = 24074 ]" ;;
   contrato)
     # EL CONTRATO «I8» CON EL GRUPO catalogo-datos: su archivo de prueba tal cual (contrato/rocola_catalogo_prueba.tsv.gz, copia del de
-    # sistema/catalogo/prueba de su rama: 176 artistas y 652 discos inventados, las 27 letras, acentos, «Ñ», #, discos sin año, sin id y sin
-    # portada) y un .txt con TODAS las claves que escribe su armador (formato, version, fecha, sha256, bytes, artistas, discos, fuentes, licencia)
+    # sistema/catalogo/prueba del armador juntado, con los 12 artistas trampa del pre-mapeo de generos: 187 artistas y 673 discos inventados
+    # -se leen de su cabecera «#rocola-catalogo»-, las 27 letras, acentos, «Ñ», #, discos sin año, sin id y sin portada) y
+    # un .txt con TODAS las claves que escribe su armador (formato, version, fecha, sha256, bytes, artistas, discos, fuentes, licencia)
     C4="$W/catalogo-contrato"; mkdir -p "$C4"; cp "$G/contrato/rocola_catalogo_prueba.tsv.gz" "$C4/rocola_catalogo.tsv.gz"
-    printf 'formato=1\nversion=20261114.1\nfecha=2026-11-15\nsha256=%s\nbytes=%d\nartistas=176\ndiscos=652\nfuentes=MusicBrainz, Wikidata, ListenBrainz\nlicencia=CC0 y CC BY-NC-SA 3.0\n' \
-      "$(sha256sum "$C4/rocola_catalogo.tsv.gz" | cut -d' ' -f1)" "$(wc -c < "$C4/rocola_catalogo.tsv.gz")" > "$C4/rocola_catalogo.txt"
+    read -r _ _ _ NART NDIS < <(zcat "$C4/rocola_catalogo.tsv.gz" | head -1)
+    printf 'formato=1\nversion=20261114.1\nfecha=2026-11-15\nsha256=%s\nbytes=%d\nartistas=%s\ndiscos=%s\nfuentes=MusicBrainz, Wikidata, ListenBrainz\nlicencia=CC0 y CC BY-NC-SA 3.0\n' \
+      "$(sha256sum "$C4/rocola_catalogo.tsv.gz" | cut -d' ' -f1)" "$(wc -c < "$C4/rocola_catalogo.tsv.gz")" "$NART" "$NDIS" > "$C4/rocola_catalogo.txt"
     apifalsa $e "$C4"; d=$(datos $e encendido)
     abre $e "$d" "$BASE,12:27+39" 20 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11 pared-generos-catalogo-del-contrato)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     si "contrato: sale con 0" test "$(cat $o/salio)" = 0
-    si "contrato: el catalogo del grupo catalogo-datos se bajo y se leyo entero ($(est $o catalogo), $(est $o catalogo_discos) discos)" bash -c "[ '$(est $o catalogo)' = bajado ] && [ '$(est $o catalogo_discos)' = 652 ]"
+    si "contrato: el catalogo del grupo catalogo-datos se bajo y se leyo entero ($(est $o catalogo), $(est $o catalogo_discos) discos)" bash -c "[ '$(est $o catalogo)' = bajado ] && [ '$(est $o catalogo_discos)' = '$NDIS' ]"
     si "contrato: ninguna peticion a la API (/v1: $(v1 $a))" test "$(v1 $a)" = 0
     for L in A B; do
       python3 "$G/contrato.py" "$o/volcado/letra-$L.tsv" "$C4/rocola_catalogo.tsv.gz" $L $([ $L = A ] && echo 5 || echo 1) > "$o/verifica-$L.txt" 2>&1; r=$?
@@ -288,7 +294,8 @@ PY
   real)
     # EL CATALOGO DE VERDAD (el de la version «catalogo» del repositorio, bajado aparte a $REAL; datos abiertos, sin llave): servido por la API
     # falsa, la letra A armada con tus 5 discos: 500 paginas, el orden de XP, los mas famosos primero; lo que tarda y la memoria
-    [ -f "$REAL/rocola_catalogo.tsv.gz" ] || { echo "(sin el catalogo de verdad en $REAL: se salta)"; continue; }
+    # (sin el, sus 4 comprobaciones cuentan como FALTA y la bateria sale con 2: no se puede dar por buena sin ellas)
+    [ -f "$REAL/rocola_catalogo.tsv.gz" ] || { echo "FALTA real: sin el catalogo de verdad en $REAL (REAL=...): sus 4 comprobaciones no se hicieron"; falta=$((falta + 4)); continue; }
     apifalsa $e "$REAL"; d=$(datos $e encendido)
     abre $e "$d" "$BASE,14:38,15:38,16:38" 26 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 20 pared-generos-catalogo-real)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
@@ -340,5 +347,6 @@ PY
   *) echo "(escena desconocida: $e)" ;;
   esac
 done
-echo "== $bien BIEN, $mal MAL"
-[ $mal = 0 ]
+echo "== $bien BIEN, $mal MAL$([ $falta = 0 ] || echo ", $falta FALTA")"
+[ $mal = 0 ] || exit 1
+[ $falta = 0 ] || exit 2

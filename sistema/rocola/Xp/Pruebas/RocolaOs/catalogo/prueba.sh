@@ -28,19 +28,23 @@ W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 CAPTURAS=${CAPTURAS:-}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/catalogo/falso}
-if [ ! -f "$API/api-falsa.dll" ] || [ "$G/ApiFalsa/Program.cs" -nt "$API/api-falsa.dll" ]; then
+# (se rehace si su Program.cs no es el de esta rama: la carpeta la comparten los agentes de varias ramas; antes contaba la fecha)
+if [ ! -f "$API/api-falsa.dll" ] || ! cmp -s "$G/ApiFalsa/Program.cs" "$API/Program.cs"; then
   echo "(compilando la API falsa en $API)"; mkdir -p "$API"
   flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$G/ApiFalsa/ApiFalsa.csproj" -c Release -o "$API" --disable-build-servers \
     -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$API/obj/" > "$API/build.txt" 2>&1 || { cat "$API/build.txt"; exit 1; }
+  cp "$G/ApiFalsa/Program.cs" "$API/Program.cs"
 fi
 SX="$G/../spotify-xp"
 # la tarjeta de prueba con reloj (Pruebas/Windows/alsa/reloj.c, la del nucleo): suena a su ritmo (con «null» una cancion de 30 s se acaba en 2)
 AL=$(dirname "$FALSO")/alsa; mkdir -p "$AL"
 [ -f "$AL/libasound_module_pcm_reloj.so" ] || gcc -shared -fPIC -DPIC -O2 -o "$AL/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound || exit 1
-if [ ! -f "$FALSO/soloist-falso.dll" ] || [ "$SX/SoloistFalso/Program.cs" -nt "$FALSO/soloist-falso.dll" ]; then
+# (se rehace si su Program.cs no es el de esta rama: la carpeta la comparten los agentes de varias ramas; antes contaba la fecha)
+if [ ! -f "$FALSO/soloist-falso.dll" ] || ! cmp -s "$SX/SoloistFalso/Program.cs" "$FALSO/Program.cs"; then
   echo "(compilando el Soloist falso en $FALSO)"; mkdir -p "$FALSO"
   flock /root/rocola-trabajo/fase11/pesado.lock dotnet build "$SX/SoloistFalso/SoloistFalso.csproj" -c Release -o "$FALSO" --disable-build-servers \
     -p:UseSharedCompilation=false -p:BaseIntermediateOutputPath="$FALSO/obj/" > "$FALSO/build.txt" 2>&1 || { cat "$FALSO/build.txt"; exit 1; }
+  cp "$SX/SoloistFalso/Program.cs" "$FALSO/Program.cs"
 fi
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
 rm -rf "$W"; mkdir -p "$W"

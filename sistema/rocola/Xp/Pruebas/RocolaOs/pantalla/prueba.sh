@@ -114,7 +114,7 @@ abre() {
   local o="$W/$n"; rm -rf "$o"; mkdir -p "$o/run"
   local c=""; IFS=',' read -ra L <<< "$caps"
   for x in "${L[@]}"; do [ -z "$x" ] && continue; c="$c,${x%%:*}:$o/${x#*:}.png"; done; c="${c#,}"
-  ( cd "$d" && exec env -u ROCOLA_PANTALLA ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=null ROCOLA_PULSA="$pulsa" ROCOLA_CAPTURA="$c" \
+  ( cd "$d" && exec env -u ROCOLA_PANTALLA ROCOLA_CATALOGO_URL=http://127.0.0.1:9/catalogo ROCOLA_PORTADAS_CATALOGO=http://127.0.0.1:9 ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=null ROCOLA_PULSA="$pulsa" ROCOLA_CAPTURA="$c" \
       ROCOLA_CAPTURA_SALE=0 ROCOLA_TRAZA_VENTANAS="$o/traza.txt" ROCOLA_KMS_SIMULADO_TRAZA="$o/kms.txt" "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
   local p=$!
   echo $p > "$o/pid"
