@@ -294,8 +294,30 @@ Las baterías de `Pruebas/RocolaOs` y `Pruebas/Importa` (pasadas/total):
 
 - Nada falla por la junta después de `1cb623a` y `3270072`. Lo que salió MAL una vez y BIEN al repetir (`spotify-xp` celular y «Probar»
   en JIT, `cielo` escenas en NativeAOT) es de la carga.
-- Las baterías que abren rocola-xp con `ROCOLA_OS=1` y sin clima falso salen a internet (lugar y clima del cielo). No es un fallo del
-  programa (lo decidió el dueño) pero las pruebas dicen «sin red»: habría que darles `ROCOLA_CLIMA_API`/`ROCOLA_LUGAR_API` de un
-  sumidero, batería por batería.
+- ~~Las baterías que abren rocola-xp con `ROCOLA_OS=1` y sin clima falso salen a internet~~: arreglado en la revisión (abajo).
 - No se corrió: el nivel 0 entero, el `cierre_rocola_os.sh`, la prueba de QEMU ni ninguna compilación del sistema (el navegador pide la
   COMPLETA). Lo pendiente de cada rama sigue en su documento. Nada probado en el A4.
+
+### La revisión de la junta 3 (21-11-2026)
+
+Un revisor no encontró nada grave. De lo que encontró, comprobado uno por uno:
+
+- **La rama principal se movió después de la junta** (cierto: `e763255`, la entrada del 21-11 de AGENTS.md sobre las portadas reducidas,
+  no estaba en junta-3 y se habría perdido al adelantar). Merge `--no-ff` de `claude/modest-carson-fa2v2n` en junta-3 (solo AGENTS.md, sin
+  choque); `git merge-base --is-ancestor claude/modest-carson-fa2v2n junta-3` da 0 y AGENTS.md tiene las dos entradas del 20 y 21-11.
+- **PORT_xp-1718.md con las líneas viejas de g110 y g111** (cierto: 1511 y 621). `8aeda81`: 1638 y 742, con la nota de que se movieron en
+  la junta 3 (las de GANCHOS.tsv).
+- **Las baterías salían a internet** (cierto: `ipapi.co` en letras y sustitución). Cada `prueba.sh` de `andamio`, `asistente`, `catalogo`,
+  `letras`, `pantalla`, `pared-generos`, `spotify-xp` y `sustitucion` exporta `ROCOLA_CLIMA_API`, `ROCOLA_LUGAR_API`, `ROCOLA_LETRA_API` y
+  `ROCOLA_GENIUS_API` al sumidero `127.0.0.1:7` si no vienen puestos (una escena con su falso lo pone delante y manda; `cielo` tiene los
+  suyos y no se tocó). Con el arreglo, en `letras` la bitácora dice 6 veces «no se supo el lugar por internet (127.0.0.1 ...)» y ninguna
+  `ipapi.co`.
+- **spotify-xp `red()` descontaba cualquier puerto 7** (cierto). Ahora solo `htons(7), sin_addr=inet_addr("127.0.0.1")` (como lo escribe
+  strace), en `red()` y en `sumidero()`.
+- **Importa: las claves de los vecinos con una subcadena** (cierto). Ahora `grep -qxF` sin los `\r`, como `noche_desde`.
+- Dudas que no son de la junta: la escena `fabrica` y el reposo con el cielo encendido sin llaves (las decisiones del 15-11 «sin llaves como
+  XP» y del 20-11 «lo demás encendido de fábrica» pueden chocar en el reposo: lo aclara el dueño); Kms.cs de Consola viene de la junta 2.
+
+Corridas otra vez con el JIT de la junta (el código no cambió, solo pruebas y documentos): `letras` 88/88, `sustitucion` 97/97, `Importa`
+181/181, `spotify-xp` SPOTIFYXP. Salidas en `/root/rocola-trabajo/fase11/junta-3/rev/`. Nada probado en el A4.
+
