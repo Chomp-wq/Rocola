@@ -23,6 +23,7 @@ namespace Rocola
         private int sel = -1, top;
         internal const int Alto = 24, Cabecera = 26;
         internal Color Acento = Color.FromArgb(150, 205, 255);
+        internal string TituloFecha = "Fecha";   // (la papelera: «Se tiró el»)
         internal Letra Letra, LetraChica;
         internal event Action Elegido;     // cambio el elegido
         internal event Action Abre;        // doble clic o Intro
@@ -108,7 +109,7 @@ namespace Rocola
             Color tenue = Color.FromArgb(138, 149, 182);
             RocolaOsPinta.Texto(g, "Nombre", fc, tenue, 40, 6, aj);
             RocolaOsPinta.TextoDerecha(g, "Tamaño", fc, tenue, cFecha - 24, 6, aj);
-            RocolaOsPinta.Texto(g, "Fecha", fc, tenue, cFecha, 6, aj);
+            RocolaOsPinta.Texto(g, TituloFecha, fc, tenue, cFecha, 6, aj);
             PinturaXp.Rellena(g, new Rectangle(10, Cabecera, w - 20, 1), Color.FromArgb(46, 58, 104));
             if (Renglones.Count == 0) { RocolaOsPinta.Texto(g, "(vacía)", f, tenue, 40, Cabecera + 8, aj); return; }
             int vis = Visibles;

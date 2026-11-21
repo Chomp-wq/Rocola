@@ -15,13 +15,20 @@
 # cache/. EL TOPE (ROCOLA_NAVEGADOR_TOPE_MB, de navegador_tope_mb= de rocola_os.txt; 128 MB de fabrica, de 32 a 256): al abrir y al cerrar,
 # si lo pasa -o si en los datos quedan menos de 64 MB libres-, se borra la cache; si aun lo pasa, se dice (y se abre igual). Va en lo
 # aprendido (datos.img, de 512 MB, con todo lo de la rocola): por eso el tope.
+# LAS DESCARGAS van a /rocola/datos/xp/descargas (0700; el apartado «Descargas» de Ctrl+F4 -> Archivos), en los datos de la rocola y nunca
+# en el disco de la musica: cog no tiene nada propio para las descargas, y WebKit baja (lo que llega como adjunto) a la carpeta de descargas
+# de XDG (g_get_user_special_dir), que glib lee de $XDG_CONFIG_HOME/user-dirs.dirs: el guion la escribe ahi en cada «abre» (sin ella, WebKit
+# bajaria a HOME, la carpeta del navegador). EL TOPE DE LAS DESCARGAS (ROCOLA_NAVEGADOR_DESCARGAS_TOPE_MB, de descargas_tope_mb=; 64 MB de
+# fabrica, de 16 a 256 en rocola-xp): un vigilante mira cada segundo lo que ocupan; si algo crece y pasa el tope -o en los datos quedan menos de
+# 32 MB libres-, cierra el navegador (no hay otra forma de parar una descarga desde fuera), borra lo que se estaba bajando (los .wkdownload y
+# lo escrito en los ultimos ~2 s; lo que ya se habia bajado se queda), lo dice en /run/rocola-navegador.txt y el guion sale con 6.
 # NADA DE LO QUE SE VISITA SE APUNTA: lo que dice cog va a /run/rocola-navegador.txt (en memoria, se rehace cada vez; el buzon no lo sube).
 # LO QUE SE ESCRIBE EN EL NAVEGADOR no queda en la consola de la rocola (tty1, donde tambien llegan las teclas): mientras esta abierto, sin
 # eco; al cerrarlo se tira lo que se acumulo y se vuelve a como estaba.
 # Si rocola-xp se cae con el navegador abierto (ROCOLA_NAVEGADOR_DUENO: su pid), cog se cierra solo en 1 s: el lanzador vuelve a abrir la
 # rocola, que necesita la pantalla.
 # Para probarlo fuera (sistema/rocola/Xp/Pruebas/RocolaOs/navegador): ROCOLA_COG (un programa de mentira), ROCOLA_XP_DATOS, ROCOLA_RUN,
-# ROCOLA_NAVEGADOR_TTY, ROCOLA_NAVEGADOR_INICIO_HTML. BusyBox ash, sin stat.
+# ROCOLA_NAVEGADOR_TTY, ROCOLA_NAVEGADOR_INICIO_HTML, ROCOLA_DESCARGAS_PISO_KB. BusyBox ash, sin stat.
 COG=${ROCOLA_COG:-/usr/bin/cog}
 XPD=${ROCOLA_XP_DATOS:-/rocola/datos/xp}
 DIR=$XPD/navegador
@@ -29,11 +36,18 @@ RUN=${ROCOLA_RUN:-/run}
 LOG=$RUN/rocola-navegador.txt
 PIDF=$RUN/rocola-navegador.pid
 TOPE=${ROCOLA_NAVEGADOR_TOPE_MB:-128}
+DESC=$XPD/descargas
+DTOPE=${ROCOLA_NAVEGADOR_DESCARGAS_TOPE_MB:-64}
+PISO=${ROCOLA_DESCARGAS_PISO_KB:-32768}
+TOPEF=$RUN/rocola-navegador.tope
 TECLADO=${ROCOLA_NAVEGADOR_TECLADO:-us}
 TTY=${ROCOLA_NAVEGADOR_TTY:-/dev/tty1}
 INICIO=${ROCOLA_NAVEGADOR_INICIO_HTML:-/usr/share/rocola/navegador/inicio.html}
 case "$TOPE" in ''|*[!0-9]*) TOPE=128 ;; esac
 [ "$TOPE" -gt 256 ] && TOPE=256
+case "$DTOPE" in ''|*[!0-9]*) DTOPE=64 ;; esac
+[ "$DTOPE" -gt 256 ] && DTOPE=256; [ "$DTOPE" -lt 1 ] && DTOPE=1
+case "$PISO" in ''|*[!0-9]*) PISO=32768 ;; esac
 
 kb() { du -sk "$DIR" 2>/dev/null | awk '{print $1}'; }
 # el tope: si lo pasa, fuera la cache (la sesion y las galletas se quedan)
@@ -49,6 +63,7 @@ recorta() {
 	k=$(kb); [ "$k" -gt $((TOPE * 1024)) ] && echo "$(date '+%F %T') aun sin la cache pasa el tope ($k KB): «rocola-navegador olvida» lo borra todo" >> "$LOG"
 	return 0
 }
+dkb() { du -sk "$DESC" 2>/dev/null | awk '{print $1}'; }
 abierto() { p=$(cat "$PIDF" 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
 
 case "$1" in
@@ -57,7 +72,8 @@ hay)
 	[ -e "$INICIO" ] || echo "(falta la pagina de inicio $INICIO: se abre en blanco)"
 	exit 0 ;;
 cuanto)
-	echo "$(kb || echo 0) KB en $DIR (tope $TOPE MB)"; exit 0 ;;
+	echo "$(kb || echo 0) KB en $DIR (tope $TOPE MB)"
+	echo "$(dkb || echo 0) KB en $DESC (tope $DTOPE MB)"; exit 0 ;;
 olvida)
 	if abierto; then echo "El navegador esta abierto: cierralo antes (Ctrl+Alt+F1)."; exit 1; fi
 	[ -d "$DIR" ] && find "$DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
@@ -65,6 +81,7 @@ olvida)
 abre) ;;
 *)
 	echo "uso: rocola-navegador hay | abre [URL] | olvida | cuanto"
+	echo "(abre sale con 6 si una descarga paso el tope de las descargas y se cerro el navegador)"
 	[ -z "$1" ] && exit 0 || exit 2 ;;
 esac
 
@@ -76,7 +93,13 @@ if [ -z "$URL" ]; then
 fi
 mkdir -p "$DIR" "$RUN" && chmod 700 "$DIR"
 : > "$LOG"; chmod 600 "$LOG"
+rm -f "$TOPEF"
 recorta
+# las descargas: su carpeta (de verdad, no un enlace) y donde WebKit las busca (la carpeta de descargas de XDG)
+[ -L "$DESC" ] && rm -f "$DESC"
+mkdir -p "$DESC" "$DIR/config" && chmod 700 "$DESC"
+printf 'XDG_DOWNLOAD_DIR="%s"\n' "$DESC" > "$DIR/config/user-dirs.dirs"
+k=$(dkb); [ -n "$k" ] && [ "$k" -gt $((DTOPE * 1024)) ] && echo "$(date '+%F %T') las descargas ya pasan su tope de $DTOPE MB ($k KB): lo que se baje ahora se para (Ctrl+F4 -> Archivos -> Descargas)" >> "$LOG"
 
 # LA CONSOLA DE LA ROCOLA (tty1): sin eco ni renglones mientras el navegador esta abierto (las teclas tambien le llegan a ella)
 TTYG=
@@ -93,7 +116,7 @@ HOME=$DIR XDG_DATA_HOME=$DIR/datos XDG_CACHE_HOME=$DIR/cache XDG_CONFIG_HOME=$DI
 	"$COG" --platform=drm --cookie-jar="sqlite:$DIR/galletas.sqlite" "$URL" >> "$LOG" 2>&1 &
 cpid=$!
 echo "$cpid" > "$PIDF"
-echo "$(date '+%F %T') abierto (pid $cpid)" >> "$LOG"
+echo "$(date '+%F %T') abierto (pid $cpid; descargas en $DESC, tope $DTOPE MB)" >> "$LOG"
 cierra() { kill "$cpid" 2>/dev/null; i=0; while kill -0 "$cpid" 2>/dev/null && [ $i -lt 30 ]; do sleep 0.1; i=$((i + 1)); done; kill -9 "$cpid" 2>/dev/null; }
 trap 'cierra' TERM INT HUP
 # si rocola-xp se cae, el navegador fuera (la rocola vuelve a necesitar la pantalla)
@@ -103,11 +126,35 @@ if [ -n "$ROCOLA_NAVEGADOR_DUENO" ]; then
 	  kill -0 "$cpid" 2>/dev/null && { echo "$(date '+%F %T') rocola-xp ya no esta: se cierra" >> "$LOG"; kill "$cpid" 2>/dev/null; sleep 3; kill -9 "$cpid" 2>/dev/null; } ) &
 	VIG=$!
 fi
+# EL TOPE DE LAS DESCARGAS: si algo crece y pasa el tope (o los datos se llenan), fuera el navegador y lo que se estaba bajando
+VIGD=
+( k0=$(dkb); k0=${k0:-0}; m1=$RUN/rocola-navegador.m1; m2=$RUN/rocola-navegador.m2; touch "$m1" "$m2"
+  while kill -0 "$cpid" 2>/dev/null; do
+	sleep 1
+	k=$(dkb); k=${k:-0}; libre=$(df -k "$XPD" 2>/dev/null | awk 'NR == 2 {print $4}'); por=
+	if [ "$k" -gt "$k0" ]; then
+		if [ "$k" -gt $((DTOPE * 1024)) ]; then por="las descargas pasaban su tope de $DTOPE MB ($k KB)"
+		elif [ -n "$libre" ] && [ "$libre" -lt "$PISO" ]; then por="en los datos quedaban $libre KB libres"; fi
+	fi
+	if [ -n "$por" ]; then
+		echo "$(date '+%F %T') $por: se cierra el navegador y se borra lo que se estaba bajando" >> "$LOG"
+		: > "$TOPEF"
+		cierra
+		find "$DESC" -type f \( -name '*.wkdownload' -o -newer "$m2" \) -exec rm -f {} +
+		break
+	fi
+	mv -f "$m1" "$m2"; touch "$m1"
+  done
+  rm -f "$m1" "$m2" ) &
+VIGD=$!
 # (wait vuelve antes de tiempo si llega una senal: se espera hasta que cog de verdad acabe)
 r=0
 while kill -0 "$cpid" 2>/dev/null; do wait "$cpid"; r=$?; done
 wait "$cpid" 2>/dev/null; r2=$?; [ "$r2" != 127 ] && r=$r2
 [ -n "$VIG" ] && kill "$VIG" 2>/dev/null
+# (el vigilante de las descargas acaba solo al irse cog; si estaba borrando, se le espera)
+[ -n "$VIGD" ] && wait "$VIGD" 2>/dev/null
+[ -e "$TOPEF" ] && r=6 && rm -f "$TOPEF"
 rm -f "$PIDF"
 vuelve_tty
 recorta

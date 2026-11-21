@@ -7,6 +7,10 @@ keys que se requieran»). **Va después de la compilación del cumpleaños y pid
 **Nada de esto está probado en el A4**, ni con WebKit de verdad (no se compiló aquí: horas y mucho disco), ni con una tarjeta de verdad:
 todo fuera de pantalla, con un cog de mentira y una memoria USB de mentira (una carpeta).
 
+**21-11-2026, rama `archivos-papelera` (sobre `junta-2`): DESCARGAS y PAPELERA** — petición del dueño de un apartado de descargas (lo que
+baja el navegador) y una papelera en Archivos. Lo nuevo está en la sección «Descargas y papelera (21-11-2026)», al final; lo de arriba sigue
+valiendo salvo «Borrar», que ahora manda a la papelera.
+
 Solo con `ROCOLA_OS`; sin él, Ctrl+F4 no hace nada (como XP) y nada de esto corre (comprobado contra la referencia congelada, abajo).
 
 ## Qué se ve
@@ -71,7 +75,7 @@ la sesión: `archivos-capturas/` (`archivos-datos.png`, `archivos-usb.png`, `arc
 | `RocolaOs/RocolaOs.Archivos.cs` | La función «archivos» (de fábrica encendida), las raíces (los datos y las USB: detectarlas y montarlas de solo lectura), la regla de no salir (realpath), las llaves, leer y guardar el texto, copiar, renombrar, borrar |
 | `RocolaOs/RocolaOs.ArchivosPiezas.cs` | Las dos piezas propias de la hoja nativa: la lista (`RocolaOsListaArchivos`) y el editor (`RocolaOsEditor`), pintadas con SkiaSharp como las de Ctrl+F3 |
 | `RocolaOs/RocolaOs.ArchivosHoja.cs` | La hojita «Archivos», pedir un nombre y la hoja del editor |
-| `RocolaOs/RocolaOs.ArchivosPrueba.cs` | La orden `rocola-xp --prueba-archivos DATOS USB FUERA` (55 comprobaciones de la regla de no salir, las llaves, copiar, guardar...) |
+| `RocolaOs/RocolaOs.ArchivosPrueba.cs` | La orden `rocola-xp --prueba-archivos DATOS USB FUERA` (55 comprobaciones de la regla de no salir, las llaves, copiar, guardar...; 89 desde la papelera) |
 | `board/rocola/rootfs_overlay/usr/bin/rocola-navegador` | El guion: `hay`, `abre [URL]`, `olvida`, `cuanto` (BusyBox ash, sin `stat`) |
 | `board/rocola/rootfs_overlay/usr/share/rocola/navegador/inicio.html` | La página de inicio |
 | `configs/rocola_a4_defconfig` | Los paquetes del navegador |
@@ -249,6 +253,123 @@ un cog de mentira y una USB de mentira; datos y llaves inventados. Nada en el A4
 corriendo) y en el disco quedaban ~2,5 GB (cada disco de XP de las pruebas de QEMU mide 4,8 GB). Además, sin WebKit compilado no se podía
 probar cog de verdad; el traspaso de DRM master con un programa de mentira en QEMU es lo primero que queda por hacer (abajo).
 
+## Descargas y papelera (21-11-2026)
+
+Rama `archivos-papelera`, sobre `junta-2`. **Nada probado en el A4 ni con WebKit de verdad**: un cog de mentira que «baja» como WebKit,
+fuera de pantalla, datos inventados.
+
+### Qué se ve
+
+Arriba, los apartados son ahora **Datos de la rocola**, **Descargas**, **Papelera** y las **USB** (hasta dos: son cinco botones, como antes).
+Mismo aspecto: los mismos botones planos, la misma lista y los mismos seis botones de abajo. Capturas (JIT, fuera de pantalla) en el
+scratchpad de la sesión, `papelera-capturas/` (las 11 de antes y `papelera.png`, `papelera-devuelto.png`, `descargas.png`,
+`descargas-copiada.png`, `descargas-borrada.png`, `papelera-llena.png`, `papelera-llave-tapada.png`, `vaciar-confirma.png`, `vaciar-no.png`,
+`papelera-vacia.png`).
+
+- **Descargas** (`/rocola/datos/xp/descargas`, 0700): lo que baja el navegador. Abrir/Entrar (y editar los textos de hasta 64 KB, como en los
+  datos; las llaves tapadas con «Mostrar»), Subir, **Copiar a los datos** (a la carpeta de los datos donde se estuvo por última vez; una llave
+  queda 0600), Renombrar y **Borrar** (a la papelera). «Archivo nuevo», en gris (es para los datos).
+- **Borrar** en los datos o en las descargas pide confirmar («¿A la papelera? … Se puede devolver durante 30 días») y **manda a la papelera**;
+  sigue sin borrar carpetas con cosas. Si lo elegido mide más que el tope de la papelera, lo dice antes («se borra para siempre») y se borra.
+- **Papelera** (`/rocola/datos/xp/papelera`, 0700): la lista (lo más nuevo arriba; la columna de la fecha dice «Se tiró el»), arriba cuántas
+  cosas y cuánto de cuánto, y abajo, de la elegida, de dónde vino, cuándo se tiró y cuándo se borra sola. Los botones: **Ver** (solo se ve; una
+  llave, **siempre tapada y sin «Mostrar»**), **Devolver**, **Borrar ya** (pide confirmar) y **Vaciar papelera** (pide confirmar, como pedía la
+  hoja para borrar: «No» con el foco). Subir y Renombrar, en gris.
+- **Devolver** la pone donde estaba; si ya hay algo con ese nombre **no lo pisa**: «notas (devuelto).txt», «notas (devuelto 2).txt»…; si su
+  carpeta ya no está, va a la raíz de su apartado y se dice.
+- **Copiar a los datos** (de una USB o de las descargas) con un archivo del mismo nombre: pregunta «¿Reemplazar?» como antes, pero el de antes
+  ya no se pisa: va a la papelera.
+- La papelera y las descargas no salen en la lista de los datos (son sus apartados) y no se puede escribir ni copiar dentro de ellas desde
+  los datos.
+
+### Cómo está hecho
+
+| Archivo | Qué lleva |
+|---|---|
+| `RocolaOs/RocolaOs.Papelera.cs` (nuevo) | La papelera: `Manda`, `Lista`, `Devuelve` (con `NombreLibre`), `BorraYa`, `Vacia`, `Purga`, `PurgaDeFondo`, `Mueve` |
+| `RocolaOs/RocolaOs.Archivos.cs` | El tipo de cada apartado (`TUsb`, `TDatos`, `TDescargas`, `TPapelera`), las raíces `Descargas()` y `Papelera()`, la lista de los datos sin esas dos, `Copia` también desde las descargas y nunca a ellas ni a la papelera |
+| `RocolaOs/RocolaOs.ArchivosHoja.cs` | Los apartados nuevos, los botones según el apartado, todo lo de la papelera y copiar en un hilo; la clave `papelera_tope_mb` y la papelera que se vacía sola (al arrancar y cada hora) |
+| `RocolaOs/RocolaOs.ArchivosPiezas.cs` | Solo el título de la columna de la fecha (`TituloFecha`) |
+| `RocolaOs/RocolaOs.Navegador.cs` | La clave `descargas_tope_mb`, que pasa al guion; el aviso del código 6; una línea en los ajustes de la hojita |
+| `board/rocola/rootfs_overlay/usr/bin/rocola-navegador` | La carpeta de las descargas, `user-dirs.dirs`, el vigilante del tope, `cuanto` con las descargas |
+
+**La papelera por dentro**: cada cosa tirada va en su carpeta `papelera/<id>/` (0700; el id es la hora UTC con milisegundos, el pid y un
+contador) con `info.txt` (`de=datos|descargas`, `ruta=` de dónde vino, relativa a su apartado y escapada, `cuando=` ms desde 1970 en UTC,
+`bytes=`, `carpeta=`) y la cosa misma en `c/<nombre>`. **Se mueve, no se copia**: `renameat2` con `RENAME_NOREPLACE` (glibc 2.28+; si el
+sistema de archivos no lo sabe hacer, se mira antes y `rename`), así que un enlace se mueve él (no lo de a donde apunta), una llave sigue 0600
+y un nombre ocupado nunca se pisa, ni por una carrera entre mirar y mover. Todo en el mismo disco (la carpeta de datos). Lo de dentro solo se
+lee por `info.txt`: una `ruta=` manipulada («../../fuera/x») no saca nada de su apartado (realpath: se devuelve a la raíz). Si la papelera
+fuera un enlace, no se usa (no se tira nada). Un `info.txt` sin la cosa o una carpeta sin `info.txt` (un corte a medias) no sale en la lista
+y se borra al vaciarse sola si tiene más de un minuto.
+
+**Se vacía sola** (`Purga`): lo de más de **30 días** (contados desde que se tiró, no por la fecha del archivo) y, si lo que queda pasa el
+tope (`papelera_tope_mb=`, **64 MB** de fábrica, de 16 a 256: va en lo aprendido, `datos.img` de 512 MB), lo más viejo primero hasta quedar
+debajo. Se mira al arrancar (con la función «archivos» encendida), cada hora (con el latido) y después de cada cosa que se tira. La bitácora
+dice cuántas se fueron y por qué (sin nombres).
+
+**Siempre en un hilo**: tirar, devolver, borrar ya, vaciar, leer la lista de la papelera y copiar (que antes se hacía en el de la pantalla y
+puede ser un archivo grande de una USB) van en `RocolaOs.Hilo` y vuelven con un encargo (`RocolaOs:archivos-hecho`); mientras, los botones
+en gris y «Un momento...». Un cerrojo para que la papelera sola y la hoja no se pisen. Si la ventana se cerró, el encargo no hace nada.
+
+**Lo que dice la bitácora**: «a la papelera: NOMBRE», «devuelto de la papelera: NOMBRE (como OTRO)», «borrado de la papelera: NOMBRE»,
+«papelera vaciada: N», «copiado de las descargas a los datos: NOMBRE (llave, 0600) (el de antes, a la papelera)». Nunca lo de dentro.
+
+### Las descargas del navegador
+
+**cog no tiene nada propio para las descargas** (cog 0.18.5, el de Buildroot: en su código no aparece «download»); las hace WebKit solo, con su
+manejador de fábrica: lo que llega como adjunto se baja a la **carpeta de descargas de XDG** (`g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD)`)
+o, si no hay, a `HOME` (que era la carpeta del navegador). glib la lee de `$XDG_CONFIG_HOME/user-dirs.dirs`, así que **el guion escribe en cada
+«abre»** `navegador/config/user-dirs.dirs` con `XDG_DOWNLOAD_DIR="/rocola/datos/xp/descargas"` (y crea la carpeta 0700; si fuera un enlace,
+quita el enlace). En los datos de la rocola (`datos.img`), nunca en el disco de la música. «Olvidar lo del navegador» no toca las descargas.
+
+**El tope** (`descargas_tope_mb=`, **64 MB** de fábrica, de 16 a 256; `ROCOLA_NAVEGADOR_DESCARGAS_TOPE_MB` al guion): no hay forma de pararle
+una descarga a WebKit desde fuera, así que un vigilante del guion mira cada segundo lo que ocupan; **si algo creció y pasa el tope —o en los
+datos quedan menos de 32 MB libres—, cierra el navegador**, borra lo que se estaba bajando (los `*.wkdownload` y lo escrito en los últimos ~2 s;
+lo bajado antes se queda), lo dice en `/run/rocola-navegador.txt` y **sale con 6**; la hojita Navegador dice «Se cerró: una descarga pasaba el
+tope de las descargas (64 MB) o los datos se llenaban; lo que bajaba se borró». Si al abrir ya pasan el tope, se dice y se abre igual (lo que
+se baje se parará).
+
+**Sin comprobar con WebKit de verdad** (para el A4, con la compilación completa): que WebKit 2.50 use `user-dirs.dirs` (lo hace por glib), que
+escriba lo que baja como `NOMBRE.wkdownload` junto al destino y lo renombre al acabar (si no, el vigilante igual borra lo escrito en los
+últimos 2 s), qué hace con un nombre que ya está (`allow-overwrite` es falso de fábrica: la descarga falla o cambia el nombre; nada se pisa) y
+qué se baja de verdad en claude.ai o GitHub (un «Descargar» que no es adjunto se abre en la página: cog no pregunta).
+
+### Las pruebas (21-11-2026)
+
+Máquina compartida (otros agentes compilando). JIT `dotnet build -c Release`; AOT `dotnet publish -p:PublishAot=true -r linux-x64` (con
+`fase11/pesado.lock`). **Todo fuera de pantalla, con un cog de mentira y datos y llaves inventados; nada en el A4 ni con WebKit.**
+
+| Prueba | Resultado |
+|---|---|
+| Compilar, JIT | 0 errores, los 13 avisos de siempre |
+| Publicar NativeAOT | sin avisos IL/AOT; rocola-xp 14,2 MB |
+| `ganchos.py` | TODO BIEN (no se tocó ningún gancho ni `Codigo/`) |
+| `diff-xp.py --sin-ganchos $(ls Codigo)` | 5 135 / 4 868 / 229, las de la base (`junta-2`) |
+| `Pruebas/RocolaOs/navegador-archivos/prueba.sh` | **JIT 62 de 62; AOT 62 de 62** (orden 1 con 89 dentro, guion 27, archivos 14, navegador 14, caídas 4, sin 2) |
+
+Lo nuevo, por partes:
+- **orden** (`--prueba-archivos`, de 55 a **89**): descargas y papelera carpetas de verdad, 0700, fuera de la lista de los datos (una
+  «papelera» en una subcarpeta sí sale); tirar y devolver igual a su sitio; **nombre repetido**: «a (devuelto).txt» y «a (devuelto 2).txt»
+  sin pisar nada; `Mueve` a un nombre ocupado falla y no cambia nada; sin su carpeta, a la raíz; una carpeta vacía sí, una con cosas no, ni la
+  raíz, ni las descargas, ni la papelera, ni la USB, ni con «..»; **la llave sigue 0600 en la papelera** y una de `soloist/` sigue siendo
+  llave por su ruta de antes; un enlace que sale va él a la papelera y vaciar lo borra a él (lo de fuera intacto); tirar y devolver desde las
+  descargas; copiar de las descargas a los datos (una llave, 0600); copiar a la papelera, a las descargas o desde la papelera, no; editar en
+  las descargas; una `ruta=` manipulada no saca nada; borrar ya y vaciar; **caducidad con fechas falsas** (31 días se va, 29 se queda; dos
+  días después, se va); **el tope** (tres de 40 000 bytes con tope de 100 000: se va la más vieja; con un tope menor que cada una, todas); lo
+  que quedó a medias de hace 5 min se va y el de ahora no; la papelera que es un enlace a fuera no se usa.
+- **guion** (de 20 a 27): `user-dirs.dirs` con `XDG_DOWNLOAD_DIR="/rocola/datos/xp/descargas"`, la carpeta 0700 y el cog de mentira (que
+  la lee como glib) baja ahí; **una descarga que pasa el tope (1 MB) se para**: cog fuera en 1,2-1,4 s, el guion sale con 6, lo que bajaba
+  borrado y lo bajado antes se queda; una que cabe (512 KB) se queda; **con los datos casi llenos** (el piso) se para igual (con `/proc` y
+  los datos montados en el chroot, como en el sistema: `df` los necesita); las descargas que son un enlace: fuera el enlace, lo de fuera
+  intacto; `cuanto` con las descargas; `olvida` no las toca.
+- **archivos** (de 11 a 14, 21 capturas): borrar `notas2.txt` → papelera → **Devolver** (igual, en su sitio); en Descargas, copiar
+  `bajado.txt` a los datos y mandar `bajado.txt` y una llave a la papelera; **ver la llave en la papelera: tapada y sin «Mostrar»** (ni
+  «llave a la vista» en la bitácora); **vaciar con «No»** (Intro con el foco en No): no se vacía; **con «Sí»**: una sola vez, 2 cosas, la
+  papelera vacía; ninguna llave (tampoco la bajada) en bitácoras, `rocola_error.txt` ni la salida.
+- **navegador** (una más): rocola-xp le pasa al guion el tope de `descargas_tope_mb` y cog baja a `DATOS/descargas`.
+
+No se repitieron la prueba de la hoja Pantalla ni la comparación contra la referencia congelada: no se tocó ni la ventana ni ningún gancho.
+
 ## Lo que queda abierto y lo que hay que comprobar en el A4
 
 - **La compilación completa con WebKit** (horas en GitHub; a pedido del dueño) y medir de verdad cuánto crece el sistema y la descarga.
@@ -268,6 +389,12 @@ probar cog de verdad; el traspaso de DRM master con un programa de mentira en QE
 - **Los archivos de XP abiertos con la rocola andando**: editar `rocola_config.txt` u otro de XP mientras la rocola corre puede no servir (XP lo
   reescribe al guardar lo suyo); para lo de XP, Ctrl+F3 y Ctrl+F2. Archivos es para las llaves y lo de Rocola OS.
 - **Al juntar**: los números de los ganchos (g100-g101) y `GANCHOS.tsv`; las dos líneas de la prueba de la hoja Pantalla (dos `Tab` más).
+- **Las descargas con WebKit de verdad** (21-11-2026): que baje a `descargas/` por `user-dirs.dirs`, el nombre de lo que va bajando
+  (`.wkdownload`), qué pasa con un nombre que ya está, y que cerrar cog por el tope no deje nada a medias. El tope de las descargas cierra
+  el navegador entero (no hay otra forma de parar una descarga desde fuera de WebKit).
+- **La papelera**: con varias USB solo caben dos botones de USB (los apartados son cinco botones); los nombres de lo tirado se ven en la
+  lista (también el de una llave, como en los datos). Lo tirado sigue ocupando sitio en `datos.img` hasta que se vacía (tope de 64 MB de
+  fábrica: con el del navegador, 128, y el de las descargas, 64, hasta ~256 MB de los 512 de lo aprendido en el peor caso).
 
 ## Revisión independiente (20-11-2026)
 

@@ -41,7 +41,7 @@ namespace Rocola
             Trampa(Path.Combine(d0, "dentro.txt"), Path.Combine(d0, "notas.txt"));   // (uno que no sale: si se lista)
 
             string dr = RocolaOsArchivos.Real(d0), ur = RocolaOsArchivos.Real(u0), fr = RocolaOsArchivos.Real(f0);
-            RocolaOsRaiz datos = new RocolaOsRaiz { Nombre = "datos", Ruta = dr, Escribe = true, Clave = dr };
+            RocolaOsRaiz datos = new RocolaOsRaiz { Nombre = "datos", Ruta = dr, Escribe = true, Tipo = RocolaOsArchivos.TDatos, Clave = dr };
             RocolaOsRaiz usb = new RocolaOsRaiz { Nombre = "usb", Ruta = ur, Clave = ur };
 
             // ---- la regla: nunca fuera ----
@@ -150,8 +150,149 @@ namespace Rocola
                 && RocolaOsEditor.CaracterUs(Tecla.Oemplus, false) == '=' && RocolaOsEditor.CaracterUs(Tecla.OemQuestion, false) == '/' && RocolaOsEditor.CaracterUs(Tecla.OemQuestion, true) == '?'
                 && RocolaOsEditor.CaracterUs(Tecla.OemOpenBrackets, true) == '{' && RocolaOsEditor.CaracterUs(Tecla.OemSemicolon, true) == ':' && RocolaOsEditor.CaracterUs(Tecla.OemQuotes, true) == '"'
                 && RocolaOsEditor.CaracterUs(Tecla.Oemcomma, true) == '<' && RocolaOsEditor.CaracterUs(Tecla.Oemtilde, true) == '~' && RocolaOsEditor.CaracterUs(Tecla.OemPipe, false) == '\\');
+            // ---- las descargas y la papelera (21-11-2026) ----
+            Papelera(d0, dr, u0, ur, f0, fr, usb);
+            Si("Lo de fuera, intacto despues de la papelera", File.ReadAllText(Path.Combine(f0, "secreto.txt")) == "lo de fuera\n" && Directory.GetFileSystemEntries(f0).Length == 1);
             Console.WriteLine("prueba-archivos: " + bien + " bien, " + mal + " mal");
             return mal == 0 ? 0 : 1;
+        }
+        // LA PAPELERA Y LAS DESCARGAS (la carpeta de datos de la prueba es la de ROCOLA_DATOS, la misma que DATOS)
+        private static void Papelera(string d0, string dr, string u0, string ur, string f0, string fr, RocolaOsRaiz usb)
+        {
+            string err; int fuera;
+            Si("La carpeta de datos de la prueba es la de ROCOLA_DATOS (" + Form1.CarpetaDatos + ")", RocolaOsArchivos.Real(Form1.CarpetaDatos) == dr);
+            RocolaOsRaiz datos = RocolaOsArchivos.Datos(), desc = RocolaOsArchivos.Descargas(), pap = RocolaOsArchivos.Papelera();
+            string pr = pap.Ruta, der = desc.Ruta;
+            Si("Descargas y Papelera: carpetas de verdad dentro de los datos, 0700; las descargas se escriben, la papelera no", der == dr + "/descargas" && pr == dr + "/papelera"
+                && Modo(der) == "700" && Modo(pr) == "700" && desc.Escribe && !pap.Escribe && desc.Tipo == RocolaOsArchivos.TDescargas && pap.Tipo == RocolaOsArchivos.TPapelera);
+            List<RocolaOsEntrada> l = RocolaOsArchivos.Lista(datos, dr, out fuera, out err);
+            bool ve = false; foreach (RocolaOsEntrada e in l) if (e.Nombre == "descargas" || e.Nombre == "papelera") ve = true;
+            Si("La lista de los datos no ensena ni las descargas ni la papelera (son sus apartados)", !ve && l.Count > 3);
+            Directory.CreateDirectory(Path.Combine(dr, "sub", "hondo"));
+            File.WriteAllText(Path.Combine(dr, "sub", "hondo", "nada.txt"), "x");
+            Si("...pero en una subcarpeta, una que se llame «papelera» si sale", Prepara(Path.Combine(dr, "sub", "papelera")) && Cuenta(RocolaOsArchivos.Lista(datos, Path.Combine(dr, "sub"), out fuera, out err), "papelera") == 1);
+            Directory.Delete(Path.Combine(dr, "sub", "papelera"));
+
+            // tirar y devolver
+            File.WriteAllText(Path.Combine(dr, "sub", "a.txt"), "primero\n");
+            RocolaOsTirado t; string q;
+            string r = RocolaOsPapelera.Manda(datos, Path.Combine(dr, "sub", "a.txt"), out t);
+            List<RocolaOsTirado> lp = RocolaOsPapelera.Lista();
+            Si("Manda: sub/a.txt sale de su sitio y entra a la papelera (de=datos, ruta=sub/a.txt), su carpeta 0700", r == null && !File.Exists(Path.Combine(dr, "sub", "a.txt"))
+                && lp.Count == 1 && lp[0].De == "datos" && lp[0].Ruta == "sub/a.txt" && lp[0].Nombre == "a.txt" && File.ReadAllText(lp[0].Cosa) == "primero\n" && Modo(lp[0].Dir) == "700");
+            bool otra;
+            r = RocolaOsPapelera.Devuelve(lp[0], out q, out otra);
+            Si("Devuelve: a sub/a.txt, igual, y la papelera queda vacia", r == null && q == Path.Combine(dr, "sub", "a.txt") && !otra && File.ReadAllText(q) == "primero\n" && RocolaOsPapelera.Lista().Count == 0 && Directory.GetFileSystemEntries(pr).Length == 0);
+            // nombre repetido: no se pisa
+            RocolaOsPapelera.Manda(datos, Path.Combine(dr, "sub", "a.txt"), out t);
+            File.WriteAllText(Path.Combine(dr, "sub", "a.txt"), "segundo\n");
+            r = RocolaOsPapelera.Devuelve(RocolaOsPapelera.Lista()[0], out q, out otra);
+            Si("Devuelve con el nombre ocupado: «a (devuelto).txt», sin pisar el de ahora", r == null && Path.GetFileName(q) == "a (devuelto).txt" && File.ReadAllText(q) == "primero\n" && File.ReadAllText(Path.Combine(dr, "sub", "a.txt")) == "segundo\n");
+            File.WriteAllText(Path.Combine(dr, "sub", "a.txt"), "segundo\n");
+            RocolaOsPapelera.Manda(datos, Path.Combine(dr, "sub", "a.txt"), out t);
+            File.WriteAllText(Path.Combine(dr, "sub", "a.txt"), "tercero\n");
+            r = RocolaOsPapelera.Devuelve(RocolaOsPapelera.Lista()[0], out q, out otra);
+            Si("...y otra vez: «a (devuelto 2).txt»; los otros dos, intactos", r == null && Path.GetFileName(q) == "a (devuelto 2).txt" && File.ReadAllText(q) == "segundo\n"
+                && File.ReadAllText(Path.Combine(dr, "sub", "a.txt")) == "tercero\n" && File.ReadAllText(Path.Combine(dr, "sub", "a (devuelto).txt")) == "primero\n");
+            Si("NombreLibre: sin extension y con punto al principio", Path.GetFileName(RocolaOsPapelera.NombreLibre(Path.Combine(dr, "sub"), "a.txt")) == "a (devuelto 3).txt"
+                && Path.GetFileName(RocolaOsPapelera.NombreLibre(dr, "notas.txt")) == "notas.txt");
+            File.WriteAllText(Path.Combine(dr, "m1.txt"), "uno\n"); File.WriteAllText(Path.Combine(dr, "m2.txt"), "dos\n");
+            bool lanzo = false; try { RocolaOsPapelera.Mueve(Path.Combine(dr, "m1.txt"), Path.Combine(dr, "m2.txt")); } catch (IOException) { lanzo = true; }
+            Si("Mueve (renameat2 RENAME_NOREPLACE): a un nombre que ya esta NO, y ninguno cambia", lanzo && File.ReadAllText(Path.Combine(dr, "m1.txt")) == "uno\n" && File.ReadAllText(Path.Combine(dr, "m2.txt")) == "dos\n");
+            File.Delete(Path.Combine(dr, "m1.txt")); File.Delete(Path.Combine(dr, "m2.txt"));
+            // la carpeta de antes ya no esta: a la raiz de su apartado
+            Directory.CreateDirectory(Path.Combine(dr, "sub2")); File.WriteAllText(Path.Combine(dr, "sub2", "x.txt"), "equis\n");
+            RocolaOsPapelera.Manda(datos, Path.Combine(dr, "sub2", "x.txt"), out t);
+            Directory.Delete(Path.Combine(dr, "sub2"));
+            r = RocolaOsPapelera.Devuelve(RocolaOsPapelera.Lista()[0], out q, out otra);
+            Si("Devuelve sin su carpeta: a la raiz de los datos, y lo dice", r == null && otra && q == Path.Combine(dr, "x.txt") && File.ReadAllText(q) == "equis\n");
+            // una carpeta vacia si; una con cosas no; la raiz, las descargas y la papelera mismas no; en la USB no; en la papelera no
+            Directory.CreateDirectory(Path.Combine(dr, "vacia"));
+            Si("Manda: una carpeta vacia si (y se devuelve)", RocolaOsPapelera.Manda(datos, Path.Combine(dr, "vacia"), out t) == null && t.Carpeta && !Directory.Exists(Path.Combine(dr, "vacia"))
+                && RocolaOsPapelera.Devuelve(t, out q, out otra) == null && Directory.Exists(Path.Combine(dr, "vacia")));
+            Si("Manda: una carpeta con cosas NO, la raiz NO, las descargas y la papelera NO", RocolaOsPapelera.Manda(datos, Path.Combine(dr, "sub"), out t) != null && Directory.Exists(Path.Combine(dr, "sub"))
+                && RocolaOsPapelera.Manda(datos, dr, out t) != null && RocolaOsPapelera.Manda(datos, der, out t) != null && RocolaOsPapelera.Manda(datos, pr, out t) != null
+                && Directory.Exists(der) && Directory.Exists(pr) && RocolaOsPapelera.Lista().Count == 0);
+            Si("Manda: en la USB NO y desde la papelera NO", RocolaOsPapelera.Manda(usb, Path.Combine(ur, "leeme.txt"), out t) != null && File.Exists(Path.Combine(u0, "leeme.txt"))
+                && RocolaOsPapelera.Manda(pap, Path.Combine(pr, "x"), out t) != null);
+            Si("Manda: fuera con «..» NO", RocolaOsPapelera.Manda(datos, Path.Combine(dr, "sub", "..", "..", Path.GetFileName(fr), "secreto.txt"), out t) != null && File.Exists(Path.Combine(f0, "secreto.txt")));
+            // las llaves: 0600 tambien en la papelera; por su ruta de antes (soloist/) aunque el nombre no lo diga
+            Si("Manda: la llave (rocola_genius.txt, 0600) sigue 0600 en la papelera y se sabe llave", RocolaOsPapelera.Manda(datos, Path.Combine(dr, "rocola_genius.txt"), out t) == null
+                && Modo(t.Cosa) == "600" && LlaveEnLista("rocola_genius.txt"));
+            Directory.CreateDirectory(Path.Combine(dr, "soloist")); File.WriteAllText(Path.Combine(dr, "soloist", "sesion.json"), "{\"llave\":\"SECRETODEPRUEBA\"}\n");
+            RocolaOsArchivos.Permisos(Path.Combine(dr, "soloist", "sesion.json"), true);
+            Si("Manda: soloist/sesion.json es llave tambien en la papelera (por la ruta de antes), 0600", RocolaOsPapelera.Manda(datos, Path.Combine(dr, "soloist", "sesion.json"), out t) == null
+                && t.Llave && LlaveEnLista("sesion.json") && Modo(t.Cosa) == "600");
+            // el enlace que sale: a la papelera va EL ENLACE; vaciar lo borra a el, no a lo de fuera
+            Trampa(Path.Combine(dr, "fuga2"), f0);
+            string rf = RocolaOsPapelera.Manda(datos, Path.Combine(dr, "fuga2"), out t); if (rf != null) Console.WriteLine("   (" + rf + ")");
+            Si("Manda: el enlace que sale va a la papelera el enlace (lo de fuera sigue)", rf == null && !t.Carpeta
+                && new FileInfo(t.Cosa).LinkTarget != null && File.Exists(Path.Combine(f0, "secreto.txt")));
+            // las descargas: tirar y devolver a las descargas; copiar a los datos
+            File.WriteAllText(Path.Combine(der, "bajado.txt"), "de internet\n");
+            r = RocolaOsPapelera.Manda(desc, Path.Combine(der, "bajado.txt"), out t);
+            Si("Manda desde las descargas: de=descargas", r == null && t.De == "descargas" && !File.Exists(Path.Combine(der, "bajado.txt")));
+            r = RocolaOsPapelera.Devuelve(t, out q, out otra);
+            Si("Devuelve a las descargas", r == null && q == Path.Combine(der, "bajado.txt") && File.ReadAllText(q) == "de internet\n");
+            string dest;
+            Si("Copia de las descargas a los datos (y la de las descargas sigue)", RocolaOsArchivos.Copia(desc, Path.Combine(der, "bajado.txt"), datos, dr, false, out dest) == null
+                && File.ReadAllText(Path.Combine(dr, "bajado.txt")) == "de internet\n" && File.Exists(Path.Combine(der, "bajado.txt")));
+            File.WriteAllText(Path.Combine(der, "mi_api_key.txt"), "client_secret=SECRETODEPRUEBA0987654321\n");
+            Si("Copia de las descargas: una llave queda 0600", RocolaOsArchivos.Copia(desc, Path.Combine(der, "mi_api_key.txt"), datos, dr, false, out dest) == null && Modo(dest) == "600");
+            Si("Copia: a la papelera NO, a las descargas NO (desde la USB), desde la papelera NO", RocolaOsArchivos.Copia(usb, Path.Combine(ur, "leeme.txt"), datos, pr, false, out dest) != null
+                && RocolaOsArchivos.Copia(usb, Path.Combine(ur, "leeme.txt"), datos, der, false, out dest) != null && !File.Exists(Path.Combine(der, "leeme.txt"))
+                && RocolaOsArchivos.Copia(pap, RocolaOsPapelera.Lista()[0].Cosa, datos, dr, false, out dest) != null);
+            Si("GuardaTexto en las descargas (se editan los chicos)", RocolaOsArchivos.GuardaTexto(desc, Path.Combine(der, "bajado.txt"), "editado", false, false, true, false) == null && File.ReadAllText(Path.Combine(der, "bajado.txt")) == "editado\n");
+            // una ruta de antes manipulada («../..») no saca nada de los datos
+            File.WriteAllText(Path.Combine(dr, "y.txt"), "ye\n");
+            RocolaOsPapelera.Manda(datos, Path.Combine(dr, "y.txt"), out t);
+            RocolaOsPapelera.EscribeInfo(t.Dir, "datos", "../../" + Path.GetFileName(fr) + "/y.txt", t.Cuando, t.Bytes, false);
+            r = RocolaOsPapelera.Devuelve(RocolaOsPapelera.Lista()[0], out q, out otra);
+            Si("Devuelve con la ruta de antes manipulada («../../FUERA/y.txt»): queda en la raiz de los datos, nada fuera", r == null && q == Path.Combine(dr, "y.txt") && !File.Exists(Path.Combine(f0, "y.txt")));
+
+            // borrar ya y vaciar
+            int antes = RocolaOsPapelera.Lista().Count;
+            Si("BorraYa: una cosa (" + antes + " -> " + (antes - 1) + ")", antes >= 3 && RocolaOsPapelera.BorraYa(RocolaOsPapelera.Lista()[0]) == null && RocolaOsPapelera.Lista().Count == antes - 1);
+            int n = RocolaOsPapelera.Vacia(out err);
+            Si("Vacia: todo (" + n + "), y lo de fuera sigue (el enlace se borro el)", err == null && n == antes - 1 && RocolaOsPapelera.Lista().Count == 0 && Directory.GetFileSystemEntries(pr).Length == 0 && File.Exists(Path.Combine(f0, "secreto.txt")));
+
+            // vaciarse sola: 30 dias (por cuando se tiro) y el tope (lo mas viejo primero)
+            long ahora = RocolaOsPapelera.AhoraMs, dia = RocolaOsPapelera.DiaMs;
+            RocolaOsTirado v31 = Tira(datos, dr, "viejo31.txt", 100, ahora - 31 * dia), v29 = Tira(datos, dr, "viejo29.txt", 100, ahora - 29 * dia);
+            int vj, pt;
+            RocolaOsPapelera.Purga(ahora, 64L << 20, out vj, out pt);
+            Si("Purga: lo de hace 31 dias se va, lo de hace 29 se queda (" + vj + " viejas, " + pt + " por el tope)", vj == 1 && pt == 0 && !Directory.Exists(v31.Dir) && Directory.Exists(v29.Dir));
+            RocolaOsPapelera.Purga(ahora + 2 * dia, 64L << 20, out vj, out pt);
+            Si("Purga: dos dias despues (fecha falsa), la de 29 ya tiene 31: fuera", vj == 1 && !Directory.Exists(v29.Dir));
+            RocolaOsTirado a1 = Tira(datos, dr, "t1.bin", 40000, ahora - 3000), a2 = Tira(datos, dr, "t2.bin", 40000, ahora - 2000), a3 = Tira(datos, dr, "t3.bin", 40000, ahora - 1000);
+            RocolaOsPapelera.Purga(ahora, 100000, out vj, out pt);
+            Si("Purga por el tope (100 000 bytes, tres de 40 000): se va la mas vieja (t1), quedan t2 y t3", vj == 0 && pt == 1 && !Directory.Exists(a1.Dir) && Directory.Exists(a2.Dir) && Directory.Exists(a3.Dir));
+            RocolaOsPapelera.Purga(ahora, 30000, out vj, out pt);
+            Si("Purga con un tope menor que cada una: se van todas", pt == 2 && RocolaOsPapelera.Lista().Count == 0);
+            // lo que quedo a medias (sin info.txt): fuera si tiene mas de un minuto; uno de ahora se queda (otro lo esta tirando)
+            string rota = Path.Combine(pr, "20260101000000000-1-1"), nueva = Path.Combine(pr, "20260101000000000-1-2");
+            Directory.CreateDirectory(Path.Combine(rota, "c")); Directory.CreateDirectory(Path.Combine(nueva, "c"));
+            Directory.SetLastWriteTimeUtc(rota, DateTime.UtcNow.AddMinutes(-5));
+            RocolaOsPapelera.Purga(ahora, 64L << 20, out vj, out pt);
+            Si("Purga: lo que quedo a medias de hace 5 min se va; el de ahora se queda", !Directory.Exists(rota) && Directory.Exists(nueva));
+            Directory.Delete(nueva, true);
+            // la papelera que es un enlace (a fuera): no se usa
+            Directory.Move(pr, pr + ".bien");
+            File.CreateSymbolicLink(pr, f0);
+            File.WriteAllText(Path.Combine(dr, "z.txt"), "zeta\n");
+            Si("La papelera es un enlace a fuera: no se tira nada (z.txt sigue) y fuera no cambia", RocolaOsPapelera.Manda(datos, Path.Combine(dr, "z.txt"), out t) != null && File.Exists(Path.Combine(dr, "z.txt"))
+                && Directory.GetFileSystemEntries(f0).Length == 1 && RocolaOsPapelera.Lista().Count == 0);
+            File.Delete(pr); Directory.Move(pr + ".bien", pr);
+        }
+        private static int Cuenta(List<RocolaOsEntrada> l, string n) { int k = 0; foreach (RocolaOsEntrada e in l) if (e.Nombre == n) k++; return k; }
+        private static bool Prepara(string d) { Directory.CreateDirectory(d); return true; }
+        private static bool LlaveEnLista(string n) { foreach (RocolaOsTirado x in RocolaOsPapelera.Lista()) if (x.Nombre == n) return x.Llave; return false; }
+        private static RocolaOsTirado Tira(RocolaOsRaiz datos, string dr, string n, int bytes, long cuando)
+        {
+            File.WriteAllBytes(Path.Combine(dr, n), new byte[bytes]);
+            RocolaOsTirado t; RocolaOsPapelera.Manda(datos, Path.Combine(dr, n), out t);
+            RocolaOsPapelera.EscribeInfo(t.Dir, "datos", n, cuando, bytes, false);
+            return t;
         }
         private static void Trampa(string enlace, string a) { try { if (File.Exists(enlace) || Directory.Exists(enlace) || new FileInfo(enlace).LinkTarget != null) File.Delete(enlace); } catch { } File.CreateSymbolicLink(enlace, a); }
         private static bool Prepara640(string r) { File.SetUnixFileMode(r, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead); return Modo(r) == "640"; }

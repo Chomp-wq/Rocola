@@ -53,7 +53,7 @@ if [[ " $partes " == *" guion "* ]]; then
   else
     R="$W/raiz"; mkdir -p "$R/bin" "$R/lib" "$R/usr/bin" "$R/run" "$R/rocola/datos/xp" "$R/usr/share/rocola/navegador" "$R/dev"
     cp "$TARGET/bin/busybox" "$R/bin/"; for l in ld-linux-x86-64.so.2 libc.so.6 libm.so.6 libresolv.so.2; do cp -L "$TARGET/lib/$l" "$R/lib/" 2>/dev/null; done
-    ln -s lib "$R/lib64"; mknod "$R/dev/null" c 1 3; chroot "$R" /bin/busybox --install -s /bin
+    ln -s lib "$R/lib64"; mknod "$R/dev/null" c 1 3; mknod "$R/dev/zero" c 1 5; chroot "$R" /bin/busybox --install -s /bin
     cp "$NAV" "$R/usr/bin/"; cp "$INICIO" "$R/usr/share/rocola/navegador/"
     # el cog de mentira: apunta sus argumentos y lo que le importa del entorno; con TERM sale con 0 (como cog); «falla» sale con 5 al momento
     cat > "$R/usr/bin/cog" <<'EOF'
@@ -61,6 +61,15 @@ if [[ " $partes " == *" guion "* ]]; then
 echo "cog $* | HOME=$HOME XDG_DATA_HOME=$XDG_DATA_HOME XDG_CACHE_HOME=$XDG_CACHE_HOME XKB=$XKB_DEFAULT_LAYOUT" >> /run/cog.txt
 [ -f /run/cog-falla ] && exit 5
 trap 'echo TERM >> /run/cog.txt; exit 0' TERM
+# las descargas como WebKit: la carpeta de descargas de XDG (glib la lee de $XDG_CONFIG_HOME/user-dirs.dirs), a «NOMBRE.wkdownload» y al
+# acabar con su nombre; /run/cog-baja dice «NOMBRE KB» (de 256 en 256 KB cada 0,2 s)
+D=$(. "$XDG_CONFIG_HOME/user-dirs.dirs" 2>/dev/null; echo "$XDG_DOWNLOAD_DIR")
+echo "descargas: $D" >> /run/cog.txt
+if [ -f /run/cog-baja ]; then
+  read n kb < /run/cog-baja
+  i=0; while [ $i -lt $((kb / 256)) ]; do dd if=/dev/zero bs=1024 count=256 >> "$D/$n.wkdownload" 2>/dev/null; i=$((i + 1)); sleep 0.2; done
+  mv "$D/$n.wkdownload" "$D/$n"; echo "bajado $n" >> /run/cog.txt
+fi
 while :; do sleep 1; done
 EOF
     chmod 755 "$R/usr/bin/cog"
@@ -76,13 +85,14 @@ EOF
     p=$(cat "$R/run/rocola-navegador.pid" 2>/dev/null)
     si "abre: cog con la pagina de inicio, --platform=drm, las galletas en sqlite y sus datos en navegador/ (XDG_*), teclado us" bash -c "grep -qF 'cog --platform=drm --cookie-jar=sqlite:/rocola/datos/xp/navegador/galletas.sqlite file:///usr/share/rocola/navegador/inicio.html | HOME=/rocola/datos/xp/navegador XDG_DATA_HOME=/rocola/datos/xp/navegador/datos XDG_CACHE_HOME=/rocola/datos/xp/navegador/cache XKB=us' '$R/run/cog.txt'"
     si "abre: la carpeta de datos 0700 y el pid de cog en /run" bash -c "[ \"\$(stat -c %a '$R/rocola/datos/xp/navegador')\" = 700 ] && [ -n '$p' ]"
+    si "abre: las descargas a /rocola/datos/xp/descargas (0700) por user-dirs.dirs (XDG_DOWNLOAD_DIR), y cog (glib) la lee de ahi" bash -c "[ \"\$(cat '$R/rocola/datos/xp/navegador/config/user-dirs.dirs')\" = 'XDG_DOWNLOAD_DIR=\"/rocola/datos/xp/descargas\"' ] && [ \"\$(stat -c %a '$R/rocola/datos/xp/descargas')\" = 700 ] && grep -qx 'descargas: /rocola/datos/xp/descargas' '$R/run/cog.txt' && grep -q 'descargas en /rocola/datos/xp/descargas, tope 64 MB' '$R/run/rocola-navegador.txt'"
     c /bin/sh /usr/bin/rocola-navegador abre > "$W/g-abre2.txt" 2>&1; r2=$?
     si "abre otra vez con uno abierto: no (sale con 4)" test $r2 = 4
     c /bin/sh /usr/bin/rocola-navegador olvida > "$W/g-olv0.txt" 2>&1; r3=$?
     si "olvida con el navegador abierto: no (sale con 1)" test $r3 = 1
     pkill -TERM -f "^/bin/sh /usr/bin/rocola-navegador abre" 2>/dev/null; sleep 2
     si "SIGTERM al guion: cog recibe TERM, el guion sale con 0 y quita el pid" bash -c "grep -qx TERM '$R/run/cog.txt' && [ \"\$(cat '$W/g-abre.salio')\" = 0 ] && [ ! -e '$R/run/rocola-navegador.pid' ]"
-    si "lo que dice cog va a /run/rocola-navegador.txt (0600), no a los datos" bash -c "grep -q 'cerrado (codigo 0)' '$R/run/rocola-navegador.txt' && [ \"\$(stat -c %a '$R/run/rocola-navegador.txt')\" = 600 ] && ! ls '$R/rocola/datos/xp' | grep -qv navegador"
+    si "lo que dice cog va a /run/rocola-navegador.txt (0600), no a los datos" bash -c "grep -q 'cerrado (codigo 0)' '$R/run/rocola-navegador.txt' && [ \"\$(stat -c %a '$R/run/rocola-navegador.txt')\" = 600 ] && ! ls '$R/rocola/datos/xp' | grep -qvE '^(navegador|descargas)\$'"
     # con URL y otro teclado
     : > "$R/run/cog.txt"
     ( chroot "$R" /bin/env ROCOLA_RUN=/run ROCOLA_NAVEGADOR_TTY=/dev/null ROCOLA_NAVEGADOR_TECLADO=latam /bin/sh /usr/bin/rocola-navegador abre https://claude.ai/ > /dev/null 2>&1 ) &
@@ -107,6 +117,37 @@ EOF
     i=0; while [ ! -s "$W/g-dueno.salio" ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done; t1=$(date +%s.%N)
     s=$(python3 -c "print('%.1f' % ($t1 - $t0))")
     si "si el dueno (rocola-xp) se cae, cog se cierra solo ($s s) y lo dice" bash -c "grep -qx TERM '$R/run/cog.txt' && grep -q 'rocola-xp ya no esta' '$R/run/rocola-navegador.txt' && python3 -c 'import sys; sys.exit(0 if $s < 4 else 1)'"
+    # LAS DESCARGAS Y SU TOPE: una que pasa el tope (1 MB) se para: cog fuera, lo que bajaba fuera, lo ya bajado se queda; sale con 6
+    DX="$R/rocola/datos/xp/descargas"
+    head -c 100000 /dev/zero > "$DX/viejo.bin"; touch -d '-1 hour' "$DX/viejo.bin"
+    : > "$R/run/cog.txt"; echo "grande.bin 4096" > "$R/run/cog-baja"
+    t0=$(date +%s.%N)
+    chroot "$R" /bin/env ROCOLA_RUN=/run ROCOLA_NAVEGADOR_TTY=/dev/null ROCOLA_NAVEGADOR_DESCARGAS_TOPE_MB=1 /bin/sh /usr/bin/rocola-navegador abre > /dev/null 2>&1 & gp=$!
+    i=0; while kill -0 $gp 2>/dev/null && [ $i -lt 150 ]; do sleep 0.1; i=$((i + 1)); done; wait $gp; r8=$?; t1=$(date +%s.%N)
+    s=$(python3 -c "print('%.1f' % ($t1 - $t0))")
+    si "una descarga que pasa el tope (1 MB): cog fuera en $s s, sale con 6, lo que bajaba borrado, lo ya bajado se queda, y lo dice" bash -c "[ $r8 = 6 ] && grep -qx TERM '$R/run/cog.txt' && ! ls '$DX' | grep -q grande && [ -f '$DX/viejo.bin' ] && grep -q 'pasaban su tope de 1 MB' '$R/run/rocola-navegador.txt' && ! grep -q '^bajado' '$R/run/cog.txt' && [ ! -e '$R/run/rocola-navegador.tope' ]"
+    # una que cabe: se queda
+    : > "$R/run/cog.txt"; echo "chica.bin 512" > "$R/run/cog-baja"
+    ( c /bin/sh /usr/bin/rocola-navegador abre > /dev/null 2>&1; echo $? > "$W/g-chica.salio" ) &
+    sleep 3; pkill -TERM -f "^/bin/sh /usr/bin/rocola-navegador abre" 2>/dev/null; sleep 2
+    si "una descarga que cabe (512 KB, tope 64 MB): se queda con su nombre y el guion sale con 0" bash -c "grep -q '^bajado chica.bin' '$R/run/cog.txt' && [ \"\$(wc -c < '$DX/chica.bin')\" = 524288 ] && [ \"\$(cat '$W/g-chica.salio')\" = 0 ]"
+    # los datos que se llenan (el piso de lo libre): tambien se para
+    # (df necesita /proc/mounts y que los datos sean un montaje, como en el sistema: en el chroot, /proc y los datos montados sobre si mismos)
+    mkdir -p "$R/proc"; mount -t proc proc "$R/proc"; mount --bind "$R/rocola/datos" "$R/rocola/datos"
+    : > "$R/run/cog.txt"; echo "otra.bin 2048" > "$R/run/cog-baja"
+    timeout 30 chroot "$R" /bin/env ROCOLA_RUN=/run ROCOLA_NAVEGADOR_TTY=/dev/null ROCOLA_DESCARGAS_PISO_KB=999999999 /bin/sh /usr/bin/rocola-navegador abre > /dev/null 2>&1; r9=$?
+    umount "$R/rocola/datos"; umount "$R/proc"
+    si "con los datos casi llenos (menos libre que el piso) una descarga se para igual (sale con 6, lo dice)" bash -c "[ $r9 = 6 ] && ! ls '$DX' | grep -q otra && grep -q 'en los datos quedaban' '$R/run/rocola-navegador.txt' && [ -f '$DX/chica.bin' ]"
+    rm -f "$R/run/cog-baja"
+    # las descargas que son un enlace a otro lado: se quita el enlace (lo de fuera no se toca) y se hace la carpeta
+    mkdir -p "$R/fuera"; echo nada > "$R/fuera/x"; mv "$DX" "$DX.bien"; ln -s /fuera "$DX"
+    ( c /bin/sh /usr/bin/rocola-navegador abre > /dev/null 2>&1 ) &
+    sleep 2; pkill -TERM -f "^/bin/sh /usr/bin/rocola-navegador abre" 2>/dev/null; sleep 2
+    si "si las descargas son un enlace a otro lado: el enlace fuera, carpeta nueva 0700, lo de fuera intacto" bash -c "[ ! -L '$DX' ] && [ -d '$DX' ] && [ \"\$(stat -c %a '$DX')\" = 700 ] && [ \"\$(ls '$R/fuera')\" = x ]"
+    rm -rf "$DX"; mv "$DX.bien" "$DX"
+    c /bin/sh /usr/bin/rocola-navegador cuanto > "$W/g-cuanto2.txt" 2>&1
+    si "cuanto: tambien las descargas y su tope" grep -qE '^[0-9]+ KB en /rocola/datos/xp/descargas \(tope 64 MB\)' "$W/g-cuanto2.txt"
+    si "olvida no toca las descargas" bash -c "c() { chroot '$R' /bin/env ROCOLA_RUN=/run /bin/sh /usr/bin/rocola-navegador \"\$@\"; }; c olvida > /dev/null && [ -f '$DX/chica.bin' ] && [ -f '$DX/viejo.bin' ]"
     # cog que se cae al abrir: el guion devuelve su codigo
     touch "$R/run/cog-falla"; c /bin/sh /usr/bin/rocola-navegador abre > /dev/null 2>&1; r5=$?; rm -f "$R/run/cog-falla"
     si "cog que se cae al abrir (5): el guion sale con 5 y no deja el pid" bash -c "[ $r5 = 5 ] && [ ! -e '$R/run/rocola-navegador.pid' ]"
@@ -156,36 +197,49 @@ usb() {
 }
 
 # Coordenadas (1024x768): la ventana de Ctrl+F4 en (29,2), su cliente desde (32,31); las pestanas Pantalla, Navegador y Archivos en
-# (712,54), (818,54) y (924,54); la pagina desde (32,127). Archivos: «Datos de la rocola» (137,148), la 1a USB (323,148); la lista, renglon k
+# (712,54), (818,54) y (924,54); la pagina desde (32,127). Archivos: «Datos de la rocola» (137,148), «Descargas» (323,148), «Papelera»
+# (509,148), la 1a USB (695,148) (en la papelera los botones son Ver, -, Devolver, -, Borrar ya, Vaciar papelera); la lista, renglon k
 # en y = 235 + 24k; los botones Abrir (113,620), Subir (246,620), Copiar (409,620), Renombrar (587,620), Borrar (735,620), Archivo nuevo
 # (888,620). El editor (920x660) con su cliente desde (52,67): Guardar (184,691), Mostrar (420,691), Cerrar (840,691).
 if [[ " $partes " == *" archivos "* ]]; then
-  echo "== archivos (ver, copiar de la USB, la llave tapada y «Mostrar», un archivo nuevo con el teclado, renombrar y borrar)"
+  echo "== archivos (ver, copiar de la USB, la llave tapada y «Mostrar», un archivo nuevo con el teclado, renombrar, borrar a la papelera y devolver; las descargas; vaciar la papelera con y sin confirmar)"
   d=$(datos archivos); u=$(usb archivos); o="$W/archivos"; f="$W/FUERA-archivos"
   printf 'hola\r\nmundo\r\n' > "$d/notas.txt"
   ln -s "$f" "$d/fuga"
-  P="6:17+115,8:clic:924:54,10:clic:323:148"
+  # lo que «bajo el navegador»: un texto y una llave (0600)
+  mkdir -p "$d/descargas"; chmod 700 "$d/descargas"; echo "de internet" > "$d/descargas/bajado.txt"
+  printf 'token=TOKENBAJADODEPRUEBA-0123456789\n' > "$d/descargas/token_bajado.txt"; chmod 600 "$d/descargas/token_bajado.txt"
+  P="6:17+115,8:clic:924:54,10:clic:695:148"
   P="$P,12:clic:300:331,12.5:clic:409:620,14:clic:300:307,14.5:clic:409:620,16:clic:300:259,16.5:clic:113:620"
   P="$P,18:clic:137:148,$(escribe 19 0.12 rocola_spotify_a),21.5:13,23.5:clic:420:691,25:9,25.3:13,27:27"
   P="$P,28:clic:888:620,$(escribe 29 0.12 rocola_genius.txt),32:13,$(escribe 33 0.12 "$GENIUS_PRUEBA"),36.5:17+83,37.5:27"
   P="$P,38.5:clic:300:235,$(escribe 39 0.12 notas),39.8:clic:587:620,40.8:8,41:8,41.2:8,41.4:8,$(escribe 41.6 0.12 2.txt),42.5:13"
-  P="$P,43.5:clic:735:620,45:9,45.3:13,47.5:27"
-  abre archivos "$d" "$P" "9.5:archivos-datos,11.5:archivos-usb,13.5:archivos-copiada,17.5:archivos-grande,23:llave-tapada,24.5:mostrar-confirma,26.5:llave-mostrada,31.5:nombre-nuevo,37:genius-guardada,44.5:borrar-confirma,46.5:archivos-borrado" \
-    50 TERM ROCOLA_OS=archivos,navegador ROCOLA_ARCHIVOS_USB="$u"
+  P="$P,43.5:clic:735:620,45:9,45.3:13"
+  # la papelera: notas2.txt, devolver. Las descargas: copiar bajado.txt a los datos; bajado.txt y la llave, a la papelera
+  P="$P,47:clic:509:148,49:clic:300:235,49.5:clic:409:620"
+  P="$P,52:clic:323:148,54:clic:300:235,54.5:clic:409:620,57:clic:735:620,58.5:9,58.8:13,60:clic:300:259,60.5:clic:735:620,62:9,62.3:13"
+  # la papelera con las dos: ver la llave (tapada, sin «Mostrar»); vaciar: primero «No» (Intro con el foco en No), luego «Sí»
+  P="$P,64:clic:509:148,66:clic:300:235,66.5:clic:113:620,69:27,70:clic:888:620,71.5:13,73:clic:888:620,74:9,74.3:13,77:27"
+  abre archivos "$d" "$P" "9.5:archivos-datos,11.5:archivos-usb,13.5:archivos-copiada,17.5:archivos-grande,23:llave-tapada,24.5:mostrar-confirma,26.5:llave-mostrada,31.5:nombre-nuevo,37:genius-guardada,44.5:borrar-confirma,46.5:archivos-borrado,48.5:papelera,51:papelera-devuelto,53.5:descargas,56:descargas-copiada,59.5:descargas-borrada,65.5:papelera-llena,68:papelera-llave-tapada,71:vaciar-confirma,72.5:vaciar-no,76:papelera-vacia" \
+    80 TERM ROCOLA_OS=archivos,navegador ROCOLA_ARCHIVOS_USB="$u"
   b="$d/rocola_os_bitacora.txt"
   si "sale con 0" test "$(cat $o/salio)" = 0
-  n=0; for x in archivos-datos archivos-usb archivos-copiada archivos-grande llave-tapada mostrar-confirma llave-mostrada nombre-nuevo genius-guardada borrar-confirma archivos-borrado; do [ "$(medida $o/$x.png)" = 1024x768 ] && n=$((n + 1)); done
-  si "las 11 capturas (1024x768): $n" test $n = 11
+  CAPS="archivos-datos archivos-usb archivos-copiada archivos-grande llave-tapada mostrar-confirma llave-mostrada nombre-nuevo genius-guardada borrar-confirma archivos-borrado papelera papelera-devuelto descargas descargas-copiada descargas-borrada papelera-llena papelera-llave-tapada vaciar-confirma vaciar-no papelera-vacia"
+  n=0; for x in $CAPS; do [ "$(medida $o/$x.png)" = 1024x768 ] && n=$((n + 1)); done
+  si "las 21 capturas (1024x768): $n" test $n = 21
   si "copiada de la USB: rocola_spotify_api.txt igual y con permisos 0600 ($(modo $d/rocola_spotify_api.txt))" bash -c "cmp -s '$u/rocola_spotify_api.txt' '$d/rocola_spotify_api.txt' && [ \"\$(stat -c %a '$d/rocola_spotify_api.txt')\" = 600 ]"
   si "rocola_spotify.txt de la USB quedo como rocola_spotify_llave.txt (0600) y no piso la bitacora de Spotify" bash -c "cmp -s '$u/rocola_spotify.txt' '$d/rocola_spotify_llave.txt' && [ \"\$(stat -c %a '$d/rocola_spotify_llave.txt')\" = 600 ] && ! cmp -s '$u/rocola_spotify.txt' '$d/rocola_spotify.txt' 2>/dev/null"
   si "el grande (70 KB) no se abre y lo dice; nada se escribio en la USB" bash -c "[ \$(ls -A '$u' | wc -l) = 7 ] && cmp -s <(printf '%s' \"\$API_PRUEBA\") '$u/rocola_spotify_api.txt'"
   si "archivo nuevo escrito con el teclado (nombre y contenido) y Ctrl+S: rocola_genius.txt = «$GENIUS_PRUEBA» y 0600" bash -c "[ \"\$(cat '$d/rocola_genius.txt')\" = '$GENIUS_PRUEBA' ] && [ \"\$(stat -c %a '$d/rocola_genius.txt')\" = 600 ] && [ \"\$(tail -c 1 '$d/rocola_genius.txt' | od -An -c | tr -d ' ')\" = '\\n' ]"
-  si "renombrado notas.txt -> notas2.txt y borrado con su confirmacion" bash -c "[ ! -e '$d/notas.txt' ] && [ ! -e '$d/notas2.txt' ] && grep -qF 'renombrado: notas.txt -> notas2.txt' '$b' && grep -qF 'borrado: notas2.txt' '$b'"
+  si "renombrado notas.txt -> notas2.txt, borrado con su confirmacion A LA PAPELERA y devuelto (igual, en su sitio)" bash -c "[ ! -e '$d/notas.txt' ] && cmp -s '$d/notas2.txt' <(printf 'hola\r\nmundo\r\n') && grep -qF 'renombrado: notas.txt -> notas2.txt' '$b' && grep -qF 'a la papelera: notas2.txt' '$b' && grep -qF 'devuelto de la papelera: notas2.txt' '$b'"
+  si "descargas: bajado.txt copiado a los datos; bajado.txt y la llave, a la papelera (las descargas quedan vacias)" bash -c "[ \"\$(cat '$d/bajado.txt')\" = 'de internet' ] && [ -z \"\$(ls -A '$d/descargas')\" ] && grep -qF 'copiado de las descargas a los datos: bajado.txt' '$b' && grep -qF 'a la papelera: bajado.txt' '$b' && grep -qF 'a la papelera: token_bajado.txt' '$b'"
+  si "vaciar: con «No» no se vacia; con «Sí» si (una sola vez: 2 cosas) y la papelera queda vacia" bash -c "[ \$(grep -c 'papelera vaciada' '$b') = 1 ] && grep -qF 'papelera vaciada: 2' '$b' && [ -z \"\$(ls -A '$d/papelera')\" ]"
+  si "la llave de la papelera se vio tapada: nunca «a la vista» (ni en la bitacora)" bash -c "! grep -qF 'llave a la vista: token_bajado.txt' '$b'"
   si "lo de fuera, intacto (y el enlace de los datos que sale, sin tocar)" bash -c "[ \"\$(cat '$f/secreto.txt')\" = 'lo de fuera' ] && [ \$(ls -A '$f' | wc -l) = 1 ] && [ -L '$d/fuga' ]"
   si "la bitacora: copias, la llave a la vista, lo guardado (sin lo de dentro)" bash -c "grep -qF 'copiado de la USB a los datos: rocola_spotify_api.txt (llave, 0600)' '$b' && grep -qF 'copiado de la USB a los datos: rocola_spotify_llave.txt (llave, 0600)' '$b' && grep -qF 'llave a la vista: rocola_spotify_api.txt' '$b' && grep -qF 'guardado: rocola_genius.txt (llave, 0600)' '$b'"
-  si "NINGUNA llave en las bitacoras, rocola_error.txt ni la salida (ni la de la API, ni la de Soloist, ni la de Genius)" bash -c "! grep -rqE 'SECRETODEPRUEBA|IDDEPRUEBA|LLAVEDESOLOIST|GENIUS-prueba' '$d'/rocola_os_bitacora.txt '$d'/rocola_error.txt '$o/salida.txt'"
+  si "NINGUNA llave en las bitacoras, rocola_error.txt ni la salida (ni la de la API, ni la de Soloist, ni la de Genius)" bash -c "! grep -rqE 'SECRETODEPRUEBA|IDDEPRUEBA|LLAVEDESOLOIST|GENIUS-prueba|TOKENBAJADO' '$d'/rocola_os_bitacora.txt '$d'/rocola_error.txt '$o/salida.txt'"
   si "rocola_error.txt sin fallos de Rocola OS" nocontiene "$d/rocola_error.txt" "Rocola OS"
-  for x in archivos-datos archivos-usb archivos-copiada archivos-grande llave-tapada mostrar-confirma llave-mostrada nombre-nuevo genius-guardada borrar-confirma archivos-borrado; do guarda_captura "$o/$x.png" "$x.png"; done
+  for x in $CAPS; do guarda_captura "$o/$x.png" "$x.png"; done
 fi
 
 # ------------------------------------------------------------------ navegador: el traspaso de la pantalla con un cog de mentira
@@ -195,6 +249,7 @@ cog_falso() {
   cat > "$1" <<EOF
 #!/bin/sh
 echo "\$(date +%s.%N) cog \$*" >> "$2"
+echo "\$(date +%s.%N) descargas: \$(cat "\$XDG_CONFIG_HOME/user-dirs.dirs")" >> "$2"
 trap 'echo "\$(date +%s.%N) TERM" >> "$2"; exit 0' TERM
 while :; do sleep 0.2; done
 EOF
@@ -250,6 +305,7 @@ import sys; L=[l.split(' ',1)[1].strip() for l in open('$t')]
 i=[k for k,l in enumerate(L) if l.startswith('cierra (Ctrl+Alt+Inicio)')]; r=[k for k,l in enumerate(L) if l.startswith('retoma')]
 ab=[k for k,l in enumerate(L) if l.startswith('abre (inicio)')]
 sys.exit(0 if i and len(ab)==2 and ab[1]>i[0] and r and r[0]>ab[1] else 1)"
+  si "el navegador baja a la carpeta de descargas de los datos ($d/descargas) con el tope de descargas_tope_mb (64)" bash -c "grep -qF 'descargas: XDG_DOWNLOAD_DIR=\"$d/descargas\"' '$o/cog.txt' && grep -q 'tope 64 MB' '$o/run/rocola-navegador.txt' && [ -d '$d/descargas' ]"
   si "Ctrl+Alt+F1: cierra cog (TERM) y retoma la pantalla" bash -c "grep -q ' cierra (Ctrl+Alt+F1)' '$t' && [ \$(grep -c ' TERM\$' '$o/cog.txt') = 2 ] && grep -q ' retoma (composiciones ' '$t'"
   s=$(python3 -c "
 L=[l.split(' ',1) for l in open('$t')]
