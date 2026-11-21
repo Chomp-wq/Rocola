@@ -10,6 +10,7 @@
 //   sonido N MIN P1 P50 HUECOS  (21-11-2026) el colchon del hilo de la musica (BombaSonido: lo que deja hecho por delante, de 200 ms) mirado
 //                               cada 2 ms por un hilo propio mientras suena: las muestras, el menor, el p1 y la mediana en ms, y los bloques
 //                               que salieron en silencio por un hilo atrasado (BombaSonido.Huecos, desde el renglon anterior; cada 5 s)
+//   lectores MAX PCT2           los hilos lectores de portadas (coverPumpCount) en esos 5 s: el mayor y el % del tiempo con dos o mas
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -84,11 +85,12 @@ namespace Rocola
         {
             Thread t = new Thread(delegate ()
             {
-                List<double> m = new List<double>(); long huecosAntes = -1; BombaSonido antes = null;
+                List<double> m = new List<double>(); long huecosAntes = -1; BombaSonido antes = null; int lecMax = 0, lecDos = 0, lecN = 0;
                 System.Diagnostics.Stopwatch corte = System.Diagnostics.Stopwatch.StartNew();
                 while (true)
                 {
                     Thread.Sleep(2);
+                    int lp = coverPumpCount; lecN++; if (lp > lecMax) lecMax = lp; if (lp >= 2) lecDos++;
                     BombaSonido b = bomba;
                     if (b != null && MideSalidaLeyo(b))
                     {
@@ -106,6 +108,8 @@ namespace Rocola
                             lock (mideLog) mideLog.WriteLine("sonido\t" + m.Count + "\t" + m[0].ToString("0.0", mci) + "\t" + m[(int)(m.Count * .01)].ToString("0.0", mci) + "\t" + m[m.Count / 2].ToString("0.0", mci) + "\t" + hz);
                         }
                         m.Clear();
+                        if (lecN > 0) lock (mideLog) mideLog.WriteLine("lectores\t" + lecMax + "\t" + (100.0 * lecDos / lecN).ToString("0.0", mci));
+                        lecMax = lecDos = lecN = 0;
                     }
                 }
             });

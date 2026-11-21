@@ -15,7 +15,10 @@ en las mismas condiciones, no para decir cuánto tarda allí.
   2. **de Rocola OS** (`RocolaOs/RocolaOs.Caratulas.cs`, la función `caratulas-rapidas`, encendida de fábrica con `ROCOLA_OS` y sin
      interruptor en ninguna ventana porque no cambia el aspecto: decisión del 15-9-2026), con ganchos de una línea en `Codigo/` (g220 y
      g221, del rango g220-g234 de esta rama). Sin `ROCOLA_OS` (o con `caratulas-rapidas=0` en `rocola_os.txt`) cada gancho hace lo de XP.
-- Lo que cambiaría la imagen, aunque sea poco, **no se hizo**: va abajo como propuesta para el dueño.
+- Lo que cambiaría la imagen, aunque sea poco, **no se hizo** sin el dueño: fue como propuesta. El 21-11-2026 el dueño eligió las dos
+  primeras (§5 y §6): cada una con su interruptor en `rocola_os.txt` (`portadas_dct=` y `portadas_dos_lectores=`, claves de la misma
+  función `caratulas-rapidas`, **encendidas de fábrica**, valen al momento), con los ganchos g222-g224. Con las dos en 0 la rama sale
+  como antes de ellas (las huellas del banco, iguales) y sin `ROCOLA_OS` es XP.
 
 ## El camino de una portada (lo que se midió)
 
@@ -109,6 +112,68 @@ lado de VIDEO es ♫ y la de al lado de ♫ son VIDEO y la primera letra con dis
 salta; en una pared del buscador (orden vacío), nada. (Arreglo de la revisión, commit `7d5b02c`: antes recorría `LetrasOrden` a secas y, con
 ♫ al lado, adelantaba la letra equivocada —la de la estrella o VIDEO, 18 portadas de más en la cola baja— y desde ♫, ninguna.)
 
+### 5. g222: la JPEG grande, decodificada ya reducida (escala DCT; `portadas_dct=`, elegida por el dueño el 21-11-2026)
+
+La primera vez de cada portada XP descomprime la original **entera** (una de 3 000 px: 9 millones de puntos) y la achica a 256 con los
+mipmaps. En `DecodeCoverCore` (`Codigo/Form1.Portadas.cs`, la línea de `Imagenes.Lee` de la original) el gancho pasa por
+`RocolaOsLeeOriginal`: si es una JPEG en color o en gris y sus dos lados miden al menos 8/7 de **2 × 256 = 512**, libjpeg-turbo la
+decodifica a la escala M/8 (M de 1 a 7) **más chica que deje los dos lados en 512 o más** (`SKCodec.GetPixels` con la medida de
+`GetScaledDimensions`; nunca más chica que lo que se pinta, y con el doble de margen); de ahí sigue **el camino de XP sin cambiar nada**:
+la reducción a 256 con `HighQualityBilinear` y medio punto (los mipmaps), el premultiplicado (`Mapas.Nuevo`, BGRA premultiplicado; la
+opaca con su formato `Rgb24`, como `Imagenes.Lee`), «Carátulas en JPEG» (`HazOpaca`), la previa, los tonos, la paleta y **la miniatura que
+se guarda, que es la misma** que se publica. PNG, GIF, lo que Skia no decodifica en BGRA o en gris y las JPEG de menos de 586 px en su lado menor (ni 7/8 dejaría 512): lo de siempre. Después de la
+primera vez se lee la miniatura guardada, como siempre (no se rehace ninguna de las que ya están).
+
+**Por qué 2 × 256** (`rocola-xp --banco-dct`, `Pruebas/RapidoCaratulas/BancoDct.cs`: las 246 JPEG de las 300 portadas de la muestra,
+NativeAOT en un núcleo, 21-11-2026). Para cada portada, la miniatura de XP (entera) contra la de la DCT con el margen 1,5, 2, 3 y 4 veces
+256, y las dos contra una **referencia**: la entera achicada a 256 por el promedio exacto de lo que cubre cada punto (lo que daría un filtro
+ideal), sin el marco de 3 puntos (donde XP mezcla el borde con lo transparente a propósito):
+
+| Margen | Se aplica a | Diferencia con XP: media (mediana / peor portada) | p99,9 (mediana / peor) | Contra la referencia: XP media · p99,9 peor | DCT media · p99,9 peor |
+|---|---|---|---|---|---|
+| 1,5 × 256 | 232 | 0,77 / 1,39 | 14 / 54 | 0,572 · 32 | 0,555 · **50** |
+| **2 × 256** | 179 | 0,60 / 1,06 | 11 / 41 | 0,612 · 32 | **0,520 · 29** |
+| 3 × 256 | 115 | 0,51 / 0,84 | 11 / 36 | 0,714 · 32 | 0,565 · 29 |
+| 4 × 256 | 76 | 0,40 / 0,82 | 9 / 42 | 0,786 · 32 | 0,623 · 28 |
+
+(de 0 a 255 por canal; «peor»: la peor portada). La miniatura de la DCT **no es igual** a la de XP (media de 0,6 de 255; en algún punto de
+un borde fuerte de estas portadas inventadas, hasta 111), pero con el margen de 2 o más **se aparta de la referencia lo mismo o menos que
+la de XP** (con 2: 0,52 contra 0,61 de media y 29 contra 32 en el p99,9 de la peor): no es peor, es otro redondeo del achicado (los mipmaps de
+XP desde otra medida). Con 1,5 el p99,9 de la peor portada ya es peor que XP (50 contra 32): por eso el margen es 2 (`RocolaOsDctVeces`).
+Lo que tarda decodificar y achicar (ms, p50 / p95), por clase, con el margen 2:
+
+| JPEG | n | XP (entera) | DCT | Contra la referencia, media: XP · DCT |
+|---|---|---|---|---|
+| en color de más de 2 200 px | 22 | 56,5 / 109,2 | **17,5 / 61,3** | 0,970 · 0,458 |
+| en color de 1 450 a 2 200 px | 21 | 30,1 / 53,6 | **15,8 / 31,6** | 0,795 · 0,445 |
+| en color de 586 a 1 450 px | 127 | 8,5 / 16,6 | **5,9 / 8,3** | 0,580 · 0,536 |
+| en gris (hasta 1 450 px) | 9 | 3,9 / 4,2 | 3,4 / 5,3 | 0,509 · 0,457 |
+
+(las grandes que siguen lentas con la DCT son las progresivas: el 40 % de las grandes de la biblioteca inventada; la escala ahorra la
+transformada, no leer los coeficientes).
+
+### 6. g223 y g224: dos lectores mientras la página que se ve está sin miniaturas (`portadas_dos_lectores=`, elegida por el dueño el 21-11-2026)
+
+En dos núcleos XP pone **un** lector de portadas (`CargaTrabajo.Lectores(2)` = 1: «no quitarle procesador a la pantalla»; la decisión del
+1-10-2026 de no pasar de los límites de dos hilos, que esta elección del dueño cambia solo aquí). Ahora:
+
+- **g224** (`CoverPump`, la línea de `DecodeCoverForPublication`): antes de decodificar, si la portada no tiene miniatura guardada (va de
+  la original), no está en un disco con cabezal (`DiscoLento`: ahí XP deja un lector por unidad) y la **fila alta** (lo que se ve) tiene más
+  portadas esperando, se marca «la página que se ve está sin miniaturas» y se llama a `EnsureCoverReaders` de XP, que abre el segundo
+  lector. El lector que decodifica cuando ya hay tantos decodificando como deja XP va a **nice 19** (por debajo del repaso de XP, nice 4:
+  solo toma el procesador que dejan libre la pantalla, el sonido y el lector de XP) y vuelve a su prioridad de XP (`PrioridadHilo.AlArrancar`)
+  en cuanto decodifica dentro del cupo de XP.
+- **g223** (`AdaptiveCoverReaders`, el cupo de lectores que usan `TakeCoverJob`, `WantedCoverReaders`, `EnsureCoverReaders` y la espera del
+  lector, siempre bajo `coverLock`): mientras esté la marca, uno más que lo de XP (como mucho tantos como núcleos); en cuanto la fila alta
+  se vacía (la página ya se repartió) se quita la marca y vuelve el cupo de XP: el de más acaba su portada y se va con las reglas de XP
+  (sobra un lector: no toma trabajo y sale).
+- **Nunca dos lecturas del mismo archivo**: cada portada es un trabajo de la cola de XP (`coverLoading`: una ruta, un trabajo; el que se ve
+  pasa de la fila baja a la alta sin duplicarse), el segundo lector toma de la misma cola. El calentador de XP se aparta mientras haya
+  portadas pendientes (`YieldCoverWork`) y el semáforo de XP (`coverSem`, 2 turnos) ya tenía sitio para dos.
+- Lo que no se cambió: el regulador de XP (la pausa de los lectores bajo presión, `ReaderPause`, vale para los dos), los perfiles de
+  Ctrl+F3, la cola, las cachés. Lo que puede pasar: si el de nice 19 tiene el turno de una portada **enorme** (más de 16 Mpx,
+  `CaratulaEnormeCerrojo`), el lector de XP espera a que acabe (con la DCT, mucho menos que antes); no se vio en las corridas.
+
 ## Antes y después, con la rocola entera
 
 `e2e2.sh` (en `/root/rocola-trabajo/fase11/rapido-caratulas`, fuera del repositorio): la rocola en NativeAOT fuera de pantalla a 1024×768
@@ -193,14 +258,8 @@ puntos).
 
 ## Propuestas (cambian la imagen o necesitan al dueño)
 
-1. **Decodificar ya reducido (escala DCT de libjpeg-turbo)** las JPEG grandes, a la escala más chica que deje al menos 512 px, y reducir de
-   ahí a 256 como siempre: en las 20 más grandes (≈3 000 px) **78,9 → 23,4 ms** por portada nueva; en las de 1 000-1 400 px, 12,7 → 5,8 ms.
-   Pero los puntos no salen iguales: diferencia media 1,1 de 255 (0,7 en las medianas) y en algún punto de borde hasta 109-117. Solo con la
-   elección del dueño (sería una función de Rocola OS con su interruptor), y solo para la primera vez de cada portada: después se lee la
-   miniatura guardada.
-2. **Dos lectores en dos núcleos cuando la página que se ve está sin miniaturas**: XP pone uno (`CargaTrabajo.Lectores(2)`) para no quitarle
-   procesador a la pantalla; con un SSD el disco ya no es el límite, pero sí el procesador. Cambia la regla de XP de los «límites de 2 hilos»
-   (decisión del 1-10-2026: no se pasan): no se hizo.
+1. ~~Decodificar ya reducido (escala DCT)~~ y 2. ~~Dos lectores cuando la página que se ve está sin miniaturas~~: **elegidas por el dueño el
+   21-11-2026 y hechas** (§5 y §6).
 3. **Las letras de al lado ya subidas a la tarjeta**, no solo en memoria (como hace XP con la página siguiente, `WarmAheadCells`): necesita
    tocar la lista de adelanto de la pared de XP o un horno propio; no se hizo.
 

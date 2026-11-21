@@ -1,6 +1,6 @@
 // LAS CARATULAS MAS RAPIDAS (Rocola OS, rapido-caratulas, 20-11-2026; peticion del dueno del 20-11-2026: «muchas mejoras [de rendimiento],
 // priorizando [...] la carga de las caratulas en general para que sean instantaneas (por lo menos las que pertenecen a la musica local)»).
-// No es de XP. Sin ROCOLA_OS (o con caratulas-rapidas=0 en rocola_os.txt) no hace nada: cada gancho devuelve lo de XP. NO cambia la imagen:
+// No es de XP. Sin ROCOLA_OS (o con caratulas-rapidas=0 en rocola_os.txt) no hace nada: cada gancho devuelve lo de XP. g220 y g221 NO cambian la imagen:
 // lo que se ve es punto por punto lo mismo (Pruebas/RapidoCaratulas: banco con huellas); por eso va encendida de fabrica y sin interruptor
 // en ninguna ventana (decision del dueno del 15-9-2026: lo que no cambia el aspecto es automatico). Lo medido, en FASE11_rapido-caratulas.md.
 //
@@ -24,7 +24,7 @@
 //      XP descomprime la portada original ENTERA (una de 3 000 px son 9 millones de puntos: 60-90 ms aqui) y la achica con los mipmaps. Con
 //      la escala de la DCT de libjpeg-turbo (M/8, M de 1 a 7) la JPEG sale ya reducida, a la escala mas chica que deje los DOS lados en al
 //      menos RocolaOsDctVeces veces lo que se pinta (la miniatura: 256, y nunca menos); de ahi sigue el camino de XP sin cambiar nada (la
-//      reduccion a 256 con el mismo filtro, el premultiplicado, la miniatura que se publica y la que se guarda). Solo JPEG en color o en gris
+//      reduccion a 256 con el mismo filtro, el premultiplicado, la miniatura que se publica y la que se guarda). Solo JPEG que Skia da en BGRA o en gris
 //      (PNG, GIF y lo demas: lo de siempre) y solo si sirve (una que mide menos de 8/7 de eso, entera como siempre). Los puntos NO salen
 //      iguales (lo medido, en FASE11_rapido-caratulas.md: contra un achicado ideal se aparta lo mismo o menos que lo de XP): por eso es
 //      eleccion del dueno y tiene interruptor.
@@ -59,7 +59,7 @@ namespace Rocola
             RocolaOs.Registra(new RocolaOsFuncion
             {
                 Nombre = RocolaOsCaratulasNombre,
-                Que = "las caratulas mas rapidas, con la misma imagen (miniaturas PNG con menos compresion; las letras de al lado, adelantadas)",
+                Que = "las caratulas mas rapidas (miniaturas PNG con menos compresion; las letras de al lado, adelantadas; con sus claves, la JPEG grande ya reducida y dos lectores con la pagina sin miniaturas)",
                 DeFabrica = true,
                 Claves = new RocolaOsClave[]
                 {
