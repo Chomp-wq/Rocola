@@ -71,14 +71,39 @@ de llvmpipe (la tarjeta por procesador), no de la Radeon r600; sirven para compa
 - Por cuadro: la foto de la lista en un arreglo que se reusa, las listas y las capas de la ventana reusadas (el compositor solo las usa en
   el cuadro), el nombre del tipo una vez por tipo, y las claves de las hojas sin copiarlas.
 
-**Prueba de igualdad** (`Mide.cs`, `ROCOLA_MIDE_COMPARA=K`): cada K cuadros, dentro del mismo proceso, la pantalla compuesta como ahora se
-lee (`glReadPixels`), se vuelve a componer **desde cero con todas las capas, como antes** (`CompositorPantalla.ComponeTodo`) y se compara
-punto por punto. Con las escenas de los recorridos (pared, buscador, Ctrl+F3 con la hoja, ayuda, botones con monedas y avisos):
-**1 198 cuadros comparados, 0 distintos** (503 con el primer cambio y la carpeta nueva; 695 con todo y la carpeta caliente).
+**Prueba de igualdad** (`Mide.cs`, `ROCOLA_MIDE_COMPARA=K`; rehecha tras la revisión). Cada K cuadros, y **siempre en el cuadro en que
+una capa que se saltó vuelve a componerse**, dentro del mismo proceso se lee la pantalla compuesta como ahora (`glReadPixels`) y se compone
+**como antes, aparte** (`CompositorPantalla.ComponeReferencia`: en un framebuffer propio, con texturas propias que se suben enteras cada
+vez, todas las capas sin saltarse ninguna, **sin tocar las texturas ni las versiones del compositor de verdad**), y se comparan punto por
+punto. Lo que se presenta es lo que compuso el compositor de verdad. (La primera versión, `ComponeTodo`, componía la de antes con las
+texturas del compositor y les ponía su versión: desde ese cuadro una capa saltada quedaba al día aunque el compositor no la hubiera subido,
+así que no podía ver el caso «vuelve a verse y hay que subirla»; además se presentaba lo compuesto por ella. Lo vio la revisión.)
+
+- Con las cinco escenas de los recorridos (pared, buscador, Ctrl+F3 con la hoja, ayuda, botones con monedas y avisos), cada una con la
+  carpeta nueva (`d0`) y la caliente (`dcal`), dos tandas (`cmp5`, `cmp6`): **5 786 cuadros comparados, 0 distintos** (2 748 y 2 738).
+- **Control negativo** (`ROCOLA_MIDE_ROMPE=1`, solo en la compilación de prueba: el compositor no vuelve a subir nunca una capa ya subida):
+  Ctrl+F3 da **145 de 231 cuadros distintos** (hasta 384 033 puntos); con la prueba de antes se habría tapado (`ComponeTodo` la subía). La
+  pared da 0, porque allí ninguna capa pintada por procesador cambia (todo está en la tarjeta).
+- **Lo que la prueba no llega a ver**: en ninguna de esas escenas una capa saltada vuelve a componerse (`vuelven=0` en las doce corridas).
+  Pasaría si la tarjeta dejara de tapar la pantalla entera o si un tramo vacío volviera a tener una vista que se pinta; con la tarjeta no
+  ocurre en la rocola (todo lo de XP va en ella). Por el código: una capa saltada guarda su textura y su versión; la versión de un tramo
+  sube cada vez que se repinta, y al volver se sube si la versión no es la misma (igual que antes con cualquier capa). Si alguna vez ocurre,
+  la prueba compara justo ese cuadro y lo cuenta (`vuelven=`, `subidas=`, `comparadas_al_volver=` en el renglón `compara`).
+- Todo esto (`Prueba`, `ComponeReferencia`, `ComponeOtraVez`, `LeePantalla`, las cuentas de tramos y de las capas que vuelven, el control
+  negativo) **solo se compila en `Pruebas/RapidoGeneral`** (constante `RAPIDO_GENERAL_PRUEBA`): no entra en la rocola.
 
 **Lo que cuesta componer** (`ROCOLA_MIDE_COSTE=4`: en el mismo proceso, alternando, componer como antes y como ahora hasta `glFinish`;
 llvmpipe en dos núcleos, carga 20-21): pared **17,2 → 6,6 ms** (p50; p90 31,2 → 12,8), buscador **20,0 → 6,7 ms** (p90 31,4 → 12,4).
+**Esto es solo el coste de las mezclas en la tarjeta**: el «antes» se compone con las texturas ya al día (no sube los 3 MB de los tramos
+que se repintaban) y no cuenta lo que se hacía en el procesador (el `Clear` de 3 MB y el lienzo nuevo de cada tramo en
+`CapasDeLaVentana`). El ahorro de verdad es mayor; esto lo subestima.
 En el buscador, 1 088-1 100 repintados de tramos vacíos (2 × 3 MB borrados y un lienzo cada uno) ahorrados en 33 s.
+
+**Arreglos de la revisión, sin cambio de resultado**: en las salidas tempranas de `CapasDeLaVentana` (lista vacía, ventana que no se ve) la
+foto de la lista se vacía (`SueltaFoto`: ya no agarra vistas desechadas hasta el siguiente cuadro con vistas), y los tramos que sobran
+sueltan lo que agarraban sus capas reusadas (el mapa, la textura de la tarjeta o su vista). `CapasDeLaVentana` no es reentrante, como no lo
+era antes (`tramos` ya era una lista estática): solo la llama el compositor, y el compositor solo corre desde el bucle de la pantalla
+(`PintaUno`) y desde el `Present` de la tarjeta (`PresentaTarjeta`), nunca desde el `Pinta` de una vista por procesador.
 
 ### 2. El texto de GDI+ sin objetos de .NET por llamada (commit `108548c`; `Nativo/TiraSkia.cs`, `Nativo/TextoGdiPlus.cs`)
 
@@ -86,7 +111,11 @@ En el buscador, 1 088-1 100 repintados de tramos vacíos (2 × 3 MB borrados y u
   (`sk_font_text_to_glyphs` para contar y llenar en UTF-16, `sk_textblob_builder_new/alloc_run/make/delete`, `sk_canvas_draw_text_blob`,
   `sk_textblob_unref`), sin los envoltorios.
 - El pincel de `Escribe` es uno por hilo, reusado: se le pone todo lo que se le ponía al nuevo (estilo, color o degradado, mezcla,
-  suavizado); lo demás nunca se toca. Al acabar suelta el degradado.
+  suavizado); lo demás nunca se toca. Al acabar suelta el degradado, **también si algo lanza a medio texto** (`try/finally`, tras la
+  revisión: antes de ella el degradado se quedaba en el pincel guardado hasta el siguiente texto del hilo; no cambiaba ningún punto).
+- `TiraSkia` supone que `SKCanvas.DrawText(string, x, y, SKFont, SKPaint)` de **SkiaSharp 3.116.1** es exactamente esas llamadas (las firmas
+  de las `DllImport`, `size_t` como `IntPtr` y la estructura de 4 punteros del búfer de la tira). Lo sostienen el banco IGUAL y el control
+  negativo; **si se sube SkiaSharp, hay que volver a revisarlo** (y correr el banco).
 
 **Prueba de igualdad**: el banco del dibujo (`nivel0.sh`, paso «banco»: 3 000 casos por semilla contra la copia congelada de la
 referencia) **IGUAL en las semillas 7, 11 y 5**; y como control negativo, la tira corrida 0,25 px da **DISTINTO** (53, 49 y 71 líneas): el
@@ -100,7 +129,7 @@ puntos). Banco IGUAL en las tres semillas.
 ## Antes y después, con la rocola entera
 
 `varias.sh` (en `/root/rocola-trabajo/fase11/rapido-general`): cada escena 40 s (el tramo medido, de 7 a 37 s, con las teclas de los
-recorridos), con la carpeta caliente, **base** (`6c4dc1a` con la medida, `base2-aot`) y **ahora** alternados, dos vueltas cada uno.
+recorridos), con la carpeta caliente, **base** (`6c4dc1a` con la medida, `base2-aot`) y **ahora** alternados, dos vueltas cada uno (`v2`; pocas: la serie `v3`, más abajo, tiene cuatro y la dispersión).
 Medianas de las vueltas; los cuadros son los presentados en los 30 s (más es mejor); «MB»: memoria nueva del hilo de la pantalla en el
 tramo; carga de la máquina de 11 a 14.
 
@@ -116,7 +145,29 @@ tramo; carga de la máquina de 11 a 14.
 | | **ahora** | **566** | **50,7** | **86,6** | **113,2** | **198,1** | 5,98 | **11,0** |
 
 (La primera serie, sin el tramo que sigue vacío, `v1`, dio lo mismo en dirección: pared 475 → 546 cuadros, buscador 350 → 510, ayuda 398
-→ 456, Ctrl+F3 339 → 348.) **Lo que no dicen**: con llvmpipe el cuadro lo marca casi entero la tarjeta por procesador (la fase «presentar»
+→ 456, Ctrl+F3 339 → 348.) 
+**Otra serie, tras la revisión** (`v3`: el programa con los arreglos de la revisión, `n6-aot`, frente a la misma base `base2-aot`; **cuatro
+vueltas por lado**, alternadas; la máquina menos cargada que en `v2`, 2 a 8, así que hay el doble de cuadros en los dos lados). Mediana de
+las cuatro y, entre corchetes, la menor y la mayor:
+
+| Escena | Programa | Cuadros | p50 | p95 | p99 | máx | KB/cuadro |
+|---|---|---|---|---|---|---|---|
+| Pared | base | 886 [884-895] | 33,0 [32,2-33,3] | 41,0 [38,1-45,7] | 52,0 [43,3-58,3] | 67,4 [56,0-85,0] | 6,0 |
+| | **ahora** | **1 106** [927-1 188] | **26,5** [25,0-30,7] | **32,6** [29,5-47,3] | **39,9** [33,9-56,1] | 69,6 [64,0-85,4] | **3,8** |
+| Buscador | base | 980 [826-993] | 30,0 [29,5-34,7] | 36,7 [35,6-49,5] | 41,7 [39,7-60,2] | 73,8 [44,5-80,2] | 2,6 |
+| | **ahora** | **1 223** [1 011-1 226] | **24,1** [23,9-28,6] | **29,5** [29,1-41,5] | **33,6** [32,8-49,9] | **44,4** [40,2-62,7] | **1,7** |
+| Ayuda y asistente | base | 921 [732-944] | 32,0 [31,1-35,4] | 38,6 [37,6-63,0] | 45,3 [44,0-74,9] | 59,0 [53,1-108,0] | 3,2 |
+| | **ahora** | **1 100** [850-1 130] | **26,8** [26,2-32,0] | **33,1** [31,7-54,2] | **37,8** [36,7-65,3] | **52,8** [47,7-84,8] | **1,8** |
+| Ctrl+F3 | base | 819 [577-946] | 36,2 [31,2-53,7] | 47,4 [36,4-69,5] | 56,6 [42,1-82,3] | 73,9 [52,3-105,3] | 11,1 |
+| | **ahora** | **893** [834-1 054] | **31,1** [27,8-34,5] | 50,7 [35,4-52,5] | 57,8 [38,6-66,7] | 72,9 [48,5-92,9] | **9,4** |
+
+Lo que se puede decir con esto: **más cuadros y la mediana más baja en las cuatro escenas, con los rangos que casi no se tocan** en pared,
+buscador y ayuda (cuadros +11 a +25 %, p50 −14 a −20 %), y la memoria nueva por cuadro −15 a −44 %. **Las colas (p95, p99, máx) no son
+concluyentes en todas**: mejoran en buscador y ayuda, en la pared p95 y p99 mejoran pero el máximo queda igual (67 frente a 70, dentro del
+ruido; en `v2`, con 2 vueltas, había salido 132 frente a 142), y en Ctrl+F3 p95, p99 y máx quedan iguales dentro del ruido (allí la hoja se
+pinta por procesador y es lo que manda). La «memoria de pantalla» total de Ctrl+F3 que en `v2` subía (5,82 → 5,98 MB en 30 s) es porque se
+presentan más cuadros: por cuadro baja (18,0 → 11,0 KB en `v2`; 11,1 → 9,4 en `v3`), y en `v3` también el total (8,7 → 7,7 MB).
+**Lo que no dicen**: con llvmpipe el cuadro lo marca casi entero la tarjeta por procesador (la fase «presentar»
 del diagnóstico de XP es el 90 % de cada cuadro), así que estos milisegundos no son los del A4. Lo que sí vale para el A4 es el trabajo que
 se quitó: dos mezclas de pantalla entera por cuadro y su subida de 3 MB (con la Radeon es ancho de banda de la memoria compartida del APU
 con el procesador) y la memoria nueva por cuadro (−30 a −40 %).
