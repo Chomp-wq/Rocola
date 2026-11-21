@@ -141,7 +141,7 @@ if [[ " $partes " == *" importa "* ]]; then
 	si "rocola_config.txt: parejo_v2=1 (va con la tabla de XP), una sola vez" bash -c '[ "$(tr -d "\r" < "$1" | grep -c "^parejo_v2=")" = 1 ] && tr -d "\r" < "$1" | grep -qx "parejo_v2=1"' sh "$T/rocola_config.txt"
 	si "y la marca dice que la marca del volumen parejo va con la tabla de XP" contiene "$T/rocola_importado_xp.txt" "parejo_v2=1 (con la tabla de XP)"
 	for k in noche_graves=10 noche_graves_8=1 noche_corte=100 noche_madrugada=0 noche_madrugada_desde=2 noche_madrugada_pct=60; do   # (20-11-2026, lo de los vecinos)
-		si "rocola_config.txt: $k tal cual (el modo noche para los vecinos, 20-11-2026)" contiene "$T/rocola_config.txt" "$k"
+		si "rocola_config.txt: $k tal cual (el modo noche para los vecinos, 20-11-2026)" bash -c 'tr -d "\r" < "$1" | grep -qxF -- "$2"' sh "$T/rocola_config.txt" "$k"
 	done
 	si "el modelo de IAS/, tal cual" igual "$T/IAS/rocola_ia.bin" "$XPC/IAS/rocola_ia.bin"
 	si "y su copia anterior" igual "$T/IAS/rocola_ia.bin.anterior-1" "$XPC/IAS/rocola_ia.bin.anterior-1"

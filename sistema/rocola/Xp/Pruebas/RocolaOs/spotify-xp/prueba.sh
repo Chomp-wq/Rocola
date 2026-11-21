@@ -147,8 +147,8 @@ if [[ " $partes " == *" fabrica "* ]]; then
   a="$W/fabrica-xp"; o="$W/fabrica-os"; d="$W/datos-fabrica-os"; b="$d/rocola_spotify.txt"
   # (junta 3: el clima del cielo y la letra de LRCLIB salen a internet sin llave -decisiones del dueno del 20-11-2026, cielo-nucleo y
   # letras-; aqui van al sumidero 127.0.0.1:7, donde nada escucha, y no cuentan como peticion a la red: se cuentan aparte, sumidero())
-  red() { grep -E 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null | grep -vc 'htons(7)'; }
-  sumidero() { grep -E 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null | grep -c 'htons(7)'; }
+  red() { grep -E 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null | grep -vFc 'htons(7), sin_addr=inet_addr("127.0.0.1")'; }   # solo el sumidero 127.0.0.1:7 se descuenta (strace escribe el puerto y despues la direccion)
+  sumidero() { grep -E 'connect\(.*sa_family=AF_INET6?' "$1/strace.txt" 2>/dev/null | grep -Fc 'htons(7), sin_addr=inet_addr("127.0.0.1")'; }
   progs() { grep -c ' execve(' "$1/strace.txt" 2>/dev/null; }
   # los programas abiertos entre las dos miradas (de los 18 a los 38 s: el vigilante ya esperando); solo los que de verdad se abrieron
   # (no los intentos por cada carpeta del PATH que no lo tiene, ENOENT) y sin las envolturas que la sesion de pruebas pone delante en el
