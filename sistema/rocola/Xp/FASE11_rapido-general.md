@@ -144,7 +144,29 @@ con el procesador) y la memoria nueva por cuadro (−30 a −40 %).
 
 ## Las comprobaciones
 
-(Se completan al acabar la batería del nivel 0.)
+La batería del nivel 0 (`Pruebas/RocolaOs/nivel0.sh`) sobre el código de `f85de5b` (lo que va después son solo los guiones y este
+documento), en dos tandas: `n0` (de `previo` a `ventanas`, 21-11-2026 03:08-04:19, carga 14-20) y `n2` (escenas, NativeAOT, cierre e
+importador, 06:15-07:10, carga 4-8), con la base (`6c4dc1a`, compilada de `base-src`) corrida con las mismas escenas al lado (`nb`) para
+separar lo que ya fallaba de lo nuevo. Carpetas en `/root/rocola-trabajo/fase11/rapido-general` (`n0`, `n2`, `nb`, `n3`, `n4-*`, `rv`) y
+`/root/rocola-trabajo/fase11/rg-imp`.
+
+| Comprobación | Resultado | Con la base |
+|---|---|---|
+| `Codigo/` con sus líneas y CRLF | BIEN: 112 archivos iguales a `69e6547` (no se tocó) | — |
+| `ganchos.py` / `diff-xp.py --sin-ganchos` | BIEN: TODO BIEN, 49 ganchos en 19 archivos; 5135 / 4868 / 229 (las de la base) | — |
+| Compilar en JIT | BIEN: 0 errores, 13 avisos (los de `avisos-base.txt`) | 13 |
+| Arneses de las vistas (13) | BIEN (VistasFondo ACEPTADO: la línea de marca, como siempre) | — |
+| VistasAcabadoEstilo / VistasAjustes / VistasFrontera | BIEN: 0 de 6 603; 0 de 545; 0 de 106 líneas y 0 de 153 texturas | — |
+| VistasVistasB | **0 distintas de 3 108** con las dos letras; la batería lo marca MAL por **18 excepciones con DejaVu que la referencia congelada da igual** (`ref-dejavu.tsv`: las mismas 18 `capsula-*-mide ArgumentException`) | igual en `nivel0/base` y `junta-segunda` |
+| Banco del dibujo | BIEN: IGUAL en las semillas 7, 11 y 5 (3 000 líneas cada una) | — |
+| Cintas de la tarjeta | BIEN: 29 iguales (6 616 cuadros), 0 distintas | — |
+| Recorridos (9) | 9 de 9 salen con 0; 477 de 487 texturas y 201 de 217 capas quietas. **ctrlf3** MAL con las mismas cinco capas que ya salen en `rapido-caratulas` y `junta-segunda` (lo de la carga del repaso en la hoja de Sonido). **video** salió MAL en esa tanda (a la segunda también) porque a los 24 s ya no estaba la capa del video: se repitió solo (`rv`, carga 4-7) alternando con la base: **ahora 2 de 2 BIEN (50 de 50 texturas, 16 de 16 capas)**, la base 1 de 2 (una vez 35 de 50 texturas): es el tiempo con la máquina cargada, no el cambio | ctrlf3 igual |
+| Ventanas | BIEN: la hoja 86, la pantalla 32 en JIT y 32 en NativeAOT, PantallaVistas 78 | — |
+| Escenas en JIT (24) | IGUAL o ACEPTADO: arranque, video, buscador, cierreq, altf4, sigterm (ACEPTADO), kill9, asistente, captura, aviso, f2, f2sin, f12, f12vigia (ACEPTADO: el reloj saturado de F12). MAL **las mismas nueve que la base**: moneda, tab, f3sigterm, f2barras, f3vistas, f3grises, f3teclas, f3raton, f3billar (lo de `PORT_xp-1718.md` frente a la referencia congelada: «Modo noche (de 22 a 7 h)» en vez de 23, el ecualizador del dueño en Ctrl+F3; `cielo-nucleo/nivel0-base` da el mismo `moneda`, 52 183 puntos). **salirq**: «solo cuentas», en 4 de 8 vueltas: los encargos del vigía de la pantalla (`MedidasBitacora.cs:129`, uno cada 25 ms más lo que tarda la pantalla en atenderlo) y el reloj de 42 ms (`Form1.cs:724`) llegan **más veces en lo nuevo que en la referencia** (N0 300-348 encargos frente a R0 287-298; la base 291-301): la pantalla contesta antes y caben más vueltas en los 11 s; la lógica es la misma (las mismas cosas en el mismo orden) | las nueve igual; salirq 6 de 7 BIEN |
+| NativeAOT | BIEN: publica con 0 avisos IL/AOT (14 MB); escenas arranque, cierreq, kill9, buscador y f12 IGUAL; f3vistas y f3teclas MAL como en `rapido-caratulas` (lo mismo de arriba) | igual |
+| `cierre_rocola_os.sh` | BIEN: 43 de 43 en JIT y en NativeAOT | — |
+| `Pruebas/Importa` | BIEN: 145 de 145 en JIT y en NativeAOT (`rg-imp`). En `n2` dio 48 MAL en los dos: **trampa de la prueba, no del programa**: con la carpeta de trabajo dentro de `rapido-general`, la rocola de XP (`MusicFolder`, `Form1.Datos.cs:1987`: busca una carpeta «musica» hasta 3 niveles arriba de los datos) encontró la biblioteca inventada de esta rama (`rapido-general/musica`, 13 119 canciones) en vez de las seis de la prueba. Fuera de esa carpeta, todo bien | — |
+
 
 ## Lo no probado
 
