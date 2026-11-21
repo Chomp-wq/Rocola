@@ -52,7 +52,7 @@ escribe("rocola_stats.txt", ["ROCOLA-STATS v1", "total-reproducciones=9", "total
 escribe("rocola_billar_nivel.txt", ["1.5|" + alto, "-0.75|" + la, "2|" + BORRADO])
 escribe("rocola_billar_bitacora.txt", ["fecha\tarchivo\tentera\tsegundos", "2026-11-01 22:10:00\t02 Tono Alto.mp3\tsi\t6"])
 escribe("rocola_teclas.txt", ["arriba=38", "abajo=40", "izquierda=37", "derecha=39", "poner=13", "regresar=27", "moneda=77", "saltar=83"])
-escribe("rocola_config.txt", ["gpu=1", "diagnostico=1", "noche=1", "noche_pct=80", "dir=D:\\MUSICA EXTRA", "dir=E:\\Nada", "respaldo_dir=D:\\Respaldos", "ia_datos=1",
+escribe("rocola_config.txt", ["gpu=1", "diagnostico=1", "noche=1", "noche_pct=50", "dir=D:\\MUSICA EXTRA", "dir=E:\\Nada", "respaldo_dir=D:\\Respaldos", "ia_datos=1",
                               # lo del 17 y 18-11-2026 (Form1.Datos.cs de XP): el ecualizador del dueno con sus dos memorias, la noche desde las 23
                               # puesta a mano DESPUES del paso a las 22 (la marca noche_desde_22=1: se respeta), los graves de noche, la marca del
                               # volumen parejo (con ella su rocola_billar_nivel.txt se importa) y la clave de I3, que ya se ignora

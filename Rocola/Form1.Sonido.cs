@@ -63,7 +63,7 @@ namespace Rocola
         // «El otro dia nos aventaron piedras por tener musica a las 12 A.M, asi que volveremos a poner el modo noche, con un slider desde
         // el 70 al 90% del audio, y con un boton para probar como se escucharia cuando se active.» (Se habia retirado el 24-10-2026.)
         //
-        // De las 10 de la noche a las 7 de la manana (noche_desde=, noche_hasta=) la rocola suena al nochePct % (noche_pct=, de 70 a 90,
+        // De las 10 de la noche a las 7 de la manana (noche_desde=, noche_hasta=) la rocola suena al nochePct % (noche_pct=, de 50 a 90 desde el 20-11-2026, antes de 70 a 90;
         // 80 de fabrica; interruptor noche=, ENCENDIDO de fabrica), musica y videos.
         // 17-11-2026 (el dueno: «haz que el modo noche empiece desde las 10, pero que vaya bajando extremadamente lento el volumen hasta
         // llegar al objetivo, para que asi los clientes no lo noten, que se vaya bajando tan lento que tarde una hora en llegar al
@@ -73,7 +73,7 @@ namespace Rocola
         //
         // EL PORCENTAJE ES DE LO QUE SE OYE, NO DE LA SENAL. Lo que se aprendio la primera vez: multiplicar la senal por 0,8 son -1,9 dB, y
         // eso casi no se nota (el ajuste parecia roto). El oido percibe el doble de fuerte con +10 dB, asi que «al 70 %» es 10*log2(0,70) =
-        // -5,1 dB; al 80 %, -3,2 dB; al 90 %, -1,5 dB.
+        // -5,1 dB; al 80 %, -3,2 dB; al 90 %, -1,5 dB; y al 50 %, lo mas bajo desde el 20-11-2026 («el slider desde 50 hasta 90%»), -10 dB.
         //
         // Y BAJA POCO A POCO. La noche (de dia a noche, con la rocola encendida) baja en 60 minutos exactos (NocheBajadaMs, el «avance»
         // va de 0 a 1 por reloj y el volumen es 10^(NocheDb * avance / 20)); la subida de la manana, el deslizador y el interruptor usan
@@ -87,8 +87,8 @@ namespace Rocola
         private static bool nocheOn = true;                        // "noche=" en config (0 lo apaga del todo)
         private static int nocheDesde = 22;                        // "noche_desde=" (22 de fabrica desde el 17-11-2026; antes 23)
         private static int nocheHasta = BusinessDayStartHour;      // "noche_hasta=" (las 7: cuando empieza el dia del negocio)
-        private static int nochePct = 80;                          // "noche_pct=": de 70 a 90 (lo que se oye)
-        internal const int NochePctMin = 70, NochePctMax = 90;
+        private static int nochePct = 80;                          // "noche_pct=": de 50 a 90 (lo que se oye; hasta el 20-11-2026, de 70 a 90)
+        internal const int NochePctMin = 50, NochePctMax = 90;   // 50 desde el 20-11-2026 (antes 70; el dueno: «El modo noche ahora tendra el slider desde 50 hasta 90%»)
         private const int NocheRampaMs = 20000, NochePruebaRampaMs = 1500, NochePruebaMs = 30 * 60 * 1000;   // la prueba se queda hasta otro toque; si se olvida, 30 min
         internal const int NocheBajadaMs = 3600000;                // la bajada de la noche: una hora
         private static int nocheGraves = 4;                        // "noche_graves=": dB de grave que se quitan de noche (0 a 6; 0 = apagado)
@@ -151,7 +151,7 @@ namespace Rocola
         {
             if (actual == meta) return meta;
             if (msPasados <= 0) return actual;
-            float paso = (1f - 0.5f) * msPasados / rampaMs;   // recorre medio volumen en rampaMs: la noche (70 a 90 %) en menos que eso
+            float paso = Math.Max(1f - 0.5f, 1f - Math.Min(NocheLin(), Math.Min(actual, meta))) * msPasados / rampaMs;   // recorre medio volumen en rampaMs (la noche de 66 a 90 %, en menos que eso: igual que antes) o, si baja mas que eso (de 50 a 65 %, desde el 20-11-2026), de 1 a lo mas bajo de la noche, de donde esta o de a donde va: la noche entera, o el deslizador de 50 a 90 % y de vuelta, en rampaMs o menos (la subida de las 7 y el interruptor no esperan a la rampa: van por la curva del avance, AvanzaModoNoche)
             if (actual < meta) { actual += paso; if (actual > meta) actual = meta; }
             else { actual -= paso; if (actual < meta) actual = meta; }
             return actual;
@@ -184,10 +184,10 @@ namespace Rocola
                 if (!esNoche) ShowToast("Se acabo el modo noche: vuelve el volumen de siempre", Color.FromArgb(38, 78, 132));
             }
             // Lo que toca ahora: la noche baja por su avance (una hora, pareja en dB); «Probar» va directo al nivel entero con su rampa rapida.
-            nocheAvance = AvanzaAvance(nocheAvance, esNoche, dt);
+            bool enCurva = !ProbandoNoche && !nochePruebaRapida && nocheFactor == FactorDeAvance(nocheAvance); nocheAvance = AvanzaAvance(nocheAvance, esNoche, dt);   // (20-11-2026) si ya va por la curva del avance (acotada: baja en una hora, sube en 20 s), la sigue sin rampa: al 50 % la rampa se quedaba atras y la subida de las 7 tardaba 23 s
             if (ProbandoNoche) meta = NocheLin(); else meta = FactorDeAvance(nocheAvance);
             float antes = nocheFactor;
-            nocheFactor = AvanzaRampa(nocheFactor, meta, dt, nochePruebaRapida ? NochePruebaRampaMs : NocheRampaMs);
+            nocheFactor = enCurva ? meta : AvanzaRampa(nocheFactor, meta, dt, nochePruebaRapida ? NochePruebaRampaMs : NocheRampaMs);
             if (nocheFactor == meta) nochePruebaRapida = false;
             SalaLocal.GravesNocheDb = GravesNocheDe(AvanceDeFactor(nocheFactor));   // N1: el grave de noche, con el mismo avance (de dia, 0)
             // Y se empuja a la cancion que YA suena (y a la preparada, y al video): si no, no se oiria hasta la siguiente.

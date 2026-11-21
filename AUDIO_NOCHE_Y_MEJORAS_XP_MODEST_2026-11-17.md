@@ -8,7 +8,7 @@ mejoras de audio». Solo la rocola de Windows XP (`Rocola/`, .NET 3.5). Nada de 
 Se había hecho el 7-11-2026 (commit `8dfa1ad`, decisión en AGENTS.md) y sigue en la rama:
 
 - De **23 a 7 h** (`noche_desde=`, `noche_hasta=`) la rocola suena al **`noche_pct=` %** de lo que se oye: **deslizador del 70 al 90 %**,
-  80 de fábrica (70 % = −5,1 dB; 80 % = −3,2 dB; 90 % = −1,5 dB).
+  80 de fábrica (70 % = −5,1 dB; 80 % = −3,2 dB; 90 % = −1,5 dB). Desde el 20-11-2026, de 50 a 90 % (sección 4 ter).
 - Interruptor `noche=`, **encendido de fábrica**; baja y sube en 20 s, sin escalón, con aviso al empezar y al acabar.
 - Canciones (la que suena, la preparada y las nuevas) y videos.
 - **«Probar»** en Ctrl+F3 → Sonido (Volumen al límite) lo pone 15 s al momento y vuelve solo.
@@ -134,6 +134,43 @@ perfectamente con la cadena de sonido (normal y del modo billar)»). Está en Ct
     se había aprendido con la presencia puesta;
   - «Lo que suena ahora» dice «El limitador baja: X dB (10 s: Y dB)», lo más que apretó en los últimos 10 s.
   Batería nueva `billar18`; suite completa: 383 bien y `tironescambio`, que ya fallaba antes.
+
+## 4 ter. El deslizador del modo noche, de 50 a 90 % (20-11-2026)
+
+Pedido del dueño: «El modo noche ahora tendrá el slider desde 50 hasta 90%». (La otra mitad del pedido, buscar qué más se puede bajar de
+noche —frecuencias— para no molestar a los vecinos, va aparte y como propuesta: no cambia nada del sonido sin que el dueño elija.)
+
+- El deslizador de Ctrl+F3 → Sonido va de **50 a 90 %** de lo que se oye (antes de 70 a 90), con la misma cuenta, 10·log2(pct/100):
+  50 % = **−10 dB**, 60 % = −7,4 dB, 70 % = −5,1 dB, 80 % = −3,2 dB, 90 % = −1,5 dB. 80 de fábrica.
+- Lo guardado se conserva: un `noche_pct=` entre 50 y 90 se lee tal cual; fuera se acota (40 → 50, 95 → 90).
+- **Lo que dependía del mínimo: la rampa.** La de 20 s (la subida de las 7, mover el deslizador o el interruptor) y la de «Probar»
+  (1,5 s) recorrían medio volumen en ese tiempo, y de 70 a 90 % la noche baja menos que eso. Al 50 % baja de 1 a 0,316: con el paso de
+  antes habrían sido 27,4 s y 2,1 s.
+  - Ahora el paso es el mayor entre medio volumen y lo que va de 1 a lo más bajo de la noche, de donde está el volumen o de a donde va
+    (`AvanzaRampa`). De 66 a 90 % es el mismo paso de antes, bit a bit; de 50 a 65 % la noche entera sigue en 20 s y en 1,5 s.
+  - Mover el deslizador de noche de 50 a 90 % tarda 20 s y de 90 a 50 %, 15,5 s (sin escalón).
+  - **La subida de las 7 y apagar el interruptor no esperan a la rampa** (arreglo de la revisión, 21-11-2026): si el volumen ya va por la
+    curva del avance (la de una hora pareja en dB al bajar y de 20 s al subir), la sigue tal cual (`AvanzaModoNoche`). Antes, al 50 %, al
+    final de la subida la curva subía más deprisa que el tope de la rampa (0,058 contra 0,034 por segundo) y la subida tardaba unos 23 s,
+    contra la decisión del 17-11 («a las 7 sube en 20 s»). Ahora 20,0 s con cualquier porcentaje; al 80 % (y donde la rampa nunca se
+    quedaba atrás) sale lo mismo que antes, vuelta a vuelta. «Probar» y su vuelta siguen con su rampa rápida.
+- Lo demás no dependía del mínimo y no cambió:
+  - la bajada de las 22 h, en una hora pareja en dB: al 50 %, −1,67 dB a los 10 min, −3,33 a los 20 y −10 a los 60 (−0,17 dB por minuto);
+  - los videos, con la perilla del reproductor al porcentaje: al 50 %, la perilla a la mitad (a la media hora, al 75 %);
+  - los graves de noche (N1), que bajan lo mismo con cualquier porcentaje;
+  - el limitador, que va después y solo trabaja menos.
+- En la ventana, AvPag y RePag sobre el deslizador saltan de 10 en 10 (antes de 2 en 2): es la regla de siempre de los deslizadores de
+  40 puntos o más. Con el mismo 80 % el botón del deslizador queda más a la derecha (a tres cuartos del riel): **conviene verlo en pantalla**.
+- Para saber (ya era así, no cambió): la perilla del reproductor de los videos es de amplitud en rocola-xp (el volumen cúbico de mpv con la
+  cuenta de XP), así que al 50 % los videos bajan unos −6 dB y la música −10 dB (al 80 %, −1,9 y −3,2). En XP depende de la perilla del
+  reproductor de Windows Media, que no se midió. Igualarlos es NV5a (decisión del 20-11-2026, rama `noche-nv`): al 50 % la diferencia
+  pasa de 1,3 a 4 dB hasta que se junte.
+- Batería `noche`: 92 de 92 (antes 65): el rango, la rampa al 50 % (20,02 s y 1 504 ms) y la de antes de 66 a 90 % bit a bit, la
+  configuración, y una sección 9 nueva con todo al 50 %: la subida de las 7 en 20,0 s (se pide de 19,5 a 20,5), el deslizador de noche
+  de 50 a 90 % (20,0 s) y de vuelta (15,5 s), apagar el interruptor (20,0 s, el grave a 0) y, al 80 %, la subida justo por la curva.
+  Contra la rocola de antes, la misma batería (sin las 6 del arreglo) daba 12 fallos. También en verde
+  `ajustes`, `ajustesvivos`, `ventanaf3`, `pestanas`, `sala`, `salalocal`, `compatvieja`, `videos`, `detalles`, `moneda`, `arreglos` y
+  `cadenaentera`. Nada oído ni probado en el A4.
 
 ## 5. Propuestas que necesitan tu decisión (no se hizo nada)
 

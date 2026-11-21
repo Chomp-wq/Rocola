@@ -133,7 +133,7 @@ if [[ " $partes " == *" importa "* ]]; then
 	si "rocola_config.txt: dir=D:\\MUSICA EXTRA traducida a su carpeta" contiene "$T/rocola_config.txt" "dir=$D/sdb1/Musica Extra"
 	si "rocola_config.txt: la carpeta que no esta (E:\\Nada), fuera" nocontiene "$T/rocola_config.txt" "Nada"
 	si "rocola_config.txt: respaldo_dir= quitada" nocontiene "$T/rocola_config.txt" "respaldo_dir="
-	si "rocola_config.txt: lo demas tal cual" contiene "$T/rocola_config.txt" "noche_pct=80"
+	si "rocola_config.txt: lo demas tal cual (noche_pct=50, lo mas bajo del deslizador desde el 20-11-2026)" contiene "$T/rocola_config.txt" "noche_pct=50"
 	# lo del 17 y 18-11-2026: el ecualizador del dueno, la noche y la marca del volumen parejo pasan tal cual (las lee el codigo de XP)
 	si "rocola_config.txt: eq_dueno= (la memoria del sonido normal) tal cual" contiene "$T/rocola_config.txt" "eq_dueno=1.5;0.0;-2.0;0.0;0.0;3.0;0.0;0.0;-1.5;0.0"
 	si "rocola_config.txt: eq_dueno_billar= (la del modo billar) tal cual" contiene "$T/rocola_config.txt" "eq_dueno_billar=0.0;2.5;0.0;0.0;-4.0;0.0;0.0;1.0;0.0;6.0"
