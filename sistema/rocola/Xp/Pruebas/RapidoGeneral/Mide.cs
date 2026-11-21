@@ -87,13 +87,14 @@ namespace Rocola
                 };
             }
             // ROCOLA_MIDE_COSTE=K: cada K cuadros, lo que cuesta componer (hasta glFinish) como antes (todas las capas) y como ahora, alternando
-            if (int.TryParse(Environment.GetEnvironmentVariable("ROCOLA_MIDE_COSTE") ?? "", out k) && k > 0)
+            int kc;
+            if (int.TryParse(Environment.GetEnvironmentVariable("ROCOLA_MIDE_COSTE") ?? "", out kc) && kc > 0)
             {
                 int cuenta = 0;
                 CompositorPantalla.Prueba = delegate (CompositorPantalla comp, List<CapaPantalla> lista)
                 {
-                    if (++cuenta % k != 0) return;
-                    bool primeroTodo = (cuenta / k) % 2 == 0;
+                    if (++cuenta % kc != 0) return;
+                    bool primeroTodo = (cuenta / kc) % 2 == 0;
                     for (int v = 0; v < 2; v++)
                     {
                         bool todo = (v == 0) == primeroTodo;
