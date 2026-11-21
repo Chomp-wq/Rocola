@@ -161,7 +161,7 @@ namespace Rocola
         private static double fotoDesdeMs, fotoDuraMs = 1000;
         internal static RocolaOsCieloFoto Foto { get { return Volatile.Read(ref foto); } }
         // si el cielo vivo va en esta sesion (ROCOLA_OS y alguna de las cuatro funciones encendida, ya arrancada)
-        internal static bool Va { get { return Volatile.Read(ref foto) != null; } }
+        internal static bool Va { get { return Volatile.Read(ref foto) != null && !NucleoCaido; } }   // (NucleoCaido: RocolaOs.CieloEnchufes.cs)
 
         // ---------- el arranque (en la pantalla, antes de ensenarse la ventana) ----------
         private static bool arrancado;
@@ -349,7 +349,8 @@ namespace Rocola
             RocolaOsCieloDia.RayaMezcla(a.Raya, f.Raya, k, out RayaR, out RayaG, out RayaB);
             RocolaOsCieloDia.AlCuadro(f);
             RelojCuadro(ms);
-            if (Math.Abs(horizonte - horizonteApuntado) > 20f && ms - horizonteApuntadoMs > 10000)
+            // (para la bitacora: el primero y despues como mucho uno por hora; el reposo con musica lo mueve cada vez que entra o sale)
+            if (Math.Abs(horizonte - horizonteApuntado) > 20f && ms - horizonteApuntadoMs > 3600000)
             { horizonteApuntado = horizonte; horizonteApuntadoMs = ms; RocolaOs.Apunta("cielo", "el horizonte de la escena: " + horizonte.ToString("0", CultureInfo.InvariantCulture) + " de " + alto + " px (modo " + modo + ")"); }
         }
         internal const double CalmaMinima = 0.35, CalmaBajaS = 0.4, CalmaSubeS = 3.0;

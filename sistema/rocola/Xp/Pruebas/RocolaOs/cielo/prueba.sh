@@ -237,9 +237,13 @@ if [[ " $partes " == *" escenas "* ]]; then
       contraste "$f" "$@" > "$W/contraste-$e-$h.txt" 2>&1
       si "regla 3 en $e a las $h: $(cat "$W/contraste-$e-$h.txt")" contiene "$W/contraste-$e-$h.txt" "regla 3 (<= 0,17): BIEN"
     done
-    # el reposo: DATO, no comprobacion (no hay texto en el cielo: los textos van en el panel, bajo el horizonte; la raya y su resplandor de
-    # 34 px suben con el panel hasta 491)
-    f=$CAPTURAS/reposo-${h/:/}.png; [ -f "$f" ] && echo "   DATO reposo $h: $(contraste "$f" --hasta 0.668 --solo 0,100,1024,513)"
+    # el reposo con musica: el cielo sobre la raya (que ahi esta en 525; el panel AHORA SUENA va debajo), hasta 0,868 del horizonte (513).
+    # Es donde el resplandor de DN5 subia la luz (0,18-0,19 de dia con 2,2 veces la luz de la raya; con 1,4 en el reposo, bajo 0,17)
+    f=$CAPTURAS/reposo-${h/:/}.png
+    if [ -f "$f" ]; then
+      contraste "$f" --hasta 0.668 --solo 0,100,1024,513 > "$W/contraste-reposo-$h.txt" 2>&1
+      si "regla 3 en el reposo con musica a las $h: $(cat "$W/contraste-reposo-$h.txt")" contiene "$W/contraste-reposo-$h.txt" "regla 3 (<= 0,17): BIEN"
+    fi
   done
   si "las fases de las capturas (bitacora de la pared vacia): amanecer, manana, mediodia, atardecer, anochecer y noche" \
      bash -c "for x in amanecer manana mediodia atardecer anochecer noche; do grep -q \"fase del dia: \$x\" '$(bit vacia)' || exit 1; done"

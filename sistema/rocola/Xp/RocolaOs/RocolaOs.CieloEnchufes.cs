@@ -140,6 +140,17 @@ namespace Rocola
         internal static int TintesVersion;
 
         private static void Cayo(string quien, string que, Exception ex) { RocolaOs.Falla(quien, que + " (ya no se llama en esta sesion)", ex); }
+        // EL NUCLEO SE CAYO (una excepcion en lo suyo del cuadro: la escena, DN1 o DN5): Va da falso el resto de la sesion, todos los ganchos dan lo
+        // de XP (el cielo de XP vuelve, como con un cliente caido) y se apunta una vez. En la pantalla.
+        internal static void CaeNucleo(string que, Exception ex)
+        {
+            if (nucleoCaido) return;
+            nucleoCaido = true;
+            RocolaOsCieloDia.Apaga();
+            RocolaOs.Falla("cielo", que + " (el cielo vivo se apaga en esta sesion: vuelve el de XP)", ex);
+        }
+        private static volatile bool nucleoCaido;
+        internal static bool NucleoCaido { get { return nucleoCaido; } }
 
         // ---------- lo que hacen los enchufes (en la pantalla) ----------
         internal static void PintaCapa(GpuPanel p, int capa)
@@ -169,6 +180,7 @@ namespace Rocola
         {
             get
             {
+                if (!Va) return false;
                 RocolaOsCieloTinte[] l = Volatile.Read(ref tintes);
                 for (int i = 0; i < l.Length; i++) { if (l[i].Caido) continue; try { if (l[i].Activo) return true; } catch (Exception ex) { l[i].Caido = true; Cayo(l[i].Quien, "tinte", ex); } }
                 return false;
@@ -218,12 +230,13 @@ namespace Rocola
                 if (a.Caido) continue;
                 try { if (a.Activo) a.Columna(p, i, fx, nivel, suelo, puntos); } catch (Exception ex) { a.Caido = true; Cayo(a.Quien, "colores de la aurora", ex); }
             }
-            RocolaOsCieloDia.Raya(colorRaya, brilloRaya, i, fx);   // DN5, la ultima
+            try { RocolaOsCieloDia.Raya(colorRaya, brilloRaya, i, fx); }   // DN5, la ultima
+            catch (Exception ex) { CaeNucleo("la raya del horizonte (DN5)", ex); }
         }
         internal static uint ColorFestejo(uint xp)
         {
             RocolaOsCieloFoto f = Foto;
-            if (f == null) return xp;
+            if (f == null || !Va) return xp;
             uint c = xp;
             RocolaOsCieloFugaz[] l = Volatile.Read(ref fugaces);
             for (int i = 0; i < l.Length; i++)
@@ -246,7 +259,10 @@ namespace Rocola
             double ms = AhoraMs();
             RocolaOsCielo.TomaReloj(lastFrameWork, ms);   // (pruebas: ROCOLA_CIELO_RELOJ; tambien con las cuatro funciones apagadas, para comparar)
             if (!RocolaOsCielo.Va) return;
-            RocolaOsCielo.Cuadro(stars, Width, Height, auCuadro.BaseY - AurLineaAlza, StatusTopY, sceneMode, ShowAlbum, idleBlend, ms);
+            // (lo del nucleo no tiene quien lo apague como a los clientes: si lanza, el cielo vivo se cae en esta sesion y vuelve el de XP, en vez
+            // de perder cada cuadro)
+            try { RocolaOsCielo.Cuadro(stars, Width, Height, auCuadro.BaseY - AurLineaAlza, StatusTopY, sceneMode, ShowAlbum, idleBlend, ms); }
+            catch (Exception ex) { RocolaOsCielo.CaeNucleo("el cuadro del cielo", ex); return; }
             RocolaOsCielo.Prepara(this);
         }
         // g123 (CieloMedioBase): si la imagen intermedia del cielo se tiene que volver a pintar por lo de Rocola OS (DN1, el velo, los tintes)
@@ -312,7 +328,8 @@ namespace Rocola
                 if (RocolaOsCieloV == null) RocolaOsCieloV = new Tarjeta.Vtx[64 * 6];
                 // el color del genero sin el tinte por la hora de XP (DN1 lo sustituye de dia): las paradas de XP sin TineCielo, con C2
                 uint t0 = skyTop, m0 = skyMid, genero = skyBot; ColoresCielo(ref t0, ref m0, ref genero);
-                RocolaOsCieloTris = RocolaOsCieloDia.Arma(RocolaOsCieloV, ancho, h, midY, top, mid, bot, genero, extra, CieloSuave, RocolaOsCielo.Escena.Horizonte, desde);
+                try { RocolaOsCieloTris = RocolaOsCieloDia.Arma(RocolaOsCieloV, ancho, h, midY, top, mid, bot, genero, extra, CieloSuave, RocolaOsCielo.Escena.Horizonte, desde); }
+                catch (Exception ex) { RocolaOsCieloListo = false; RocolaOsCielo.CaeNucleo("armar el cielo (DN1)", ex); return false; }   // (XP pinta el suyo)
                 RocolaOsCieloDe0 = ancho; RocolaOsCieloDe1 = h; RocolaOsCieloDe2 = midY; RocolaOsCieloDe3 = extra; RocolaOsCieloDe4 = desde;
                 RocolaOsCieloDeT = top; RocolaOsCieloDeM = mid; RocolaOsCieloDeB = bot; RocolaOsCieloDeFirma = firma; RocolaOsCieloDeSuave = CieloSuave;
                 RocolaOsCieloListo = true;

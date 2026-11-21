@@ -295,8 +295,9 @@ namespace Rocola
                     RevisaFechas();
                     DateTime ahora = DateTime.UtcNow;
                     bool cielo = FuncionVa("cielo"), clima = FuncionVa("clima");
-                    // el lugar: solo con ciudad_bar=0 y sin ROCOLA_CIUDAD; una vez por semana, como mucho un intento por hora
-                    if ((cielo || clima) && CiudadElegida == 0 && CiudadForzada == null && (Lugar == null || Lugar.Viejo(ahora)) && (ahora - ultimoLugar).TotalHours >= 1)
+                    // el lugar: solo si alguna idea lo usa (el sol y la luna de DN1-DN6, el filo de luz VI5, el clima), con ciudad_bar=0 y sin
+                    // ROCOLA_CIUDAD; una vez por semana, como mucho un intento por hora
+                    if ((clima || (cielo && UsaElSol())) && CiudadElegida == 0 && CiudadForzada == null && (Lugar == null || Lugar.Viejo(ahora)) && (ahora - ultimoLugar).TotalHours >= 1)
                     {
                         ultimoLugar = ahora;
                         BuscaLugar();
@@ -316,6 +317,15 @@ namespace Rocola
         }
         // si una funcion del cielo va (desde el hilo: Encendida no lee nada despues de la primera vez)
         private static bool FuncionVa(string funcion) { return RocolaOs.Encendida(funcion); }
+        // si alguna idea encendida necesita saber donde esta el bar por el sol o la luna: DN1-DN6 (la fase de la luna de DN3 A no; su camino, DN3 B,
+        // si) y VI5 (el filo de luz sigue al cielo)
+        private static bool UsaElSol()
+        {
+            if (FuncionVa(RocolaOsCielo.Funcion))
+                foreach (string c in new[] { "cielo_sol", "sol", "luna_camino", "estrellas_anochecer", "horizonte_hora", "nubes" })
+                    if (RocolaOs.AjusteSiNo(c)) return true;
+            return FuncionVa(RocolaOsCielo.FuncionVidrio) && RocolaOs.AjusteSiNo("vidrio_luz");
+        }
 
         private static void LeeGuardados()
         {

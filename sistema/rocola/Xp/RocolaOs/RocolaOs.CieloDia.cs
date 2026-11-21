@@ -103,6 +103,8 @@ namespace Rocola
         internal static int FirmaCielo, FirmaAurora;              // cambian si cambia lo que pinta DN1 (o el velo) o la raya de DN5
         internal static int FirmaAuroraExtra;                     // (para quien mas cambie la aurora: FI1 la sube cuando cambian sus colores)
         internal static int FirmaCieloExtra;                      // (para quien tina el cielo: los tintes la suben cuando cambia lo suyo)
+        // (el nucleo se cayo: lo de XP desde el siguiente cuadro; las firmas cambian para que la aurora y la imagen intermedia se rehagan)
+        internal static void Apaga() { DN1Cuadro = DN5Cuadro = false; unchecked { FirmaCielo += 7919; FirmaAurora += 7919; } }
         internal static void AlCuadro(RocolaOsCieloFoto f)
         {
             DN1Cuadro = f.DN1; DN5Cuadro = f.DN5;
@@ -113,25 +115,27 @@ namespace Rocola
                 if (DN1Cuadro && noche < 1f)
                 {
                     for (int i = 0; i < Fases; i++) h = h * 31 + (int)Math.Round(RocolaOsCielo.PesosCuadro[i] * 2048f);
-                    h = h * 31 + (int)Math.Round(RocolaOsCielo.Escena.Horizonte * 4f);
                     h = h * 31 + (int)Math.Round(RocolaOsCielo.VeloCuadro * 2048f) * 7 + (int)Math.Round(RocolaOsCielo.NebulosaCuadro * 2048f);
                 }
+                // el horizonte de la escena (sube con el reposo): lo usan DN1 y los tintes de los grupos (Tine lo recibe), asi que entra siempre que
+                // se pinte el cielo de Rocola OS, no solo con DN1
+                if (Pinta) h = h * 31 + (int)Math.Round(RocolaOsCielo.Escena.Horizonte * 4f) + 1;
                 h = h * 31 + FirmaCieloExtra + RocolaOsCielo.TintesVersion;
                 FirmaCielo = h;
                 int a = DN5Cuadro && noche < 1f ? 101 : 7;
                 if (DN5Cuadro && noche < 1f)
-                    a = a * 31 + (int)Math.Round(RocolaOsCielo.RayaR) * 65536 + (int)Math.Round(RocolaOsCielo.RayaG) * 256 + (int)Math.Round(RocolaOsCielo.RayaB) + (int)Math.Round((1f - noche) * 512f) * 7919;
+                    a = a * 31 + (int)Math.Round(RocolaOsCielo.Escena.Reposo * 32f) * 104729 + (int)Math.Round(RocolaOsCielo.RayaR) * 65536 + (int)Math.Round(RocolaOsCielo.RayaG) * 256 + (int)Math.Round(RocolaOsCielo.RayaB) + (int)Math.Round((1f - noche) * 512f) * 7919;
                 FirmaAurora = a * 31 + FirmaAuroraExtra;
             }
         }
 
         // ================================================================ DN1: EL DEGRADADO DEL CIELO
-        private const int MaxParadas = 48;
+        private const int MaxParadas = 64;   // (13 fronteras de XP con C1 + 8 por paleta activa: 45 con 4 a la vez en un salto; los cuadros, 64 x 6 vertices)
         private static readonly float[] ys = new float[MaxParadas];
         private static readonly float[] cr = new float[MaxParadas], cg = new float[MaxParadas], cb = new float[MaxParadas];
         private static readonly float[] xpY = new float[16]; private static readonly uint[] xpC = new uint[16];
         // SI HAY QUE PINTAR EL CIELO NUEVO este cuadro (DN1 encendida y no es la noche cerrada, o algun tinte de otro grupo activo)
-        internal static bool Pinta { get { return (DN1Cuadro && RocolaOsCielo.NocheCuadro < 1f) || RocolaOsCielo.HayTintes; } }
+        internal static bool Pinta { get { return RocolaOsCielo.Va && ((DN1Cuadro && RocolaOsCielo.NocheCuadro < 1f) || RocolaOsCielo.HayTintes); } }
         // ARMA EL CIELO en 'v' (cuadros de 6 vertices, sin mezcla) con las tres paradas de XP de ESTE cuadro (top, mid, bot: con el tinte por la hora
         // y C2 ya puestos: la noche de XP), el color del genero sin ese tinte (genero: el del suelo de dia), el corte (midY), el horizonte de la
         // escena y lo de la foto. 'suave' = el cielo de doce franjas de XP (C1). 'extra': la
@@ -313,8 +317,10 @@ namespace Rocola
         // ================================================================ DN5: LA RAYA DEL HORIZONTE (gancho g128, por columna de la aurora)
         // La raya de XP (la que lleva el pie de la aurora: color c, brillo li, sumada) con la luz de la fase: como en las maquetas, la misma raya
         // (su forma, su resplandor de 34 px hacia arriba y 11 hacia abajo) en el color de la fase, con 2,2 veces su luz media (el promedio de sus tres
-        // canales), algo mas fuerte en el centro; de noche, la de XP. Se mezcla con la de XP por el peso del dia.
-        internal const float RayaLuz = 2.2f;
+        // canales), algo mas fuerte en el centro; de noche, la de XP. Se mezcla con la de XP por el peso del dia. En el reposo con musica (la raya sube
+        // a y=525 y el panel AHORA SUENA va debajo) la luz baja a 1,4 veces por la regla 3: con 2,2 el resplandor pasaba de 0,17 de luminancia justo
+        // encima de la raya (0,18-0,19 medido de dia, el blanco a 4,4:1); con 1,4, 0,15-0,16 (el blanco a 5,0-5,3:1). Fuera del reposo, 2,2 exacto.
+        internal const float RayaLuz = 2.2f, RayaLuzReposo = 1.4f;
         internal static void Raya(uint[] colores, float[] brillos, int i, float fx)
         {
             float noche = RocolaOsCielo.NocheCuadro;
@@ -327,7 +333,8 @@ namespace Rocola
             if (mx < 1f) return;
             float media = (pr + pg + pb) / (3f * 255f);
             float dx = (fx - 0.5f) / 0.62f, centro = 0.6f + 0.4f * (float)Math.Exp(-dx * dx);
-            float a = li * media * RayaLuz * (mx / 255f) * centro;   // la luz que lleva (sumada): color normalizado x alfa
+            float luz = RayaLuz + (RayaLuzReposo - RayaLuz) * Math.Max(0f, Math.Min(1f, RocolaOsCielo.Escena.Reposo));
+            float a = li * media * luz * (mx / 255f) * centro;   // la luz que lleva (sumada): color normalizado x alfa
             float nr = rr / mx * 255f, ng = rg / mx * 255f, nb = rb / mx * 255f;
             if (a > 1f) a = 1f;
             float d = 1f - noche;

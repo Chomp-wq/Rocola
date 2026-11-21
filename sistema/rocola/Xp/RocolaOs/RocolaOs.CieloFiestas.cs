@@ -1,6 +1,6 @@
 // EL CIELO VIVO DE ROCOLA OS, NUCLEO: EL CALENDARIO DE LAS FIESTAS (PLAN_CIELO_VIVO.md §6) Y LAS FECHAS PROPIAS (rocola_fechas.txt, §2).
 // Solo datos y cuentas, sin dibujo ni disco: lo que se pinta en cada fecha lo hace el grupo de las fiestas (FI1-FI6) leyendo esto en la
-// foto del cielo (RocolaOsCieloFoto.Fiestas, FechasPropias, Mensajes, ProximosFuegos). Sin internet: las fechas las sabe la rocola.
+// foto del cielo (RocolaOsCieloFoto.Hoy: Fiestas, Propias, Mensajes, ProximosFuegos, CuentaFuegos). Sin internet: las fechas las sabe la rocola.
 //
 // rocola_fechas.txt (en la carpeta de datos; lo lee el hilo del cielo cuando cambia, RocolaOs.CieloClima.cs; lo edita la hoja «Imagen» de
 // Ctrl+F4 o Ctrl+F4 -> Archivos, nunca la orden «ajuste»): un renglon por fecha, «DD-MM;tipo;texto», UTF-8, finales LF o CRLF; lo que empieza
