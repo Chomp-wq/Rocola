@@ -134,7 +134,7 @@ COMPLETA). Nada probado en el A4.
 - Nada falla por la junta. Lo que sale MAL en el nivel 0 sale igual en la base (`424ade7`) y viene de `PORT_xp-1718.md` (la XP del 17 y
   18-11 contra la referencia congelada) o del arnés VistasVistasB (las 18 excepciones de la referencia); habría que darle a `nivel0.sh` esas
   diferencias como aceptadas (no se hizo aquí: es de la oleada 0).
-- `spotify-xp` NativeAOT 159/160 por un aviso de «Pantalla parada» con la máquina cargada; se puede volver a correr con la máquina libre.
+- `spotify-xp` NativeAOT 159/160 por un aviso de «Pantalla parada» con la máquina cargada (la revisión, abajo, ya no cuenta esos avisos; no se volvió a correr en NativeAOT).
 - La prueba de QEMU de la hoja Pantalla con las pestañas nuevas, y la compilación COMPLETA (paquetes de WPE WebKit y cog), cuando el dueño
   la pida.
 - **El catálogo publicado no tiene el pre-mapeo de géneros.** La versión «catalogo» de GitHub (20261114.3, 182 418 discos: la que lee la
@@ -171,4 +171,21 @@ Un revisor no encontró nada grave. De lo que encontró, comprobado uno por uno:
 
 Las baterías afectadas, otra vez en JIT con el programa de `bd39d2b` (bitácora `.../junta-segunda/bateria-rev.log`):
 
-RESULTADOS_REV
+| batería | JIT (`bd39d2b`; la prueba de `spotify-xp` con `34df01d`) |
+|---|---|
+| `pantalla` | 76/76 (con la escena nueva `navegador`: 5 de 5) |
+| `navegador-archivos` | 51/51 |
+| `pared-generos` | 69/69 (el contrato con el archivo nuevo, 187/673, y las 4 de `real` con el catálogo de verdad) |
+| `catalogo` | 156/156 (carga 9 a 12) |
+| `andamio` | 101/101 |
+| `asistente` | 29/29 |
+| `sustitucion` | 97/97 |
+| `spotify-xp` | 160/160 (antes 158/160, abajo) |
+
+- `spotify-xp` dio primero 158/160 (carga 3 a 7, después de un reinicio de la máquina): (1) «el vigilante abre como mucho un programa
+  por segundo» contó 54 en 20 s porque contaba cada `execve` de strace, también los intentos fallidos (ENOENT) por cada carpeta del PATH
+  y la envoltura de `rm` que la sesión de pruebas pone delante en el PATH (`/root/.claude/...`); el vigilante abrió lo de siempre (10
+  `sleep`, 2 `mountpoint`, 3 `rm`). `34df01d`: solo cuenta los que se abrieron de verdad y sin esas envolturas (15, como antes). (2) «pulso:
+  ni un hueco dentro de cada una» con un hueco en la de 440 Hz: la máquina cargada; otra vez con carga 11, BIEN (y las otras tres escenas
+  que miran huecos, BIEN en las dos corridas). Repetida entera con `34df01d`: 160/160.
+- Ninguna en NativeAOT en esta revisión (lo cambiado son las pruebas y, en `bd39d2b`, `RocolaOs.Navegador.cs`, `RocolaOs.Pantalla.cs` y la pantalla simulada, solo con `ROCOLA_OS`; el NativeAOT de la junta, arriba).
