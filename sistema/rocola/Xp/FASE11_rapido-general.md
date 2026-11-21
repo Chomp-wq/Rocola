@@ -198,7 +198,7 @@ con el procesador) y la memoria nueva por cuadro (−30 a −40 %).
 La batería del nivel 0 (`Pruebas/RocolaOs/nivel0.sh`) sobre el código de `f85de5b` (lo que va después son solo los guiones y este
 documento), en dos tandas: `n0` (de `previo` a `ventanas`, 21-11-2026 03:08-04:19, carga 14-20) y `n2` (escenas, NativeAOT, cierre e
 importador, 06:15-07:10, carga 4-8), con la base (`6c4dc1a`, compilada de `base-src`) corrida con las mismas escenas al lado (`nb`) para
-separar lo que ya fallaba de lo nuevo. Carpetas en `/root/rocola-trabajo/fase11/rapido-general` (`n0`, `n2`, `nb`, `n3`, `n4-*`, `rv`) y
+separar lo que ya fallaba de lo nuevo. Carpetas en `/root/rocola-trabajo/fase11/rapido-general` (`n0`, `n2`, `nb`, `n3`, `n4-*`, `rv`; los programas y las salidas grandes ya borrados) y
 `/root/rocola-trabajo/fase11/rg-imp`.
 
 | Comprobación | Resultado | Con la base |
@@ -218,6 +218,35 @@ separar lo que ya fallaba de lo nuevo. Carpetas en `/root/rocola-trabajo/fase11/
 | `cierre_rocola_os.sh` | BIEN: 43 de 43 en JIT y en NativeAOT | — |
 | `Pruebas/Importa` | BIEN: 145 de 145 en JIT y en NativeAOT (`rg-imp`). En `n2` dio 48 MAL en los dos: **trampa de la prueba, no del programa**: con la carpeta de trabajo dentro de `rapido-general`, la rocola de XP (`MusicFolder`, `Form1.Datos.cs:1987`: busca una carpeta «musica» hasta 3 niveles arriba de los datos) encontró la biblioteca inventada de esta rama (`rapido-general/musica`, 13 119 canciones) en vez de las seis de la prueba. Fuera de esa carpeta, todo bien | — |
 
+
+### Otra vez, tras los arreglos de la revisión (`a77cd74`, `n7` y `n8`, 21-11-2026 08:55-09:20, carga 4-6)
+
+`previo`, `codigo`, `ganchos.py`/`diff-xp.py`, `compila` (0 errores, 13 avisos), `banco` (IGUAL en las semillas 7, 11 y 5), `cintas` (29
+iguales, 6 616 cuadros), `ventanas` (la hoja 86, la pantalla 32 en JIT y en NativeAOT, PantallaVistas 78), `aot` (0 avisos IL/AOT) y las
+escenas arranque, buscador, cierreq, altf4 y kill9 IGUAL y sigterm ACEPTADO en JIT; arranque, buscador y cierreq IGUAL en NativeAOT.
+f3vistas MAL como en la base (lo de `PORT_xp-1718.md`, arriba). salirq: «solo cuentas» las dos veces (abajo). En `n8`: `cierre_rocola_os.sh` **43 de 43 en JIT y en NativeAOT**, y
+las siete escenas de NativeAOT: arranque, cierreq, kill9, buscador y f12 IGUAL; f3vistas y f3teclas MAL como en la base y en
+`rapido-caratulas` (lo mismo de arriba). (En `n7` el paso del cierre salió 0 de 0 por la prueba: la lista ESCENAS que se le dio a la
+batería la heredó `cierre_rocola_os.sh`, que no conoce esas escenas.)
+
+## Para la junta: la escena salirq
+
+**salirq sale «solo cuentas» más a menudo con esta rama** (4 de 8 vueltas en `n2`, 2 de 2 en `n7`, frente a 1 de 7 de la base), y la
+batería, tras repetirla una vez, la marca MAL. Es siempre la misma cuenta, `encargo MedidasBitacora.cs:129`, y **siempre de más** en el
+programa: 345 y 362 frente a 306 y 329 de la referencia en `n7` (holgura 12). Es el vigía de la pantalla de XP (`Codigo/MedidasBitacora.cs`,
+`Bucle`): duerme su paso, encola un encargo a la pantalla y espera a que se atienda; **cuanto antes contesta la pantalla, más vueltas caben**
+en los 11 s de la escena. Con esta rama la pantalla compone menos por cuadro y contesta antes. Las cosas pasan en el mismo orden y con los
+mismos estados (la secuencia y los estados de la escena, iguales). **No se cambió la tolerancia** (`Pruebas/RocolaOs/clasifica.py` es de la
+batería de todos): quien junte puede aceptar en salirq ese encargo cuando el programa da más, nunca menos, o repetirla. No es un fallo nuevo.
+
+## Lo que queda en el disco
+
+Se borró lo que ya no servía (los programas viejos `base-jit`, `base-aot`, `n4-*`, `n5-aot`, las carpetas `n0`, `n2`, `nb` y `rg-aot` y las salidas grandes de `n7` y `n8`: unos 430 MB).
+Quedan en `/root/rocola-trabajo/fase11/rapido-general` las medidas (`r/`, 11 MB), la base y su medida (`base-src`, `base2-aot`), los resúmenes de `n7` y `n8`, lo nuevo
+(`n6-aot`), las carpetas de datos (`d0`, `dcal`) y la biblioteca inventada (`musica`, 19 MB). **Cuidado con `musica`**: la rocola de XP
+busca una carpeta «musica» hasta 3 niveles arriba de sus datos (`MusicFolder`, `Form1.Datos.cs:1987`), así que cualquier prueba con su
+carpeta de datos dentro de `rapido-general` encuentra esas 13 119 canciones (eso hizo fallar `Pruebas/Importa` en `n2`). Las medidas la
+necesitan donde está (`d0` y `dcal` no llevan la suya); para otras pruebas, una carpeta de trabajo fuera de `rapido-general`.
 
 ## Lo no probado
 
