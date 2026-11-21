@@ -40,8 +40,8 @@
 #   ESCENAS   las escenas en JIT (las 24 de la junta 17); ESCENAS_AOT, las de NativeAOT (las 7); RECORRIDOS, los recorridos (los nueve)
 #   NIVEL     0 (de fabrica) o 1; ROCOLA_OS_LISTA, la lista del nivel 1 (vida,red); IGNORA, el prefijo que no se compara en el nivel 1
 #             (RocolaOs:); SIN_RED (1: el programa del nivel 1 en otro espacio de red, si se puede)
-#   BASE      el commit contra el que se cuentan las lineas y los CRLF de Codigo/ (d5bc2b0, la de la junta 3: fc7b667, la base de la fase 11, con los cambios de la rocola de
-#             XP del 17 y 18-11-2026, PORT_xp-1718.md, el modo noche de 50 a 90 % y el de los vecinos del 20-11-2026, PORT_noche-nv.md, con el arreglo de la subida de noche-50 juntado y la revision de noche-nv, y los ganchos de todas las ramas devueltos tambien fuera de Codigo/; antes a76d008, 2c4b3c3, ca9802f, d6026b1 y ebdb272)
+#   BASE      el commit contra el que se cuentan las lineas y los CRLF de Codigo/ (8c8cba0, la de la junta 4, con Codigo/ byte a byte como d5bc2b0, la de la junta 3, y Nativo/ con lo de las ramas de rapidez: fc7b667, la base de la fase 11, con los cambios de la rocola de
+#             XP del 17 y 18-11-2026, PORT_xp-1718.md, el modo noche de 50 a 90 % y el de los vecinos del 20-11-2026, PORT_noche-nv.md, con el arreglo de la subida de noche-50 juntado y la revision de noche-nv, y los ganchos de todas las ramas devueltos tambien fuera de Codigo/; antes d5bc2b0, a76d008, 2c4b3c3, ca9802f, d6026b1 y ebdb272)
 #   REPITE    1: una escena que sale distinta solo en cuentas (o un recorrido que no da lo de siempre) se repite una vez; 0: no
 #   GUARDA_BIN  1: deja los programas compilados y publicados ($TRABAJO/jit, aot); de fabrica se borran al acabar
 #   Lo que se espera (lo de la junta de N7; mas, si un grupo amplia una prueba, tambien vale): AVISOS (13), DIFFXP («5147 4880 229»: lineas
@@ -68,7 +68,7 @@ else PASOS=${PASOS:-previo codigo ganchos compila arneses banco cintas recorrido
 ESCENAS=${ESCENAS:-arranque moneda video tab buscador cierreq altf4 sigterm f3sigterm kill9 asistente captura salirq f2 f2barras f2sin aviso f3vistas f3grises f3teclas f3raton f3billar f12 f12vigia}
 ESCENAS_AOT=${ESCENAS_AOT:-arranque cierreq kill9 buscador f3vistas f3teclas f12}
 RECORRIDOS=${RECORRIDOS:-}   # (vacio: todos los que tienen salida de referencia en CMPREF)
-BASE=${BASE:-d5bc2b0}; REPITE=${REPITE:-1}; GUARDA_BIN=${GUARDA_BIN:-0}
+BASE=${BASE:-8c8cba0}; REPITE=${REPITE:-1}; GUARDA_BIN=${GUARDA_BIN:-0}
 AVISOS=${AVISOS:-13}; DIFFXP=${DIFFXP:-5147 4880 229}; ACABADO=${ACABADO:-6603}; VISTASB=${VISTASB:-3108}; AJUSTES=${AJUSTES:-545}
 FRONTERA=${FRONTERA:-106 153}; CINTAS=${CINTAS:-29}; HOJA=${HOJA:-86}; PANTALLA=${PANTALLA:-32}; VISTAS=${VISTAS:-78}; CIERRE=${CIERRE:-43}
 IMPORTA=${IMPORTA:-145}

@@ -16,7 +16,7 @@ namespace Rocola
                 int split = (cw + 1) / 2, left = (int)Math.Round((cw - side) / 2 + side * .5 - side * .5 / Math.Sqrt(2));
                 int right = left + (int)Math.Round(side / Math.Sqrt(2)); // Cube.Draw redondea el ancho del contorno, no sus extremos
                 bool queued = EnCola != null && EnCola(a);
-                Rectangle mark = Rectangle.Empty;
+                Rectangle mark = Rectangle.Empty; SKBitmap rocolaOsPg = RocolaOsParedGenerosPastillaCasilla(a, side, this.Font.Familia);   // ROCOLA OS g94: (XP) Rectangle mark = Rectangle.Empty; — la pastilla del genero de XP de la casilla (RocolaOs/RocolaOs.ParedGeneros.cs; sin el modo o sin genero, null)
                 if (queued) {
                     float d = Math.Max(13f, side * .26f), x = (cw - side) / 2 + side - d * .92f;
                     float margin = Math.Max(1f, d * .07f) * .5f + 2f;
@@ -25,7 +25,7 @@ namespace Rocola
                         Math.Min(side + 2, (int)Math.Ceiling(d * .92f + margin)));
                 }
                 layout = new GpuCellLayout(); layout.Separate = true; layout.HideBlank = PortadasLod;
-                layout.Width = Math.Max(split + 2, Math.Max(right - left + 5, mark.Width + 2));
+                mark = RocolaOsParedGenerosMarca(mark, rocolaOsPg, cw, side); layout.Width = Math.Max(split + 2, Math.Max(right - left + 5, mark.Width + 2));   // ROCOLA OS g95: (XP) layout.Width = Math.Max(split + 2, Math.Max(right - left + 5, mark.Width + 2)); — el trozo de encima de la portada (el del palomito) lleva tambien la pastilla (RocolaOs/RocolaOs.ParedGeneros.cs; sin ella, el de XP)
                 int y = 1;
                 layout.TopAt = new Rectangle(left - 1, 0, right - left + 3, 2);
                 layout.Top = new Rectangle(1, y, layout.TopAt.Width, 2); y += 4;
@@ -36,7 +36,7 @@ namespace Rocola
                 layout.RightAt = new Rectangle(right - 1, 2, 3, Math.Max(0, side - 4));
                 layout.Right = new Rectangle(1, y, 3, 1); y += 3;
                 layout.FaceAt = mark; layout.Face = new Rectangle(1, y, mark.Width, mark.Height);
-                if (queued) y += mark.Height + 2;
+                if (queued || rocolaOsPg != null) y += mark.Height + 2;   // ROCOLA OS g96: (XP) if (queued) y += mark.Height + 2; — el trozo de encima de la portada tambien con la pastilla (RocolaOs/RocolaOs.ParedGeneros.cs; sin ella, lo de XP)
                 layout.Text1At = new Rectangle(0, side + gap, split, labelH);
                 layout.Text1 = new Rectangle(1, y, split, labelH); y += labelH + 2;
                 layout.Text2At = new Rectangle(split, side + gap, cw - split, labelH);
@@ -46,11 +46,11 @@ namespace Rocola
                 try {
                     using (SKCanvas g = new SKCanvas(result)) g.Clear(Color.Transparent.Sk());   // EN LINUX: Graphics.FromImage y Graphics.Clear
                     PegaBordes(result, layout, cw, side, left, right);
-                    if (queued)
+                    if (queued || rocolaOsPg != null)   // ROCOLA OS g97: (XP) if (queued) — el trozo de encima de la portada tambien con la pastilla (RocolaOs/RocolaOs.ParedGeneros.cs; sin ella, lo de XP)
                         using (SKBitmap stamp = Mapas.Nuevo(mark.Width, mark.Height)) {   // EN LINUX: new Bitmap(w, h, Format32bppPArgb)
                             using (SKCanvas g = new SKCanvas(stamp)) {   // EN LINUX: Graphics.FromImage (copia y medio pixel, de fabrica)
                                 g.Clear(Color.Transparent.Sk()); bool suave = true;   // EN LINUX: Graphics.Clear y g.SmoothingMode = AntiAlias, en una variable
-                                g.Translate(-mark.X, 0); Palomito(g, suave, new Rectangle((cw - side) / 2, 0, side, side));   // EN LINUX: g.TranslateTransform; a Palomito, el lienzo y su suavizado
+                                g.Translate(-mark.X, -mark.Y); if (queued) Palomito(g, suave, new Rectangle((cw - side) / 2, 0, side, side)); RocolaOsParedGenerosPinta(g, rocolaOsPg, cw, side);   // ROCOLA OS g98: (XP) g.Translate(-mark.X, 0); Palomito(g, suave, new Rectangle((cw - side) / 2, 0, side, side)); — el palomito solo si hay algo pedido y la pastilla del genero de XP (sin ella, mark.Y es 0: lo de XP) (RocolaOs/RocolaOs.ParedGeneros.cs)
                             }
                             using (SKCanvas g = new SKCanvas(result)) { Imagenes.Pinta(g, stamp, new SKRect(0, 0, stamp.Width, stamp.Height), new SKRect(layout.Face.X, layout.Face.Y, layout.Face.X + stamp.Width, layout.Face.Y + stamp.Height), Filtro.Bilineal, false, true); }   // EN LINUX: Graphics.FromImage, g.CompositingMode = SourceCopy y g.DrawImageUnscaled(stamp, layout.Face.Location): la imagen entera a su tamano desde ese punto, con copia y el filtro de fabrica (Nativo/Imagenes.cs)
                         }
