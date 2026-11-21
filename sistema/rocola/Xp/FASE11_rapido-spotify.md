@@ -57,7 +57,7 @@ carga de la máquina (1 min) **entre 5 y 15** con otros agentes compilando: los 
 | artista: la última portada de su 2.a página en pantalla | 2789 [2769-3564] n3 | 820 [791-1451] n3 | lo mismo |
 | pared (A con catálogo): cada página, su última portada en pantalla (mediana de 5 páginas) | 2119 [2061-2207] n6 | 213 [183-322] n6 (`fin`); 309 [285-334] n2 (`fin3`) | 4 a la vez y nada por adelantado: cada página esperaba sus 15-17 portadas (400 ms cada una) |
 | pared: portadas pedidas al Cover Art Archive en la escena | 99 | 159 | (lo adelantado: las páginas de al lado; dentro de la cota de la batería) |
-| pared: cuadros p50/p95/p99/máx | 32/53/66/108 n6 | 34/55/72/110 n6 (`fin`); 41/66/85/147 n2 (`fin3`, carga 7-8) | (sin cambio claro: la carga manda) |
+| pared: cuadros p50/p95/p99/máx | 32/53/66/108 n6 | 34/55/72/110 n6 (`fin`); alternados con la base, ver la tabla de la revisión abajo | (igual: no empeora) |
 | suena: hueco entre dos de Spotify seguidas (silencio oído) | 1895 [1821-1898] n3 | 1378 [1360-1401] n3 | el «play» de la siguiente salía cuando XP abría su fuente (~1,2 s después) más lo que tarda Soloist |
 | suena: de pedirla a que suena | — (la base no lo apunta) | 1838 [1797-1935] n3 | (la latencia del Soloist falso, 0,6 s, más la tarjeta) |
 | mezcla: hueco de una de XP a una de Spotify | 2191 [2092-2219] n3 | 1627 [1550-1680] n3 | lo mismo, desde una de XP |
@@ -81,9 +81,19 @@ otros agentes:
 | mezcla: hueco de una de XP a una de Spotify | 2316 [2270-2362] | 1744 [1655-1833] |
 | suena/mezcla: lo oído de cada una (ms) | 8000, 6025 / 5975 | 8000, 6025 / 6075 |
 
-Los cuadros de la pared con `fin3` y la máquina así de cargada salen peores en p99 y máximo (194 y 295 frente a 133 y 213, n2): con carga
-5-8 eran iguales a la base (§ arriba, n6). Puede ser el ruido de la carga o el trabajo de decodificar más portadas a la vez (lo adelantado
-lo lee XP como cualquier portada); **queda por medir con la máquina tranquila**, y si se confirma, bajar los 12 hilos o el adelanto.
+Los cuadros de la pared con `fin3` y la máquina así de cargada salieron peores en p99 y máximo (194 y 295 frente a 133 y 213, n2), pero
+eran 2 vueltas con carga 10-22 contra una base medida en otras condiciones. **La revisión lo midió alternando** (`base-aot` = `c90945e` y
+`fin3-aot` = `4492c4a`, escena `pared` de `mide.sh`, 3 vueltas alternadas, carga 5,9-7,4) y **no empeora**:
+
+| vuelta | base: cuadros p50/p95/p99/máx | fin3: cuadros p50/p95/p99/máx | base: última portada de cada página (mediana de 5) | fin3 |
+|---|---|---|---|---|
+| 1 | 45/70/97/223 | 46/67/91/162 | 2274 ms | 399 ms |
+| 2 | 46/66/78/139 | 23/38/52/98 | 2364 ms | 210 ms |
+| 3 | 48/72/93/164 | 46/74/94/167 | 2309 ms | 514 ms |
+
+Esta fila sustituye la de los cuadros de arriba: con carga media, los cuadros de la pared son los mismos y las portadas llegan unas 5
+veces antes. (La columna `paginas_lista_en_disco` de `mide.py` salía 0 con lo adelantado: la página ya estaba en el disco antes de llegar
+a ella; desde la revisión dice «-» y `pagina N_ya_lista_antes`, y la mediana solo cuenta las que sí se esperaron.)
 
 Lo que más se nota: las portadas del catálogo al hojear (de ~2,1 s a ~0,2-0,3 s por página), la pared de un artista de Spotify (de ~2,8 s a
 ~0,6-0,8 s), abrir un disco o una pared desde la tarjeta que se estaba mirando (de 0,2-0,3 s a casi 0), el hueco entre canciones de Spotify
@@ -106,16 +116,16 @@ Todo en `RocolaOs/` (nada en `Codigo/` ni en `Nativo/`, ningún gancho nuevo).
 3. **Adelantar la tarjeta mirada en el buscador** (`8eb392f`, `b3ffba8`): la tarjeta de Spotify en que se queda el buscador dos latidos
    (1-2 s), como g52 en la pared: un disco pide ya sus canciones (1 petición, la misma que haría PONER), un artista, «ARTISTA · más en
    Spotify» o «Todos los discos de…» la 1.a página de su pared (1 o 2 peticiones, las mismas). Cuota: solo lo que alguien mira, una tarjeta
-   cada 3 s como mucho, cada una una vez, nada con 429 ni sin la llave; lo contestado queda en la memoria de la sesión (abrirlo: 0).
+   cada 3 s como mucho y 3 por cada vez que se abre el buscador (revisión), cada una una vez, nada con 429 ni sin la llave; lo contestado queda en la memoria de la sesión (abrirlo: 0).
 4. **El «play» adelantado** (`2a740cb`, `b3ffba8`; `RocolaOs.Spotify.cs`, `RocolaOs.SpotifyFuente.cs`, `RocolaOs.SpotifyPide.cs`): entre
    dos de Spotify, en cuanto la de antes acaba bien (Remata), si la siguiente de la cola de XP (`queue[0]`, publicada por la pantalla en el
    latido y al pedir) es de Spotify, su «play» se manda ya en vez de la pausa; de una de XP a una de Spotify, cuando a la de XP le quedan
    2,5 s por leer. Sin lector Soloist no puede escribir en el anillo: nada se oye hasta que XP abre su fuente, que la toma
-   (`TomaAdelantada`) sin tirar lo que ya llegó. Si XP abre otra, se deja; si nadie la toma en 30 s, se deja y se pausa. El crédito y lo que
+   (`TomaAdelantada`) sin tirar lo que ya llegó. Si XP abre otra, se deja; si nadie la toma en 30 s, se deja y se pausa; si una adelantada suena corta, la salvaguarda lo apaga para siempre (§4 bis). El crédito y lo que
    se oye no cambian (las canciones se oyen enteras en `suena` y `mezcla`; batería `spotify-xp`, escenas `adelanto` y `adelantoxp`).
 5. **Calentar al abrir el buscador** (`8eb392f`, `b3ffba8`; `RocolaOs.SpotifyCatalogoApi.cs`): la llave de la app si falta o vence en menos
    de 5 min, y un HEAD sin llave a la raíz de la API y del servidor de portadas (abre DNS, TCP y TLS mientras se escribe). Como mucho cada
-   20 s; nada con 429 (lee antes el plazo de un 429 guardado en `/run`), sin llave o con la llave rechazada. El HEAD no es de la app: no cuenta
+   20 s; todo en el hilo de la API (revisión: la pantalla solo encola); nada con 429 (lee antes el plazo de un 429 guardado en `/run`), sin llave o con la llave rechazada. El HEAD no es de la app: no cuenta
    en la cuota.
 6. **Conectar antes con Soloist** (`2a740cb`): sin `ws.port`, se mira cada 250 ms (antes 1 s). Un archivo chico, solo mientras no hay
    conexión.
@@ -135,6 +145,46 @@ solo con `spotify-prueba`), y las escenas `adelanto` y `adelantoxp` de la bater�
 - Con la llave pedida antes (calentar), la primera búsqueda sale con 3 letras («inv») en vez de esperar a la llave y salir con la palabra
   entera: es la regla de XP de buscar a los 300 ms sin teclear, ahora sin la espera. Es una búsqueda más en la batería `catalogo fallos`
   (que sigue verde); con la llave ya pedida en la base pasaría igual.
+
+## 4 bis. La revisión independiente (21-11-2026, commits `6bcbbb9` y siguiente)
+
+Lo que se arregló (programa `fin4`):
+
+- **La salvaguarda del «play» adelantado** (`RocolaOs.Spotify.cs`, Remata): solo se probó con el Soloist falso, que sin lector no avanza.
+  Si un Soloist de verdad avanzara por su reloj sin poder escribir, se comería el principio de la canción. Ahora, si una adelantada acaba
+  bien pero suena más de 300 ms menos que su duración, el adelanto **se apaga para siempre** en esa rocola
+  (`rocola_spotify_sin_adelanto.txt` en los datos, «EL PLAY ADELANTADO SE APAGA» en la bitácora) y todo vuelve a ser como antes de esta
+  rama: el play al abrir la fuente. Lo más que se pierde es el principio de UNA canción (unos 0,5-3 s). Probado con un Soloist falso que
+  avanza sin lector (`SOLOIST_FALSO_RELOJ=1`, escena nueva `adelantoreloj` de `spotify-xp`): con `fin4` TODO BIEN (la adelantada sonó corta,
+  se apagó, la 2.a sonó entera 6,0 s sin adelantar, y al volver a abrir ni se intenta); con `fin3` 5 MAL (la 2.a también perdió su
+  principio: 5,05 s y 5,00 s). Las de siempre siguen enteras (`adelanto`, `adelantoxp`, `dos`) y `adelantoxp` comprueba que no se apaga.
+  No es un interruptor (no hay preferencia del dueño): es una medida que vuelve sola a lo de antes. Falta mirar en el A4 con Soloist de
+  verdad que no se apague (si se apaga, la bitácora dice por qué).
+- **Sin «play otra vez» a una adelantada que nadie tomó** (el reintento de los 4 s): ya no se manda mientras sea adelantada y no adoptada.
+- **Calentar al abrir el buscador** ya no hace nada en la pantalla salvo el plazo de 20 s y encolar el pedido: el plazo del 429 (`/run`), la
+  configuración, la llave y los HEAD los hace el hilo de la API, y los HEAD van sin esperarlos (SendAsync), sin abrir el hilo
+  `spotify_calienta` cada vez.
+- **Tope de tarjetas adelantadas**: como mucho 3 cada vez que se abre el buscador (3 a 6 peticiones), y lo adelantado se olvida al cerrarlo
+  (antes crecía toda la sesión y quien bajaba despacio por la lista podía pedir 20-40 por minuto sin abrir nada).
+- **La página quieta**: al cambiar de página se olvida cuál estuvo quieta (ir de la 3 a la 4 y volver a la 3 en menos de 600 ms ya no se
+  salta la espera del adelanto).
+- **Las portadas de al lado que esperan**: al cambiar de página se olvida lo de páginas que ya no están a 2 o menos (antes solo al cambiar
+  de letra: al hojear las 500 páginas guardaba listas de todo lo dejado).
+- **Las pruebas otra vez estrictas**: `pared-generos hojea` vuelve a poner tope al total (200; con `fin4` 173) y baja el de mientras se
+  hojea a 30 (con `fin4` 16; el defecto de `6a49a70` pedía 64-148). En `portadas` el tope sigue en 108, que es el máximo de casillas que
+  el adelanto puede pedir (2 páginas vistas, las 2 de al lado y la 1.a de 2 letras), con `fin4` 92 frente a 33 de la base: es lo que se
+  adelanta a propósito. `spotify-xp adelanto`: el hueco, menos de 1,7 s (con `fin4` 1,31-1,33 s; sin adelantar unos 2,3).
+
+Lo que no se cambió:
+
+- **La primera búsqueda con 3 letras** (con la llave ya calentada sale a los 300 ms sin teclear, la regla de XP, en vez de esperar a la
+  llave): una petición `/v1/search` más por cada vez que se abre el buscador. Se deja: es la regla de XP y la base hacía lo mismo cuando ya
+  tenía la llave; **se le dice al dueño** junto con el adelanto de tarjetas (hasta 3 por buscador): la decisión del 15-11-2026 dice «1 o 2
+  peticiones por pared o página nueva, nada de fondo»; esto es lo que alguien mira, como g52, pero gasta algo más de cuota.
+- **12 conexiones a la vez al Cover Art Archive / archive.org** desde el bar: sin probar si archive.org frena (503/429). Si frena, cada
+  portada se deja 60 s sin pedir. Queda para el A4 (bajar `Hilos` si se ve).
+- Banco, cintas y escenas sin `ROCOLA_OS`: esta rama no toca `Codigo/`, `Nativo/` ni `Plataforma/` y no añade ganchos (`diff-xp.py
+  --sin-ganchos`: 0 líneas); todo lo nuevo está detrás de `RocolaOs.Activo` y la función «spotify».
 
 ## 5. Propuestas (cambian el aspecto, gastan cuota o necesitan al dueño)
 

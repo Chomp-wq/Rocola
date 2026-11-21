@@ -303,7 +303,7 @@ fi
 if [[ " $partes " == *" adelantoreloj "* ]]; then
   echo "== adelantoreloj (Soloist que avanza sin lector: la salvaguarda apaga el adelanto)"
   d=$(datos adelantoreloj); T0=$(date +%s.%N)
-  abre adelantoreloj "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;11.9:pide spotify:track:f550d006bb|$P|6000;33:copia" 34 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=1 SOLOIST_FALSO_RELOJ=1
+  abre adelantoreloj "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;11.9:pide spotify:track:f550d006bb|$P|6000;33:copia" 34 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=0.2 SOLOIST_FALSO_RELOJ=1
   o="$W/adelantoreloj"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
   sed 's/^/   /' "$f" | head -12
   si "adelantoreloj: sale con 0" test "$(cat $o/salio)" = 0
@@ -317,7 +317,7 @@ if [[ " $partes " == *" adelantoreloj "* ]]; then
   si "adelantoreloj: 2 cobradas, ninguna devuelta" bash -c "[ \$(grep -c 'COBRADA' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
   # y al volver a abrir con el mismo archivo, ni se intenta
   T0=$(date +%s.%N)
-  abre adelantoreloj2 "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;24:copia" 25 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=1 SOLOIST_FALSO_RELOJ=1
+  abre adelantoreloj2 "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;24:copia" 25 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=0.2 SOLOIST_FALSO_RELOJ=1
   o="$W/adelantoreloj2"; f="$o/frec.txt"
   t440=$(oye "$f" 440)
   si "adelantoreloj: otra vez: sin adelanto (lo guardado manda) y entera (6 s: $t440 s)" bash -c "[ \$(grep -c 'play adelantado' '$b') = 1 ] && python3 -c 'import sys; sys.exit(0 if 5.7 <= float(sys.argv[1]) <= 6.3 else 1)' '$t440'"

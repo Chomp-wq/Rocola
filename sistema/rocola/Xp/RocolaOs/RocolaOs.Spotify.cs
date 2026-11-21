@@ -129,8 +129,8 @@ namespace Rocola
         private static RocolaOsSpotifyPeticion adelantada;
         internal const int AdelantoMaxMs = 30000;
         internal static long Adelantadas, AdelantadasUsadas;
-        // (revision) la salvaguarda (Remata): una adelantada que sono mas de 500 ms menos que su duracion apaga el adelanto para siempre
-        internal const int AdelantoFaltaMaxMs = 500;
+        // (revision) la salvaguarda (Remata): una adelantada que sono mas de 300 ms menos que su duracion apaga el adelanto para siempre
+        internal const int AdelantoFaltaMaxMs = 300;
         internal const string ArchivoSinAdelanto = "rocola_spotify_sin_adelanto.txt";
         private static int adelantoApagado = -1;   // -1 sin leer (lo lee el hilo de Spotify la primera vez), 0 va, 1 apagado
         private static bool AdelantoApagado
