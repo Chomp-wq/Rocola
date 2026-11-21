@@ -146,9 +146,14 @@ noche —frecuencias— para no molestar a los vecinos, va aparte y como propues
 - **Lo que dependía del mínimo: la rampa.** La de 20 s (la subida de las 7, mover el deslizador o el interruptor) y la de «Probar»
   (1,5 s) recorrían medio volumen en ese tiempo, y de 70 a 90 % la noche baja menos que eso. Al 50 % baja de 1 a 0,316: con el paso de
   antes habrían sido 27,4 s y 2,1 s.
-  - Ahora el paso es el mayor entre medio volumen y lo que baja la noche (`AvanzaRampa`).
-  - De 66 a 90 % es el mismo paso de antes, bit a bit; de 50 a 65 % la noche entera sigue en 20 s y en 1,5 s.
-  - La subida de las 7, al 50 %, tarda unos 23 s (al 80 %, 20 s; con el paso de antes habrían sido 28,5 s).
+  - Ahora el paso es el mayor entre medio volumen y lo que va de 1 a lo más bajo de la noche, de donde está el volumen o de a donde va
+    (`AvanzaRampa`). De 66 a 90 % es el mismo paso de antes, bit a bit; de 50 a 65 % la noche entera sigue en 20 s y en 1,5 s.
+  - Mover el deslizador de noche de 50 a 90 % tarda 20 s y de 90 a 50 %, 15,5 s (sin escalón).
+  - **La subida de las 7 y apagar el interruptor no esperan a la rampa** (arreglo de la revisión, 21-11-2026): si el volumen ya va por la
+    curva del avance (la de una hora pareja en dB al bajar y de 20 s al subir), la sigue tal cual (`AvanzaModoNoche`). Antes, al 50 %, al
+    final de la subida la curva subía más deprisa que el tope de la rampa (0,058 contra 0,034 por segundo) y la subida tardaba unos 23 s,
+    contra la decisión del 17-11 («a las 7 sube en 20 s»). Ahora 20,0 s con cualquier porcentaje; al 80 % (y donde la rampa nunca se
+    quedaba atrás) sale lo mismo que antes, vuelta a vuelta. «Probar» y su vuelta siguen con su rampa rápida.
 - Lo demás no dependía del mínimo y no cambió:
   - la bajada de las 22 h, en una hora pareja en dB: al 50 %, −1,67 dB a los 10 min, −3,33 a los 20 y −10 a los 60 (−0,17 dB por minuto);
   - los videos, con la perilla del reproductor al porcentaje: al 50 %, la perilla a la mitad (a la media hora, al 75 %);
@@ -158,9 +163,12 @@ noche —frecuencias— para no molestar a los vecinos, va aparte y como propues
   40 puntos o más. Con el mismo 80 % el botón del deslizador queda más a la derecha (a tres cuartos del riel): **conviene verlo en pantalla**.
 - Para saber (ya era así, no cambió): la perilla del reproductor de los videos es de amplitud en rocola-xp (el volumen cúbico de mpv con la
   cuenta de XP), así que al 50 % los videos bajan unos −6 dB y la música −10 dB (al 80 %, −1,9 y −3,2). En XP depende de la perilla del
-  reproductor de Windows Media, que no se midió. Igualarlos sería otro cambio.
-- Batería `noche`: 86 de 86 (antes 65): el rango, la rampa al 50 % (20,02 s y 1 504 ms) y la de antes de 66 a 90 % bit a bit, la
-  configuración, y una sección 9 nueva con todo al 50 %. Contra la rocola de antes, la misma batería da 12 fallos. También en verde
+  reproductor de Windows Media, que no se midió. Igualarlos es NV5a (decisión del 20-11-2026, rama `noche-nv`): al 50 % la diferencia
+  pasa de 1,3 a 4 dB hasta que se junte.
+- Batería `noche`: 92 de 92 (antes 65): el rango, la rampa al 50 % (20,02 s y 1 504 ms) y la de antes de 66 a 90 % bit a bit, la
+  configuración, y una sección 9 nueva con todo al 50 %: la subida de las 7 en 20,0 s (se pide de 19,5 a 20,5), el deslizador de noche
+  de 50 a 90 % (20,0 s) y de vuelta (15,5 s), apagar el interruptor (20,0 s, el grave a 0) y, al 80 %, la subida justo por la curva.
+  Contra la rocola de antes, la misma batería (sin las 6 del arreglo) daba 12 fallos. También en verde
   `ajustes`, `ajustesvivos`, `ventanaf3`, `pestanas`, `sala`, `salalocal`, `compatvieja`, `videos`, `detalles`, `moneda`, `arreglos` y
   `cadenaentera`. Nada oído ni probado en el A4.
 

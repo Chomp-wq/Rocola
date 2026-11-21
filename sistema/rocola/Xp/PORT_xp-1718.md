@@ -125,3 +125,27 @@ noche (de 66 a 90 % el de antes, bit a bit; de 50 a 65 % la noche entera sigue e
 | spotify-xp, escena «noche» (NativeAOT) | 40 de 44: las del 50 % BIEN (prendida ya de noche −10,02 / −10,00 dB, quieta; «Probar» −10,02 / −10,00 dB, rampa 1,5 s, 14,5 y 14,6 s abajo, vuelve en 1,5 y 1,4 s; Spotify contra XP 0,015 y 0,02 dB); las de XP al 80 % BIEN (−0,0536 dB/min, salto 0,0005 dB, −3,22 dB, «Probar» 0,9 s); «yanoche» y «probar» de Spotify al 80 % BIEN esta vez (−3,24 dB, 0,9 s). 4 MAL, todas de la corrida de Spotify que cruza las 22 h: huecos de la fuente falsa (tramos a −19/−22 dB a los 7, 10, 27, 42-47 s), que dan 0,2586 dB/min antes de las 22 h, −0,0768 después y un salto de 7,1 dB |
 | spotify-xp, escena «noche», otra vez (JIT, 20:30-20:45) | **TODO BIEN (44)**: «noche» de Spotify cruzando las 22 h −0,0539 dB/min, antes −0,0, salto 0,0002 dB; las del 50 % −10,02 / −10,00 dB, rampa 1,4 y 1,5 s. Justo antes, con la misma máquina, la rocola-xp de ANTES de este cambio (`xp-1718`, 70 a 90 %) en la misma escena: 11 MAL, 3 de ellas la MISMA corrida de Spotify al 80 % con el mismo hueco (0,0541 dB/min antes de las 22 h, salto 7,7 dB): ese fallo no viene de este cambio; las otras 8, las del 50 % que la de antes acota a 70 (−5,15 dB en lugar de −10) y una «Probar» al 50 % de Spotify sin bajada medida (0,0 dB; no se miró por qué) |
 | `pruebas/noche.cs` con Mono, otra vez (`todo.sh noche`, la rocola recompilada a 0 avisos en los dos perfiles) | TODO BIEN (86 comprobaciones) |
+
+### Arreglo de la revisión (21-11-2026): la subida de las 7 en 20 s también al 50 %
+
+La revisión encontró que al 50 % la subida de las 7 tardaba unos 23 s (la rampa, con su tope, se quedaba atrás de la curva del avance al
+final) y el deslizador de noche de 50 a 90 %, 21 s. Arreglado en `Rocola/Form1.Sonido.cs` y pasado a `Codigo/` (las mismas tres líneas,
+ninguna añadida): si el volumen ya va por la curva del avance (no «Probar» ni su vuelta), la sigue sin rampa; y el paso de la rampa
+cuenta desde lo más bajo de la noche, de donde está o de a donde va (de 66 a 90 %, el de antes bit a bit). Detalle en
+`AUDIO_NOCHE_Y_MEJORAS_XP_MODEST_2026-11-17.md`, sección 4 ter.
+
+- La base de los ganchos pasa de ebdb272 a **d6026b1** (ebdb272 con esas tres líneas; el commit siguiente, `5d81f3b`, vuelve a poner los
+  49 ganchos). Es un commit interno de la rama: si se junta con squash o rebase, se rehace una vez en la rama final (`--base` / `BASE=`).
+- `nivel0.sh`, AJUSTES (545): `VistasAjustes` mide los anchos de texto, los formatos y los avisos de `Form1.Ajustes.cs` (no pinta la hoja
+  Sonido ni el deslizador), así que el rango nuevo no le cambia nada; los 917 puntos del deslizador son de la captura de `corre.sh`. No se
+  corrió el paso «arneses».
+
+| Qué | Resultado |
+|---|---|
+| `pruebas/todo.sh` con Mono (la rocola a 0 avisos en los dos perfiles) | `noche` 92/92 (la subida al 50 % en 20,0 s; el deslizador de 50 a 90 % en 20,0 s y de vuelta en 15,5; apagar el interruptor 20,0 s); en verde `ajustes`, `ajustesvivos`, `ventanaf3`, `pestanas`, `sala`, `salalocal`, `compatvieja`, `videos`, `detalles`, `moneda`, `arreglos` y `cadenaentera` |
+| Compilar JIT | 0 errores, 13 avisos (los de `avisos-base.txt`; ninguna línea se movió) |
+| `ganchos.py` | TODO BIEN (112 archivos comparados con d6026b1, 17 con ganchos) |
+| `clasifica.py codigo` | 112 archivos con las mismas líneas, CRLF y último byte que en d6026b1 |
+| `diff-xp.py --sin-ganchos` | 5 135 quitadas, 4 868 puestas, 229 sin marca: las mismas de antes |
+| Batería `noche` de XP sobre rocola-xp.dll (JIT) | 92/92 |
+| NativeAOT y la escena «noche» de spotify-xp | no se volvieron a correr (disco casi lleno): el cambio es solo la cuenta de la rampa, que la batería mide en JIT |
