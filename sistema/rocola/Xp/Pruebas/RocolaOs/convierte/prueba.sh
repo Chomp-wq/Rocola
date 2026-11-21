@@ -8,13 +8,13 @@
 #   06 lenta.mp3 (AAC, 990: con un ffmpeg falso que tarda 35 s)  07 buena.mp3 (un MP3 de verdad, 330)
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): convierte xp lenta sinffmpeg sinsitio sinrocolaos
+#   escenas (de fabrica todas): convierte xp atiempo lenta rota sinffmpeg sinsitio sinrocolaos
 #   W (/root/rocola-trabajo/fase11/xp-1718-linux/convierte; se rehace)
 # Hace falta ser root para «sinsitio» (un tmpfs de 40 MB). Cada comprobacion: BIEN o MAL; al final «TODO BIEN (N)» o cuantas MAL (sale con 1).
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SX="$G/../spotify-xp"
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-convierte xp lenta sinffmpeg sinsitio sinrocolaos}"
+partes="${*:-convierte xp atiempo lenta rota sinffmpeg sinsitio sinrocolaos}"
 W=${W:-/root/rocola-trabajo/fase11/xp-1718-linux/convierte}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
@@ -51,6 +51,9 @@ datos() {
 huellas() { (cd "$1/musica" && find . -type f -print0 | sort -z | xargs -0 sha256sum; find . -type f -printf '%P %s %T@\n' | sort) ; }
 # un ffmpeg falso que tarda (y despues hace lo mismo que el de verdad)
 printf '#!/bin/sh\nsleep 35\nexec ffmpeg "$@"\n' > "$W/ffmpeg-lento"; chmod +x "$W/ffmpeg-lento"
+printf '#!/bin/sh\nsleep 12\nexec ffmpeg "$@"\n' > "$W/ffmpeg-12"; chmod +x "$W/ffmpeg-12"
+# clave ORIGINAL: el nombre de su copia (RocolaOsConvertidas.Clave: SHA1 de «ruta completa|tamano|ticks de la fecha», 12 bytes en hexadecimal)
+clave() { python3 -c "import hashlib,os,sys; p=os.path.abspath(sys.argv[1]); st=os.stat(p); print(hashlib.sha1(('%s|%d|%d' % (p, st.st_size, 621355968000000000 + st.st_mtime_ns // 100)).encode()).hexdigest()[:24])" "$1"; }
 
 # abre NOMBRE DATOS "PULSA" "ORDENES" SEGUNDOS [VAR=valor...]: la rocola con esos datos y las teclas PULSA; las ORDENES («SEG:pon FINAL;SEG:mira»)
 # al doble a su hora. A los SEGUNDOS, SIGTERM (el apagado). Deja en $W/NOMBRE: salida.txt, run/, frec.txt, salio y log.txt (lo del doble).
@@ -138,6 +141,7 @@ if [[ " $partes " == *" lenta "* ]]; then
   a=$(cobro lenta "06 lenta.mp3" | cut -d' ' -f1)
   si "lenta: la primera vez se cobra ($(cobro lenta '06 lenta.mp3')), a los 31,5 s ya no esta (mira: $(mira lenta 1 | cut -c1-12)) y el credito se devolvio (al pedirla otra vez habia $(cobro lenta '06 lenta.mp3' 2 | cut -d' ' -f1))" bash -c "[ '$(mira lenta 1 | cut -c1-9)' = 'mira nada' ] && [ '$(cobro lenta '06 lenta.mp3' 2 | cut -d' ' -f1)' = '$a' ]"
   si "lenta: el motivo: se esta convirtiendo (rocola_error.txt)" contiene "$d/rocola_error.txt" "se esta convirtiendo"
+  si "lenta: y NO se anota en rocola_incompatibles.txt (g112: XP la anotaria una vez para siempre con ese motivo)" bash -c "[ ! -s '$d/rocola_incompatibles.txt' ]"
   si "lenta: la copia llego despues (bitacora: WAV listo)" bash -c "grep -q '06 lenta.mp3: WAV listo' '$b'"
   si "lenta: no quedo danada: la segunda vez se cobra ($(cobro lenta '06 lenta.mp3' 2))" bash -c "c='$(cobro lenta '06 lenta.mp3' 2)'; [ -n \"\$c\" ] && [ \$(echo \"\$c\" | awk '{print \$1-\$2}') = 1 ]"
   t=$(oye "$f" 990); p=$(primero "$f" 990)
@@ -145,6 +149,49 @@ if [[ " $partes " == *" lenta "* ]]; then
   si "lenta: la segunda vez, sonando (mira: lo que suena es la cancion de la rocola, su ruta .mp3)" bash -c "mira() { grep '^mira' '$o/log.txt' | sed -n 2p; }; mira | grep -q 'Disco Raro/06 lenta.mp3 |'"
   huellas "$d" > "$W/lenta-despues.txt"
   si "lenta: el original igual" cmp -s "$W/lenta-antes.txt" "$W/lenta-despues.txt"
+fi
+
+# ---------------------------------------------------------------- atiempo: pedida MIENTRAS se convierte (12 s): se espera y suena (lo principal del 4-11)
+if [[ " $partes " == *" atiempo "* ]]; then
+  sec "atiempo (un ffmpeg que tarda 12 s; pedida antes de que acabe: se espera menos de 20 s al principio de la cola y suena, cobrada una vez)"
+  d=$(datos atiempo "06 lenta" "07 buena"); huellas "$d" > "$W/atiempo-antes.txt"; C=$W/atiempo-wav
+  abre atiempo "$d" "6:67" "8:pon 06 lenta.mp3;40:mira;42:pon 07 buena.mp3" 46 $OS ROCOLA_CONVERTIDAS="$C" ROCOLA_FFMPEG="$W/ffmpeg-12"
+  o="$W/atiempo"; f="$o/frec.txt"; b=$(bit "$d")
+  sed 's/^/   /' "$o/log.txt"; grep -F '[convierte]' "$b" | sed 's/^[0-9-]* [0-9:]*  /   /'
+  si "atiempo: sale con 0" test "$(cat $o/salio)" = 0
+  a=$(cobro atiempo "06 lenta.mp3" | cut -d' ' -f1); z=$(cobro atiempo "07 buena.mp3" | cut -d' ' -f1)
+  t=$(oye "$f" 990)
+  si "atiempo: se cobro una vez ($(cobro atiempo '06 lenta.mp3')) y no se devolvio (al pedir la buena a los 42 s: ${z:-?})" bash -c "[ -n '$a' ] && [ '${z:-x}' = '$((a - 1))' ]"
+  si "atiempo: suena entera (990 Hz: $t s de 6)" bash -c "python3 -c 'import sys; sys.exit(0 if 5.5 <= $t <= 6.6 else 1)'"
+  si "atiempo: la copia, cuando llego (bitacora: WAV listo)" bash -c "grep -q '06 lenta.mp3: WAV listo' '$b'"
+  si "atiempo: no tuvo que esperar mas de 20 s (rocola_error.txt sin «se esta convirtiendo») ni se anoto" bash -c "! grep -qF 'se esta convirtiendo' '$d/rocola_error.txt' 2>/dev/null && [ ! -s '$d/rocola_incompatibles.txt' ]"
+  si "atiempo: junto a la copia, su nota con la ruta del original" bash -c "grep -qxF '$d/musica/Grupo Formatos/Disco Raro/06 lenta.mp3' '$C/$(clave "$d/musica/Grupo Formatos/Disco Raro/06 lenta.mp3").txt'"
+  huellas "$d" > "$W/atiempo-despues.txt"
+  si "atiempo: el original igual" cmp -s "$W/atiempo-antes.txt" "$W/atiempo-despues.txt"
+fi
+
+# ---------------------------------------------------------------- rota: la copia no abre (un apagon a media escritura): se rehace; y las copias viejas se borran al arrancar
+if [[ " $partes " == *" rota "* ]]; then
+  sec "rota (la copia de «01 m4a» es basura: se tira y se rehace, el credito se devuelve sin marcarla danada y a la siguiente suena; al arrancar, las copias de originales que cambiaron o ya no estan se borran)"
+  d=$(datos rota "01 m4a" "07 buena"); C=$W/rota-wav; mkdir -p "$C"; R="$d/musica/Grupo Formatos/Disco Raro"
+  k=$(clave "$R/01 m4a.mp3"); head -c 20000 /dev/urandom > "$C/$k.wav"; printf '%s\n' "$R/01 m4a.mp3" > "$C/$k.txt"
+  printf 'basura' > "$C/aaaaaaaaaaaaaaaaaaaaaaaa.wav"; printf '%s\n' "$R/07 buena.mp3" > "$C/aaaaaaaaaaaaaaaaaaaaaaaa.txt"   # el original cambio (otra clave)
+  printf 'basura' > "$C/bbbbbbbbbbbbbbbbbbbbbbbb.wav"; printf '%s\n' "$R/ya no esta.mp3" > "$C/bbbbbbbbbbbbbbbbbbbbbbbb.txt"   # ya no esta (su carpeta si)
+  printf 'basura' > "$C/cccccccccccccccccccccccc.wav"; printf '%s\n' "/no/hay/ese/disco/x.mp3" > "$C/cccccccccccccccccccccccc.txt"   # su disco no esta: se queda
+  printf 'basura' > "$C/dddddddddddddddddddddddd.wav"   # sin nota: no se toca
+  abre rota "$d" "7:67,7.4:67" "10:pon 01 m4a.mp3;13:mira;18:pon 01 m4a.mp3;21:mira" 30 $OS ROCOLA_CONVERTIDAS="$C"
+  o="$W/rota"; f="$o/frec.txt"; b=$(bit "$d")
+  sed 's/^/   /' "$o/log.txt"; grep -F '[convierte]' "$b" | sed 's/^[0-9-]* [0-9:]*  /   /'
+  si "rota: sale con 0" test "$(cat $o/salio)" = 0
+  si "rota: la copia mala se tiro y se hizo otra (bitacora)" bash -c "grep -q '01 m4a.mp3: la copia no se pudo abrir.*se hace otra' '$b' && grep -q '01 m4a.mp3: WAV listo' '$b'"
+  a=$(cobro rota "01 m4a.mp3" | cut -d' ' -f1); c2=$(cobro rota "01 m4a.mp3" 2)
+  si "rota: la primera vez el credito devuelto y sin marcarla danada (al pedirla otra vez: ${c2:-?}, antes de la primera $a)" bash -c "[ '${c2%% *}' = '$a' ] && [ \$(echo '$c2' | awk '{print \$1-\$2}') = 1 ]"
+  t=$(oye "$f" 440)
+  si "rota: la segunda vez suena entera (440 Hz: $t s de 6)" bash -c "python3 -c 'import sys; sys.exit(0 if 5.5 <= $t <= 6.6 else 1)'"
+  si "rota: la copia nueva es un WAV PCM de 16 bits" bash -c "ffprobe -v error -show_entries stream=codec_name -of csv=p=0 '$C/$k.wav' 2>/dev/null | grep -qx pcm_s16le"
+  si "rota: ni danada ni en rocola_incompatibles.txt" bash -c "[ ! -s '$d/rocola_incompatibles.txt' ]"
+  si "rota: al arrancar se borraron la de un original que cambio y la de uno que ya no esta (y sus notas)" bash -c "[ ! -e '$C/aaaaaaaaaaaaaaaaaaaaaaaa.wav' ] && [ ! -e '$C/aaaaaaaaaaaaaaaaaaaaaaaa.txt' ] && [ ! -e '$C/bbbbbbbbbbbbbbbbbbbbbbbb.wav' ] && grep -q '2 copia(s) de originales' '$b'"
+  si "rota: se quedaron la de un disco que no esta y la que no tiene nota" bash -c "[ -e '$C/cccccccccccccccccccccccc.wav' ] && [ -e '$C/dddddddddddddddddddddddd.wav' ]"
 fi
 
 # ---------------------------------------------------------------- sinffmpeg: lo de XP
