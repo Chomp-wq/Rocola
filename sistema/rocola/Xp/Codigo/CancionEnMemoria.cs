@@ -167,7 +167,7 @@ namespace Rocola
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
             {
                 hecho = DescompresorMp3.Crea(wf);   // EN LINUX: (Mp3FileReader.CreateAcmFrameDecompressor, el ACM de Windows) el descompresor nativo (Nativo/DescompresorMp3.cs: libmpg123)
-                hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);
+                hecho = RocolaOsRellenoHuecos(DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm), ruta);   // ROCOLA OS g261: (XP) hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm); — lo mismo que g260 para la cancion abierta desde la memoria (R1; RocolaOs/RocolaOs.Huecos.cs); si no, el mismo
                 return hecho;
             };
             // Desde la memoria se abre el lector ligero (Mp3Ligero.cs): el MISMO Mp3FileReader de NAudio, con su cuenta de Read y de Position, pero

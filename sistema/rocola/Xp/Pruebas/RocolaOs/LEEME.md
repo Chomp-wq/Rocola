@@ -15,6 +15,9 @@ Los archivos:
 - `nivel0/prueba.sh`: la prueba de la batería misma (sin correr la rocola) y `nivel0/compara_trazas_ignora.py`, su doble de
   `compara_trazas.py --ignora`.
 - (`ganchos.py` es del grupo andamio: lo corre el paso `ganchos`.)
+- `huecos/prueba.sh`: el relleno de los huecos de los MP3 viejos (R1, `FASE11_relleno-huecos.md`): la medida, el doble que anula contra
+  libmpg123 y NLayer, lo que se oye frente al original (`compara.py`, con la música sintética de `musica.py`), saltos, costo y la escena con
+  la rocola de verdad.
 - `apagones/prueba.sh`: la auditoría de apagones (`FASE11_apagones.md`): `kill -9`, caída, `SIGTERM`, `SIGUSR1`, `SIGHUP`, cortes justo
   al guardar (strace), `dirsync` y el importador; el corte de luz de verdad está en `sistema/rocola/Pruebas/Qemu/apagones.py`.
   Sus datos de partida (los tres tonos) los arma `apagones/datos.sh`; `prueba.sh` lo llama solo si faltan.

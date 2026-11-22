@@ -554,7 +554,7 @@ namespace Rocola
             Mp3FileReader.FrameDecompressorBuilder armador = delegate(NAudio.Wave.WaveFormat wf)
             {
                 hecho = DescompresorMp3.Crea(wf);   // EN LINUX: (Mp3FileReader.CreateAcmFrameDecompressor, el ACM de Windows) el descompresor nativo (Nativo/DescompresorMp3.cs: libmpg123)
-                hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);   // coma flotante con NLayer si la cancion llega al maximo (FlotanteNLayer.cs)
+                hecho = RocolaOsRellenoHuecos(DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm), ruta);   // ROCOLA OS g260: (XP) hecho = DecodificacionFlotante.Envuelve(wf, hecho, ruta, otroAcm);   // coma flotante con NLayer si la cancion llega al maximo (FlotanteNLayer.cs) — con relleno_huecos y una cancion medida con huecos, el descompresor de la que va a sonar va envuelto: se le suma el relleno de los huecos del MP3 (R1; RocolaOs/RocolaOs.Huecos.cs); si no, el mismo
                 return hecho;
             };
             try { return new Mp3FileReader(ruta, armador); }
