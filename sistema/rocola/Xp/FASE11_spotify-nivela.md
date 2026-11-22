@@ -59,6 +59,35 @@ le pone (`RocolaOsSpotifyPortadaLlego`) a lo que suena o espera de esa uri y se 
 (`UpdateNowPlayingUI`, `RefrescaCola`). Sin dirección de portada en la pista: la de su disco ya leído (`DiscoYa`) o una petición del disco a
 la API (una por disco en la sesión, solo con llave y sin el freno del 429; nada de fondo).
 
+## 5. La canción VACÍA de Soloist y el play adelantado en bucle (el registro del A4, 21-11-2026 22:53; `RocolaOs.Spotify.cs`)
+
+El registro real: cada segundo «play adelantado …» → «suena» → «acaba …: Soloist paso a otra» → «NO PEDIDO: Soloist paso a «» ()» → «el play
+adelantado … no se uso» → otra vez, y al final «DEVUELTA …: Soloist paso a otra, sono 0.0 s». Soloist manda a veces un `playback_state` con la
+canción vacía (uri «») mientras carga o cambia, y la rocola lo tomaba por otra canción. Ahora:
+
+- La canción vacía nunca es «otra canción» ni «no pedido»: no contamina la pedida, no la acaba, no pausa (`ItemVacioDesdeMs` en el estado;
+  Evalua y NoPedido). Con la vacía, una pausa o «idle» solo cuenta pasados 5 s (`VaciaMs`); si de verdad no suena, «el anillo sin sonido».
+- El play adelantado de una canción que ya falló dos veces adelantada (`AdelantoFallosMax`) ya no se adelanta: suena con el play de siempre.
+- `queue_changed` solo da el aviso, una vez por cambio.
+- Prueba `vacia`: el Soloist falso con `SOLOIST_FALSO_VACIO=400` (la vacía 400 ms al empezar y a la mitad de cada una, y la cola con 1 de
+  contexto). Con el código de antes reproduce lo del A4 (las dos «DEVUELTA … sono 0.0 s», nada se oye: 6 MAL de 9); ahora 9/9: las dos de
+  20 s suenan enteras, un solo play adelantado, sin DEVUELTA.
+
+## 6. Un corte a media canción sigue desde donde iba (la de la Sonora Santanera; `RocolaOs.Spotify.cs`, `RocolaOs.SpotifyFuente.cs`)
+
+- Con 10 s o más sonados, un corte (el anillo sin sonido 5 s, el WebSocket caído, dejó de ser la bocina activa, una pausa que no mandó la
+  rocola) se intenta seguir UNA vez: la fuente espera en silencio, la rocola manda activate, play y seek a donde iba (`position_ms`) y la
+  fuente se re-ancla en el anillo (lo de después del seek es de esa posición: la duración y el final cuadran). Si en 15 s no vuelve a sonar, o
+  se corta otra vez, acaba SIN devolver el crédito.
+- Una retomada de XP (volvió el aparato de sonido: `Salta`, antes no hacía nada y empezaba de cero como una pedida nueva que, si fallaba en
+  sus 10 primeros s, devolvía el crédito) sigue desde donde iba con play y seek, y nunca devuelve (ya sonó).
+- rocola_spotify.txt dice siempre al acabar el motivo y los segundos sonados, y «(retomada desde N s)» o «(siguió tras un corte: motivo)».
+- Prueba `cortada`, tres corridas: deja de mandar sonido 6 s a los 16 s y vuelve (siguió con seek a 16 s, Soloist la acabó él mismo, 30 s
+  oídos una sola vez); deja de mandar y no vuelve (un intento, acaba «sono 16.1 s» sin devolver); se pausa sola (siguió y sonó entera).
+- SIN CONFIRMAR con el Soloist de verdad: el nombre del campo del seek (`position_ms`, el de su `playback_state`) y si un seek vacía el flujo
+  (un vaciado justo después del re-anclaje no acaba la canción). Si no lo hiciera caso, la canción seguiría desde el principio y se cortaría
+  por su duración. La retomada de XP no se probó de punta a punta (la tarjeta de prueba no sabe fallar).
+
 ## Pruebas (`Pruebas/RocolaOs/spotify-xp`, con el Soloist falso)
 
 El Soloist falso aprende dos cosas: `q` y dígitos en el id (el pico del tono a −N dBFS) y `SOLOIST_FALSO_COPIA=«A>B»` (al pedir A toca B con

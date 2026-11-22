@@ -47,6 +47,8 @@ namespace Rocola
             private volatile float volumen = 1f;
             private RocolaOsSpotifyPeticion p;
             private bool acabada, saltado;
+            private int desdeMs;                // (22-11-2026) retomada: la cancion empieza ahi (Salta, antes de la primera lectura)
+            private long sonidoAlAnclar;        // (22-11-2026) cuadrosSonido al re-anclar (un vaciado justo despues del seek no la acaba)
             private long inicioMs;
             private long cuadrosEntregados;     // lo que se le dio a XP (sonido y silencio): CurrentTime
             private long cuadrosSonido;         // lo que de verdad llego de Soloist
@@ -81,7 +83,7 @@ namespace Rocola
             }
             public NAudio.Wave.WaveFormat WaveFormat { get { return formato; } }
             public float Volume { set { volumen = value; } }
-            public TimeSpan CurrentTime { get { return TimeSpan.FromSeconds(Interlocked.Read(ref cuadrosEntregados) / (double)hz); } }
+            public TimeSpan CurrentTime { get { return TimeSpan.FromSeconds(Interlocked.Read(ref cuadrosEntregados) / (double)hz + desdeMs / 1000.0); } }
             // LO QUE DURA: 0 hasta que suena (asi XP no le pone fundido de salida: su silencio de espera al principio lo correria antes de tiempo;
             // la cancion de Spotify trae su propio final); despues, su duracion mas lo que espero en silencio (para la barra de lo que suena)
             public TimeSpan TotalTime
@@ -94,7 +96,18 @@ namespace Rocola
                     return TimeSpan.FromSeconds(ms / 1000.0 + Interlocked.Read(ref silencioAntes) / (double)hz);
                 }
             }
-            public void Salta(TimeSpan donde) { }   // (retomar a media cancion no se puede: Spotify empieza desde el principio)
+            // (22-11-2026) LA RETOMADA DE XP (volvio el aparato de sonido): sigue desde donde iba (play y seek de Soloist; RocolaOs.Spotify.cs) y,
+            // como ya sono, su credito no se devuelve aunque falle. Antes no hacia nada: empezaba desde el principio como una peticion nueva y,
+            // si fallaba en sus primeros 10 s, devolvia el credito de una cancion que ya habia sonado.
+            public void Salta(TimeSpan donde)
+            {
+                if (p != null) return;   // (solo antes de la primera lectura, como la llama XP: StartOpenedTrack)
+                int ms = (int)Math.Min(int.MaxValue, Math.Max(0, donde.TotalMilliseconds));
+                if (ms < 500) return;
+                desdeMs = ms;
+                SinDevolver = true;
+                RocolaOsSpotify.Apunta("retomada " + uri + " (" + titulo + ") desde " + (ms / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s: ya sono, no se devuelve");
+            }
 
             public int Read(float[] buffer, int offset, int count) { return Read(buffer.AsSpan(offset, count)); }
             public int Read(Span<float> d)
@@ -106,8 +119,9 @@ namespace Rocola
                 {   // LA PRIMERA LECTURA: ahora si se le pide a Soloist
                     // (rapido-spotify) o ya se le pidio al acabar la de antes (el play adelantado): se toma esa, y lo que Soloist ya dejo en el anillo
                     // desde su play no se tira (es suyo: la fuente empieza donde dice su EscritoAlPedir, como siempre)
-                    RocolaOsSpotifyPeticion ya = RocolaOsSpotify.TomaAdelantada(uri);
+                    RocolaOsSpotifyPeticion ya = desdeMs > 0 ? null : RocolaOsSpotify.TomaAdelantada(uri);
                     p = ya ?? new RocolaOsSpotifyPeticion(uri, titulo, duracionCatalogoMs);
+                    if (desdeMs > 0) { p.DesdeMs = desdeMs; p.SeekMs = desdeMs; Volatile.Write(ref p.PosicionMs, desdeMs); }
                     inicioMs = ultimoSonidoMs = ahora;
                     if (a != null && ya == null) a.Tira();
                     if (Interlocked.Exchange(ref contado, 1) == 0) Interlocked.Increment(ref RocolaOsSpotify.LectoresAbiertos);
@@ -126,7 +140,16 @@ namespace Rocola
                     a.SaltaVaciado();   // (el arranque sin hueco: aun no; los vaciados si se saltan, como esperando)
                 else if (ep >= 0 && a != null)
                 {
-                    if (!saltado) { a.SaltaA(ep); inicioCancion = ep; saltado = true; }
+                    // (22-11-2026) re-anclada (retomada o seguida tras un corte): lo de despues del play y el seek es de esa posicion
+                    long an = Interlocked.Read(ref p.Ancla);
+                    if (an >= 0 && Interlocked.CompareExchange(ref p.Ancla, -1, an) == an)
+                    {
+                        a.SaltaA(an);
+                        inicioCancion = an - (long)Math.Round(Volatile.Read(ref p.AnclaPosMs) / 1000.0 * FrecuenciaAnillo(a));
+                        saltado = true; tmpN = 0; fase = 0;
+                        sonidoAlAnclar = Interlocked.Read(ref cuadrosSonido);
+                    }
+                    else if (!saltado) { a.SaltaA(ep); inicioCancion = ep - (long)Math.Round(desdeMs / 1000.0 * FrecuenciaAnillo(a)); saltado = true; }
                     // donde acaba: su frontera (Soloist paso a otra) o su duracion desde que empezo, lo primero
                     long hasta = frontera;
                     int durMs = Volatile.Read(ref p.DuracionMs);
@@ -137,7 +160,7 @@ namespace Rocola
                     }
                     long leidoDespues; bool vaciado;
                     // un vaciado a media cancion (ya sonando) es que Soloist empezo otra cosa (un celular, un salto): ahi acaba, sin oirla
-                    bool yaSuena = Interlocked.Read(ref cuadrosSonido) > hz / 2;
+                    bool yaSuena = Interlocked.Read(ref cuadrosSonido) - sonidoAlAnclar > hz / 2;
                     n = TomaConvertida(a, d, pedidos, hasta, yaSuena, out leidoDespues, out vaciado);
                     if (vaciado && yaSuena) { RocolaOsSpotify.Apunta("vaciado a media cancion en " + uri + ": acaba ahi"); return Acaba(d, 0, RocolaOsSpotifyPeticion.OtraCancion); }
                     if (n > 0)
@@ -145,6 +168,8 @@ namespace Rocola
                         if (Interlocked.Read(ref cuadrosSonido) == 0) Interlocked.Exchange(ref silencioAntes, Interlocked.Read(ref cuadrosEntregados));
                         Interlocked.Add(ref cuadrosSonido, n);
                         ultimoSonidoMs = ahora;
+                        long pos = (leidoDespues - inicioCancion) * 1000 / FrecuenciaAnillo(a);
+                        if (pos > 0) Volatile.Write(ref p.PosicionMs, (int)Math.Min(int.MaxValue, pos));
                     }
                     if (n < pedidos && leidoDespues >= hasta && hasta != long.MaxValue)
                         return Acaba(d, n, porDuracion && hasta != frontera ? RocolaOsSpotifyPeticion.Termino : Volatile.Read(ref p.Motivo));
@@ -154,7 +179,7 @@ namespace Rocola
                 else if (a != null && fasePedida == RocolaOsSpotifyPeticion.Mandada) a.SaltaVaciado();   // (esperando: sin consumir, pero el vaciado si se salta)
                 // sin sonar en 15 s desde que se pidio: se acaba y el credito vuelve (R4); y la seguridad de 30 s sin nada
                 if (Interlocked.Read(ref cuadrosSonido) == 0 && ahora - inicioMs > NoEmpiezaMs) return Acaba(d, n, RocolaOsSpotifyPeticion.NoEmpezo);
-                if (ahora - ultimoSonidoMs > SeguridadMs) return Acaba(d, n, RocolaOsSpotifyPeticion.SinSonido);
+                if (ahora - Math.Max(ultimoSonidoMs, p.Continuada ? p.ContinuaDesdeMs : 0) > SeguridadMs) return Acaba(d, n, RocolaOsSpotifyPeticion.SinSonido);
                 // lo que no llego, en silencio (la red que tarda); la cancion sigue
                 if (n * 2 < d.Length) d.Slice(n * 2).Clear();
                 if (Nivela != null && n > 0) Nivela.Procesa(d, n);
@@ -213,10 +238,12 @@ namespace Rocola
                 acabada = true;
                 double seg = Interlocked.Read(ref cuadrosSonido) / (double)hz;
                 int durMs = Volatile.Read(ref p.DuracionMs);
+                // (22-11-2026) donde iba en la cancion (con la retomada y lo seguido tras un corte), para saber si acabo de verdad
+                double enCancion = Math.Max(seg + desdeMs / 1000.0, Volatile.Read(ref p.PosicionMs) / 1000.0);
                 bool natural = motivo == RocolaOsSpotifyPeticion.Termino
-                    || ((motivo == RocolaOsSpotifyPeticion.OtraCancion || motivo == RocolaOsSpotifyPeticion.Parada) && durMs > 0 && seg * 1000 >= durMs - 5000);
+                    || ((motivo == RocolaOsSpotifyPeticion.OtraCancion || motivo == RocolaOsSpotifyPeticion.Parada) && durMs > 0 && enCancion * 1000 >= durMs - 5000);
                 if (motivo == RocolaOsSpotifyPeticion.SinMotivo) motivo = RocolaOsSpotifyPeticion.Termino;
-                bool devolver = !SinDevolver && (motivo == RocolaOsSpotifyPeticion.NoEmpezo || (!natural && motivo != RocolaOsSpotifyPeticion.Cierre && seg < PocoSonidoSeg));
+                bool devolver = !SinDevolver && (motivo == RocolaOsSpotifyPeticion.NoEmpezo || (!natural && motivo != RocolaOsSpotifyPeticion.Cierre && enCancion < PocoSonidoSeg));
                 p.FinMotivo = natural ? RocolaOsSpotifyPeticion.Termino : motivo;
                 p.Devolver = devolver;
                 p.SegundosSonados = seg;

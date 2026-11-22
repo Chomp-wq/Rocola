@@ -23,6 +23,8 @@
 //       sinsesion     pierde la sesion
 //       sesion        vuelve la sesion
 //       corta         deja de mandar sonido (la red) aunque sigue «playing»
+//       pausa         se pausa sola (no la rocola), a media cancion
+//     «seek» con position_ms mueve la cancion ahi; SOLOIST_FALSO_VACIO=MS: la cancion vacia MS ms al empezar y a la mitad
 //       atasca        deja de mandar sonido y pasa a «buffering» (la red que se cae: el nucleo no lo da por cortado hasta 30 s)
 //       sigue         vuelve a mandar (y de «buffering» a «playing»)
 //       cae           se cae (sale con 1, sin borrar ws.port: como un fallo de verdad)
@@ -271,6 +273,42 @@ static unsafe class SoloistFalso
                 + ",\"speed\":" + (status == "playing" ? "1.0" : "0.0") + "},\"volume\":" + volumen + ",\"is_active\":" + B(activa)
                 + ",\"options\":{\"shuffle\":" + B(shuffle) + ",\"repeat\":\"" + repeat + "\",\"playback_speed\":1.0,\"modes\":{}},\"available_actions\":{\"pause\":{}}}";
     }
+    // (22-11-2026, el registro del A4) SOLOIST_FALSO_VACIO=MS: Soloist dice un playback_state con la cancion VACIA (uri «») MS ms al empezar
+    // cada una y otra vez a la mitad, y despues el de verdad (lo que hace mientras carga o cambia); tambien un queue_changed con 1 de contexto
+    static string EstadoVacio()
+    {
+        lock (cerrojo)
+            return "{\"type\":\"playback_state\",\"status\":\"" + status + "\",\"item\":" + Entidad("") + ",\"context\":" + Entidad("") + ",\"position\":{\"position_ms\":0,\"timestamp_ms\":"
+                + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) + ",\"speed\":0.0},\"volume\":" + volumen + ",\"is_active\":" + B(activa)
+                + ",\"options\":{\"shuffle\":" + B(shuffle) + ",\"repeat\":\"" + repeat + "\",\"playback_speed\":1.0,\"modes\":{}},\"available_actions\":{}}";
+    }
+    static void Vacio(int g)
+    {
+        int ms;
+        if (!int.TryParse(Environment.GetEnvironmentVariable("SOLOIST_FALSO_VACIO") ?? "", out ms) || ms <= 0) return;
+        new Thread(() =>
+        {
+            Apunta("guion", "estado con la cancion vacia " + ms + " ms (al empezar)");
+            Manda(EstadoVacio());
+            Manda("{\"type\":\"queue_changed\",\"previous\":[],\"upcoming\":[{\"uri\":\"spotify:track:f990d030autoplay\",\"source\":\"context\"}]}");
+            Thread.Sleep(ms);
+            if (Volatile.Read(ref genPlay) != g) return;
+            Manda(Estado());
+            long mitad; lock (cerrojo) mitad = durCuadros / 2;
+            while (true)
+            {
+                Thread.Sleep(50);
+                if (Volatile.Read(ref genPlay) != g) return;
+                long pc; lock (cerrojo) pc = posCuadros;
+                if (pc >= mitad) break;
+            }
+            Apunta("guion", "estado con la cancion vacia " + ms + " ms (a la mitad)");
+            Manda(EstadoVacio());
+            Thread.Sleep(ms);
+            if (Volatile.Read(ref genPlay) != g) return;
+            Manda(Estado());
+        }) { IsBackground = true }.Start();
+    }
     static string TrackChanged() { lock (cerrojo) return "{\"type\":\"track_changed\",\"item\":" + Entidad(item) + "}"; }
     static string Opciones() { lock (cerrojo) return "{\"type\":\"options_changed\",\"options\":{\"shuffle\":" + B(shuffle) + ",\"repeat\":\"" + repeat + "\",\"playback_speed\":1.0,\"modes\":{}}}"; }
     static string B(bool b) { return b ? "true" : "false"; }
@@ -336,7 +374,7 @@ static unsafe class SoloistFalso
     static void Orden(Cliente c, string txt)
     {
         Apunta("orden", txt);
-        string tipo = "", cmd = "", uri = null; bool? en = null; int vol = -1;
+        string tipo = "", cmd = "", uri = null; bool? en = null; int vol = -1; long posMs = -1;
         try
         {
             using (JsonDocument d = JsonDocument.Parse(txt))
@@ -347,6 +385,7 @@ static unsafe class SoloistFalso
                 if (r.TryGetProperty("uri", out v)) uri = v.GetString();
                 if (r.TryGetProperty("enabled", out v)) en = v.ValueKind == JsonValueKind.True;
                 if (r.TryGetProperty("volume", out v)) vol = v.GetInt32();
+                if (r.TryGetProperty("position_ms", out v) && v.ValueKind == JsonValueKind.Number) posMs = v.GetInt64();
             }
         }
         catch { MandaA(c, "{\"type\":\"error\",\"message\":\"malformed JSON\"}"); return; }
@@ -376,6 +415,7 @@ static unsafe class SoloistFalso
                         Manda(TrackChanged());
                         if (!uri.Substring(14).StartsWith("nx")) Manda("{\"type\":\"playback_changed\",\"status\":\"playing\"}");
                         else lock (cerrojo) status = "buffering";
+                        Vacio(g);
                     };
                     if (lento > 0) new Thread(() => { Thread.Sleep((int)(lento * 1000)); empieza(); }) { IsBackground = true }.Start();
                     else empieza();
@@ -416,7 +456,12 @@ static unsafe class SoloistFalso
             case "set_repeat_track": MandaA(c, "{\"type\":\"command_result\",\"command\":\"set_repeat_track\"}"); lock (cerrojo) { if (en == true) repeat = "track"; else if (repeat == "track") repeat = "off"; } Manda(Opciones()); return;
             case "set_repeat_context": MandaA(c, "{\"type\":\"command_result\",\"command\":\"set_repeat_context\"}"); lock (cerrojo) { if (en == true) repeat = "context"; else if (repeat == "context") repeat = "off"; } Manda(Opciones()); return;
             case "set_volume": MandaA(c, "{\"type\":\"command_result\",\"command\":\"set_volume\"}"); lock (cerrojo) volumen = vol; Manda("{\"type\":\"volume_changed\",\"volume\":" + vol + "}"); return;
-            case "skip_next": case "skip_prev": case "seek": case "add_to_queue":
+            case "seek":
+                // (22-11-2026) el seek con «position_ms»: la cancion sigue desde ahi (sin vaciar: el play de antes ya vacio)
+                MandaA(c, "{\"type\":\"command_result\",\"command\":\"seek\"}");
+                if (posMs >= 0) { lock (cerrojoEscritor) lock (cerrojo) posCuadros = Math.Min(durCuadros, posMs * Rate / 1000); Apunta("soloist", "seek a " + posMs + " ms"); }
+                return;
+            case "skip_next": case "skip_prev": case "add_to_queue":
                 MandaA(c, "{\"type\":\"command_result\",\"command\":\"" + cmd + "\"}"); return;
             default: MandaA(c, "{\"type\":\"error\",\"message\":\"unknown command\"}"); return;
         }
@@ -455,6 +500,8 @@ static unsafe class SoloistFalso
                 case "sinsesion": lock (cerrojo) { sesion = false; status = "idle"; } Manda(Auth()); break;
                 case "sesion": lock (cerrojo) sesion = true; Manda(Auth()); Manda(Estado()); break;
                 case "corta": lock (cerrojo) cortado = true; break;
+                // (22-11-2026) se pausa sola (no la rocola): como un corte de Spotify a media cancion
+                case "pausa": lock (cerrojo) { if (status == "playing" || status == "buffering") status = "paused"; } Manda("{\"type\":\"playback_changed\",\"status\":\"paused\"}"); break;
                 case "sigue": { bool ab; lock (cerrojo) { cortado = false; ab = status == "buffering"; if (ab) status = "playing"; } if (ab) Manda("{\"type\":\"playback_changed\",\"status\":\"playing\"}"); } break;
                 case "atasca": lock (cerrojo) { cortado = true; if (status == "playing") status = "buffering"; } Manda("{\"type\":\"playback_changed\",\"status\":\"buffering\"}"); break;
                 case "cola": lock (cerrojo) colaSpotify.Add(arg); Manda("{\"type\":\"queue_changed\",\"previous\":[],\"upcoming\":[{\"uid\":\"" + arg + "\",\"source\":\"queue\",\"item\":" + Entidad(arg) + "}]}"); break;
