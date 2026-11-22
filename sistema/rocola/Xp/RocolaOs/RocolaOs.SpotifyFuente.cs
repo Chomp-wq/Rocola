@@ -62,6 +62,8 @@ namespace Rocola
             // (calidad_spotify, la sustitucion invisible: RocolaOs.CalidadFuente.cs) una de tus canciones que suena desde Spotify NO se cobro
             // como de Spotify: si falla, su credito no se devuelve (suena tu MP3 en su lugar). Se pone antes de la primera lectura.
             internal bool SinDevolver;
+            // (22-11-2026, spotify_nivela: RocolaOs.SpotifyNivela.cs) la medida para aprenderla y el nivelado suave de la primera vez; null: como antes
+            internal RocolaOsSpotifyNivelador Nivela;
             internal long CuadrosSonido { get { return Interlocked.Read(ref cuadrosSonido); } }   // lo que de verdad llego de Soloist
             internal bool Terminada { get { return acabada; } }                                    // (la lee el mismo hilo que lee)
             internal int FinMotivo { get { RocolaOsSpotifyPeticion q = p; return q != null ? q.FinMotivo : 0; } }
@@ -155,6 +157,7 @@ namespace Rocola
                 if (ahora - ultimoSonidoMs > SeguridadMs) return Acaba(d, n, RocolaOsSpotifyPeticion.SinSonido);
                 // lo que no llego, en silencio (la red que tarda); la cancion sigue
                 if (n * 2 < d.Length) d.Slice(n * 2).Clear();
+                if (Nivela != null && n > 0) Nivela.Procesa(d, n);
                 Aplica(d.Slice(0, n * 2));
                 Interlocked.Add(ref cuadrosEntregados, pedidos);
                 return pedidos * 2;
@@ -219,6 +222,7 @@ namespace Rocola
                 p.SegundosSonados = seg;
                 Suelta();
                 Volatile.Write(ref p.Fase, RocolaOsSpotifyPeticion.Acabada);
+                if (Nivela != null) { if (n > 0) Nivela.Procesa(d, n); Nivela.Acaba(natural, seg, durMs > 0 ? durMs : duracionCatalogoMs); }
                 Aplica(d.Slice(0, n * 2));
                 Interlocked.Add(ref cuadrosEntregados, n);
                 return n * 2;

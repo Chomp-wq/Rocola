@@ -172,7 +172,8 @@ namespace Rocola
             // bajada, sin disco (como un video sin carpeta): XP no pinta portada.
             string portada = RocolaOsSpotify.PidePortada(p);
             Album disco = null;
-            if (portada != null) { disco = new Album(); disco.Folder = Path.GetDirectoryName(portada); disco.Name = p.Disco ?? ""; disco.Artist = p.Artista ?? ""; disco.CoverPath = portada; disco.Letter = ' '; }
+            if (portada != null) disco = RocolaOsSpotifyDiscoDePortada(p, portada);
+            else RocolaOsSpotifyPortadaPendiente(p);   // (22-11-2026) aun sin bajar: cuando llegue se le pone (RocolaOsSpotifyPortadaLlego)
             PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disco;
             AddResult r = AddItem(it);
             // los avisos, los de XP (AddSong de Form1.cs y ChooseSearchResult de Form1.Biblioteca.cs)
@@ -225,7 +226,9 @@ namespace Rocola
             if (!RocolaOsSpotify.EsUriDeCancion(path)) return null;
             RocolaOsSpotifyPista p;
             RocolaOsSpotify.Pistas.TryGetValue(path, out p);
-            return new RocolaOsFuenteSpotify(path, p != null ? p.Titulo : "", p != null ? p.DuracionMs : 0);
+            RocolaOsFuenteSpotify f = new RocolaOsFuenteSpotify(path, p != null ? p.Titulo : "", p != null ? p.DuracionMs : 0);
+            f.Nivela = RocolaOsSpotifyNivelaPara(path, f.WaveFormat.SampleRate);   // (spotify_nivela, 22-11-2026: RocolaOs.SpotifyNivela.cs)
+            return f;
         }
         // g20 (Codigo/Form1.Datos.cs, RecordPlay): lo de Spotify no cuenta (R6). false = lo de XP (cuenta).
         private bool RocolaOsSpotifyNoCuenta(PlayItem it)
@@ -302,6 +305,9 @@ namespace Rocola
                         if (b.Length < 4 || b[0] != 0xFF || b[1] != 0xD8) { Apunta("la portada de " + p.Uri + " no es un JPEG: no se usa"); continue; }
                         File.WriteAllBytes(ruta + ".n", b);
                         File.Move(ruta + ".n", ruta, true);
+                        // (22-11-2026) a lo que ya suena o espera en la cola sin portada (se pidio antes de que bajara), se le pone ahora
+                        string u = p.Uri, r = ruta; RocolaOsSpotifyPista pp = p;
+                        RocolaOs.Encarga("spotify:portada", delegate { Form1 f = RocolaOs.LaRocola; if (f != null) f.RocolaOsSpotifyPortadaLlego(pp, r); });
                     }
                     catch (Exception ex) { portadasPedidas.TryRemove(ruta, out _); Apunta("no se pudo bajar la portada de " + p.Uri + ": " + ex.GetType().Name); }
                 }
@@ -310,6 +316,58 @@ namespace Rocola
         internal static void LimpiaPortadas()
         {
             try { foreach (string f in Directory.GetFiles(CarpetaPortadas)) if (File.GetLastWriteTimeUtc(f) < DateTime.UtcNow.AddDays(-1)) File.Delete(f); } catch { }
+        }
+    }
+
+    // LA PORTADA QUE LLEGA DESPUES (22-11-2026, el dueno: «mi padre puso una cancion de michale jackson de un disco de Spotify [...] se puso, pero
+    // no aparecia su caratula en el reproductor»). Si al pedirla la portada aun no estaba en /run (un disco de la pared del catalogo, con la del
+    // Cover Art Archive), entraba sin disco y se quedaba sin portada para siempre. Ahora, al bajar, se le pone a todo lo que suena o espera de esa
+    // uri y se repinta como cuando XP cambia de cancion. Sin la direccion de la portada en la pista: la de su disco ya leido, o UNA peticion del
+    // disco a la API (solo si hay llave y no esta frenando; nada de fondo).
+    public partial class Form1
+    {
+        private static Album RocolaOsSpotifyDiscoDePortada(RocolaOsSpotifyPista p, string portada)
+        {
+            Album disco = new Album(); disco.Folder = Path.GetDirectoryName(portada); disco.Name = p.Disco ?? ""; disco.Artist = p.Artista ?? ""; disco.CoverPath = portada; disco.Letter = ' ';
+            return disco;
+        }
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> rocolaOsSpPortadaDisco = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
+        private void RocolaOsSpotifyPortadaPendiente(RocolaOsSpotifyPista p)
+        {
+            if (p == null || !string.IsNullOrEmpty(p.PortadaUrl)) return;   // (ya se esta bajando: PidePortada la encolo)
+            string id = RocolaOsSpotify.IdBase62(p.DiscoUri, "spotify:album:");
+            if (id.Length == 0) { RocolaOsSpotify.Apunta("sin portada para " + p.Uri + ": la pista no trae ni su portada ni su disco"); return; }
+            RocolaOsSpotifyCatalogoDisco ya = RocolaOsSpotifyCatalogoApi.DiscoYa(id);
+            if (ya != null && !string.IsNullOrEmpty(ya.PortadaUrl)) { p.PortadaUrl = ya.PortadaUrl; RocolaOsSpotify.PidePortada(p); return; }
+            if (!RocolaOsSpotifyCatalogoApi.HayLlave || RocolaOsSpotifyCatalogoApi.Frena || !rocolaOsSpPortadaDisco.TryAdd(id, 0)) return;   // (una peticion por disco en la sesion)
+            RocolaOsSpotify.Apunta("la portada de " + p.Uri + ": se pide su disco " + id + " (una peticion)");
+            RocolaOsSpotifyCatalogoApi.AbreDisco(id, delegate (object r, string error)
+            {
+                RocolaOsSpotifyCatalogoDisco d = r as RocolaOsSpotifyCatalogoDisco;
+                if (d == null || string.IsNullOrEmpty(d.PortadaUrl)) { RocolaOsSpotify.Apunta("sin portada para " + p.Uri + ": su disco no la trae (" + (error ?? "sin portada") + ")"); return; }
+                p.PortadaUrl = d.PortadaUrl;
+                RocolaOsSpotify.PidePortada(p);
+            });
+        }
+        // (encargo, en la pantalla) la portada de esa uri ya esta en /run: a lo que suena y a la cola que no la tenian
+        internal void RocolaOsSpotifyPortadaLlego(RocolaOsSpotifyPista p, string ruta)
+        {
+            if (p == null || ruta == null || !File.Exists(ruta)) return;
+            bool suena = false; int n = 0;
+            List<PlayItem> todos = new List<PlayItem>(queue.Count + 1);
+            if (nowPlaying != null) todos.Add(nowPlaying);
+            todos.AddRange(queue);
+            foreach (PlayItem it in todos)
+            {
+                if (it == null || it.IsVideo || it.Song == null || it.Disc != null || !string.Equals(it.Song.Path, p.Uri, StringComparison.Ordinal)) continue;
+                it.Disc = RocolaOsSpotifyDiscoDePortada(p, ruta);
+                n++;
+                if (object.ReferenceEquals(it, nowPlaying)) suena = true;
+            }
+            if (n == 0) return;
+            RocolaOsSpotify.Apunta("la portada de " + p.Uri + " llego: puesta a " + n.ToString(CultureInfo.InvariantCulture) + (suena ? " (la que suena)" : " (en la cola)"));
+            RefrescaCola();
+            if (suena) UpdateNowPlayingUI();
         }
     }
 }

@@ -525,8 +525,11 @@ namespace Rocola
         private bool RocolaOsCalidadGanancia(Track t, out float g)
         {
             g = 1f;
-            if (!RocolaOs.Activo || t == null || !RocolaOsCalidad.Va) return false;
             object o; RocolaOsFuenteCalidad f;
+            // (22-11-2026, spotify_nivela) una de Spotify PEDIDA (no la sombra de una tuya): su nivelado (RocolaOs.SpotifyNivela.cs)
+            if (RocolaOs.Activo && t != null && t.Path != null && t.Path.StartsWith("spotify:track:", StringComparison.Ordinal) && !RocolaOsCalidad.Sombras.TryGetValue(t, out o))
+                return RocolaOsSpotifyNivelaGanancia(t, out g);
+            if (!RocolaOs.Activo || t == null || !RocolaOsCalidad.Va) return false;
             if (RocolaOsCalidad.Sombras.TryGetValue(t, out o)) f = (RocolaOsFuenteCalidad)o;
             else
             {

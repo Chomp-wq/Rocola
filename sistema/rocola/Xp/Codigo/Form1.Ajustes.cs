@@ -2124,7 +2124,7 @@ namespace Rocola
             }
             // no repetir lo mismo dos veces seguidas (lo ultimo en sonar/encolar)
             PlayItem last = (queue.Count > 0) ? queue[queue.Count - 1] : nowPlaying;
-            if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return AddResult.Repeat;
+            if (last != null && (string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase) || RocolaOsMismaCancion(last, it))) return AddResult.Repeat;   // ROCOLA OS g230: (XP) if (last != null && string.Equals(last.PathKey(), it.PathKey(), StringComparison.OrdinalIgnoreCase)) return AddResult.Repeat; — con el modo Spotify, una de Spotify y una tuya que son la misma grabacion cuentan como la misma (RocolaOs/RocolaOs.SpotifyRepetida.cs); sin el modo, false
             queue.Add(it); RefrescaCola(); PrecalientaSiguiente();
             // EL TURNO SE APUNTA AQUI Y NO EN EL AVISO, a proposito: aqui la cola esta como quedo justo
             // al meterla, y unas lineas mas abajo PlayNext puede sacar la primera y correrlo todo.

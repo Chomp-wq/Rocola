@@ -74,6 +74,12 @@ namespace Rocola
         internal double SegundosSonados;
         internal bool Rematada;                    // (el hilo de Spotify ya la remato: pausa, credito, bitacora)
         internal bool Reintentada;                 // (play se mando otra vez a los 4 s)
+        // (22-11-2026, la cola que perdia canciones en el A4) LA «COPIA»: Soloist puede tocar la misma cancion con otra uri (Spotify la enlaza a
+        // otra edicion del mismo disco, un recopilatorio, la de otro pais). Con el mismo titulo y artista (sin acentos ni mayusculas) y la duracion
+        // a 3 s, esa uri se acepta como la pedida (Alias; EsLaSuya). Y el ULTIMO INTENTO antes de darla por fallida (UltimoIntento, a los 9 s).
+        internal readonly string Artista = "";
+        internal volatile string Alias;
+        internal bool UltimoIntento;
         internal long UltimoEscrito = -1, UltimoEscritoMs;   // (el hilo de Spotify: cuando crecio el anillo por ultima vez sonando esta)
         // (revision) lo que Soloist tocaba cuando se le mando play, y si desde entonces toco OTRA cosa (un celular, lo de antes que aun no
         // paraba): lo que llego al anillo en ese rato no es de esta y no se oye (la fuente empieza donde iba el anillo al empezar esta)
@@ -83,7 +89,12 @@ namespace Rocola
         // fuente la toma al empezar a leerse (Adoptada). Mientras no la toma nadie la oye (sin lector, Soloist no puede escribir en el anillo).
         internal bool Adelantada;
         internal volatile bool Adoptada;
-        internal RocolaOsSpotifyPeticion(string uri, string titulo, int duracionMs) { Uri = uri; Titulo = titulo ?? ""; DuracionMs = duracionMs; }
+        internal RocolaOsSpotifyPeticion(string uri, string titulo, int duracionMs)
+        {
+            Uri = uri; Titulo = titulo ?? ""; DuracionMs = duracionMs;
+            RocolaOsSpotifyPista pi;
+            if (uri != null && RocolaOsSpotify.Pistas.TryGetValue(uri, out pi) && pi != null) { Artista = pi.Artista ?? ""; if (Titulo.Length == 0) Titulo = pi.Titulo ?? ""; }
+        }
     }
 
     internal static partial class RocolaOsSpotify
@@ -626,6 +637,42 @@ namespace Rocola
             Manda(Orden("activate"));
         }
 
+        // ---------- la pedida o su «copia» (22-11-2026) ----------
+        // LO QUE TOCA SOLOIST ES LA PEDIDA: su uri, o la «copia» ya aceptada (Alias), o una nueva copia: lo que Soloist paso a tocar DESPUES del
+        // play (no lo que ya tocaba al pedirla) con el mismo titulo y artista, sin acentos ni mayusculas, y la duracion a 3 s. Solo el hilo de Spotify.
+        internal const int CopiaToleranciaMs = 3000;
+        internal static bool EsLaSuya(RocolaOsSpotifyPeticion p, RocolaOsSpotifyEstado st)
+        {
+            string u = st.ItemUri ?? "";
+            if (u.Length == 0) return false;
+            if (u == p.Uri) return true;
+            string a = p.Alias;
+            if (a != null) return u == a;
+            if (u == p.ItemAlPedir || Volatile.Read(ref p.Fase) == RocolaOsSpotifyPeticion.Nueva) return false;
+            if (!EsCopia(p.Titulo, p.Artista, Volatile.Read(ref p.DuracionMs), st.ItemNombre, st.ItemArtista, st.ItemDuracionMs)) return false;
+            p.Alias = u;
+            Apunta("COPIA: Soloist toca «" + u + "» (" + st.ItemNombre + " - " + st.ItemArtista + ") en lugar de " + p.Uri + ": mismo titulo, artista y duracion: se acepta como la pedida");
+            return true;
+        }
+        internal static bool EsCopia(string titulo, string artista, int durMs, string titulo2, string artista2, int durMs2)
+        {
+            string t1 = NormalizaCopia(titulo), t2 = NormalizaCopia(titulo2);
+            if (t1.Length == 0 || t1 != t2) return false;
+            if (durMs <= 0 || durMs2 <= 0 || Math.Abs(durMs - durMs2) > CopiaToleranciaMs) return false;
+            string a1 = NormalizaCopia(artista), a2 = NormalizaCopia(artista2);
+            if (a1.Length > 0 && a2.Length > 0 && a1 != a2 && !a1.StartsWith(a2, StringComparison.Ordinal) && !a2.StartsWith(a1, StringComparison.Ordinal)) return false;
+            return true;
+        }
+        // minusculas, sin acentos (UnicodeXp.FormaD: Normalize no separa los acentos con InvariantGlobalization) y solo letras y cifras
+        internal static string NormalizaCopia(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            string d = UnicodeXp.FormaD(s.ToLowerInvariant());
+            System.Text.StringBuilder b = new System.Text.StringBuilder(d.Length);
+            foreach (char c in d) if (char.IsLetterOrDigit(c)) b.Append(c);
+            return b.ToString();
+        }
+
         // ---------- las reglas de la cancion que suena (R4) ----------
         private static void Evalua(long ahora)
         {
@@ -634,8 +681,9 @@ namespace Rocola
             {
                 int f = Volatile.Read(ref p.Fase);
                 // (revision) mandada y Soloist tocando OTRA cosa: lo que entre al anillo en ese rato no es de esta
-                if (f == RocolaOsSpotifyPeticion.Mandada && st.ItemUri != p.Uri && (st.Status == "playing" || st.Status == "buffering")) p.Contaminada = true;
-                if (f == RocolaOsSpotifyPeticion.Mandada && st.ItemUri == p.Uri && (st.Status == "playing" || st.Status == "buffering"))
+                bool suya = EsLaSuya(p, st);
+                if (f == RocolaOsSpotifyPeticion.Mandada && !suya && (st.Status == "playing" || st.Status == "buffering")) p.Contaminada = true;
+                if (f == RocolaOsSpotifyPeticion.Mandada && suya && (st.Status == "playing" || st.Status == "buffering"))
                 {
                     p.UltimoEscrito = -1; p.UltimoEscritoMs = ahora;
                     // si en la espera Soloist toco otra cosa, esta empieza donde va el anillo AHORA (lo de antes no se oye); si no, desde el play
@@ -649,7 +697,7 @@ namespace Rocola
                 if (f != RocolaOsSpotifyPeticion.Suena || Volatile.Read(ref p.Motivo) != 0) continue;
                 if (!st.Sesion) Termina(p, RocolaOsSpotifyPeticion.SinSesion);
                 else if (!st.Activa) Termina(p, RocolaOsSpotifyPeticion.Inactiva);
-                else if (st.ItemUri != p.Uri) Termina(p, RocolaOsSpotifyPeticion.OtraCancion);
+                else if (!suya) Termina(p, RocolaOsSpotifyPeticion.OtraCancion);
                 else if ((st.Status == "paused" || st.Status == "idle") && !pausaNuestra) Termina(p, RocolaOsSpotifyPeticion.Parada);
             }
         }
@@ -672,6 +720,7 @@ namespace Rocola
         // desde cuando Soloist no esta para tocar (sin el WebSocket o sin sesion; 0 = si esta)
         private static long fueraDesdeMs;
         internal const int FueraMs = 10000;
+        internal const int UltimoIntentoMs = 9000;   // (22-11-2026) el ultimo play, antes de los 15 s de NoEmpiezaMs
         private static void Peticiones(long ahora)
         {
             if (Interlocked.Exchange(ref adelantoDesdeXp, 0) == 1)
@@ -706,7 +755,7 @@ namespace Rocola
                     if (Interlocked.CompareExchange(ref adelantada, null, p) == p)
                     {
                         vivas.RemoveAt(i); i--;
-                        if (Volatile.Read(ref p.Motivo) == 0 && Estado.ItemUri == p.Uri && (Estado.Status == "playing" || Estado.Status == "buffering")) PausaNuestra();
+                        if (Volatile.Read(ref p.Motivo) == 0 && EsLaSuya(p, Estado) && (Estado.Status == "playing" || Estado.Status == "buffering")) PausaNuestra();
                         Apunta("el play adelantado de " + p.Uri + " no se uso" + (Volatile.Read(ref p.Motivo) != 0 ? " (" + RocolaOsSpotifyPeticion.Motivos[Volatile.Read(ref p.Motivo)] + ")" : " en 30 s"));
                         continue;
                     }
@@ -742,6 +791,17 @@ namespace Rocola
                     p.Reintentada = true;
                     Apunta("play otra vez " + p.Uri + " (a los 4 s seguia «" + st.ItemUri + "» " + st.Status + ")");
                     Interlocked.Exchange(ref p.EscritoAlPedir, Anillo.Escrito);
+                    Manda("{\"type\":\"command\",\"command\":\"play\",\"uri\":" + Json(p.Uri) + "}");
+                }
+                else if (f == RocolaOsSpotifyPeticion.Mandada && p.Reintentada && !p.UltimoIntento && !(p.Adelantada && !p.Adoptada) && ahora - Volatile.Read(ref p.MandadaMs) > UltimoIntentoMs && st.Ws && st.Sesion && !EsLaSuya(p, st))
+                {   // (22-11-2026) a los 9 s sigue sin tocarla (Soloist atorado en otra cosa): la bocina otra vez activa y un ultimo play, antes de los
+                    // 15 s en que la fuente la da por fallida y devuelve el credito (NoEmpiezaMs)
+                    p.UltimoIntento = true;
+                    Apunta("ultimo intento " + p.Uri + " (a los " + (UltimoIntentoMs / 1000).ToString(CultureInfo.InvariantCulture) + " s seguia «" + st.ItemUri + "» " + st.Status + "): activate y play");
+                    ultimaActivacionMs = 0; Activa(ahora, "ultimo intento");
+                    ArreglaOpciones(ahora, true);
+                    Interlocked.Exchange(ref p.EscritoAlPedir, Anillo.Escrito);
+                    pausaNuestra = false;
                     Manda("{\"type\":\"command\",\"command\":\"play\",\"uri\":" + Json(p.Uri) + "}");
                 }
                 else if (f == RocolaOsSpotifyPeticion.Suena && Volatile.Read(ref p.Motivo) == 0)
@@ -834,9 +894,9 @@ namespace Rocola
                 if (f == RocolaOsSpotifyPeticion.Nueva) permitido = true;   // (va a mandar play enseguida)
                 // mandada: la suya, o lo que ya tocaba Soloist cuando se le mando play (aun no cambia: hasta 8 s). Antes valia CUALQUIER cosa
                 // durante 8 s (revision: lo que pusiera un celular en ese rato sonaba como el principio de la pedida)
-                else if (f == RocolaOsSpotifyPeticion.Mandada && (st.ItemUri == p.Uri || (st.ItemUri == p.ItemAlPedir && ahora - Volatile.Read(ref p.MandadaMs) < 8000))) permitido = true;
+                else if (f == RocolaOsSpotifyPeticion.Mandada && (EsLaSuya(p, st) || (st.ItemUri == p.ItemAlPedir && ahora - Volatile.Read(ref p.MandadaMs) < 8000))) permitido = true;
                 else if (f == RocolaOsSpotifyPeticion.Mandada && ReferenceEquals(p, Actual)) esperando = p;
-                else if (f == RocolaOsSpotifyPeticion.Suena && st.ItemUri == p.Uri) permitido = true;
+                else if (f == RocolaOsSpotifyPeticion.Suena && EsLaSuya(p, st)) permitido = true;
             }
             if (permitido || ahora - ultimaPausaNoPedidaMs < 1000) return;
             if (esperando == null && ahora - ultimaPausaNuestraMs < 2000) return;

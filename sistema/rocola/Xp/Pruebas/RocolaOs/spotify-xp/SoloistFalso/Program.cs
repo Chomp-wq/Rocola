@@ -175,7 +175,7 @@ static unsafe class SoloistFalso
                 for (int i = 0; i < n; i++)
                 {
                     double t = (posCuadros + i) / (double)Rate;
-                    double amp = envolvente == 0 ? 0.25 : 0.125 * Math.Pow(10, (Envolvente(envolvente, t) + 12) / 20);
+                    double amp = envolvente == 0 ? ampBase : 0.125 * Math.Pow(10, (Envolvente(envolvente, t) + 12) / 20);
                     float s = (float)(amp * Math.Sin(2 * Math.PI * hz * t));
                     buf[i * 2] = s; buf[i * 2 + 1] = s;
                 }
@@ -236,17 +236,27 @@ static unsafe class SoloistFalso
                 if (d > 1) { double.TryParse(id.Substring(1, d - 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out hz); int e = d + 1; while (e < id.Length && char.IsDigit(id[e])) e++; double.TryParse(id.Substring(d + 1, e - d - 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out seg);
                     envolvente = e + 1 < id.Length && id[e] == 'm' && (id[e + 1] == '1' || id[e + 1] == '2') ? id[e + 1] - '0' : 0; }
             }
+            // (22-11-2026, el nivelado de Spotify) «q» y unos digitos en el id: el pico del tono a -N dBFS (sin «q», 0,25: -12 dBFS)
+            ampBase = 0.25;
+            int qq = id.IndexOf('q');
+            if (qq > 0) { int e2 = qq + 1; while (e2 < id.Length && char.IsDigit(id[e2])) e2++; if (e2 > qq + 1 && double.TryParse(id.Substring(qq + 1, e2 - qq - 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out double qdb)) ampBase = Math.Pow(10, -qdb / 20); }
             durCuadros = (long)(seg * Rate);
         }
     }
     static Escritor escritorActual;
+    static double ampBase = 0.25;
+    // (22-11-2026) SOLOIST_FALSO_COPIA=«URI_PEDIDA>URI_COPIA»: al pedir la primera toca la segunda (Spotify la enlaza a otra edicion), con el
+    // nombre de la pedida (el titulo y el artista iguales; la duracion la de su id)
+    static readonly string[] copia = (Environment.GetEnvironmentVariable("SOLOIST_FALSO_COPIA") ?? "").Split('>');
+    static string Real(string uri) { return copia.Length == 2 && uri == copia[0] ? copia[1] : uri; }
+    static string NombreDe(string uri) { return "Cancion " + (copia.Length == 2 && uri == copia[1] ? copia[0] : uri).Substring(14); }
 
     // ---------- los mensajes ----------
     static string Entidad(string uri)
     {
         if (string.IsNullOrEmpty(uri)) return "{\"uri\":\"\",\"entity_type\":\"\",\"decorations\":{}}";
         long ms = durCuadros * 1000 / Rate;
-        return "{\"uri\":\"" + uri + "\",\"entity_type\":\"track\",\"decorations\":{\"identity\":{\"name\":\"Cancion " + uri.Substring(14) + "\"},"
+        return "{\"uri\":\"" + uri + "\",\"entity_type\":\"track\",\"decorations\":{\"identity\":{\"name\":\"" + NombreDe(uri) + "\"},"
             + "\"visual_identity\":{\"cover\":[{\"url\":\"http://127.0.0.1:1/portada.jpg\",\"size\":\"large\"}]},"
             + "\"parent\":{\"entity\":{\"uri\":\"spotify:album:inventado\",\"entity_type\":\"album\",\"decorations\":{\"identity\":{\"name\":\"Disco inventado\"}}}},"
             + "\"creators\":[{\"entity\":{\"uri\":\"spotify:artist:inventado\",\"entity_type\":\"artist\",\"decorations\":{\"identity\":{\"name\":\"Artista inventado\"}}}}],"
@@ -360,7 +370,9 @@ static unsafe class SoloistFalso
                     Action empieza = () =>
                     {
                         if (Volatile.Read(ref genPlay) != g) { Apunta("soloist", "play " + uri + " cancelado (se pidio otra cosa)"); return; }
-                        Pon(uri, true);
+                        string real = Real(uri);
+                        if (real != uri) Apunta("soloist", "play " + uri + ": toca la copia " + real);
+                        Pon(real, true);
                         Manda(TrackChanged());
                         if (!uri.Substring(14).StartsWith("nx")) Manda("{\"type\":\"playback_changed\",\"status\":\"playing\"}");
                         else lock (cerrojo) status = "buffering";

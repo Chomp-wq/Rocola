@@ -29,7 +29,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche}"
+partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche copiauri nivela portadatarde repetida}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -687,6 +687,123 @@ if [[ " $partes " == *" noche "* ]]; then
   db=$(echo "$(nv probar50-sp baja) - $(nv probar50-xp baja)" | bc); dr=$(echo "$(nv probar50-sp rampa) - $(nv probar50-xp rampa)" | bc)
   si "probar50: al 50 % la de Spotify baja igual que la de XP (lo que baja: $db dB de diferencia; la rampa: $dr s)" bash -c "echo '$db < 0.1 && $db > -0.1 && $dr < 0.6 && $dr > -0.6' | bc | grep -q 1"
   si "noche sp: la de Spotify sono por Spotify (cobrada, por la fuente de RocolaOs.SpotifyFuente.cs)" bash -c "grep -q 'COBRADA spotify:track:f440d050aa' '$W/datos-noche-noche-sp/rocola_spotify.txt'"
+fi
+
+# ---------------------------------------------------------------- copiauri (22-11-2026): Soloist toca la «copia» de la pedida con OTRA uri
+# (Spotify la enlaza a otra edicion): mismo titulo, artista y duracion -> se acepta como la pedida (antes: «NO PEDIDO», pausa y credito devuelto)
+if [[ " $partes " == *" copiauri "* ]]; then
+  echo "== copiauri (la copia con otra uri suena como la pedida)"
+  d=$(datos copiauri); T0=$(date +%s.%N)
+  abre copiauri "$d" "7:67" "9:pide spotify:track:f440d012ca|Cancion f440d012ca|Artista inventado|Disco inventado|12000;26:copia" 27 TERM ROCOLA_OS=spotify,spotify-prueba \
+    SOLOIST_FALSO_COPIA="spotify:track:f440d012ca>spotify:track:f440d012cb"
+  o="$W/copiauri"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+  si "copiauri: sale con 0" test "$(cat $o/salio)" = 0
+  si "copiauri: el Soloist falso toco la copia" contiene "$o/falso.txt" "toca la copia spotify:track:f440d012cb"
+  si "copiauri: la rocola la acepto como la pedida (COPIA)" contiene "$b" "COPIA: Soloist toca «spotify:track:f440d012cb»"
+  si "copiauri: la copia no se pauso como NO PEDIDO y nada se devolvio" bash -c "! grep -q 'NO PEDIDO.*f440d012cb' '$b' && ! grep -q DEVUELTA '$b'"
+  t440=$(oye "$f" 440)
+  si "copiauri: se oye entera (12 s: $t440 s)" entre "$t440" 11.5 12.4
+  si "copiauri: el estado: cobradas=1 devueltas=0" bash -c "[ '$(estado $o cobradas)$(estado $o devueltas)' = 10 ]"
+fi
+
+# ---------------------------------------------------------------- nivela (22-11-2026, spotify_nivela): una de Spotify muy baja (-30 dBFS)
+# la primera vez sube sola en sus primeros 30 s (hacia la sonoridad tipica de las medidas: 25 inventadas en rocola_spotify_niveles.txt) y se
+# congela; al acabar entera se mide y se guarda; la segunda vez (otra corrida con esos datos) suena nivelada desde el primer segundo
+if [[ " $partes " == *" nivela "* ]]; then
+  echo "== nivela (primera vez: subida suave y congelada; se aprende; segunda vez: nivelada desde el principio)"
+  d=$(datos nivela1)
+  { echo "ROCOLA-SPOTIFY-NIVELES v1"; for i in $(seq 10 34); do printf 'semilla%s\t-1\t-2\t-4\t-10\t1700000000\n' $i; done; } > "$d/rocola_spotify_niveles.txt"
+  T0=$(date +%s.%N)
+  NV="9:pide spotify:track:f440d034q30|$P|34000"
+  abre nivela1 "$d" "7:67" "$NV;55:copia" 56 TERM ROCOLA_OS=spotify,spotify-prueba,spotify_nivela
+  o="$W/nivela1"; b="$d/rocola_spotify.txt"
+  serie() { echo "# t dB (440 Hz, tramos de 100 ms)"; python3 -c "import sys; sys.path.insert(0, sys.argv[1]); from niveles import niveles; [print('%.2f %.3f' % p) for p in niveles(sys.argv[2], sys.argv[3], 440)]" "$G" "$1/sonado.raw" "$1/registro.txt"; }
+  ventana() { python3 - "$1" "$2" "$3" <<'EOP'
+import sys
+L=[l.split() for l in open(sys.argv[1]).read().splitlines()[1:] if l.strip()]
+v=sorted(float(b) for a,b in L if float(sys.argv[2])<=float(a)<=float(sys.argv[3]))
+print("%.2f" % (v[len(v)//2] if v else -99))
+EOP
+  }
+  serie "$o" > "$o/niveles.txt"
+  i0=$(awk 'NR>1{print $1; exit}' "$o/niveles.txt")
+  a1=$(ventana "$o/niveles.txt" "$(echo "$i0 + 3" | bc)" "$(echo "$i0 + 5" | bc)"); z1=$(ventana "$o/niveles.txt" "$(echo "$i0 + 26" | bc)" "$(echo "$i0 + 32" | bc)")
+  echo "   primera vez: al empezar $a1 dB, al final $z1 dB"
+  si "nivela1: sale con 0" test "$(cat $o/salio)" = 0
+  si "nivela1: arranca con la mediana de las 25 medidas y en vivo" bash -c "grep -q 'nivelado de f440d034q30: arranca con la mediana de 25 de Spotify medidas' '$b' && grep -q 'en vivo los primeros 30 s hacia' '$b'"
+  si "nivela1: se congela a los 30 s" contiene "$b" "congelado a los 30.0 s"
+  si "nivela1: subio entre 5 y 8,5 dB en la cancion ($a1 -> $z1)" bash -c "echo '$z1 - $a1 >= 5 && $z1 - $a1 <= 8.5' | bc | grep -q 1"
+  si "nivela1: sin brincos (pasada la entrada de XP, ningun salto de mas de 0,3 dB entre tramos de 100 ms)" python3 - "$o/niveles.txt" "$i0" <<'EOP'
+import sys
+L=[l.split() for l in open(sys.argv[1]).read().splitlines()[1:] if l.strip()]
+v=[float(b) for a,b in L if float(sys.argv[2])+3<=float(a)<=float(sys.argv[2])+33]
+sys.exit(0 if v and max(abs(v[i+1]-v[i]) for i in range(len(v)-1)) <= 0.3 else 1)
+EOP
+  si "nivela1: se midio y se guardo en rocola_spotify_niveles.txt" bash -c "grep -q '^f440d034q30	' '$d/rocola_spotify_niveles.txt'"
+  d2="$W/datos-nivela2"; rm -rf "$d2"; cp -r "$d" "$d2"; rm -f "$d2/rocola_estado.txt"
+  T0=$(date +%s.%N)
+  abre nivela2 "$d2" "7:67" "$NV;30:copia" 31 TERM ROCOLA_OS=spotify,spotify-prueba,spotify_nivela
+  o2="$W/nivela2"
+  serie "$o2" > "$o2/niveles.txt"
+  i2=$(awk 'NR>1{print $1; exit}' "$o2/niveles.txt")
+  a2=$(ventana "$o2/niveles.txt" "$(echo "$i2 + 3" | bc)" "$(echo "$i2 + 5" | bc)"); z2=$(ventana "$o2/niveles.txt" "$(echo "$i2 + 12" | bc)" "$(echo "$i2 + 18" | bc)")
+  echo "   segunda vez: al empezar $a2 dB, a los 12-18 s $z2 dB"
+  si "nivela2: sale con 0" test "$(cat $o2/salio)" = 0
+  si "nivela2: ya medida: sin nivelado en vivo" bash -c "! grep -q 'nivelado de f440d034q30' '$d2/rocola_spotify.txt' || [ \$(grep -c 'nivelado de f440d034q30: arranca' '$d2/rocola_spotify.txt') = 1 ]"
+  si "nivela2: desde el primer segundo, mas fuerte que la primera vez al empezar (al menos 8 dB: $a1 -> $a2)" bash -c "echo '$a2 - $a1 >= 8' | bc | grep -q 1"
+  si "nivela2: quieta (al empezar y a los 12-18 s a 0,5 dB: $a2, $z2)" bash -c "echo '$z2 - $a2 <= 0.5 && $a2 - $z2 <= 0.5' | bc | grep -q 1"
+fi
+
+# ---------------------------------------------------------------- portadatarde (22-11-2026): la pedida entra sin portada (aun bajandose, el
+# servidor tarda 4 s) y, al llegar, se le pone a la que suena (antes se quedaba sin portada para siempre)
+if [[ " $partes " == *" portadatarde "* ]]; then
+  echo "== portadatarde (la portada que llega despues se pone a la que suena)"
+  d=$(datos portadatarde); o="$W/portadatarde"; srv="$W/servidor-lento"; mkdir -p "$srv"
+  convert -size 64x64 xc:'#3060a0' "$srv/p.jpg"
+  pto=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()")
+  python3 -I - "$srv" "$pto" > "$W/servidor-lento.txt" 2>&1 <<'EOP' & sp=$!
+import sys, time, http.server, functools
+class H(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        time.sleep(4); return super().do_GET()
+http.server.ThreadingHTTPServer(('127.0.0.1', int(sys.argv[2])), functools.partial(H, directory=sys.argv[1])).serve_forever()
+EOP
+  U="http://127.0.0.1:$pto"; T0=$(date +%s.%N)
+  abre portadatarde "$d" "7:67" "9:pide spotify:track:f440d012ee|$P|12000|$U/p.jpg|spotify:album:disco0009;20:copia" 21 TERM ROCOLA_OS=spotify,spotify-prueba
+  kill $sp 2>/dev/null; wait $sp 2>/dev/null
+  b="$d/rocola_spotify.txt"
+  si "portadatarde: sale con 0" test "$(cat $o/salio)" = 0
+  si "portadatarde: entro sin portada (aun no estaba)" bash -c "grep -q 'COBRADA spotify:track:f440d012ee' '$b' && ! grep -q 'COBRADA spotify:track:f440d012ee.*con portada' '$b'"
+  si "portadatarde: al llegar se le puso a la que suena" contiene "$b" "la portada de spotify:track:f440d012ee llego: puesta a 1 (la que suena)"
+  si "portadatarde: en /run" test -s "$o/run/rocola-xp/spotify/portadas/disco0009.jpg"
+fi
+
+# ---------------------------------------------------------------- repetida (22-11-2026): la de Spotify y tu MP3 de la misma grabacion son la
+# MISMA para la regla de XP de no repetir («Esa ya va seguida», sin cobrar), en los dos sentidos. Tu cancion: «01 Cancion 1» de «Disco Uno»
+# (el artista que XP saca de su carpeta; 3,24 s, de los datos de partida); la de Spotify con su mismo titulo, artista y duracion. Mientras suena otra larga de Spotify.
+if [[ " $partes " == *" repetida "* ]]; then
+  echo "== repetida (Spotify y tu MP3 de la misma grabacion no se repiten)"
+  R="spotify:track:f440d003re|01 Cancion 1|Disco Uno|Disco Uno|3240"
+  d=$(datos repetida-a); T0=$(date +%s.%N)
+  abre repetida-a "$d" "7:67,10:13,11.5:13" "9:pide spotify:track:f550d020xa|$P|20000;9.5:pide $R;13:pide spotify:track:f660d004ya|$P|4000;18:copia" 19 TERM ROCOLA_OS=spotify,spotify-prueba
+  o="$W/repetida-a"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$(log $o)"
+  si "repetida-a: sale con 0" test "$(cat $o/salio)" = 0
+  si "repetida-a: la de Spotify entro (4->3->2)" contiene "$(log $o)" "pide spotify:track:f440d003re listo=1 entro=1 creditos 3->2"
+  si "repetida-a: tu MP3 de la misma grabacion no entro despues (ya va seguida)" bash -c "grep -q 'no entra: «01 Cancion 1» ya va seguida (mismo titulo, artista y duracion' '$b'"
+  si "repetida-a: y no se cobro (la siguiente va de 2 a 1)" contiene "$(log $o)" "pide spotify:track:f660d004ya listo=1 entro=1 creditos 2->1"
+  d=$(datos repetida-b); T0=$(date +%s.%N)
+  abre repetida-b "$d" "7:67,10:13,11.5:13" "9:pide spotify:track:f550d020xa|$P|20000;13:pide $R;14:pide spotify:track:f660d004ya|$P|4000;18:copia" 19 TERM ROCOLA_OS=spotify,spotify-prueba
+  o="$W/repetida-b"; b="$d/rocola_spotify.txt"
+  sed 's/^/   /' "$(log $o)"
+  si "repetida-b: sale con 0" test "$(cat $o/salio)" = 0
+  si "repetida-b: con tu MP3 en la cola, la de Spotify de la misma grabacion no entra ni se cobra (2->2)" contiene "$(log $o)" "pide spotify:track:f440d003re listo=1 entro=0 creditos 2->2"
+  si "repetida-b: el motivo en la bitacora" bash -c "grep -q 'no entra: «01 Cancion 1» ya va seguida' '$b'"
+  si "repetida-b: otra distinta si entra (2->1)" contiene "$(log $o)" "pide spotify:track:f660d004ya listo=1 entro=1 creditos 2->1"
+  d=$(datos repetida-c); T0=$(date +%s.%N)
+  abre repetida-c "$d" "7:67,10:13,11.5:13" "9:pide spotify:track:f550d020xa|$P|20000;13:pide spotify:track:f440d003rf|01 Cancion 1|Otro Artista|Disco Uno|3240;18:copia" 19 TERM ROCOLA_OS=spotify,spotify-prueba
+  o="$W/repetida-c"
+  si "repetida-c: otro artista con el mismo titulo si entra (2->1)" contiene "$(log $o)" "pide spotify:track:f440d003rf listo=1 entro=1 creditos 2->1"
 fi
 
 echo
