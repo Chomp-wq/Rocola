@@ -77,13 +77,16 @@ BR2_PACKAGE_ROCOLA_PULSO=y
 # siempre; xkeyboard-config para que libxkbcommon arme el teclado (sin el, cog no tendria teclas). Sin video ni audio de las paginas
 # (WPEWEBKIT_MULTIMEDIA: GStreamer entero), sin WebDriver ni el sandbox de bubblewrap. Lo abre /usr/bin/rocola-navegador. PAQUETES NUEVOS:
 # este cambio pide la compilacion COMPLETA (rapida.sh: lo de configs/ no lo sabe poner), y compilar WebKit es lo mas largo del sistema.
-BR2_PACKAGE_WPEWEBKIT=y
-BR2_PACKAGE_COG=y
-# BR2_PACKAGE_COG_PLATFORM_FDO is not set
-BR2_PACKAGE_COG_PLATFORM_DRM=y
-BR2_PACKAGE_COG_PROGRAMS_HOME_URI=""
-BR2_PACKAGE_LIBSOUP3_SSL=y
-BR2_PACKAGE_XKEYBOARD_CONFIG=y
+# FUERA DE ESTA VERSION (decision del dueno del 22-11-2026: «Cancela webkit, y que entre en la próxima»): WebKit de cero no cabia en la
+# maquina de GitHub (la 39 se congelo sin memoria y con 3 trabajos pasaba de las 6 h). Sin estos paquetes, Ctrl+F4 -> Navegador dice que no
+# esta en el sistema (rocola-navegador hay sale con 1) y lo demas de Ctrl+F4 sigue igual. Para la proxima, quitar los «#» de abajo.
+#BR2_PACKAGE_WPEWEBKIT=y
+#BR2_PACKAGE_COG=y
+## BR2_PACKAGE_COG_PLATFORM_FDO is not set
+#BR2_PACKAGE_COG_PLATFORM_DRM=y
+#BR2_PACKAGE_COG_PROGRAMS_HOME_URI=""
+#BR2_PACKAGE_LIBSOUP3_SSL=y
+#BR2_PACKAGE_XKEYBOARD_CONFIG=y
 
 # La imagen: ext4 y GRUB de BIOS y de UEFI, un solo archivo disk.img para grabar en una memoria USB
 BR2_TARGET_ROOTFS_EXT2=y
