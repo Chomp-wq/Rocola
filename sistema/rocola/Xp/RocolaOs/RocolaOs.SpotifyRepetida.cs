@@ -8,7 +8,8 @@
 //   - si no, por lo que se sabe de las dos: el titulo base y las marcas de version (las reglas de la pareja: TituloBase y MarcasDe; «- Remastered
 //     2012» o «(Remasterizado)» no cuentan, «(En vivo)» solo si las dos lo traen), el artista principal (MismoArtista) y la duracion a 3 s
 //     (la tuya, la del repaso; sin ella no se dan por iguales);
-//   - dos de Spotify con distinta uri: la misma si son la «copia» (mismo titulo, artista y duracion a 3 s: EsCopia de RocolaOs.Spotify.cs).
+//   - dos de Spotify con distinta uri siguen como en XP (distintas): lo pedido es Spotify contra tu MP3, y dos de Spotify del mismo titulo y
+//     artista con poca diferencia de duracion pueden ser canciones distintas (las pruebas del nucleo lo hacen a proposito).
 // Sin Rocola OS o sin el modo Spotify: false (XP tal cual).
 using System;
 using System.Collections.Generic;
@@ -24,15 +25,10 @@ namespace Rocola
             string pa = a.Song.Path, pb = it.Song.Path;
             if (pa == null || pb == null) return false;
             bool sa = RocolaOsSpotify.EsUriDeCancion(pa), sb = RocolaOsSpotify.EsUriDeCancion(pb);
-            if (!sa && !sb) return false;   // dos de XP: lo de XP
-            bool misma;
+            if (sa == sb) return false;   // dos de XP o dos de Spotify: lo de XP (la ruta)
             string porQue;
-            if (sa && sb) { misma = RocolaOsMismaSpotify(a.Song, it.Song); porQue = "la misma grabacion con otra uri"; }
-            else
-            {
-                Track local = sa ? it.Song : a.Song, sp = sa ? a.Song : it.Song;
-                misma = RocolaOsMismaLocalSpotify(local, sp, out porQue);
-            }
+            Track local = sa ? it.Song : a.Song, sp = sa ? a.Song : it.Song;
+            bool misma = RocolaOsMismaLocalSpotify(local, sp, out porQue);
             if (misma) RocolaOsSpotify.Apunta("no entra: «" + it.Song.Title + "» ya va seguida (" + porQue + ": " + pa + " y " + pb + ")");
             return misma;
         }
@@ -46,12 +42,6 @@ namespace Rocola
                 if (!string.IsNullOrEmpty(p.Artista)) artista = p.Artista;
                 durMs = p.DuracionMs;
             }
-        }
-        private bool RocolaOsMismaSpotify(Track x, Track y)
-        {
-            string t1, a1, t2, a2; int d1, d2;
-            RocolaOsDatosSpotify(x, out t1, out a1, out d1); RocolaOsDatosSpotify(y, out t2, out a2, out d2);
-            return RocolaOsSpotify.EsCopia(t1, a1, d1, t2, a2, d2);
         }
         private bool RocolaOsMismaLocalSpotify(Track local, Track sp, out string porQue)
         {

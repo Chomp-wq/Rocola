@@ -49,7 +49,7 @@ Ahora, con el modo Spotify, una de Spotify y una tuya son la misma si:
   «(Remasterizado)» no cuentan; «(En vivo)» solo si las dos lo traen), el artista principal (`MismoArtista`) y la duración a 3 s (la tuya, la
   del repaso; sin ella no se dan por iguales).
 
-Dos de Spotify con distinta uri: la misma si son la «copia». En los dos sentidos. Es la regla de XP, solo con otra idea de «la misma»: sigue
+Dos de Spotify con distinta uri siguen como en XP (distintas). En los dos sentidos. Es la regla de XP, solo con otra idea de «la misma»: sigue
 comparando con la última, como XP.
 
 ## 4. La portada que llega después (`RocolaOs.SpotifyPide.cs`)
