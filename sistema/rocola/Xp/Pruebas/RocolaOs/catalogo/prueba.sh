@@ -54,6 +54,10 @@ fi
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
 rm -rf "$W"; mkdir -p "$W"
 bien=0; mal=0
+# colores PNG R G B X Y W H: cuantos puntos de ese color (a 28 por canal) hay en el rectangulo
+colores() { python3 -c "import sys;from PIL import Image;a=Image.open(sys.argv[1]).convert('RGB');r,g,b,x,y,w,h=map(int,sys.argv[2:9]);c=a.crop((x,y,x+w,y+h));print(sum(1 for p in c.getdata() if abs(p[0]-r)<=28 and abs(p[1]-g)<=28 and abs(p[2]-b)<=28))" "$@" 2>/dev/null || echo 0; }
+# distintos A B X Y W H U: cuantos puntos difieren mas de U entre las dos capturas en el rectangulo
+distintos() { python3 -c "import sys;from PIL import Image,ImageChops;a=Image.open(sys.argv[1]).convert('RGB');b=Image.open(sys.argv[2]).convert('RGB');x,y,w,h,u=map(int,sys.argv[3:8]);d=ImageChops.difference(a.crop((x,y,x+w,y+h)),b.crop((x,y,x+w,y+h)));print(sum(1 for p in d.getdata() if max(p)>u))" "$@" 2>/dev/null || echo 0; }
 si() { local d="$1"; shift; if "$@"; then echo "BIEN  $d"; bien=$((bien + 1)); else echo "MAL   $d"; mal=$((mal + 1)); fi; }
 contiene() { grep -qF -- "$2" "$1" 2>/dev/null; }
 nocontiene() { ! grep -qF -- "$2" "$1" 2>/dev/null; }
@@ -308,7 +312,16 @@ for e in $escenas; do
     si "pared: de «Canciones de» solo su 1a pagina (off=0: se quedo elegida al abrir, para que la ficha diga cuantas trae); las demas no (nadie entro)" bash -c "[ \$(grep -c 'q=artist:' '$a') = 1 ] && grep -q 'q=artist:\"Banda Interminable\" t=track off=0$' '$a'"
     si "pared: sin la cuenta, nada de la cuenta ni de los atajos (/v1/me)" bash -c "! grep -q '/v1/me/' '$a'"
     si "pared: el estado cuenta las paginas del artista (artistas=4)" bash -c "grep -qx 'artistas=4' '$o/run/rocola-xp/spotify/catalogo'"
-    si "pared: nada de Spotify en los datos de XP (solo la bitacora del nucleo y la llave)" bash -c "! grep -rlE 'spotify:|can5|dis5|Interminable' '$d' | grep -vE '/(rocola_spotify\.txt|rocola_spotify_api\.txt|rocola_os_bitacora\.txt)$' | grep -q ." ;;
+    si "pared: nada de Spotify en los datos de XP (solo la bitacora del nucleo y la llave)" bash -c "! grep -rlE 'spotify:|can5|dis5|Interminable' '$d' | grep -vE '/(rocola_spotify\.txt|rocola_spotify_api\.txt|rocola_os_bitacora\.txt)$' | grep -q ."
+    # (22-11-2026, el dueno: en la pared del buscador no va el abecedario: «REGRESAR AL BUSCADOR» con el boton rojo, y «DISCOS · ARTISTA» con
+    # el icono de Spotify; RocolaOs/RocolaOs.ParedLetrero.cs). En 1024x768 la barra va en la franja y=58..94 y la cabecera en la fila de arriba
+    ca="${CAPTURAS:-$W}"
+    rojos=$(colores "$ca/pared-artista.png" 228 72 72 0 58 1024 36); franja=$(distintos "$ca/pared-artista.png" "$ca/pared-xp-al-cerrar-el-buscador.png" 0 58 1024 36 40)
+    verdes=$(colores "$ca/pared-artista.png" 29 185 84 600 0 424 56); verdesxp=$(colores "$ca/pared-xp-al-cerrar-el-buscador.png" 29 185 84 600 0 424 56)
+    rojosxp=$(colores "$ca/pared-xp-al-cerrar-el-buscador.png" 228 72 72 300 58 424 36)
+    si "pared: sin el abecedario: en su franja, el boton rojo del letrero ($rojos puntos rojos) y la franja distinta de la de XP ($franja puntos)" test "$rojos" -gt 60 -a "$franja" -gt 3000
+    si "pared: la cabecera con el icono de Spotify ($verdes puntos verdes); en la pared de XP no ($verdesxp)" test "$verdes" -gt 60 -a "$verdesxp" -lt 10
+    si "pared: al cerrar el buscador, la pared de XP con su abecedario (sin el boton rojo del letrero: $rojosxp puntos rojos en medio de la franja)" test "$rojosxp" -lt 40 ;;
   canciones)
     # «CANCIONES DE ARTISTA»: la casilla 1 de la pared de Banda Interminable; al entrar se piden sus canciones (search artist:"..." de 10 en 10)
     # mientras se esta dentro, hasta 50 (5 peticiones); PONER pide la 1a; ARRIBA desde la 1a da la vuelta a la ultima (la 50a) y se pide

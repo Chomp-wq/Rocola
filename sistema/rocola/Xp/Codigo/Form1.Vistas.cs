@@ -250,7 +250,7 @@ namespace Rocola
             public void Raton(AvisoRaton que, Raton e)   // EN LINUX: protected override void OnMouseClick(MouseEventArgs e): el raton de la vista (IVista.Raton), que la pantalla le da como WinForms al control; solo el clic (MouseClick)
             { if (que != AvisoRaton.Clic) return;   // EN LINUX: los demas avisos del raton, los de fabrica de Control (no hacen nada)
                 int n = Letters.Length;
-                if (n == 0 || Width <= 0) { return; }   // EN LINUX: base.OnMouseClick(e) (el aviso MouseClick a los que escuchan) lo da la pantalla despues de Raton (PantallaRocola.AvisaOyentes), como el On* de fabrica
+                if (n == 0 || Width <= 0 || RocolaOsParedSinLetras(Current)) { return; }   // ROCOLA OS g242: (XP) if (n == 0 || Width <= 0) { return; } — en una pared del buscador la franja no elige letra (RocolaOs/RocolaOs.ParedLetrero.cs; de XP, false)   // EN LINUX: base.OnMouseClick(e) (el aviso MouseClick a los que escuchan) lo da la pantalla despues de Raton (PantallaRocola.AvisaOyentes), como el On* de fabrica
                 // CON DECIMALES, igual que se DIBUJA. Con division entera la casilla en la que crees pinchar y
                 // la que la barra dibuja se iban separando hacia la derecha -en 1024 casi un tercio de casilla
                 // al final, y con un video al lado MAS DE UNA CASILLA ENTERA-: pinchabas una letra y te llevaba
@@ -575,7 +575,7 @@ namespace Rocola
             {
                 cx = cy = r = 0f;
                 int n = Letters.Length; if (n == 0 || Width < 4 || Height < 4) return false;
-                if (Available == null || !Available.Contains(TopMark)) return false;
+                if (Available == null || !Available.Contains(TopMark) || RocolaOsParedSinLetras(Current)) return false;   // ROCOLA OS g241: (XP) if (Available == null || !Available.Contains(TopMark)) return false; — en una pared del buscador no hay barra: ni el dorado de TOP (RocolaOs/RocolaOs.ParedLetrero.cs; de XP, false)
                 int i = Letters.IndexOf(TopMark); if (i < 0) return false;
                 float slot = (float)Width / n;
                 float altoL = Height - AltoCuenta(slot, Height);
@@ -628,7 +628,7 @@ namespace Rocola
             public void RenderContent(SKCanvas g, AjusteLetra ajuste, bool copia, Filtro filtro, bool medio, bool forGpu)   // EN LINUX: el lienzo de Skia (con su matriz y su recorte) y el estado del Graphics del que llama que aqui no se pone: el modo de letra, la copia, el filtro (el de la tira, DrawImageUnscaled) y el medio pixel. El suavizado se pone aqui (AntiAlias) y XP lo deja puesto en el Graphics (si la barra tiene medida y letras): quien la llama lo pone despues; la llaman directo su Pinta (el OnPaint de XP) y DrawCtrlOverlay (Form1.Video.cs)
             {
                 int w = Width, h = Height, n = (Letters == null) ? 0 : Letters.Length;
-                if (w < 4 || h < 4 || n == 0) return;
+                if (w < 4 || h < 4 || n == 0 || RocolaOsParedLetrero(Current, g, ajuste, copia, medio, w, h)) return;   // ROCOLA OS g240: (XP) if (w < 4 || h < 4 || n == 0) return; — en una pared del buscador (Spotify) no va el abecedario: el letrero «REGRESAR AL BUSCADOR» con el boton rojo (RocolaOs/RocolaOs.ParedLetrero.cs; de XP, false)
                 bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias: el estado del dibujo en variables
                 float slot = (float)w / n;
                 double pulse = forGpu ? 0.45 : 0.5 + 0.5 * Math.Sin(Phase * 2.2);
@@ -1080,7 +1080,7 @@ namespace Rocola
                 // que el sitio que le toca cambia con la pantalla. Y lo que quepa se pega a la DERECHA, para
                 // que no quede colgando en medio de un hueco.
                 float pw0 = Math.Max(3f, h * 0.13f);
-                float anchoNombre = pw0 + h * 0.32f + AnchoTexto(ajuste, Section, fSec) + 4f;   // EN LINUX: AnchoTexto(g, t, f) (Form1.Ajustes.cs, ya traducida), directo: del Graphics solo mira su modo de letra, el del que llama; la Letra en vez de la Font
+                float anchoNombre = pw0 + h * 0.32f + AnchoTexto(ajuste, Section, fSec) + 4f + RocolaOsParedIconoAncho(Section, h);   // ROCOLA OS g243: (XP) float anchoNombre = pw0 + h * 0.32f + AnchoTexto(ajuste, Section, fSec) + 4f;   // EN LINUX: AnchoTexto(g, t, f) (Form1.Ajustes.cs, ya traducida), directo: del Graphics solo mira su modo de letra, el del que llama; la Letra en vez de la Font — junto a la cabecera de una pared del buscador va el icono de Spotify: su sitio (RocolaOs/RocolaOs.ParedLetrero.cs; de XP, 0)
                 int pag0 = Page; if (pag0 < 0) pag0 = 0; else if (Total > 0 && pag0 >= Total) pag0 = Total - 1;
 
                 // LA RAYITA SEPARADORA se dibuja SIEMPRE que detras del nombre venga algo, lleve puntitos o no.
@@ -1143,7 +1143,7 @@ namespace Rocola
                 // medias" ni se sale por la derecha.
                 string sec = Section ?? "";
                 Rocola.Nativo.Letra fUsar = fSec; Rocola.Nativo.Letra fApreta = null;   // EN LINUX: Font: Letra
-                float tope = Math.Max(10f, w - x);
+                float tope = Math.Max(10f, w - x - RocolaOsParedIconoAncho(sec, h));   // ROCOLA OS g245: (XP) float tope = Math.Max(10f, w - x); — el texto de la cabecera de una pared del buscador deja sitio al icono de Spotify que va detras (RocolaOs/RocolaOs.ParedLetrero.cs; de XP, 0)
                 float anchoSec = AnchoTexto(ajuste, sec, fUsar);   // EN LINUX: AnchoTexto, directo, con el modo de letra del que llama
                 if (anchoSec > tope)
                 {
@@ -1163,7 +1163,7 @@ namespace Rocola
                 brocha.Color = ac.Sk();   // EN LINUX: el color del pincel (SolidBrush.Color), en el de Skia
                 TextoGdiPlus.Escribe(g, sec, fUsar, ajuste, brocha, new RectangleF(x, 0, tope, h), sfIzq, copia, medio);   // EN LINUX: g.DrawString
                 if (fApreta != null) fApreta.Dispose();
-                x += anchoSec;
+                x += anchoSec + RocolaOsParedIcono(g, sec, x + anchoSec, h, copia, medio);   // ROCOLA OS g244: (XP) x += anchoSec; — el icono de Spotify despues del texto de la cabecera de una pared del buscador (RocolaOs/RocolaOs.ParedLetrero.cs; de XP, 0)
 
                 if (!algoDetras) return;   // una sola pagina, o no cabe nada mas
                 int pag = pag0;

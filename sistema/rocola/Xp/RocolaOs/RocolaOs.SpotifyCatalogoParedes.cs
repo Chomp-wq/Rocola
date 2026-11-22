@@ -231,14 +231,14 @@ namespace Rocola
             RocolaOsSpotifyParedQue q;
             if (rocolaOsSpParedDe != null && rocolaOsSpParedDe.TryGetValue(a, out q))
             {
-                if (q.Tipo == "todos") RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedTodos, q.De, null, null, null, "TODOS LOS DISCOS DE «" + q.Nombre.ToUpperInvariant() + "»");
-                else RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedArtista, q.De, q.Nombre, q.PortadaUrl, q.Excluir, q.Nombre.ToUpperInvariant() + " · MÁS EN SPOTIFY");
+                if (q.Tipo == "todos") RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedTodos, q.De, null, null, null, "DISCOS · «" + q.Nombre.ToUpperInvariant() + "»");   // (22-11-2026, el dueno: «el anuncio Discos-tal artista y al lado un icono de Spotify»; el icono: RocolaOs.ParedLetrero.cs)
+                else RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedArtista, q.De, q.Nombre, q.PortadaUrl, q.Excluir, "DISCOS · " + q.Nombre.ToUpperInvariant());
                 return true;
             }
             RocolaOsSpotifyCatalogoArtista ar;
             if (it.Kind == 0 && rocolaOsSpDeArtista.TryGetValue(a, out ar))
             {
-                RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedArtista, ar.Id, ar.Nombre ?? "", ar.PortadaUrl, null, (ar.Nombre ?? "").ToUpperInvariant());
+                RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedArtista, ar.Id, ar.Nombre ?? "", ar.PortadaUrl, null, "DISCOS · " + (ar.Nombre ?? "").ToUpperInvariant());
                 return true;
             }
             return false;
@@ -292,6 +292,7 @@ namespace Rocola
             if (p.PaginaMirada != page) { p.PaginaMirada = page; p.Fallados.Clear(); }
             p.PaginaPub = page;   // (revision cuota-hilos-y-fallos) lo pedido para otra pagina que aun espera en la cola se deja
             if (!libBuilding) foreach (int b in RocolaOsSpotifyFaltan(p, page)) RocolaOsSpotifyPideBloque(p, b, null);
+            RocolaOsParedCabecera = p.Cabecera;   // (la cabecera de XP le pone el icono de Spotify al lado: RocolaOs.ParedLetrero.cs)
             return p.Cabecera;
         }
         // los bloques de 10 que faltan en esa pagina de 18 casillas (ni pedidos ya, ni fallados en esta mirada)

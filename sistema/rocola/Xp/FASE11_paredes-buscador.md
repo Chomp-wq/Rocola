@@ -409,3 +409,27 @@ paredes ni se crean sin él; `sinllave`, `apagado` y `cero` siguen en 0 peticion
   hasta que alguien la mira: entonces se pide 1 bloque, llega vacío y la lista se acaba. Una petición, no una cadena.
 - Nada de esto con la API de verdad (cómo de equivocado viene su `total` de search en 2026), ni con el servidor de imágenes de verdad, ni
   en el A4.
+
+## Sin el abecedario en las paredes del buscador (22-11-2026)
+
+Peticion del dueno: «si nos metiamos a un artista que era de Spotify, se abriria una pared de discos que solo existe dentro del buscador
+[...] pero sigue apareciendo la barra de abecedario, eso va a confundir a la gente, debe salir un letrero que diga regresar al buscador y el
+boton rojo, y el anuncio Discos-tal artista y al lado un icono de Spotify».
+
+- En una pared del buscador (la letra que la barra no tiene, `RocolaOsSpotifyParedMarca`: la de un artista solo de Spotify, «más en
+  Spotify» y «Todos los discos de...») la barra de letras de XP no se dibuja (g240, `LetterBar.RenderContent`), no late el dorado de TOP
+  (g241, `GetTopGlow`) ni elige letra con el ratón (g242, `LetterBar.Raton`). En su franja, centrado: el botón rojo como lo dibuja el pie de
+  XP (`CtrlDot`, el rojo de `HelpBar`) y «REGRESAR AL BUSCADOR» con la letra del pie (sin remates, negrita) a la medida de la franja (12
+  puntos en 1024x768), sobre una cápsula oscura translúcida para que se lea sobre el cielo. Delante, en la misma cápsula, el icono de Spotify y «DISCOS · ARTISTA» al mismo tamaño (en 1024x768 la cabecera de arriba comparte fila con el pie y se encoge; aquí se lee), separados por una rayita; si no cabe todo en la franja, solo el letrero. REGRESAR (el rojo) vuelve al buscador como
+  antes (g53).
+- La cabecera dice «DISCOS · ARTISTA» (la del artista y la de «más en Spotify») o «DISCOS · «lo escrito»» (todos los discos), y detrás
+  del texto el icono de Spotify (círculo verde #1DB954 con las tres ondas negras, dibujado con Skia en `RocolaOsIconoSpotify`; sin archivos
+  de imagen) del 62 % del alto de la cabecera: su sitio entra en la medida del nombre (g243) y en el tope del texto (g245), y se dibuja
+  detrás del texto (g244). Solo junto a la cabecera de la pared que se mira (`RocolaOsParedCabecera`, la pone `RocolaOsSpotifyParedMira`).
+- Todo en `RocolaOs/RocolaOs.ParedLetrero.cs`. Sin Rocola OS o fuera de esas paredes, cada gancho deja lo de XP tal cual. La barra la
+  pinta la misma `RenderContent` con tarjeta y sin ella (la textura de la interfaz se rehace al cambiar `Current`, que ya entra en su firma).
+- Pruebas: la escena `pared` de `Pruebas/RocolaOs/catalogo` mira en las capturas de 1024x768 el botón rojo en la franja de la barra y que
+  la franja difiere de la de XP, el verde del icono en la fila de la cabecera (y ninguno en la pared de XP al cerrar el buscador) y que, al
+  volver a XP, el abecedario vuelve sin el letrero.
+- No visto en el A4. En 1024x768 la cabecera comparte fila con el pie y BUSCAR/AYUDA: un nombre largo de artista se encoge (como XP
+  encoge cualquier cabecera que no cabe).
