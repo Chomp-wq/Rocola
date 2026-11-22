@@ -130,8 +130,17 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Herramientas
         run: sudo apt-get update -q && sudo apt-get install -y -q build-essential cpio rsync bc unzip file clang zlib1g-dev qemu-system-x86 python3
+      # MEMORIA DE RESPALDO (22-11-2026): la 39 se congelo a media compilacion de WebKit (el registro se corta a las 23:19 y GitHub la
+      # dio por fallida a las 00:59 sin ningun error): sin memoria con 5 trabajos de WebKit. 12 GB de swap (y WebKit con 3, external.mk).
+      - name: Memoria de respaldo (swap)
+        run: |
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 12G /mnt/swapfile && sudo chmod 600 /mnt/swapfile && sudo mkswap /mnt/swapfile && sudo swapon /mnt/swapfile
+          free -h
+      # Restaurar y guardar por separado (como la del PC): si se corta, lo compilado queda en el ccache y la siguiente vuelta sigue.
       - name: Descargas y ccache de la vez anterior
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             /home/runner/rocola-trabajo/descargas
@@ -140,8 +149,29 @@ jobs:
           restore-keys: |
             rocola-sistema-${{ hashFiles('sistema/configs/rocola_a4_defconfig') }}-
             rocola-sistema-
+      # Se para SOLA a las 5 h 10 min para que quede tiempo de guardar el ccache antes del tope de 6 h de GitHub.
       - name: Compilar Rocola OS (la imagen del A4)
-        run: sh sistema/compila.sh
+        timeout-minutes: 325
+        run: |
+          set +e
+          setsid sh sistema/compila.sh & P=$!
+          ( sleep 18600; echo "Se acabo el tiempo de esta vuelta: se para para guardar lo hecho (lanzarla otra vez sigue de aqui)"; kill -TERM -$P; sleep 60; kill -KILL -$P ) 2>/dev/null & W=$!
+          wait $P; r=$?
+          kill $W 2>/dev/null
+          exit $r
+      - name: Que no quede nada compilando
+        if: always()
+        run: |
+          pkill -9 -f 'make|ccache|cc1|ld\.bfd|ninja' 2>/dev/null || true
+          sleep 3
+      - name: Guardar descargas y ccache (aunque la compilacion se haya cortado)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /home/runner/rocola-trabajo/descargas
+            /home/runner/rocola-trabajo/ccache
+          key: rocola-sistema-${{ hashFiles('sistema/configs/rocola_a4_defconfig') }}-${{ github.run_number }}-${{ github.run_attempt }}
       - name: Probar que el nucleo arranca
         run: |
           I=/home/runner/rocola-trabajo/salida/images
