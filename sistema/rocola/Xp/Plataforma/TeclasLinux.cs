@@ -37,12 +37,14 @@ namespace Rocola
         private const uint EVIOCGKEY = 0x80604518;   // _IOC(_IOC_READ, 'E', 0x18, 96): KEY_MAX (0x2ff) / 8 + 1 bytes
         [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "ioctl", SetLastError = true)] private static extern int ioctlBits(IntPtr fd, uint pedido, byte[] bits);
         private static List<int>[] deLinux;   // codigo de Windows -> las teclas de Linux que lo dan (Botones.cs al reves)
-        internal static bool Fisica(int vk)
+        internal static bool Fisica(int vk) { return FisicaSabida(vk) == 1; }
+        // 1 abajo, 0 arriba (algun aparato contesto), -1 no se sabe (ninguno contesto a EVIOCGKEY)
+        private static int FisicaSabida(int vk)
         {
             vk &= 0xFF;
             FileStream[] fs;
-            lock (candado) { if (pruebaAbajo[vk]) return true; fs = aparatos.ToArray(); }
-            if (fs.Length == 0) return false;
+            lock (candado) { if (pruebaAbajo[vk]) return 1; fs = aparatos.ToArray(); }
+            if (fs.Length == 0) return -1;
             if (deLinux == null)
             {
                 List<int>[] t = new List<int>[256];
@@ -50,8 +52,9 @@ namespace Rocola
                 deLinux = t;
             }
             List<int> codigos = deLinux[vk];
-            if (codigos == null) return false;
+            if (codigos == null) return -1;
             byte[] bits = new byte[96];
+            bool contesto = false;
             foreach (FileStream f in fs)
             {
                 bool ref1 = false;
@@ -62,9 +65,10 @@ namespace Rocola
                 }
                 catch { continue; }   // (se desconecto)
                 finally { if (ref1) f.SafeFileHandle.DangerousRelease(); }
-                foreach (int c in codigos) if ((bits[c >> 3] & (1 << (c & 7))) != 0) return true;
+                contesto = true;
+                foreach (int c in codigos) if ((bits[c >> 3] & (1 << (c & 7))) != 0) return 1;
             }
-            return false;
+            return contesto ? 0 : -1;
         }
         // una tecla de prueba: su estado fisico y despues su evento
         private static void DePrueba(Tecla t, bool abajo)
@@ -253,9 +257,22 @@ namespace Rocola
                 if (vk == 0) { senalRepite.WaitOne(); continue; }
                 double falta = en - PantallaRocola.AhoraMs;
                 if (falta > 0) { senalRepite.WaitOne((int)Math.Ceiling(falta)); continue; }
+                // TECLAS PEGADAS (22-11-2026, el dueno en el A4: «a veces algunos inputs se quedan pegados, ahorita se quedo presionado el
+                // verde y se puso una cancion que no queria»): la repeticion solo paraba con el evento de soltar, y si ese evento se pierde
+                // (SYN_DROPPED del nucleo, la placa USB que no lo manda, un aparato que se desconecta) la tecla se repetia para siempre.
+                // Antes de cada repeticion se pregunta al nucleo si sigue abajo (EVIOCGKEY); si ya no lo esta, se da por soltada (se
+                // entrega el soltar que falto) y no se repite. Si ningun aparato contesta, como antes.
+                bool sigue = FisicaSabida(vk) != 0;
                 lock (candado)
                 {
                     if (repiteVk != vk || repiteEn != en) continue;
+                    if (!sigue)
+                    {
+                        repiteVk = 0;
+                        Tecla tu = (Tecla)vk;
+                        PantallaRocola.Entrada(delegate { PantallaRocola.LlegaTecla(tu, false); });
+                        continue;
+                    }
                     repiteEn = en + RepeticionMs;
                     if (repiteEn < PantallaRocola.AhoraMs) repiteEn = PantallaRocola.AhoraMs + RepeticionMs;   // (sin rafagas si se atraso)
                     // (dentro del candado: si en este momento se suelta la tecla, el soltar va despues y la repeticion ya no sale)
