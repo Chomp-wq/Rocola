@@ -51,7 +51,18 @@ namespace Rocola
                 for (int c = 0; c <= 0x2FF; c++) { int v = Botones.CodigoWindows(c); if (v > 0 && v < 256) (t[v] ?? (t[v] = new List<int>())).Add(c); }
                 deLinux = t;
             }
-            List<int> codigos = deLinux[vk];
+            return EstadoDe(deLinux[vk], fs);
+        }
+        // (22-11-2026) lo mismo por el codigo de Linux (las teclas de volumen, que no tienen codigo de Windows en Botones.cs)
+        internal static int FisicaLinux(int codigo)
+        {
+            FileStream[] fs;
+            lock (candado) fs = aparatos.ToArray();
+            if (fs.Length == 0) return -1;
+            return EstadoDe(new List<int> { codigo }, fs);
+        }
+        private static int EstadoDe(List<int> codigos, FileStream[] fs)
+        {
             if (codigos == null) return -1;
             byte[] bits = new byte[96];
             bool contesto = false;
@@ -232,6 +243,7 @@ namespace Rocola
                     continue;
                 }
                 if (codigo >= 0x110 && codigo < 0x160) continue;   // otros botones de raton y de mando (no son teclas)
+                if (VolumenTeclas.Atiende(codigo, valor == 1)) continue;   // (22-11-2026) subir y bajar el volumen: en XP lo hacia Windows
                 int vk = Botones.CodigoWindows(codigo);
                 if (vk == 0) continue;
                 bool abajo = valor == 1;
