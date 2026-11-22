@@ -593,6 +593,7 @@ namespace Rocola
                     break;
                 case "volume_changed":
                     CambiaEstado(s => { if (e.Volumen >= 0) s.Volumen = e.Volumen; });
+                    VolumenAl100("aviso de Soloist");
                     break;
                 case "device_changed":
                     CambiaEstado(s => { if (e.IsActive.HasValue) s.Activa = e.IsActive.Value; if (e.DeviceName != null) s.Dispositivo = e.DeviceName; });
@@ -648,6 +649,29 @@ namespace Rocola
             Manda(OrdenSiNo("set_shuffle", false));
             Manda(OrdenSiNo("set_repeat_track", false));
             Manda(OrdenSiNo("set_repeat_context", false));
+            VolumenAl100("antes de tocar");
+        }
+        // (22-11-2026, el dueno eligio «Vigilar el volumen de Soloist») EL VOLUMEN DE SOLOIST AL 100: el volumen lo pone la rocola (su cadena,
+        // el modo noche, los botones de volumen); el de Spotify Connect (lo que alguien mueva desde el telefono o la app, o lo ultimo que
+        // tenia) se ignora en rocola-pulso, pero si Soloist lo aplicara por dentro, sus canciones sonarian mas bajo que las tuyas. Cada vez
+        // que se va a tocar o que Soloist avisa de otro volumen por debajo de 100, se le pide 100 y se apunta en la bitacora (una vez por
+        // valor, con lo que Soloist le pidio a rocola-pulso: 65536 = 100 %), como mucho una vez cada 2 s.
+        private static int volumenAvisado = -1; private static long volumenPedidoMs;
+        private static void VolumenAl100(string por)
+        {
+            int v = Estado.Volumen;
+            if (v < 0 || v >= 100) { if (v >= 100) volumenAvisado = -1; return; }
+            long ahora = Environment.TickCount64;
+            if (ahora - volumenPedidoMs < 2000) return;
+            volumenPedidoMs = ahora;
+            if (v != volumenAvisado)
+            {
+                volumenAvisado = v;
+                uint pulso = 0; try { pulso = Anillo.VolumenPedido; } catch { }
+                Apunta("Soloist tenia el volumen en " + v.ToString(CultureInfo.InvariantCulture) + " (" + por + "; a rocola-pulso le pidio "
+                    + pulso.ToString(CultureInfo.InvariantCulture) + " de 65536): se le pide 100");
+            }
+            Manda("{\"type\":\"command\",\"command\":\"set_volume\",\"volume\":100}");
         }
         // UNA PAUSA QUE MANDA LA ROCOLA (al acabar una suya): no cuenta como «se paro», y mientras llega (2 s) lo que siga sonando no es «no pedido»
         private static void PausaNuestra()

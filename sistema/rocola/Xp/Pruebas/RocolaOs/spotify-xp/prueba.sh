@@ -29,7 +29,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche copiauri nivela portadatarde repetida vacia cortada}"
+partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche copiauri nivela portadatarde repetida vacia cortada volumen}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -828,6 +828,20 @@ if [[ " $partes " == *" vacia "* ]]; then
   si "vacia: las dos acaban al terminar" bash -c "grep -q 'acabo spotify:track:f440d020va (Prueba): termino' '$b' && grep -q 'acabo spotify:track:f550d020vb (Prueba): termino' '$b'"
   si "vacia: la cola de Spotify: solo el aviso, una vez por cambio" bash -c "[ \$(grep -c 'la cola de Spotify trae' '$b') -le 2 ]"
   si "vacia: el estado: cobradas=2 devueltas=0" bash -c "[ '$(estado $o cobradas)$(estado $o devueltas)' = 20 ]"
+fi
+
+# ---------------------------------------------------------------- volumen (22-11-2026, el dueno eligio «Vigilar el volumen de Soloist»): Soloist
+# arranca con el volumen de Spotify Connect en 40 (lo ultimo del telefono); antes de tocar la rocola le pide 100 y lo apunta una vez.
+if [[ " $partes " == *" volumen "* ]]; then
+  echo "== volumen (Soloist con el volumen bajo: la rocola le pide 100)"
+  d=$(datos volumen); T0=$(date +%s.%N)
+  abre volumen "$d" "7:67" "9:pide spotify:track:f440d010vo|$P|10000;25:copia" 26 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_VOLUMEN=40
+  o="$W/volumen"; b="$d/rocola_spotify.txt"
+  grep -E 'volumen|acabo' "$b" | sed 's/^/   /'
+  si "volumen: sale con 0" test "$(cat $o/salio)" = 0
+  si "volumen: se apunto el 40 y se pidio 100 (una sola linea)" bash -c "[ \$(grep -c 'Soloist tenia el volumen en 40' '$b') = 1 ]"
+  si "volumen: Soloist recibio set_volume 100" bash -c "grep -q 'volume.*100\|set_volume' '$o/falso.txt'"
+  si "volumen: la cancion suena entera (cobradas=1 devueltas=0)" bash -c "[ '$(estado $o cobradas)$(estado $o devueltas)' = 10 ]"
 fi
 
 # ---------------------------------------------------------------- cortada (22-11-2026, la de la Sonora Santanera que se corto a media cancion y

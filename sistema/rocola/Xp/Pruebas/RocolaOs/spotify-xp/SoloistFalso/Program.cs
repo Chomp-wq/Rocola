@@ -81,6 +81,7 @@ static unsafe class SoloistFalso
     static int Main(string[] args)
     {
         string llave = null, ws = null, porPulso = null;
+        { int v0; if (int.TryParse(Environment.GetEnvironmentVariable("SOLOIST_FALSO_VOLUMEN") ?? "", out v0) && v0 >= 0 && v0 <= 100) volumen = v0; }   // (22-11-2026) el volumen con que arranca (lo ultimo del telefono)
         for (int i = 0; i < args.Length; i++)
         {
             string a = args[i];
