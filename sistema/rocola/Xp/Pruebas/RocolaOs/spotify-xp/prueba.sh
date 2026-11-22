@@ -624,6 +624,7 @@ if [[ " $partes " == *" noche "* ]]; then
         madrugada) enelsegundo 30; z=$(zona mad-$c 00:59); cruce=$(( ($(date +%s) / 60 + 1) * 60 )); pide=""; fin=72; largo=75000 ;;   # (20-11-2026, NV4)
       esac
       [ $c = sp ] && pide="9:pide spotify:track:f440d050aa|$P|$largo${pide:+;$pide}"
+      printf 'noche_desde_min=0\n' >> "$d/rocola_os.txt"   # (22-11-2026: Rocola OS empieza a las 22:30 -g235-; estas escenas miden la noche de XP, desde las 22 h)
       T0=$(date +%s.%N)
       if [ $c = sp ]; then abre noche-$m-$c "$d" "7:67" "$pide" $fin TERM ROCOLA_OS=spotify,spotify-prueba TZ="$z"
       else abre noche-$m-$c "$d" "7:67,9:13,10.5:13" "$pide" $fin TERM ROCOLA_OS=spotify,spotify-prueba TZ="$z"; fi
