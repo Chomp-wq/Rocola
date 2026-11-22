@@ -2555,10 +2555,10 @@ namespace Rocola
             if (panelSongs != null && panelSongs.Visible && !videoOn && !searchOpen && !maintMode
                 && (lblConfig == null || !lblConfig.Visible)
                 && (DateTime.Now - lastInput).TotalSeconds >= DiscoIdleSecs)
-            { BackToAlbums(); return; }
+            { if (!RocolaOsSpotifyDiscoInactivo()) BackToAlbums(); return; }   // ROCOLA OS g248: (XP) { BackToAlbums(); return; } — un disco de Spotify abierto desde el buscador o desde una pared del buscador, a los 30 s sin tocar nada, cierra todo y queda la pared de XP de antes de abrir el buscador (RocolaOs/RocolaOs.BuscadorMas.cs; de XP, false)
 
             // VIDEO A PANTALLA COMPLETA tras inactividad (para apreciarlo mejor)
-            if (videoOn && !videoFull && (DateTime.Now - lastInput).TotalSeconds > 8) EnterVideoFull();
+            if (RocolaOsSpotifyParedInactiva()) return; if (videoOn && !videoFull && (DateTime.Now - lastInput).TotalSeconds > 8) EnterVideoFull();   // ROCOLA OS g249: (XP) if (videoOn && !videoFull && (DateTime.Now - lastInput).TotalSeconds > 8) EnterVideoFull(); — una pared del buscador a los 60 s sin tocar nada se cierra toda (con el buscador) y queda la pared de XP de antes (RocolaOs/RocolaOs.BuscadorMas.cs; de XP, false)
             if (videoFull)
             {
                 if (lblAttract != null)

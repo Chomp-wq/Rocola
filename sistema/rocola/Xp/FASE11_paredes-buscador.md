@@ -433,3 +433,19 @@ boton rojo, y el anuncio Discos-tal artista y al lado un icono de Spotify».
   volver a XP, el abecedario vuelve sin el letrero.
 - No visto en el A4. En 1024x768 la cabecera comparte fila con el pie y BUSCAR/AYUDA: un nombre largo de artista se encoge (como XP
   encoge cualquier cabecera que no cabe).
+
+## Lo que se queda abierto se cierra solo (22-11-2026)
+
+Peticion del dueno: «si un cliente se queda dentro de una pared de discos temporal de Spotify, despues de cierto tiempo se debe cerrar eso y
+el buscador, como debe de ser, y tambien si alguien se queda dentro de un disco, despues de 30 segundos se saldra automaticamente de el».
+
+- Una pared del buscador (artista, «más en Spotify», «Todos los discos de...») a los 60 s sin tocar nada (como el buscador de XP) se
+  cierra TODA: la pila de paredes y el buscador, sin volver a abrirlo (g249, `Form1.cs`, junto a las de XP del reloj de la pantalla).
+- Un disco de Spotify abierto desde el buscador o desde una de esas paredes, a los 30 s sin tocar nada (como un disco de XP), cierra todo
+  igual (g248, en la línea del `BackToAlbums` de XP).
+- En los dos casos la rocola queda en la pared de XP en la letra, la página y la elección de antes de abrir el buscador (la vuelta de más
+  abajo de la pila). Mismas excepciones que XP (video, mantenimiento, la ventana de ajustes; la pared, además, con el asistente a la
+  vista). Un disco de XP sigue saliendo a su pared a los 30 s, como siempre.
+- Código: `RocolaOs/RocolaOs.BuscadorMas.cs` (`RocolaOsSpotifyCierraTodo`). Sin Rocola OS, cada gancho deja lo de XP tal cual.
+- Prueba: escena `inactivo` de `Pruebas/RocolaOs/catalogo` (pared 60 s, disco del buscador 30 s, disco de una pared 30 s y un disco de
+  XP 30 s; las tres veces la letra de antes). No visto en el A4.

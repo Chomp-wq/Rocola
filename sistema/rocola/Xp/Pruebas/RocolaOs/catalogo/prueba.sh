@@ -15,7 +15,7 @@
 #   que no llegaron por un 503 se vuelven a pedir al abrir el buscador pasado un minuto) y sinllave ayuda (la 2a revision funcionamiento-y-reglas:
 #   el modo encendido sin llaves es XP; la ayuda con ROJO+ABAJO en medio de la pila) y miente portadas (la 2a pasada de cuota-hilos-y-fallos:
 #   el «total» de search que dice de mas no hace pedir solo hasta el final; las portadas que no se bajaron por la red se vuelven a pedir);
-#   todas, de fabrica
+#   y inactivo (22-11-2026: lo que se queda abierto del buscador se cierra solo); todas, de fabrica
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
@@ -27,7 +27,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -527,6 +527,33 @@ for e in $escenas; do
     si "portadas: cada portada que dio 503 llego despues (200) y ninguna se pidio mas de 3 veces ($n503 con 503, $n200 con 200)" bash -c "[ $n503 -gt 0 ] && for f in \$(grep ' img 503' '$a' | awk '{print \$2}' | sort -u); do grep -q \"GET \$f img 200\" '$a' || exit 1; [ \$(grep -c \"GET \$f img\" '$a') -le 3 ] || exit 1; done"
     si "portadas: estan en /run (las de la pared y el buscador: $(ls $o/run/rocola-xp/spotify/portadas 2>/dev/null | grep -c 'jpg$'))" bash -c "[ \$(ls '$o/run/rocola-xp/spotify/portadas' | grep -c 'jpg$') -ge $n200 ] && [ $n200 -gt 0 ]"
     si "portadas: la bitacora lo dice una sola vez ($(grep -c 'una portada no se bajo' $d/rocola_os_bitacora.txt) renglones)" bash -c "[ \$(grep -c 'una portada no se bajo (503)' '$d/rocola_os_bitacora.txt') = 1 ]" ;;
+  inactivo)
+    # LO QUE SE QUEDA ABIERTO SE CIERRA SOLO (22-11-2026, el dueno: «si un cliente se queda dentro de una pared de discos temporal de
+    # Spotify, despues de cierto tiempo se debe cerrar eso y el buscador [...] y tambien si alguien se queda dentro de un disco, despues de
+    # 30 segundos se saldra automaticamente de el»). (1) la pared de Banda (17,5 s) sin tocar nada: a los 59 s sigue, a los 61 s se cerro
+    # toda y queda la pared de XP de antes (la moneda de los 81 s despierta la atraccion); (2) «mentira»: su disco desde el buscador (90,5 s):
+    # a los 31 s, la pared de XP (no el buscador); (3) la pared de Banda y su 1a casilla («Canciones de»): a los 31 s, la pared de XP;
+    # (4) un disco de XP (PONER en la pared de XP): a los 30 s, su pared, como siempre
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,81:67,82:27+38,$(escribe 83.5 mentira),$(derechas 86.5 14),90.5:13,124:67,125:27+38,$(escribe 126.5 interminable),$(derechas 130.5 14),133.5:13,136:13,170:13" 206 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 80 inactivo-pared-xp-tras-60-s),$(cap 119.5 inactivo-disco-del-buscador-a-los-29-s),$(cap 123 inactivo-pared-xp-tras-30-s-en-el-disco),$(cap 165 inactivo-disco-de-la-pared-a-los-29-s),$(cap 168.5 inactivo-pared-xp-tras-30-s-en-el-disco-de-la-pared),$(cap 171.5 inactivo-disco-xp),$(cap 199 inactivo-disco-xp-a-los-29-s),$(cap 203 inactivo-pared-xp-tras-30-s-en-el-disco-xp)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; b="$d/rocola_os_bitacora.txt"; cuota "$a"; ca="${CAPTURAS:-$W}"
+    grep 'se cierra todo lo del buscador' "$b" | sed 's/^/   /'
+    si "inactivo: sale con 0" test "$(cat $o/salio)" = 0
+    si "inactivo: la pared del buscador se cerro sola a los 60 s (una vez)" bash -c "[ \$(grep -c 'se cierra todo lo del buscador (una pared del buscador, 60 s sin tocar nada)' '$b') = 1 ]"
+    si "inactivo: el disco del buscador se cerro solo a los 30 s (una vez)" bash -c "[ \$(grep -c 'se cierra todo lo del buscador (un disco del buscador, 30 s sin tocar nada)' '$b') = 1 ]"
+    si "inactivo: el disco de la pared del buscador se cerro solo a los 30 s (una vez)" bash -c "[ \$(grep -c 'se cierra todo lo del buscador (un disco de una pared del buscador, 30 s sin tocar nada)' '$b') = 1 ]"
+    l=$(grep 'se cierra todo lo del buscador' "$b" | sed 's/.*letra //' | sort -u)
+    si "inactivo: las tres veces quedo la pared de XP en la letra de antes de abrir el buscador (letra $(echo $l | tr '\n' ' '))" bash -c "[ \$(echo '$l' | wc -l) = 1 ] && [ -n '$l' ] && [ '$l' != '♪' ]"
+    # (a los 59 s la atraccion de XP -40 s- tapa la pared; la hora del cierre la dice la bitacora)
+    rojo61=$(colores "$ca/inactivo-pared-xp-tras-60-s.png" 228 72 72 300 58 424 36)
+    si "inactivo: tras los 60 s, la pared de XP sin el letrero de la pared del buscador ($rojo61 puntos rojos)" test "$rojo61" -lt 40
+    dd=$(distintos "$ca/inactivo-disco-del-buscador-a-los-29-s.png" "$ca/inactivo-pared-xp-tras-30-s-en-el-disco.png" 0 100 1024 600 40)
+    si "inactivo: a los 29 s el disco del buscador seguia abierto y a los 31 s no ($dd puntos distintos)" test "$dd" -gt 20000
+    dx=$(distintos "$ca/inactivo-disco-xp-a-los-29-s.png" "$ca/inactivo-pared-xp-tras-30-s-en-el-disco-xp.png" 0 100 1024 600 40); dp=$(distintos "$ca/inactivo-pared-xp-tras-30-s-en-el-disco-de-la-pared.png" "$ca/inactivo-pared-xp-tras-30-s-en-el-disco-xp.png" 0 100 1024 600 40)
+    si "inactivo: el disco de XP salio solo a los 30 s a su pared, como siempre ($dx puntos distintos del disco; $dp de la pared de antes)" test "$dx" -gt 20000 -a "$dp" -lt 20000
+    si "inactivo: el buscador no se volvio a abrir solo (solo las 3 veces que se abrio a mano)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$b') = 2 ]"
+    si "inactivo: nada de Spotify pedido ($(pedidos $o))" test "$(pedidos $o)" = 0 ;;
   esac
 done
 
