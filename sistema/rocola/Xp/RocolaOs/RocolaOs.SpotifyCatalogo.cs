@@ -566,6 +566,10 @@ namespace Rocola
             if (rocolaOsSpRecientes.Count > RocolaOsSpotifyRecientesMax) rocolaOsSpRecientes.RemoveRange(RocolaOsSpotifyRecientesMax, rocolaOsSpRecientes.Count - RocolaOsSpotifyRecientesMax);
             RocolaOsSpotifyCatalogoRehaceLetra();
         }
+        // SIN LA LETRA ♫ EN LA PARED (decision del dueno del 22-11-2026: «quite toda la musica de Spotify de la pared de discos [...] solo por
+        // buscador sera accesible esa musica»): la letra se queda vacia, asi que no sale en la barra y un disco de Spotify abierto desde el
+        // buscador vuelve al buscador con REGRESAR. Poner true la devuelve.
+        internal const bool RocolaOsSpotifyLetraEnLaPared = false;
         // LA LETRA: lo de la cuenta y despues lo reciente. Si alguien esta mirando la letra, su disco sigue elegido.
         private void RocolaOsSpotifyCatalogoRehaceLetra()
         {
@@ -576,6 +580,7 @@ namespace Rocola
             List<Album> l = new List<Album>(rocolaOsSpCuenta.Count + rocolaOsSpRecientes.Count);
             l.AddRange(rocolaOsSpCuenta);
             foreach (Album a in rocolaOsSpRecientes) if (!l.Contains(a)) l.Add(a);
+            if (!RocolaOsSpotifyLetraEnLaPared) l.Clear();   // (sin la letra ♫: lo de Spotify solo por el buscador)
             bool vacia = antes.Count == 0;
             rocolaOsSpLetra = l;
             if (vacia != (l.Count == 0)) RecalculaLetras();   // la letra aparece (o se va)

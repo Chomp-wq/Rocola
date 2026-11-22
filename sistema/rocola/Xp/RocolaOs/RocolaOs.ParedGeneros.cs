@@ -54,7 +54,9 @@ namespace Rocola
             {
                 Nombre = RocolaOsPgFuncion,
                 Que = "las letras con el catalogo (solo con el modo Spotify): los discos de Spotify intercalados en el orden de XP, hasta 500 paginas por letra, y la pastilla del genero en cada disco",
-                DeFabrica = true,
+                // APAGADA DE FABRICA (decision del dueno del 22-11-2026: «quite toda la musica de Spotify de la pared de discos, cargan muy lento
+                // las caratulas, asi que solo por buscador sera accesible esa musica»): la pared es la de XP; pared=1 en rocola_os.txt la vuelve a poner.
+                DeFabrica = false,
                 Arranca = f => f.RocolaOsPgArranca(),
                 Latido = f => f.RocolaOsPgLatido(),
                 Vivo = (f, sb) => f.RocolaOsPgVivo(sb),
