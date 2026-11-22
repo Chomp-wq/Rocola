@@ -1400,7 +1400,7 @@ namespace Rocola
             float fuerza = auto ? EqFuerzaAuto() : eqAmount;
             if (fuerza <= 0.001f || path == null || eqAvg == null) return null;
             float[] c;
-            if (!eqCache.TryGetValue(path, out c) || c[EqFingerprint] != EqVersionOriginal) return null;
+            if (!(eqCache.TryGetValue(path, out c) || RocolaOsSpotifyEqHuella(path, false, out c)) || c[EqFingerprint] != EqVersionOriginal) return null;   // ROCOLA OS g252: (XP) if (!eqCache.TryGetValue(path, out c) || c[EqFingerprint] != EqVersionOriginal) return null; — una de Spotify pedida con su huella aprendida recibe el EQ automatico como una tuya, con el mismo calculo (RocolaOs/RocolaOs.SpotifyEq.cs; de XP, false)
             if (billar) { float dur = SegundosDe(path); if (dur > 0.01f && dur < BillarEqMinSeg) return null; }
             // Banda por ENCIMA del acantilado de esta cancion: NUNCA se corrige, y por dos razones distintas
             // segun el caso. Con el DSEE apagado, ahi el codec no dejo musica: subirla seria subir ruido. Y con
@@ -1503,7 +1503,7 @@ namespace Rocola
         private float ExciteFactorFor(string path)
         {
             float[] c;
-            if (path == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen) return 1f;
+            if (path == null || !(eqCache.TryGetValue(path, out c) || RocolaOsSpotifyEqHuella(path, true, out c)) || c == null || c.Length < EqLen) return 1f;   // ROCOLA OS g253: (XP) if (path == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen) return 1f; — el realce de agudos de una de Spotify pedida con su corte medido, como a una tuya (RocolaOs/RocolaOs.SpotifyEq.cs; de XP, false)
             float corte = c[EqCut];
             if (corte <= 100f) return localAuto ? RealceBillarSinMedir : 1f;   // aun sin medir: como siempre
             float f = Clampf(1.45f - (corte - 15000f) / 6000f, ExciteCompleta, 1.45f);

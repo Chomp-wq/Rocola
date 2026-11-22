@@ -295,7 +295,7 @@ namespace Rocola
         }
         private void CierraHuellaDeFuente(string ruta, double[] sum, long n, int tasa, float corte, float bajo, FuenteMedida fuente)
         {
-            if (!AceptaFuenteMedida(ruta, fuente)) return;
+            if (RocolaOsSpotifyEqCierra(ruta, sum, n, tasa, corte, bajo) || !AceptaFuenteMedida(ruta, fuente)) return;   // ROCOLA OS g251: (XP) if (!AceptaFuenteMedida(ruta, fuente)) return; — la huella de una de Spotify se guarda aparte, por id, solo si sono entera (rocola_spotify_eq.txt): nunca en eqCache (RocolaOs/RocolaOs.SpotifyEq.cs; de XP, false)
             CierraHuella(ruta, sum, n, tasa, corte, bajo);
             ActualizaFuenteMedida(ruta, fuente); SaveFuentesMedidas();
         }

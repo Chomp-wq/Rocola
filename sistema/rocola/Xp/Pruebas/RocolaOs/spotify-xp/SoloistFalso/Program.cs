@@ -10,6 +10,8 @@
 //       spotify:track:fFFFdSSS...   tono de FFF Hz, SSS segundos (p. ej. spotify:track:f440d012abc: 440 Hz, 12 s)
 //       spotify:track:nx...         una que nunca empieza (no disponible: para la devolucion a los 15 s)
 //       spotify:track:fFFFdSSSm1... el tono con el volumen de la envolvente 1 (o m2: la 2), para la forma de la sustitucion invisible
+//       spotify:track:fFFFdSSSrKK... ademas del tono, un ruido blanco cortado a KK kHz (16 polos), para la huella de tono y el corte de
+//                                    agudos de spotify_eq y spotify_brillo (22-11-2026: Soloist manda Ogg Vorbis 160, cortado a unos 16 kHz)
 //     El ritmo lo marca el lector (I1: writable = objetivo - pendientes; sin lector, nada).
 //   - al acabar una cancion pasa sola a otra (autoplay: spotify:track:f990d030autoplay, de 990 Hz), como haria Spotify: la rocola la tiene que
 //     pausar. Con SOLOIST_FALSO_FIN=parar, se para en vez de seguir.
@@ -179,7 +181,7 @@ static unsafe class SoloistFalso
                 {
                     double t = (posCuadros + i) / (double)Rate;
                     double amp = envolvente == 0 ? ampBase : 0.125 * Math.Pow(10, (Envolvente(envolvente, t) + 12) / 20);
-                    float s = (float)(amp * Math.Sin(2 * Math.PI * hz * t));
+                    float s = (float)(amp * Math.Sin(2 * Math.PI * hz * t) + (ruido != null ? ruido.Siguiente() : 0.0));
                     buf[i * 2] = s; buf[i * 2 + 1] = s;
                 }
                 posCuadros += n;
@@ -243,7 +245,37 @@ static unsafe class SoloistFalso
             ampBase = 0.25;
             int qq = id.IndexOf('q');
             if (qq > 0) { int e2 = qq + 1; while (e2 < id.Length && char.IsDigit(id[e2])) e2++; if (e2 > qq + 1 && double.TryParse(id.Substring(qq + 1, e2 - qq - 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out double qdb)) ampBase = Math.Pow(10, -qdb / 20); }
+            // (22-11-2026, el EQ y el brillo de Spotify) «r» y unos digitos en el id: el ruido cortado a esos kHz
+            ruido = null;
+            int rr = id.IndexOf('r');
+            if (rr > 0) { int e3 = rr + 1; while (e3 < id.Length && char.IsDigit(id[e3])) e3++; if (e3 > rr + 1 && double.TryParse(id.Substring(rr + 1, e3 - rr - 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out double khz) && khz >= 1 && khz * 2000 < Rate) ruido = new Ruido(khz * 1000, Rate); }
             durCuadros = (long)(seg * Rate);
+        }
+    }
+    static Ruido ruido;
+    // EL RUIDO de las pruebas del EQ: blanco (siempre el mismo: la semilla fija), a unos -26 dBFS de valor eficaz, por 8 secciones de
+    // Butterworth de paso bajo (16 polos: el acantilado de un codec)
+    sealed class Ruido
+    {
+        uint x = 2463534242u;
+        readonly double[] b0 = new double[8], b1 = new double[8], b2 = new double[8], a1 = new double[8], a2 = new double[8], z1 = new double[8], z2 = new double[8];
+        internal Ruido(double fc, int rate)
+        {
+            double w = Math.Tan(Math.PI * fc / rate);
+            for (int k = 0; k < 8; k++)
+            {
+                double q = 1.0 / (2.0 * Math.Cos(Math.PI * (2 * k + 1) / 32.0));   // los polos de un Butterworth de orden 16
+                double n = 1.0 / (1.0 + w / q + w * w);
+                b0[k] = w * w * n; b1[k] = 2 * b0[k]; b2[k] = b0[k];
+                a1[k] = 2 * (w * w - 1) * n; a2[k] = (1 - w / q + w * w) * n;
+            }
+        }
+        internal double Siguiente()
+        {
+            x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+            double v = (x / 4294967296.0 - 0.5) * 0.17;   // uniforme: valor eficaz 0,049 (-26 dBFS) antes del filtro
+            for (int k = 0; k < 8; k++) { double y = b0[k] * v + z1[k]; z1[k] = b1[k] * v - a1[k] * y + z2[k]; z2[k] = b2[k] * v - a2[k] * y; v = y; }
+            return v;
         }
     }
     static Escritor escritorActual;

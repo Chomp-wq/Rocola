@@ -58,7 +58,7 @@ namespace Rocola
         internal float FaltaDeCuerpoDb(string path)
         {
             float[] c, avg = eqAvg;
-            if (path == null || avg == null || eqCache == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen
+            if (path == null || avg == null || eqCache == null || !(eqCache.TryGetValue(path, out c) || RocolaOsSpotifyEqHuella(path, false, out c)) || c == null || c.Length < EqLen   // ROCOLA OS g254: (XP) if (path == null || avg == null || eqCache == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen — en el billar, lo que le falta de cuerpo a una de Spotify pedida (la cancion flaca) sale de su huella, como en una tuya (RocolaOs/RocolaOs.SpotifyEq.cs; de XP, false)
                 || c[EqFingerprint] != EqVersionOriginal) return float.NaN;
             if (c[1] <= -25f || c[2] <= -25f) return float.NaN;
             float[] meta = MetaDeCancion(c) ?? avg;

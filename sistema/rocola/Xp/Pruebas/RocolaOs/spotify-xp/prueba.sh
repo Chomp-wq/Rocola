@@ -8,7 +8,7 @@
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
 #   escenas (de fabrica todas): apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso
-#   vigilante noche (adelanto y adelantoxp: el play adelantado de la siguiente de Spotify, rapido-spotify: FASE11_rapido-spotify.md)
+#   vigilante noche (adelanto y adelantoxp: el play adelantado de la siguiente de Spotify, rapido-spotify: FASE11_rapido-spotify.md); del 22-11-2026: copiauri nivela portadatarde repetida vacia cortada speq (speq: el EQ automatico y el brillo a la medida de una de Spotify, FASE11_spotify-nivela.md §7)
 #   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
 #   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
 #   «vigilante» (sin el, no se corre): rocola-xp lo abre y el abre el Soloist falso por soloist-envoltorio.sh (SOLOIST_BIN); y para «fabrica»
@@ -29,7 +29,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche copiauri nivela portadatarde repetida vacia cortada volumen}"
+partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche copiauri nivela portadatarde repetida vacia cortada speq volumen}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -879,6 +879,88 @@ if [[ " $partes " == *" cortada "* ]]; then
   si "cortada3: la pausa que no fue de la rocola se sigue desde donde iba" bash -c "grep -q 'se corto spotify:track:f660d030cc (Prueba) a los 1[0-9].[0-9] s: se paro; se intenta seguir' '$b' && grep -q 'acabo spotify:track:f660d030cc (Prueba): termino' '$b'"
   si "cortada3: se oye entera una sola vez (30 s: $t660 s)" entre "$t660" 29.2 30.8
   si "cortada3: sin DEVUELTA" nocontiene "$b" "DEVUELTA"
+fi
+
+# ---------------------------------------------------------------- speq (22-11-2026, spotify_eq y spotify_brillo): una de Spotify con un tono
+# y ruido cortado a 16 kHz (el acantilado de Vorbis 160; «r16» en el id del Soloist falso). La primera vez: sin EQ automatico y con el realce
+# de una sin medir, se mide entera y su huella (8 bandas y el corte) va por id a rocola_spotify_eq.txt, nada a rocola_eq.txt. La segunda vez
+# (otra corrida con esos datos): su EQ automatico y su realce con el corte medido, como una tuya. Con las dos funciones apagadas (los mismos
+# datos, con la huella guardada): como la primera vez (sin EQ ni realce a la medida) y la tabla sin tocar. Sin spotify_nivela (ganancia 1:
+# lo que cambia el sonido es solo el EQ y el realce). La biblioteca: 60 huellas sanas inventadas en rocola_eq.txt (el promedio de la casa).
+if [[ " $partes " == *" speq "* ]]; then
+  echo "== speq (EQ automatico y brillo a la medida en una de Spotify: primera vez se mide, segunda se corrige, apagadas como antes)"
+  EQID=f440d034r16
+  EQP="9:pide spotify:track:$EQID|$P|34000"
+  d=$(datos speq1)
+  for i in $(seq 1 60); do printf -- '-8;0.5;0;-1.5;-2;-1;-3.5;-6;20000;0;30;2|/musica/inventada/huella%s.mp3\r\n' $i; done >> "$d/rocola_eq.txt"
+  # el espectro de lo que sono (estereo 16 bits; los tramos de cada apertura con su ritmo): energia por bandas, en el tramo quieto
+  bandas() { python3 - "$1/sonado.raw" "$1/registro.txt" "$G" <<'EOP'
+import sys, numpy as np
+sys.path.insert(0, sys.argv[3]); from frecuencias import tramos
+a = np.fromfile(sys.argv[1], dtype='<i2').astype(np.float64) / 32768.0; x = a[0::2]
+mejor = None
+for ini, k, fs in tramos(sys.argv[2], len(x)):
+    if mejor is None or k > mejor[1]: mejor = (ini, k, fs)
+ini, k, fs = mejor
+# de lo que sono, los segundos 6 a 26 de la cancion (el primer tramo con sonido de verdad)
+y = x[ini:ini + k]; v = np.abs(y) > 1e-4; i0 = int(np.argmax(v)) if v.any() else 0
+y = y[i0 + int(6 * fs): i0 + int(26 * fs)]
+N = 8192; w = np.hanning(N); P = np.zeros(N // 2 + 1); n = 0
+for j in range(0, len(y) - N, N // 2): P += np.abs(np.fft.rfft(y[j:j + N] * w)) ** 2; n += 1
+P /= max(1, n); f = np.fft.rfftfreq(N, 1.0 / fs)
+def db(a, b): m = (f >= a) & (f < b); return 10 * np.log10(P[m].mean() + 1e-20)
+# (sin la banda del tono de 440 Hz) el grave, el medio, los agudos y lo de arriba del corte
+print("g=%.2f m=%.2f a=%.2f s=%.2f c=%.2f" % (db(60, 120), db(1500, 3500), db(8000, 12000), db(12500, 15000), db(17000, 19500)))
+EOP
+  }
+  campo() { echo "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
+  T0=$(date +%s.%N)
+  abre speq1 "$d" "7:67" "$EQP;50:copia" 51 TERM ROCOLA_OS=spotify,spotify-prueba,spotify_eq,spotify_brillo
+  o="$W/speq1"; b="$d/rocola_spotify.txt"; tq="$d/rocola_spotify_eq.txt"
+  grep -E "eq de $EQID" "$b" | sed 's/^/   /'
+  b1=$(bandas "$o"); echo "   primera vez: $b1"
+  si "speq1: sale con 0" test "$(cat $o/salio)" = 0
+  si "speq1: la primera vez sin huella: sin EQ automatico y se mide" contiene "$b" "eq de $EQID: sin huella (sin EQ automatico y el realce de una sin medir); se mide para la proxima"
+  si "speq1: al acabar entera se aprendio su huella y su corte" contiene "$b" "eq de $EQID: huella aprendida en 3"
+  corte=$(awk -F'\t' -v id=$EQID '$1==id {print $10}' "$tq" 2>/dev/null)
+  si "speq1: guardada por id en rocola_spotify_eq.txt con el corte de agudos medido (15-17,5 kHz: ${corte:-nada})" bash -c "[ -n '$corte' ] && python3 -c 'import sys; sys.exit(0 if 15000 <= float(sys.argv[1]) <= 17500 else 1)' '$corte'"
+  si "speq1: nada de Spotify en las tablas de XP (rocola_eq.txt, rocola_sonoridad.txt, rocola_fuentes.txt)" bash -c "! grep -q 'spotify:' '$d/rocola_eq.txt' '$d/rocola_sonoridad.txt' '$d/rocola_fuentes.txt'"
+  # la segunda vez
+  d2="$W/datos-speq2"; rm -rf "$d2"; cp -r "$d" "$d2"; rm -f "$d2/rocola_estado.txt" "$d2/rocola_spotify.txt"   # (la bitacora de Spotify, de cero: solo lo de esta vez)
+  T0=$(date +%s.%N)
+  abre speq2 "$d2" "7:67" "$EQP;40:copia" 41 TERM ROCOLA_OS=spotify,spotify-prueba,spotify_eq,spotify_brillo
+  o2="$W/speq2"; b2f="$d2/rocola_spotify.txt"
+  grep -E "eq de $EQID" "$b2f" | sed 's/^/   /'
+  b2=$(bandas "$o2"); echo "   segunda vez: $b2"
+  lin=$(grep -m1 "eq de $EQID: con su huella" "$b2f")
+  si "speq2: sale con 0" test "$(cat $o2/salio)" = 0
+  si "speq2: con su huella: EQ automatico con correccion (no la primera vez)" bash -c "echo '$lin' | grep -q 'EQ automatico \[' && ! grep -q 'eq de $EQID: sin huella' '$b2f'"
+  re=$(echo "$lin" | sed -n 's/.*; realce \([0-9.]*\) (sin medir \([0-9.]*\)).*/\1 \2/p')
+  si "speq2: el realce con el corte medido, distinto del de una sin medir (${re:-nada})" bash -c "[ -n '$re' ] && set -- $re && [ \"\$1\" != \"\$2\" ]"
+  si "speq2: no se vuelve a medir (ya tiene huella)" nocontiene "$b2f" "eq de $EQID: huella aprendida"
+  # el sonido: lo que dijo el EQ en las bandas de 2,5 y 10 kHz contra lo que cambio de verdad (medio y agudos, contra el grave de referencia)
+  cq=$(echo "$lin" | sed -n 's/.*EQ automatico \[\([^]]*\)\].*/\1/p')
+  si "speq2: el sonido cambio como dice el EQ (2,5 kHz y 10 kHz, a 1,5 dB; EQ [$cq])" python3 - "$b1" "$b2" "$cq" <<'EOP'
+import sys
+a = dict(p.split('=') for p in sys.argv[1].split()); b = dict(p.split('=') for p in sys.argv[2].split())
+q = [float(v) for v in sys.argv[3].split()]
+d = lambda k: float(b[k]) - float(a[k])
+ok = abs(d('m') - q[4]) <= 1.5 and abs((d('a') - d('m')) - (q[6] - q[4])) <= 1.5 and (abs(d('m')) + abs(d('a')) > 0.3 or abs(q[4]) + abs(q[6]) < 0.3)
+print("   cambio medido: medio %+.2f dB, agudos %+.2f dB (EQ: 2,5 kHz %+.1f, 10 kHz %+.1f)" % (d('m'), d('a'), q[4], q[6]))
+sys.exit(0 if ok else 1)
+EOP
+  # con las dos funciones apagadas: como la primera vez
+  d3="$W/datos-speq3"; rm -rf "$d3"; cp -r "$d" "$d3"; rm -f "$d3/rocola_estado.txt" "$d3/rocola_spotify.txt"; cp "$tq" "$W/speq-tabla-antes.txt"
+  T0=$(date +%s.%N)
+  abre speq3 "$d3" "7:67" "$EQP;50:copia" 51 TERM ROCOLA_OS=spotify,spotify-prueba
+  o3="$W/speq3"; b3=$(bandas "$o3"); echo "   apagadas: $b3"
+  si "speq3: sale con 0" test "$(cat $o3/salio)" = 0
+  si "speq3: apagadas: nada de eq en la bitacora y la tabla sin tocar" bash -c "! grep -q 'eq de $EQID' '$d3/rocola_spotify.txt' && cmp -s '$W/speq-tabla-antes.txt' '$d3/rocola_spotify_eq.txt'"
+  si "speq3: apagadas suena como la primera vez (cada banda a 0,3 dB)" python3 - "$b1" "$b3" <<'EOP'
+import sys
+a = dict(p.split('=') for p in sys.argv[1].split()); b = dict(p.split('=') for p in sys.argv[2].split())
+sys.exit(0 if all(abs(float(a[k]) - float(b[k])) <= 0.3 for k in 'gmas') else 1)
+EOP
 fi
 
 echo

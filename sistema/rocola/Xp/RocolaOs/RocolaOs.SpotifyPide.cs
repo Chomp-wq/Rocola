@@ -228,6 +228,7 @@ namespace Rocola
             RocolaOsSpotify.Pistas.TryGetValue(path, out p);
             RocolaOsFuenteSpotify f = new RocolaOsFuenteSpotify(path, p != null ? p.Titulo : "", p != null ? p.DuracionMs : 0);
             f.Nivela = RocolaOsSpotifyNivelaPara(path, f.WaveFormat.SampleRate);   // (spotify_nivela, 22-11-2026: RocolaOs.SpotifyNivela.cs)
+            f.Corte = RocolaOsSpotifyCortePara(path, f.WaveFormat.SampleRate, p != null ? p.DuracionMs : 0);   // (spotify_eq y spotify_brillo, 22-11-2026: RocolaOs.SpotifyEq.cs)
             return f;
         }
         // g20 (Codigo/Form1.Datos.cs, RecordPlay): lo de Spotify no cuenta (R6). false = lo de XP (cuenta).

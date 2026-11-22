@@ -1462,7 +1462,7 @@ namespace Rocola
             // De una cancion retomada a medias no se aprende nada: seria la medida de un trozo.
             bool entera = saltadoSeg <= 0 && !iaMejorada && RocolaOsSpotifyAprende(t.Path);   // ROCOLA OS g23: (XP) bool entera = saltadoSeg <= 0 && !iaMejorada; — de una de Spotify no se aprende ni su sonoridad ni su EQ: suena como una sin medir (R7; RocolaOs/RocolaOs.SpotifyPide.cs); sin Rocola OS o con una de XP, true
             c.MedidaRuta = (entera && normalizeOn && !durCache.ContainsKey(t.Path)) ? t.Path : null;   // ya pre-analizada = medida COMPLETA y fiable: no se vuelve a medir (y se ahorra el K-weighting)
-            c.EqRuta = (entera && EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca
+            c.EqRuta = (entera && EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : RocolaOsSpotifyEqRuta(t.Path, source, saltadoSeg, iaMejorada);   // actualiza huellas antiguas sin borrar la biblioteca   // ROCOLA OS g250: (XP) c.EqRuta = (entera && EqMideHuella && !HasStereoEq(t.Path)) ? t.Path : null;   // actualiza huellas antiguas sin borrar la biblioteca — de una de Spotify pedida, desde el principio y aun sin huella, se mide su huella de tono y su corte de agudos para la proxima (RocolaOs/RocolaOs.SpotifyEq.cs; de XP, null)
             // NIVEL 2 (reconstructor espectral): solo se INSERTA en maquinas que cumplen requisitos; con
             // Active=false es un pase directo (costo ~cero). Ctrl+F3 lo alterna EN VIVO para comparar A/B.
             FuenteOriginal original = new FuenteOriginal(source, this);

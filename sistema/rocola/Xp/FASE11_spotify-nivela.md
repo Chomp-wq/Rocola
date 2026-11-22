@@ -1,4 +1,4 @@
-# Spotify: nivelado, la «copia», no repetir y la portada que llega tarde (22-11-2026)
+# Spotify: nivelado, EQ y brillo, la «copia», no repetir y la portada que llega tarde (22-11-2026)
 
 Pedidos del dueño del 22-11-2026, en el A4 con Spotify ya emparejado:
 
@@ -88,6 +88,37 @@ canción vacía (uri «») mientras carga o cambia, y la rocola lo tomaba por ot
   (un vaciado justo después del re-anclaje no acaba la canción). Si no lo hiciera caso, la canción seguiría desde el principio y se cortaría
   por su duración. La retomada de XP no se probó de punta a punta (la tarjeta de prueba no sabe fallar).
 
+## 7. EQ automático y brillo a la medida de las pedidas (funciones `spotify_eq` y `spotify_brillo`, encendidas de fábrica; `RocolaOs/RocolaOs.SpotifyEq.cs`)
+
+Decisión del dueño del 22-11-2026 (eligió las dos mejoras de sonido para Spotify). Antes, una pedida de Spotify no aprendía nada (g23, R7):
+sin huella de tono, `EqCorrFor` daba null (sin EQ automático) y `ExciteFactorFor` daba 1 (el realce de una sin medir), y Soloist llega en Ogg
+Vorbis 160 kbps (cortado a unos 16 kHz).
+
+- **Aprende con la misma medida de la cadena.** g250 (`ArmaCadena`, `c.EqRuta`): de una pedida (su fuente es `RocolaOsFuenteSpotify`, no la
+  sombra de la sustitución), desde el principio, sin IA y aún sin huella, la ruta «spotify:track:ID» va a la medida de XP: el `LevelTap` junta
+  la energía de las 8 bandas como con tus MP3. Se arma si `spotify_brillo` está encendida o si el EQ mide huellas (`EqMideHuella`).
+- **El corte de agudos, en la misma pasada.** Tus MP3 sacan el corte de la ficha de calidad del repaso (un `SpectralTap` solo de análisis: 88
+  cuadros de 2048 del canal 0 con sonido, del 10 al 90 % de la canción) y, mientras suenan, del DSEE (solo si está encendido: apagado no
+  analiza). Una de Spotify no pasa por el repaso: la fuente hace lo mismo que esa ficha con lo que llega de Soloist (`RocolaOsSpotifyCorte`,
+  los 88 cuadros repartidos del 10 al 90 % de su duración, en el hilo del sonido, con la memoria reservada al abrirla). Al cerrar manda el del
+  DSEE si lo midió (como en tus MP3); si no, el de la fuente.
+- **Se guarda aparte.** g251 (`CierraHuellaDeFuente`): la medida de una ruta «spotify:» se cierra aquí y XP no la ve (ni `eqCache`, ni
+  `rocola_eq.txt`, ni el promedio de la biblioteca, ni `rocola_fuentes.txt`). Solo si sonó entera (≥ 97 % de su duración y ≥ 30 s), con las
+  mismas cuentas que `CierraHuella` (las 8 bandas contra la mediana del cuerpo), por id en `/rocola/datos/xp/rocola_spotify_eq.txt` (8 bandas,
+  corte, corte de abajo y la fecha; tope 20 000, los más viejos fuera). Las retomadas o saltadas no se guardan.
+- **Desde la segunda vez, el cálculo de XP.** g252 (`EqCorrCancion`), g253 (`ExciteFactorFor`) y g254 (`FaltaDeCuerpoDb`, la canción flaca del
+  billar) leen esa huella como si estuviera en `eqCache`: la fuerza automática, el objetivo por canción de la IA del EQ, la canción rara, las
+  reglas del modo billar con la afinación del local, nada sobre el corte; y el realce con su corte (más a la cortada), la mitad del extra con
+  el DSEE encendido y lo de «a la medida». `spotify_eq` decide el EQ y lo flaco del billar; `spotify_brillo`, el realce. El realce y el EQ en
+  vivo de Ctrl+F3 (`ApplyNormNow`) y el relevo sin pausa usan lo mismo.
+- **La sustitución invisible no cambia** (g61): su lector es `RocolaOsFuenteCalidad` (nunca se mide aquí) y una uri que es pareja de una de tus
+  canciones (`rocola_spotify_pares.txt`) no se lee de esta tabla.
+- Lo que sigue sin la huella de Spotify (no se pidió): el bajo psicoacústico (`BassFactorFor`, `BajoAuto`), el margen del ecualizador del
+  dueño (E3, `PreganCancionDb`: sin huella usa lo máximo de la curva, más margen), el des-recorte (`DeclipVale`: sin medir, se pone) y la
+  duración mínima del EQ del billar (`SegundosDe` no sabe la de Spotify). El DSEE ya decide en vivo con el corte que mide de lo que suena; para
+  que arranque con el guardado haría falta otro gancho (sembrar `cutHz` del `SpectralTap` al armarlo), y no hace falta.
+- Con las dos apagadas, sin el modo Spotify o sin Rocola OS: como antes, bit a bit (ningún gancho cambia nada con una ruta que no es «spotify:»).
+
 ## Pruebas (`Pruebas/RocolaOs/spotify-xp`, con el Soloist falso)
 
 El Soloist falso aprende dos cosas: `q` y dígitos en el id (el pico del tono a −N dBFS) y `SOLOIST_FALSO_COPIA=«A>B»` (al pedir A toca B con
@@ -97,6 +128,12 @@ el nombre de A).
 - `nivela`: con 25 medidas inventadas, una a −30 dBFS sube 7,1 dB en sus primeros 30 s sin saltos de más de 0,3 dB por tramo de 100 ms y se
   congela; se mide y se guarda; la segunda vez suena 19,8 dB más fuerte desde el principio y quieta.
 - `portadatarde`: con el servidor de portadas tardando 4 s, entra sin portada y al llegar se le pone a la que suena.
+- `speq`: una de 34 s con el tono y ruido blanco cortado a 16 kHz («r16» en el id: el Soloist falso lo añade con 16 polos), 60 huellas sanas
+  inventadas en `rocola_eq.txt` y sin `spotify_nivela`. La primera vez: sin EQ, se mide entera y se guarda con el corte (17 000 Hz, de la fuente, 88 cuadros: donde el ruido ya está 27 dB
+  abajo);
+  nada en las tablas de XP. La segunda: su EQ automático ([+1,9 +0,3 −2,7 −2,6 +1,8 +2,7 +0,5 +0,7] dB contra el promedio inventado) y su realce
+  con el corte (0,39 en vez de 0,35); lo que sonó cambia como dice el EQ (de 1,5 a 3,5 kHz +1,5 dB contra +1,8 de la banda de 2,5 kHz). Con las dos apagadas:
+  nada en la bitácora, la tabla sin tocar y suena como la primera vez (cada banda a 0,3 dB).
 - `repetida`: Spotify y luego tu MP3 (no entra, no se cobra), tu MP3 y luego Spotify (no entra, no se cobra), y otro artista con el mismo
   título sí entra.
 
