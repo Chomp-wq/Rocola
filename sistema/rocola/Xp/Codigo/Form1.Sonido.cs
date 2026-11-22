@@ -135,7 +135,7 @@ namespace Rocola
         private static float MadLin() { int p = nocheMadPct, n = nochePct; if (p != madDeP || n != madDeN) { madVal = (float)Math.Pow(10.0, MadDb() / 20.0); madDeP = p; madDeN = n; } return madVal; }
 
         // El rango CRUZA LA MEDIANOCHE: «hora >= 23 && hora < 7» es siempre falso. Va un O, no un Y (con su prueba: pruebas/noche.cs).
-        private static bool EsDeNoche(DateTime t) { return EnRango(t.Hour, nocheDesde, nocheHasta); }
+        private static bool EsDeNoche(DateTime t) { return RocolaOsNocheEnRango(t, nocheDesde, nocheHasta) ?? EnRango(t.Hour, nocheDesde, nocheHasta); }   // ROCOLA OS g235: (XP) private static bool EsDeNoche(DateTime t) { return EnRango(t.Hour, nocheDesde, nocheHasta); } — con Rocola OS la noche empieza a los minutos de noche_desde_min= (30 de fabrica: 22:30, y con la bajada de una hora llega a su nivel a las 23:30; RocolaOs/RocolaOs.Noche2230.cs); sin Rocola OS, null: lo de XP
         private static bool EnRango(int h, int a, int b)
         {
             if (a == b) return false;              // rango vacio
