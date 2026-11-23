@@ -65,5 +65,14 @@ SpotifyRepetida, Calidad*), y el sistema (rocola-soloist, la orden spotify y roc
 ## Pruebas
 
 Fuera de pantalla, con el Soloist falso, la API falsa y datos de prueba rehechos a mano en este contenedor (los de antes se perdieron con el
-contenedor): ver la sección «Resultados» abajo. rocola-pulso: 11 pasos bien (tsan, asan, valgrind). Nada probado con Soloist ni Spotify
-reales ni en el A4.
+contenedor). rocola-pulso: 11 pasos bien (tsan, asan, valgrind). Nada probado con Soloist ni Spotify reales ni en el A4.
+
+## Resultados
+
+- spotify-xp (285 comprobaciones, JIT): los mismos 38 MAL que el código de antes de la revisión, ninguno nuevo. Esos 38 salen de los datos
+  de prueba rehechos (las escenas del modo noche, «mezcla» y «repetida» esperan canciones de XP que esta biblioteca no tiene). La escena
+  «volumen» se ajustó: ahora, si Soloist aún no dijo su volumen, la rocola le pide 100 de una vez (y lo apunta) y el «40» puede no llegar
+  a apuntarse. cortada, speq y volumen otra vez aparte: 31/31. La escena «vigilante» (el rocola-soloist de verdad con el falso y
+  rocola-pulso): 10/10.
+- La API web, las paredes y el nivelado: compilan; catalogo busca, mezcla, disco, artista, unida, pared, todos: TODO BIEN; asistente
+  tarjetas, mas, artista: 7/7.

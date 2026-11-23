@@ -51,6 +51,15 @@ namespace Rocola
         private List<SearchItem> rocolaOsSpXp;      // lo ultimo que dio XP en el buscador (para mezclar cuando llega lo de Spotify)
         private string rocolaOsSpConsulta;           // y su consulta (la clave)
         private string rocolaOsSpEscrito;            // (y tal cual se escribio: para la cuenta de XP)
+        // (23-11-2026, «en el buscador cargan primero los locales y luego los de Spotify y se mueve todo») mientras se espera a Spotify se SIGUE
+        // viendo lo de antes (lista y casilla) y todo cambia junto al llegar la respuesta, o a los 2 s, o si Spotify falla (g40)
+        private const int RocolaOsSpEsperaMs = 2000;
+        private bool rocolaOsSpEspera;               // hay lo local nuevo guardado sin mostrar
+        private int rocolaOsSpGen;                   // cada g40 lo cambia: un reloj o una respuesta de otra consulta no hace nada
+        private System.Threading.Timer rocolaOsSpReloj;
+        private List<SearchItem> rocolaOsSpVisto;    // lo ultimo que se ENSENO en el buscador (lista, cuenta y consulta de la casilla)
+        private int rocolaOsSpVistoCuenta;
+        private string rocolaOsSpVistoConsulta;
         private bool rocolaOsSpCuentaPedida;
         private int rocolaOsSpAbriendo;              // el ultimo «abrir» pedido (si llega otro antes, el viejo no abre nada)
         private Album rocolaOsSpMirado;              // (g52) el disco de Spotify elegido en la pared, desde cuando, y los ya pedidos asi
@@ -176,7 +185,9 @@ namespace Rocola
             if (!RocolaOsSpotifyCatalogoVa) return res;
             string q = RocolaOsSpotifyCatalogoClave(consulta);
             rocolaOsSpXp = res; rocolaOsSpConsulta = q; rocolaOsSpEscrito = consulta;
-            if (q.Length < 3 || !RocolaOsSpotifyCatalogoApi.HayLlave) { RocolaOsSpotifyCatalogoApi.OlvidaBusqueda(); return res; }
+            rocolaOsSpEspera = false; rocolaOsSpGen++;
+            if (rocolaOsSpReloj != null) { try { rocolaOsSpReloj.Dispose(); } catch { } rocolaOsSpReloj = null; }
+            if (q.Length < 3 || !RocolaOsSpotifyCatalogoApi.HayLlave) { RocolaOsSpotifyCatalogoApi.OlvidaBusqueda(); return RocolaOsSpotifyCatalogoVisto(res, consulta); }
             RocolaOsSpotifyCatalogoBusqueda b = RocolaOsSpotifyCatalogoApi.BuscaYa(q);
             if (b != null)
             {
@@ -184,13 +195,53 @@ namespace Rocola
                 // cuenta en la casilla: XP acaba de poner solo los suyos y, con todo de Spotify, decia «Sin resultados» encima de las tarjetas
                 List<SearchItem> m = RocolaOsSpotifyCatalogoMezcla(res, b);
                 CuentaResultados(consulta, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas + m.Count - res.Count);   // (letras: + las de la letra que g114 metio en res)
-                return m;
+                return RocolaOsSpotifyCatalogoVisto(m, consulta);
             }
             RocolaOsSpotifyCatalogoApi.Busca(q, delegate (object r, string error)
             {
                 RocolaOs.Encarga("spotify_catalogo:resultados", delegate { RocolaOsSpotifyCatalogoLlegoBusqueda(q, r as RocolaOsSpotifyCatalogoBusqueda, error); });
             });
-            return res;
+            if (RocolaOsSpotifyCatalogoApi.Frena || rocolaOsSpVisto == null || !object.ReferenceEquals(searchOverlay.Results, rocolaOsSpVisto))
+                return RocolaOsSpotifyCatalogoVisto(res, consulta);   // (sin tope que esperar, o nada de antes que seguir ensenando: lo local ya)
+            // lo local nuevo espera a Spotify: se sigue viendo lo de antes (y su cuenta, que XP ya cambio) hasta que llegue o pasen 2 s
+            rocolaOsSpEspera = true;
+            CuentaResultados(rocolaOsSpVistoConsulta, rocolaOsSpVistoCuenta);
+            int gen = rocolaOsSpGen;
+            rocolaOsSpReloj = new System.Threading.Timer(delegate
+            {
+                RocolaOs.Encarga("spotify_catalogo:espera", delegate { RocolaOsSpotifyCatalogoSueltaLocal(gen); });
+            }, null, RocolaOsSpEsperaMs, System.Threading.Timeout.Infinite);
+            return rocolaOsSpVisto;
+        }
+        // lo que se ensena ahora en el buscador (para seguir ensenandolo mientras se espera a Spotify)
+        private List<SearchItem> RocolaOsSpotifyCatalogoVisto(List<SearchItem> lista, string consulta)
+        {
+            rocolaOsSpVisto = lista; rocolaOsSpVistoConsulta = consulta;
+            rocolaOsSpVistoCuenta = searchOverlay != null ? searchOverlay.TotalResultados : 0;   // (la cuenta ya puesta por XP; la de lo mezclado se pone antes de llamar)
+            return lista;
+        }
+        // pasaron los 2 s (o Spotify fallo): lo local nuevo solo; si Spotify llega despues, se mezcla como siempre
+        private void RocolaOsSpotifyCatalogoSueltaLocal(int gen)
+        {
+            if (!rocolaOsSpEspera || gen != rocolaOsSpGen) return;
+            rocolaOsSpEspera = false;
+            if (!searchOpen || rocolaOsSpXp == null) return;
+            RocolaOsSpotifyCatalogoPoneResultados(rocolaOsSpXp, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas);
+        }
+        // cambia la lista del buscador sin perder la tarjeta elegida si alguien andaba entre los resultados
+        private void RocolaOsSpotifyCatalogoPoneResultados(List<SearchItem> m, int cuenta)
+        {
+            List<SearchItem> antes = searchOverlay.Results;
+            if (searchOverlay.FocusResults && antes != null && searchOverlay.SelResult >= 0 && searchOverlay.SelResult < antes.Count)
+            {
+                int n = m.IndexOf(antes[searchOverlay.SelResult]);
+                if (n >= 0) searchOverlay.SelResult = n;
+            }
+            searchOverlay.Results = m;
+            CuentaResultados(rocolaOsSpEscrito, cuenta);
+            rocolaOsSpVisto = m; rocolaOsSpVistoConsulta = rocolaOsSpEscrito; rocolaOsSpVistoCuenta = cuenta;
+            searchOverlay.DatosVer++;   // (la cache de las tarjetas se rehace: la consulta es la misma)
+            searchOverlay.Invalidate();
         }
         internal static string RocolaOsSpotifyCatalogoClave(string consulta)
         {
@@ -212,21 +263,14 @@ namespace Rocola
             {
                 // (sin red, la API caida o frenando, esto saldria en cada cosa escrita: el mismo renglon, una vez cada 10 minutos)
                 if (error != null && error != "sin_llave") RocolaOsSpotifyCatalogoApi.ApuntaCallado("busqueda sin respuesta: " + error);
+                if (rocolaOsSpConsulta == q) RocolaOsSpotifyCatalogoSueltaLocal(rocolaOsSpGen);   // (23-11-2026) fallo: lo local ya, sin esperar los 2 s
                 return;
             }
             if (!searchOpen || rocolaOsSpConsulta != q || rocolaOsSpXp == null) return;   // ya se escribio otra cosa (o se cerro)
-            List<SearchItem> antes = searchOverlay.Results;
+            rocolaOsSpEspera = false;
             List<SearchItem> m = RocolaOsSpotifyCatalogoMezcla(rocolaOsSpXp, b);
             // quien ya andaba entre los resultados no pierde su sitio: lo de Spotify entra debajo de las primeras de XP
-            if (searchOverlay.FocusResults && antes != null && searchOverlay.SelResult >= 0 && searchOverlay.SelResult < antes.Count)
-            {
-                int n = m.IndexOf(antes[searchOverlay.SelResult]);
-                if (n >= 0) searchOverlay.SelResult = n;
-            }
-            searchOverlay.Results = m;
-            CuentaResultados(rocolaOsSpEscrito, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
-            searchOverlay.DatosVer++;   // (la cache de las tarjetas se rehace: la consulta es la misma)
-            searchOverlay.Invalidate();
+            RocolaOsSpotifyCatalogoPoneResultados(m, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
             RocolaOsSpotifyCatalogoApi.PideEstado();
         }
         private List<SearchItem> RocolaOsSpotifyCatalogoMezcla(List<SearchItem> xp, RocolaOsSpotifyCatalogoBusqueda b)

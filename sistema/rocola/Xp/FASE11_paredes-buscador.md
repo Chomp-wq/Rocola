@@ -487,3 +487,17 @@ Tres peticiones del dueño del mismo día:
 
 Pruebas (fuera de pantalla, 1024x768, JIT; datos de prueba rehechos a mano en este contenedor): escena `unida` (6/6) y las de siempre de
 `catalogo`; `asistente` 29/29 (la escena `mas` ahora pide «Sus discos»). La batería entera de `catalogo`: 6 MAL de 170, los mismos 6 (cuenta, atajos, atajos503) con el código de antes de estos cambios: vienen de los datos de prueba rehechos, no de esto. No visto en el A4.
+
+## Lo local y lo de Spotify aparecen juntos (23-11-2026)
+
+Petición del dueño: «En el buscador, cargan primero los resultados de disco local, y después aparecen los de Spotify y se mueve todo, eso
+confunde, pon un delay artificial, hasta que estén cargados los resultados locales y de Spotify para que aparezca todo junto».
+
+- Con 3 letras o más y la búsqueda de Spotify aún sin contestar, el buscador sigue enseñando lo de antes (la lista y la casilla de
+  «N resultados») y cambia de una vez cuando llega lo de Spotify, mezclado con lo local (RocolaOs.SpotifyCatalogo.cs, g40; sin ganchos
+  nuevos). Tope: a los 2 s sin respuesta, o si Spotify falla, sale lo local solo (y si Spotify llega después se mezcla como antes).
+- Al instante, como antes: menos de 3 letras, sin llave, Spotify frenando (429), lo ya contestado (lo mismo escrito otra vez, al volver de
+  una pared o de un disco) y la primera búsqueda sin nada en pantalla. Sin el modo, XP tal cual.
+- La tarjeta elegida no se pierde al cambiar la lista. El código lo escribió un agente (modelo ligero) y lo revisó la sesión.
+- Pruebas: catalogo busca, mezcla, disco, artista, unida, pared, todos: TODO BIEN; asistente tarjetas, mas, artista: 7/7. Ninguna escena
+  prueba todavía el tope de 2 s. No visto en el A4.
