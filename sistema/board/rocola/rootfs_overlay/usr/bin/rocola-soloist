@@ -424,8 +424,15 @@ arranca() {
 		wait $!; echo $? > "$AQUI/soloist.salida"
 	} 9>&- | registra "soloist: " 9>&- &
 	TUBO=$!; TUBERIA=$(readlink "/proc/$TUBO/fd/0" 2>/dev/null)   # (pipe:[N]: la de la bitacora, para encontrar lo que quede escribiendo)
-	i=0; while [ ! -s "$AQUI/soloist.pid" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+	i=0; while [ ! -s "$AQUI/soloist.pid" ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
 	SPID=$(cat "$AQUI/soloist.pid" 2>/dev/null)
+	# (23-11-2026, revision) sin pid en 30 s (el equipo muy ocupado): lo que haya arrancado se cierra aqui mismo; si no, quedaba un Soloist sin
+	# vigilante y la vuelta siguiente abria otro con la misma carpeta
+	if [ -z "$SPID" ]; then
+		apunta "Soloist no dio su pid en 30 s: se cierra lo que haya y se vuelve a intentar"
+		[ -n "$TUBO" ] && kill -KILL "$TUBO" 2>/dev/null; wait "$TUBO" 2>/dev/null; TUBO=; TUBERIA=
+		quita_huerfanos; R=sinpid
+	fi
 	T0=$(segundos); LISTO=; HUELLA=$(huella_llave)
 	estado arrancando
 }

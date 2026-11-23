@@ -241,7 +241,7 @@ namespace Rocola
             if (r.Medidor != null && r.Natural && !p.ConMedida && r.SonidoSeg >= 30 && (p.DurSpMs <= 0 || r.SonidoSeg * 1000 >= 0.97 * p.DurSpMs))
             {
                 SonoridadIntegrada s;
-                if (Form1.CierraIntegrada(r.Medidor, r.Medidor.Cuadros / (double)r.Hz, r.Hz, out s) && s.ConP90)
+                if (Form1.CierraIntegrada(r.Medidor, r.Medidor.Cuadros / (double)r.Hz, r.Hz, out s) && s.ConP90 && !s.Muda)   // (23-11-2026, revision: una casi muda no se guarda: daria una ganancia enorme)
                 {
                     n.PicoDb = s.PicoDb; n.P99Db = s.P99Db; n.P90Db = s.P90Db; cambia = true;
                     Interlocked.Increment(ref Medidas);

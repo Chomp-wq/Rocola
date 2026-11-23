@@ -91,7 +91,11 @@ namespace Rocola
                 else if (estado == Sonando) sinLlegar += Math.Max(0, r / 2);
                 if (sp.Terminada)
                 {
-                    if (sp.FinMotivo == RocolaOsSpotifyPeticion.Termino) { estado = Acabo; Resultado(true); return r; }
+                    // (23-11-2026, revision) «termino» con poco o nada sonado (Soloist salto a otra o al final): no se da por acabada, sigue tu MP3
+                    // desde donde iba; antes XP pasaba a la siguiente y el cliente perdia su cancion
+                    int durSp = Par.DurSpMs > 0 ? Par.DurSpMs : Par.DurMp3Ms;
+                    bool poco = s == 0 || (durSp > 0 && s * 1000.0 / hz < durSp * 0.5);
+                    if (sp.FinMotivo == RocolaOsSpotifyPeticion.Termino && !poco) { estado = Acabo; Resultado(true); return r; }
                     Vuelve(s / (double)hz, RocolaOsSpotifyPeticion.Motivos[Math.Max(0, Math.Min(RocolaOsSpotifyPeticion.Motivos.Length - 1, sp.FinMotivo))]);
                     if (r < count) Array.Clear(buf, off + r, count - r);
                     return count;

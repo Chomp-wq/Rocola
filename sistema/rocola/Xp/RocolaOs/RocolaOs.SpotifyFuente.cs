@@ -47,6 +47,9 @@ namespace Rocola
             private volatile float volumen = 1f;
             private RocolaOsSpotifyPeticion p;
             private bool acabada, saltado;
+            // (23-11-2026, revision) quien decide el final (Acaba en el hilo del sonido o Dispose desde la pantalla): solo el primero; y cerrada,
+            // para que una primera lectura que se cruza con el cierre no pida nada a Soloist
+            private int finDecidido; private volatile bool cerrada;
             private int desdeMs;                // (22-11-2026) retomada: la cancion empieza ahi (Salta, antes de la primera lectura)
             private long sonidoAlAnclar;        // (22-11-2026) cuadrosSonido al re-anclar (un vaciado justo despues del seek no la acaba)
             private long inicioMs;
@@ -114,7 +117,7 @@ namespace Rocola
             public int Read(float[] buffer, int offset, int count) { return Read(buffer.AsSpan(offset, count)); }
             public int Read(Span<float> d)
             {
-                if (acabada) return 0;
+                if (acabada || cerrada) return 0;
                 RocolaOsSpotifyAnillo a = RocolaOsSpotify.Anillo;
                 long ahora = Environment.TickCount64;
                 if (p == null)
@@ -126,6 +129,7 @@ namespace Rocola
                     if (desdeMs > 0) { p.DesdeMs = desdeMs; p.SeekMs = desdeMs; Volatile.Write(ref p.PosicionMs, desdeMs); }
                     inicioMs = ultimoSonidoMs = ahora;
                     if (a != null && ya == null) a.Tira();
+                    if (cerrada) { acabada = true; return 0; }   // (23-11-2026: la cerraron mientras empezaba: no se pide)
                     if (Interlocked.Exchange(ref contado, 1) == 0) Interlocked.Increment(ref RocolaOsSpotify.LectoresAbiertos);
                     RocolaOsSpotify.Pide(p);
                 }
@@ -239,12 +243,14 @@ namespace Rocola
             private int Acaba(Span<float> d, int n, int motivo)
             {
                 acabada = true;
+                if (Interlocked.Exchange(ref finDecidido, 1) != 0) return 0;   // (ya la cerro Dispose: su final manda)
                 double seg = Interlocked.Read(ref cuadrosSonido) / (double)hz;
                 int durMs = Volatile.Read(ref p.DuracionMs);
                 // (22-11-2026) donde iba en la cancion (con la retomada y lo seguido tras un corte), para saber si acabo de verdad
                 double enCancion = Math.Max(seg + desdeMs / 1000.0, Volatile.Read(ref p.PosicionMs) / 1000.0);
                 bool natural = motivo == RocolaOsSpotifyPeticion.Termino
                     || ((motivo == RocolaOsSpotifyPeticion.OtraCancion || motivo == RocolaOsSpotifyPeticion.Parada) && durMs > 0 && enCancion * 1000 >= durMs - 5000);
+                p.TerminoReal = motivo == RocolaOsSpotifyPeticion.Termino;   // (23-11-2026: antes de cambiar el motivo; para la salvaguarda del adelanto)
                 if (motivo == RocolaOsSpotifyPeticion.SinMotivo) motivo = RocolaOsSpotifyPeticion.Termino;
                 bool devolver = !SinDevolver && (motivo == RocolaOsSpotifyPeticion.NoEmpezo || (!natural && motivo != RocolaOsSpotifyPeticion.Cierre && enCancion < PocoSonidoSeg));
                 p.FinMotivo = natural ? RocolaOsSpotifyPeticion.Termino : motivo;
@@ -264,8 +270,9 @@ namespace Rocola
             // XP la cierra (acabo, SALTAR, otra cancion, la rocola se cierra): si aun sonaba, la rocola la corto (sin devolver: como una de XP saltada)
             public void Dispose()
             {
+                cerrada = true;
                 RocolaOsSpotifyPeticion q = p;
-                if (q != null && !acabada)
+                if (q != null && Interlocked.Exchange(ref finDecidido, 1) == 0)
                 {
                     acabada = true;
                     q.FinMotivo = RocolaOsSpotify.CerrandoLaRocola ? RocolaOsSpotifyPeticion.Cierre : RocolaOsSpotifyPeticion.Cortada;

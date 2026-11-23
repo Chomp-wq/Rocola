@@ -46,8 +46,10 @@ namespace Rocola
         private bool RocolaOsMismaLocalSpotify(Track local, Track sp, out string porQue)
         {
             RocolaOsCalidad.Pareja par;
+            // (23-11-2026, revision) una pareja que la forma del volumen dijo que es OTRA grabacion (Verif -1) no cuenta como la misma
             if (RocolaOsCalidad.Pares.TryGetValue(local.Path, out par) && par != null && par.Id != null)
             {
+                if (par.Verif < 0 && string.Equals(par.Uri, sp.Path, StringComparison.Ordinal)) { porQue = "otra grabacion (medida)"; return false; }
                 porQue = "su pareja de la sustitucion";
                 return string.Equals(par.Uri, sp.Path, StringComparison.Ordinal);
             }

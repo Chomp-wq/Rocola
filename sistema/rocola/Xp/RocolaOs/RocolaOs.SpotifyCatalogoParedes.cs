@@ -325,6 +325,8 @@ namespace Rocola
         private void RocolaOsSpotifyParedPrepara(RocolaOsSpotifyPared p, int yo)
         {
             if (yo != rocolaOsSpAbriendo || !searchOpen) return;
+            // (23-11-2026, revision) si mientras llegaba se escribio otra cosa (u otro buscador), lo de antes ya no se abre encima
+            if (p.Vuelta != null && (searchOverlay.Escrito ?? "") != p.Vuelta.Escrito) return;
             List<int> falta = RocolaOsSpotifyFaltan(p, 0);
             bool unida = p.Tuyos != null && p.Tuyos.Count > 0;
             if (unida)
@@ -466,7 +468,9 @@ namespace Rocola
             if (!mirando || libBuilding || searchOpen) return;
             RefreshAlbums();   // (tambien con el disco abierto: al volver, la pagina ya esta al dia; XP no la rehace en BackToAlbums)
             // se habia entrado a una casilla que aun no llegaba: ahora es su disco
-            if (hueco != null && panelSongs.Visible && ReferenceEquals(currentAlbum, hueco) && enHueco >= p.Lista.Count)
+            // (23-11-2026, revision) «se acabo antes de esa casilla» solo si su casilla ya no esta en la lista (antes se comparaba su lugar VIEJO con el
+            // largo NUEVO: un bloque de delante con menos de 10 sacaba del disco a quien esperaba una casilla que si iba a llegar)
+            if (hueco != null && panelSongs.Visible && ReferenceEquals(currentAlbum, hueco) && enHueco >= 0 && p.Lista.IndexOf(hueco) < 0 && selAlbumIndex >= p.Lista.Count)
             {
                 // (revision cuota-hilos-y-fallos, 2a pasada) la lista se acabo antes de esa casilla (el «total» de Spotify era de mas): no
                 // hay disco que abrir; de vuelta a la pared (lo de XP al salir de un disco), en la ultima casilla, y no un disco vacio para siempre
@@ -490,13 +494,15 @@ namespace Rocola
             List<Album> l = new List<Album>();
             if (p.Tuyos != null) l.AddRange(p.Tuyos);
             if (p.Canciones != null) l.Add(p.Canciones);
+            HashSet<Album> vistos = new HashSet<Album>(l);
             int por = RocolaOsSpotifyCatalogoApi.PorPaginaPared;
             int nb = p.Total < 0 ? 0 : (p.Total + por - 1) / por;
             p.Inicio.Clear(); p.Fin.Clear();
             for (int b = 0; b < nb; b++)
             {
                 List<Album> ya;
-                if (p.Bloques.TryGetValue(b, out ya)) { l.AddRange(ya); continue; }
+                // (23-11-2026, revision) el mismo disco en dos bloques (Spotify corrio su lista entre dos paginas) va una sola vez
+                if (p.Bloques.TryGetValue(b, out ya)) { foreach (Album x in ya) if (vistos.Add(x)) l.Add(x); continue; }
                 p.Inicio[b] = l.Count;
                 List<Album> h;
                 if (!p.Huecos.TryGetValue(b, out h))
@@ -633,8 +639,10 @@ namespace Rocola
             if (rocolaOsSpPared != null && !ReferenceEquals(rocolaOsSpPared, v.Pared)) rocolaOsSpPared.PaginaPub = -1;   // (revision: lo suyo en la cola se deja)
             rocolaOsSpPared = v.Pared;
             char letra = v.Letra;
-            if (letra == RocolaOsSpotifyParedMarca && rocolaOsSpPared == null) letra = RocolaOsSpotifyPrimeraLetra();
-            currentLetter = letra; page = v.Pagina; selAlbumIndex = v.Elegido;
+            bool otraLetra = letra == RocolaOsSpotifyParedMarca && rocolaOsSpPared == null;
+            if (otraLetra) letra = RocolaOsSpotifyPrimeraLetra();
+            // (23-11-2026, revision) en otra letra que la guardada, desde su principio (no con la pagina y casilla de la pared que ya no esta)
+            currentLetter = letra; page = otraLetra ? 0 : v.Pagina; selAlbumIndex = otraLetra ? 0 : v.Elegido;
             if (panelSongs.Visible) { BackToAlbums(); AbortDiscTrans(); }
             if (!libBuilding) RefreshAlbums();
             OpenSearch();

@@ -344,12 +344,15 @@ namespace Rocola
             long ahora = Environment.TickCount64, ca = RocolaOsSpotifyNivela.Cambios;
             lock (rocolaOsNvCerrojo)
             {
-                if (object.ReferenceEquals(t, rocolaOsNvTabla) && ca == rocolaOsNvCambios && normStrength == rocolaOsNvFuerza) return rocolaOsNvObjetivo;
-                if (rocolaOsNvTabla != null && ahora - rocolaOsNvCuando < 60000 && normStrength == rocolaOsNvFuerza) return rocolaOsNvObjetivo;
-                rocolaOsNvTabla = t; rocolaOsNvCambios = ca; rocolaOsNvFuerza = normStrength; rocolaOsNvCuando = ahora;
+                // (23-11-2026, revision) lo de antes vale mientras no cambien la tabla de Spotify ni la fuerza, y como mucho 60 s (la de XP cambia en
+                // su sitio: el repaso le anade medidas sin cambiarla de objeto)
+                if (rocolaOsNvTabla != null && object.ReferenceEquals(t, rocolaOsNvTabla) && ca == rocolaOsNvCambios && normStrength == rocolaOsNvFuerza && ahora - rocolaOsNvCuando < 60000) return rocolaOsNvObjetivo;
                 List<double> l = new List<double>();
-                if (t != null)
-                    foreach (SonoridadIntegrada s in t.Values)
+                // (23-11-2026, revision) la tabla de XP se copia con SU cerrojo: el repaso le escribe a la vez y recorrerla sin el tronaba («Collection
+                // was modified») al abrir una de Spotify
+                List<SonoridadIntegrada> deXp = new List<SonoridadIntegrada>();
+                if (t != null) lock (integCerrojo) deXp.AddRange(t.Values);
+                    foreach (SonoridadIntegrada s in deXp)
                     {
                         if (!s.Valida || !s.ConP90 || s.Muda || float.IsNaN(s.Lkfs) || float.IsInfinity(s.Lkfs)) continue;
                         float g = GananciaAlLimite(normStrength, DbALin(s.PicoDb), DbALin(s.P99Db), DbALin(s.P90Db));
@@ -363,6 +366,7 @@ namespace Rocola
                 }
                 if (l.Count < RocolaOsSpotifyNivela.MinimoObjetivo) rocolaOsNvObjetivo = double.NaN;
                 else { l.Sort(); rocolaOsNvObjetivo = l.Count % 2 == 1 ? l[l.Count / 2] : 0.5 * (l[l.Count / 2 - 1] + l[l.Count / 2]); }
+                rocolaOsNvTabla = t; rocolaOsNvCambios = ca; rocolaOsNvFuerza = normStrength; rocolaOsNvCuando = ahora;   // (solo si se pudo calcular)
                 return rocolaOsNvObjetivo;
             }
         }
@@ -376,7 +380,9 @@ namespace Rocola
             string como; bool medida;
             float b = RocolaOsSpotifyNivelaBase(id, out como, out medida);
             double arranqueDb = float.IsNaN(b) ? 0.0 : 20.0 * Math.Log10(Math.Max(1e-6, b));
-            double obj = (normalizeOn && normStrength > 0.001f) ? RocolaOsSpotifyNivelaObjetivo() : double.NaN;
+            double obj = double.NaN;
+            try { if (normalizeOn && normStrength > 0.001f) obj = RocolaOsSpotifyNivelaObjetivo(); }
+            catch (Exception ex) { RocolaOs.Falla("spotify_nivela", "el objetivo del nivelado", ex); }   // (23-11-2026: sin objetivo, sin nivelado en vivo; la cancion suena igual)
             RocolaOsSpotify.Apunta("nivelado de " + id + ": arranca con " + como + " (" + RocolaOsSpotifyNivela.F1(arranqueDb) + " dB); "
                 + (double.IsNaN(obj) ? "sin nivelado en vivo (menos de " + RocolaOsSpotifyNivela.MinimoObjetivo.ToString(CultureInfo.InvariantCulture) + " canciones medidas o el nivelado apagado)" : "en vivo los primeros 30 s hacia " + RocolaOsSpotifyNivela.F1(obj) + " LKFS")
                 + "; se mide para la proxima");

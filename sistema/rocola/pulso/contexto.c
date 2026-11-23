@@ -662,7 +662,10 @@ static pa_operation *info_salida(pa_context *c, const char *nombre, uint32_t idx
 
 EXPORTA pa_operation *pa_context_get_sink_info_by_name(pa_context *c, const char *n, pa_sink_info_cb_t cb, void *ud)
 {
-    return info_salida(c, n ? n : "rocola", PA_INVALID_INDEX, 0, cb, ud);
+    /* (23-11-2026, revision) el nombre especial de PulseAudio para la salida de fabrica («@DEFAULT_SINK@») y el vacio son la de la rocola:
+       antes contestaban «no existe» y un cliente que pregunte asi podria creer que no hay salida */
+    if (!n || !*n || strncmp(n, "@DEFAULT_", 9) == 0) n = "rocola";
+    return info_salida(c, n, PA_INVALID_INDEX, 0, cb, ud);
 }
 
 EXPORTA pa_operation *pa_context_get_sink_info_by_index(pa_context *c, uint32_t idx, pa_sink_info_cb_t cb, void *ud)

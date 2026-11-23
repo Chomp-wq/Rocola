@@ -188,11 +188,11 @@ namespace Rocola
             bool cabe = ayudaView != null && busW >= 120 && busW + 10 + ancho <= libre;
             int busX = ParSobreVideo(x0, x1, busW, cabe ? ancho : 0);
             buscaView.SetBounds(busX, 8, busW, filaH);
-            buscaView.Visible = busW >= 120;
+            buscaView.Visible = busW >= 120 && !RocolaOsParedSinCasillas();   // ROCOLA OS g264: (XP) buscaView.Visible = busW >= 120; — con un video puesto, en una pared del buscador tampoco va BUSCAR (RocolaOs/RocolaOs.ParedLetrero.cs; de XP, false)
             if (ayudaView == null) return;
             ayudaView.Compacta = compacta;
             ayudaView.SetBounds(busX + busW + 10, 8, Math.Max(1, ancho), filaH);
-            ayudaView.Visible = cabe;
+            ayudaView.Visible = cabe && !RocolaOsParedSinCasillas();   // ROCOLA OS g265: (XP) ayudaView.Visible = cabe; — con un video puesto, en una pared del buscador tampoco va AYUDA (RocolaOs/RocolaOs.ParedLetrero.cs; de XP, false)
         }
 
         // Donde empieza BUSCAR para que el par (BUSCAR, 10 px, AYUDA) quede centrado entre x0 y x1. Pura.

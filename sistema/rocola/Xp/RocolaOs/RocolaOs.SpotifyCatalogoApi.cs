@@ -95,6 +95,7 @@ namespace Rocola
             internal bool Alguien;            // lo espera alguien (va antes que lo de la cuenta)
             internal long NoAntesDe;          // (las busquedas: a los 300 ms de la ultima tecla)
             internal Action<object, string> Listo;   // (resultado o null, error o null), en ESTE hilo: quien lo pide lo encarga a la pantalla
+            internal int Reintentos;          // (23-11-2026) lo de la cuenta: cuantas veces se volvio a intentar solo (la espera crece)
             internal Func<bool> Sigue;        // (revision cuota-hilos-y-fallos; las paginas de las paredes) null = siempre; si no, se pregunta en
                                               // este hilo al tocarle: false = ya nadie mira esa pagina, y se deja sin preguntar a la red
         }
@@ -217,7 +218,11 @@ namespace Rocola
             {
                 foreach (Pedido q in cola) if (q.Que == p.Que && q.Clave == p.Clave)
                 {
-                    Action<object, string> a = q.Listo, b = p.Listo; q.Listo = delegate (object r, string e) { if (a != null) a(r, e); if (b != null) b(r, e); };
+                    Action<object, string> a = q.Listo, b = p.Listo; q.Listo = delegate (object r, string e)
+                    {   // (23-11-2026, revision) si el primero truena, el segundo igual recibe su respuesta (si no, su pantalla esperaba para siempre)
+                        try { if (a != null) a(r, e); } catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "al contestar (1)", ex); }
+                        if (b != null) b(r, e);
+                    };
                     Func<bool> sa = q.Sigue, sb = p.Sigue; q.Sigue = sa == null || sb == null ? null : (() => sa() || sb());   // (lo quiere cualquiera de los dos)
                     return;
                 }
@@ -237,8 +242,16 @@ namespace Rocola
         // ---------- el hilo: una peticion a la vez ----------
         private static void Corre()
         {
-            Prepara();   // (antes de nada: el plazo de un 429 de antes de abrir)
+            try { Prepara(); } catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "al preparar", ex); }   // (antes de nada: el plazo de un 429 de antes de abrir)
+            // (23-11-2026, revision) una excepcion fuera de lo que ya se atrapa ya no mata el hilo (la API quedaba muerta hasta reiniciar)
             while (true)
+            {
+                try { CorreUna(); }
+                catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "vuelta del hilo", ex); Thread.Sleep(1000); }
+            }
+        }
+        private static void CorreUna()
+        {
             {
                 Pedido p = null; int espera = 5000;
                 lock (cerrojo)
@@ -259,7 +272,7 @@ namespace Rocola
                     }
                 }
                 if (estadoPedido) { estadoPedido = false; EscribeEstado(); }
-                if (p == null) { hayAlgo.WaitOne(espera); continue; }
+                if (p == null) { hayAlgo.WaitOne(espera); return; }
                 // (revision cuota-hilos-y-fallos) una pagina de pared que ya nadie mira: se deja (ninguna peticion) y se contesta Dejada
                 bool sigue = true;
                 try { sigue = p.Sigue == null || p.Sigue(); } catch { }
@@ -269,7 +282,7 @@ namespace Rocola
                     estadoPedido = true;
                     try { if (p.Listo != null) p.Listo(null, Dejada); }
                     catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "al dejar «" + p.Que + "»", ex); }
-                    continue;
+                    return;
                 }
                 object r = null; string error = null;
                 try { r = Atiende(p, out error); }
@@ -280,11 +293,14 @@ namespace Rocola
                 if (r == null && p.Que == "cuenta" && error != null && Pasajero(error))
                 {
                     long ahora = Environment.TickCount64, hasta = Volatile.Read(ref frenaHastaMs);
-                    p.NoAntesDe = Math.Max(ahora + ReintentoCuentaMs, hasta + 1000);
+                    // (23-11-2026, revision) la espera crece (30 s, 1, 2, 4... hasta 30 min): con Spotify caido horas, no una peticion cada 30 s
+                    long otraVez = Math.Min(30L * 60 * 1000, (long)ReintentoCuentaMs << Math.Min(6, p.Reintentos));
+                    p.Reintentos++;
+                    p.NoAntesDe = Math.Max(ahora + otraVez, hasta + 1000);
                     ApuntaCallado("lo de la cuenta no llego (" + error + "): se vuelve a intentar solo");
                     lock (cerrojo) cola.Add(p);
                     EscribeEstado();
-                    continue;
+                    return;
                 }
                 try { if (p.Listo != null) p.Listo(r, error); }
                 catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "al contestar «" + p.Que + "»", ex); }
@@ -323,12 +339,16 @@ namespace Rocola
                     disco.Canciones = new List<RocolaOsSpotifyCatalogoCancion>();
                     JsonElement t;
                     total = 0;
+                    leidas = 0;
                     if (d.RootElement.TryGetProperty("tracks", out t) && t.ValueKind == JsonValueKind.Object)
                     {
                         LeeCancionesDeDisco(t, disco);
                         total = Entero(t, "total");
+                        // (23-11-2026, revision) los renglones que trajo Spotify, no las que se pueden tocar: si en las primeras 50 hay alguna que no
+                        // se toca, antes no se pedia la segunda pagina y se perdian las de la 51 en adelante
+                        JsonElement its;
+                        if (t.TryGetProperty("items", out its) && its.ValueKind == JsonValueKind.Array) leidas = its.GetArrayLength();
                     }
-                    leidas = disco.Canciones.Count;
                 }
                 // un disco de mas de 50 canciones: UNA pagina mas (de 50) como mucho
                 if (total > leidas && leidas >= 50)
@@ -461,6 +481,9 @@ namespace Rocola
                 }
                 lock (cerrojo) { foreach (RocolaOsSpotifyCatalogoDisco x in l) { RocolaOsSpotifyCatalogoDisco y; if (!discos.TryGetValue(x.Id, out y) || (y.Canciones == null && x.Canciones != null)) discos[x.Id] = x; } }
                 if (l.Count == 0 && error != null) return null;
+                // (23-11-2026, revision) si una parte no llego por algo pasajero (sin red, 5xx, 429), todo se pide otra vez despues: antes lo que si
+                // llego se daba por bueno y tus discos o tus listas faltaban hasta reiniciar
+                if (error != null && Pasajero(error)) return null;
                 error = null;
                 return l;
             }
@@ -629,7 +652,10 @@ namespace Rocola
             string razon = "";
             try { string cuerpo = r.Content.ReadAsStringAsync().GetAwaiter().GetResult(); if (cuerpo.IndexOf("QUOTA_EXCEEDED", StringComparison.Ordinal) >= 0) razon = " (QUOTA_EXCEEDED: la cuota de la cuenta de desarrollador)"; }
             catch { }
-            Volatile.Write(ref frenaHastaMs, Environment.TickCount64 + seg * 1000L);
+            // (23-11-2026, revision) nunca acorta un plazo que ya corre (un 429 corto no deshace uno de una hora)
+            long nuevo = Environment.TickCount64 + seg * 1000L;
+            if (nuevo < Volatile.Read(ref frenaHastaMs)) return;
+            Volatile.Write(ref frenaHastaMs, nuevo);
             frenaRazon = razon;
             GuardaFrena(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + seg * 1000L, razon.Length > 0);
             Interlocked.Increment(ref frenadas);
@@ -662,6 +688,7 @@ namespace Rocola
                 if (t.Length == 0 || !long.TryParse(t[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out hasta)) return;
                 long falta = hasta - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 if (falta <= 0) return;
+                falta = Math.Min(falta, 24L * 3600 * 1000);   // (23-11-2026, revision) un reloj que salto no bloquea la API para siempre
                 Volatile.Write(ref frenaHastaMs, Environment.TickCount64 + falta);
                 if (t.Length > 1 && t[1] == "cuota") frenaRazon = " (QUOTA_EXCEEDED: la cuota de la cuenta de desarrollador)";
                 api = "frena";
@@ -683,8 +710,8 @@ namespace Rocola
         {
             error = null;
             long ahora = Environment.TickCount64;
-            if (!deUsuario && llaveApp != null && ahora < venceApp - margenMs) return llaveApp;
-            if (deUsuario && llaveCuenta != null && ahora < venceCuenta - margenMs) return llaveCuenta;
+            string ya = deUsuario ? llaveCuenta : llaveApp;   // (23-11-2026, revision) una sola lectura: la pantalla puede borrarla entre medias
+            if (ya != null && ahora < (deUsuario ? venceCuenta : venceApp) - margenMs) return ya;
             if (ReferenceEquals(deUsuario ? rechazadaCuenta : rechazadaApp, c))
             {
                 api = "falla";
@@ -805,6 +832,9 @@ namespace Rocola
         // Spotify dio otra llave de refresco (con PKCE la de antes deja de valer): se guarda encima de la vieja, de un tiron y 0600
         private static void GuardaRefresco(Config c, string nueva)
         {
+            // (23-11-2026, revision) en memoria SIEMPRE, antes de escribir: Spotify ya invalido la de antes, y si el archivo no se pudo escribir la
+            // cuenta quedaba muerta a la hora (se pedia con la vieja)
+            lock (cerrojoConfig) c.Refresco = nueva;
             try
             {
                 string ruta = RutaArchivo;

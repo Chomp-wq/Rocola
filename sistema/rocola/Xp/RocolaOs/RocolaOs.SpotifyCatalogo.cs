@@ -507,14 +507,15 @@ namespace Rocola
                 return;
             }
             int yo = ++rocolaOsSpAbriendo;
+            string escritoAl = searchOverlay != null ? (searchOverlay.Escrito ?? "") : "";   // (23-11-2026: lo escrito al pedirlo)
             Action<object, string> listo = delegate (object r, string error)
             {
-                RocolaOs.Encarga("spotify_catalogo:disco", delegate { RocolaOsSpotifyCatalogoLlegoDisco(a, r as RocolaOsSpotifyCatalogoDisco, error, desdeBuscador, yo, enPared); });
+                RocolaOs.Encarga("spotify_catalogo:disco", delegate { RocolaOsSpotifyCatalogoLlegoDisco(a, r as RocolaOsSpotifyCatalogoDisco, error, desdeBuscador, yo, enPared, escritoAl); });
             };
             if (d.Tipo == "playlist") RocolaOsSpotifyCatalogoApi.AbreLista(d.Id, listo);
             else if (d.Tipo == "album") RocolaOsSpotifyCatalogoApi.AbreDisco(d.Id, listo);
         }
-        private void RocolaOsSpotifyCatalogoLlegoDisco(Album a, RocolaOsSpotifyCatalogoDisco d, string error, bool desdeBuscador, int yo, bool enPared)
+        private void RocolaOsSpotifyCatalogoLlegoDisco(Album a, RocolaOsSpotifyCatalogoDisco d, string error, bool desdeBuscador, int yo, bool enPared, string escritoAl)
         {
             if (d == null || d.Canciones == null)
             {
@@ -527,7 +528,8 @@ namespace Rocola
             RocolaOsSpotifyCatalogoPonCuenta();
             if (d.Tipo == "album") RocolaOsSpotifyCatalogoReciente(a);
             if (yo != rocolaOsSpAbriendo) return;
-            if (desdeBuscador) { if (searchOpen) RocolaOsSpotifyCatalogoEntraDesdeBuscador(a, enPared); return; }
+            // (23-11-2026, revision) solo si el buscador sigue con lo mismo escrito: si no, el disco viejo se abria encima de otra busqueda
+            if (desdeBuscador) { if (searchOpen && (searchOverlay.Escrito ?? "") == escritoAl) RocolaOsSpotifyCatalogoEntraDesdeBuscador(a, enPared); return; }
             // ya estaba dentro (desde la pared): sus canciones entran a la lista de XP como en EnterAlbum
             if (panelSongs.Visible && currentAlbum == a)
             {
