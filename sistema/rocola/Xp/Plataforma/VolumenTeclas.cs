@@ -82,9 +82,12 @@ namespace Rocola
             }
         }
 
+        private static long eligioMs;
         private static void Amixer(string que)
         {
-            if (control == null) Elige();
+            // (23-11-2026, revision) sin control encontrado (la tarjeta aun arrancando, amixer que fallo) se vuelve a buscar, como mucho cada
+            // 30 s: antes la primera vez valia para siempre y los botones quedaban muertos hasta reiniciar
+            if (control == null || (control.Length == 0 && Ahora() - eligioMs >= 30000)) { eligioMs = Ahora(); Elige(); }
             if (control.Length == 0) return;
             Corre(tarjeta + "-q sset '" + control + "' " + que);
         }
@@ -118,9 +121,10 @@ namespace Rocola
             ProcessStartInfo psi = new ProcessStartInfo("/bin/sh", "-c \"amixer " + args.Replace("\"", "") + "\"") { UseShellExecute = false, RedirectStandardOutput = true };
             using (Process p = Process.Start(psi))
             {
-                string o = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(3000);
-                return o;
+                // (23-11-2026, revision) con tope: un amixer colgado ya no deja colgado el hilo del volumen (ReadToEnd esperaba para siempre)
+                System.Threading.Tasks.Task<string> lee = p.StandardOutput.ReadToEndAsync();
+                if (!p.WaitForExit(3000)) { try { p.Kill(true); } catch { } return null; }
+                return lee.Wait(1000) ? lee.Result : null;
             }
         }
     }
