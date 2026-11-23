@@ -40,14 +40,14 @@ namespace Rocola
         private void CuentaNoche(PlayItem it)
         {
 #if ROCOLA_GPU
-            CuentaNocheGpu(it, DateTime.Now);
+            RocolaOsSemanaCuenta(it, DateTime.Now); CuentaNocheGpu(it, DateTime.Now);   // ROCOLA OS g271: (XP) CuentaNocheGpu(it, DateTime.Now); — con Rocola OS la cancion tambien suma al dia de hoy de la semana, antes que la cuenta de la noche (RocolaOs/RocolaOs.AtraccionSemana.cs); sin Rocola OS no hace nada
 #endif
         }
         // La cuenta de la noche, al disco si cambio: en segundo plano cada minuto y de una vez al cerrar.
         private void GuardaNoche(bool enFondo)
         {
 #if ROCOLA_GPU
-            GuardaNocheGpu(enFondo);
+            GuardaNocheGpu(enFondo); RocolaOsSemanaGuarda(enFondo);   // ROCOLA OS g272: (XP) GuardaNocheGpu(enFondo); — con Rocola OS la cuenta de la semana se guarda en rocola_semana.txt con la de la noche; sin Rocola OS no hace nada
 #endif
         }
         // Entra la atraccion, con los discos del cubo ya elegidos: se apunta lo que va a ensenar.
@@ -411,8 +411,8 @@ namespace Rocola
         private void ArmaTopNoche()
         {
             topFilas.Clear(); topTotal = 0;
-            foreach (KeyValuePair<string, int> kv in nocheCuenta) topTotal += kv.Value;
-            List<string> cand = MasPedidasNoche(nocheCuenta, nocheOrden, TopFilas + 10);
+            foreach (KeyValuePair<string, int> kv in RocolaOsCuentaTop(nocheCuenta)) topTotal += kv.Value;   // ROCOLA OS g273: (XP) foreach (KeyValuePair<string, int> kv in nocheCuenta) topTotal += kv.Value; — con Rocola OS el total de la lista es el de la semana (los 7 dias); sin Rocola OS, nocheCuenta
+            List<string> cand = MasPedidasNoche(RocolaOsCuentaTop(nocheCuenta), RocolaOsOrdenTop(nocheOrden), TopFilas + 10);   // ROCOLA OS g274: (XP) List<string> cand = MasPedidasNoche(nocheCuenta, nocheOrden, TopFilas + 10); — con Rocola OS las mas pedidas son las de la semana, con su desempate; sin Rocola OS, nocheCuenta y nocheOrden
             Dictionary<string, int> quiero = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < cand.Count; i++) quiero[cand[i]] = i;
             FilaNoche[] hallada = new FilaNoche[cand.Count];
@@ -426,7 +426,7 @@ namespace Rocola
                     Track t = a.Tracks[k]; int j;
                     if (t == null || t.Path == null || !quiero.TryGetValue(t.Path, out j) || hallada[j] != null) continue;
                     FilaNoche f = new FilaNoche();
-                    f.Ruta = t.Path; f.Veces = nocheCuenta[cand[j]];
+                    f.Ruta = t.Path; f.Veces = RocolaOsCuentaTop(nocheCuenta)[cand[j]];   // ROCOLA OS g275: (XP) f.Ruta = t.Path; f.Veces = nocheCuenta[cand[j]]; — con Rocola OS las veces son las de la semana; sin Rocola OS, nocheCuenta
                     f.Titulo = TituloSinPista(string.IsNullOrEmpty(t.Title) ? t.ToString() : t.Title);
                     f.Artista = string.IsNullOrEmpty(t.Artist) ? (a.Artist ?? "") : t.Artist;
                     f.Portada = a.CoverPath;
@@ -453,9 +453,9 @@ namespace Rocola
         internal static List<string> MensajesAtraccion(int canciones, int porMoneda, string favorita)
         {
             List<string> m = new List<string>(5);
-            m.Add(canciones > 0 ? "¡Elige tu canción! Hay " + canciones.ToString("#,0") + " esperándote" : "¡Elige tu canción! Toca cualquier botón");
+            m.Add(RocolaOsMsgElige() ?? (canciones > 0 ? "¡Elige tu canción! Hay " + canciones.ToString("#,0") + " esperándote" : "¡Elige tu canción! Toca cualquier botón"));   // ROCOLA OS g276: (XP) m.Add(canciones > 0 ? "¡Elige tu canción! Hay " + canciones.ToString("#,0") + " esperándote" : "¡Elige tu canción! Toca cualquier botón"); — con Rocola OS el primer aviso dice «¡Cualquier canción que te imagines está aquí!» (RocolaOs/RocolaOs.AtraccionSemana.cs); sin Rocola OS, lo de XP
             m.Add("Una moneda = " + porMoneda + (porMoneda == 1 ? " canción" : " canciones") + ". ¡Tú pones la música!");
-            if (!string.IsNullOrEmpty(favorita)) m.Add("La favorita de esta noche: «" + favorita + "»");
+            if (!string.IsNullOrEmpty(favorita)) m.Add("La favorita de " + RocolaOsFavoritaDe() + ": «" + favorita + "»");   // ROCOLA OS g277: (XP) if (!string.IsNullOrEmpty(favorita)) m.Add("La favorita de esta noche: «" + favorita + "»"); — con Rocola OS «La favorita de la semana»; sin Rocola OS, «esta noche»
             m.Add("¿Buscas una? ROJO + ARRIBA y escríbela");
             m.Add("¿Primera vez? ROJO + ABAJO y te guío");
             return m;
@@ -991,7 +991,7 @@ namespace Rocola
                 Luna(g, lunaR, lunaR * 1.15f, cy, lunaR);
                 float hx = lunaR * 2.6f;
                 using (SKPaint b = new SKPaint { Color = AtrTitulo.Sk() })   // EN LINUX: SolidBrush: un SKPaint de ese color
-                    Renglon(g, ajuste, "Lo más pedido esta noche", fCab, b, new RectangleF(hx, cy - fCab.AltoRenglon * .6f, Math.Max(10f, cabW - hx), fCab.AltoRenglon * 1.2f), una);   // EN LINUX: el lienzo y su modo de letra; GetHeight() es AltoRenglon
+                    Renglon(g, ajuste, (RocolaOsTituloTop() ?? "Lo más pedido esta noche"), fCab, b, new RectangleF(hx, cy - fCab.AltoRenglon * .6f, Math.Max(10f, cabW - hx), fCab.AltoRenglon * 1.2f), una);   // EN LINUX: el lienzo y su modo de letra; GetHeight() es AltoRenglon   // ROCOLA OS g278: (XP) Renglon(g, ajuste, "Lo más pedido esta noche", fCab, b, new RectangleF(hx, cy - fCab.AltoRenglon * .6f, Math.Max(10f, cabW - hx), fCab.AltoRenglon * 1.2f), una);   // EN LINUX: el lienzo y su modo de letra; GetHeight() es AltoRenglon — con Rocola OS la cabecera dice «Lo más pedido de la semana»; sin Rocola OS, null: la de XP
                 using (SKPaint b = new SKPaint { Color = AtrTenue.Sk() })   // EN LINUX: SolidBrush
                     TextoGdiPlus.Escribe(g, total + (total == 1 ? " canción pedida" : " canciones pedidas"), fSub, ajuste, b,   // EN LINUX: g.DrawString (Nativo/TextoGdiPlus.cs), con el modo de letra
                                  new RectangleF(hx + 2f, cy + fCab.AltoRenglon * .62f, Math.Max(10f, cabW - hx), fSub.AltoRenglon * 1.3f), una);   // EN LINUX: GetHeight() es AltoRenglon
