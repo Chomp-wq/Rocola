@@ -5,7 +5,7 @@
 // esas paredes a los 30 s (como un disco de XP) cierran TODO (la pila de paredes y el buscador, sin abrirlo otra vez): la rocola queda en la
 // pared de XP en la letra, la pagina y la eleccion de antes de abrir el buscador (g248, g249). Con las excepciones de XP salvo el video
 // (23-11-2026: con un video puesto tambien se cierra): mantenimiento, la ventana de ajustes (y el asistente a la vista, que se despide solo).
-// Un disco de XP sigue saliendo a su pared (XP).
+// Un disco de XP sigue saliendo a su pared a los 30 s (XP), y en Rocola OS tambien con un video puesto (23-11-2026).
 using System;
 
 namespace Rocola
@@ -64,9 +64,12 @@ namespace Rocola
             if (!RocolaOs.Activo || searchOpen) return false;
             if (panelSongs != null && panelSongs.Visible)
             {
-                // el disco va por su lado (g248), salvo con un video puesto: ahi el reloj del disco de XP no corre (23-11-2026)
+                // el disco va por su lado (g248), salvo con un video puesto: ahi el reloj del disco de XP no corre. (23-11-2026, el dueno: «Si un
+                // usuario se queda dentro de un disco, se debe salir de el a los 30 segundos por inactividad») con video tambien sale a los 30 s:
+                // el del buscador cierra todo y cualquier otro vuelve a su pared, como XP sin video
                 if (!videoOn || !RocolaOsInactivoVale() || (DateTime.Now - lastInput).TotalSeconds < DiscoIdleSecs) return false;
-                return RocolaOsSpotifyDiscoInactivo();
+                if (!RocolaOsSpotifyDiscoInactivo()) BackToAlbums();
+                return true;
             }
             if (currentLetter != RocolaOsSpotifyParedMarca || rocolaOsSpPared == null) return false;
             if (!RocolaOsInactivoVale() || (DateTime.Now - lastInput).TotalSeconds < RocolaOsParedIdleSecs) return false;

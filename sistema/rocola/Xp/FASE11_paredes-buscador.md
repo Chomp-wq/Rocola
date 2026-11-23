@@ -480,6 +480,10 @@ Tres peticiones del dueño del mismo día:
    ahora también se cierran (`RocolaOsInactivoVale` sin `videoOn`; el disco, por g249, porque el reloj del disco de XP no corre con video).
    Siguen las excepciones de mantenimiento y de la ventana de ajustes; con el asistente a la vista se espera a que se despida (45 s).
 
+4. **Cualquier disco sale a los 30 s** («Si un usuario se queda dentro de un disco, se debe salir de él a los 30 segundos por
+   inactividad»): XP ya lo hacía salvo con un video puesto. En Rocola OS, con video también: el del buscador cierra todo y cualquier otro
+   vuelve a su pared (g249, `RocolaOsSpotifyParedInactiva`). Probado con un video de 90 s pedido desde su disco y nada tocado: a los 50 s
+   la versión de antes seguía en el disco y la nueva en la pared (Pruebas/Windows/corre.sh con un video hecho con ffmpeg; sin escena fija).
+
 Pruebas (fuera de pantalla, 1024x768, JIT; datos de prueba rehechos a mano en este contenedor): escena `unida` (6/6) y las de siempre de
-`catalogo`; `asistente` 29/29 (la escena `mas` ahora pide «Sus discos»). El cierre con video no tiene escena (no hay video en los datos de
-prueba). No visto en el A4.
+`catalogo`; `asistente` 29/29 (la escena `mas` ahora pide «Sus discos»). La batería entera de `catalogo`: 6 MAL de 170, los mismos 6 (cuenta, atajos, atajos503) con el código de antes de estos cambios: vienen de los datos de prueba rehechos, no de esto. No visto en el A4.
