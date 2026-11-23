@@ -180,14 +180,15 @@ for e in $escenas; do
     p=$(pasos $d); echo "   pasos: $p"
     si "tarjetas: la cancion con credito (sin la moneda), el disco y todos los discos, y de vuelta" bash -c "echo '$p' | grep -q 'Pídela con VERDE|Un disco de Spotify|Pídela con VERDE|Todos los discos|Pídela con VERDE' && ! echo '$p' | grep -q 'Mete una moneda'" ;;
   mas)
-    # GUIA 3 con «otra»: tu artista Otra Banda (la tarjeta de XP: «Busca su tarjeta») y detras «Otra Banda · más en Spotify»
+    # GUIA 3 con «otra»: tu artista Otra Banda, que Spotify tambien tiene: su tarjeta de XP abre la pared unida (23-11-2026; ya no sale
+    # «Otra Banda · más en Spotify» detras): «Sus discos»; a la derecha, otra tarjeta; de vuelta, «Sus discos»
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$(guia 6 2),12:27+38,$(escribe 13.5 otra),$(derechas 15 14),18:37,19.5:39" 22 ROCOLA_OS=1 \
-      ROCOLA_CAPTURA="$(cap 17.6 guia3-mas-en-spotify),$(cap 19 guia3-busca-su-tarjeta)"
+    abre $e "$d" "$(guia 6 2),12:27+38,$(escribe 13.5 otra),$(derechas 15 14),17.2:37,18:39,19.5:37" 22 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 17.6 guia3-sus-discos),$(cap 19 guia3-otra-tarjeta)"
     espera $e; o="$W/$e"
     si "mas: sale con 0" test "$(cat $o/salio)" = 0
     p=$(pasos $d); echo "   pasos: $p"
-    si "mas: «más en Spotify» y, en tu tarjeta, «Busca su tarjeta»" bash -c "echo '$p' | grep -q 'Más en Spotify|Busca su tarjeta|Más en Spotify'" ;;
+    si "mas: en tu tarjeta, «Sus discos» (la pared unida), y otra vez al volver; nada de «Más en Spotify»" bash -c "echo '$p' | grep -q 'Sus discos|[^|]*|Sus discos' && ! echo '$p' | grep -q 'Más en Spotify'" ;;
   xp|sinllave)
     # SIN SPOTIFY = EL ASISTENTE DE XP TAL CUAL: sin ROCOLA_OS (xp) y con ROCOLA_OS=1 (spotify encendido de fabrica) sin la llave de la API
     # (sinllave), lo mismo: la pregunta de tres (ABAJO x4 se queda en la 3a), «Aprender a moverme» con sus pasos, ROJO+ABAJO la guarda; otra

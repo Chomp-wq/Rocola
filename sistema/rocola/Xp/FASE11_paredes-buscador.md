@@ -449,3 +449,37 @@ el buscador, como debe de ser, y tambien si alguien se queda dentro de un disco,
 - Código: `RocolaOs/RocolaOs.BuscadorMas.cs` (`RocolaOsSpotifyCierraTodo`). Sin Rocola OS, cada gancho deja lo de XP tal cual.
 - Prueba: escena `inactivo` de `Pruebas/RocolaOs/catalogo` (pared 60 s, disco del buscador 30 s, disco de una pared 30 s y un disco de
   XP 30 s; las tres veces la letra de antes). No visto en el A4.
+
+## La pared unida, sin BUSCAR ni AYUDA, y el cierre también con video (23-11-2026)
+
+Tres peticiones del dueño del mismo día:
+
+1. **La pared unida** («buscando a frank sinatra [...] sale un disco de frank que está en mi disco local, y al lado sale frank otra vez,
+   pero eso es del Spotify [...] mi solución es unificar los discos locales con los de Spotify [...] en la pared de discos temporal [...] y
+   ya que se vuelva a poner los discos de Spotify en la pared de discos normal [...] que lleve al usuario a la pared de discos real si es que
+   en la pared de discos real están los discos del artista»). SUSTITUYE a «ARTISTA · más en Spotify»:
+   - Ya no sale la segunda tarjeta. Un artista tuyo que Spotify también tiene (la búsqueda de Spotify lo trajo con el mismo nombre, sin
+     acentos ni mayúsculas) tiene UNA tarjeta, la de XP, y abre la **pared unida**: tus discos de ese artista primero (en el orden de XP),
+     luego «Canciones de ARTISTA» y los discos de Spotify que no tienes (los que se llaman como uno tuyo no se repiten). Se abre al momento
+     con tus discos; lo de Spotify se pide (1 petición de 10, o ya adelantada al quedarse en la tarjeta) y entra al llegar. Si no llega, se
+     quedan tus discos, sin aviso. Un disco tuyo abierto desde ahí vuelve a la pared unida con REGRESAR; se cierra sola como las demás.
+   - Si ya se saben todos sus discos de Spotify y los tienes todos, la tarjeta hace lo de XP (lleva a tu pared).
+   - **La pared de verdad primero**: con la función «pared» encendida (el catálogo en la pared de XP; apagada de fábrica desde el 22-11),
+     si en la letra ya armada hay discos del catálogo de ese artista, su tarjeta (tuya o de un artista solo de Spotify) lleva ahí, al
+     primero de sus discos, como la tarjeta de XP. Si la letra aún no está armada o no los tiene, su pared del buscador.
+   - El asistente: la tarjeta tuya con pared unida es «Sus discos» («Pulsa VERDE y verás sus discos de la rocola y los de Spotify
+     juntos»). Código: `RocolaOsSpotifyApuntaUnida`, `RocolaOsSpotifyParedUnidaElige`, `RocolaOsSpotifyEnLaParedReal` (sin ganchos nuevos:
+     por g41).
+2. **Sin BUSCAR ni AYUDA en las paredes del buscador** («no debe aparecer la celda de buscador ni la de ayuda, ni sus brillos ni nada
+   relacionado»): g262 (`Form1.cs`, `LayoutControls`) esconde la casilla de BUSCAR y con ella AYUDA (su latido y la interrogación miran su
+   `Visible`); la cabecera «DISCOS · ARTISTA» con el icono se queda con su sitio. g263 (`RefreshAlbums`) vuelve a acomodar la fila al entrar
+   o salir (y el latido del catálogo, por si acaso). Las teclas no cambian.
+3. **Todo lo del buscador se cierra por inactividad** («en cualquier situación donde el buscador o algo relacionado a él se quede abierto,
+   el buscador deberá cerrarse por inactividad»): el buscador ya se cerraba a los 60 s siempre (XP); lo que faltaba era el VIDEO, que era
+   excepción: con un video puesto, una pared del buscador (60 s) y un disco abierto desde el buscador o desde una de sus paredes (30 s)
+   ahora también se cierran (`RocolaOsInactivoVale` sin `videoOn`; el disco, por g249, porque el reloj del disco de XP no corre con video).
+   Siguen las excepciones de mantenimiento y de la ventana de ajustes; con el asistente a la vista se espera a que se despida (45 s).
+
+Pruebas (fuera de pantalla, 1024x768, JIT; datos de prueba rehechos a mano en este contenedor): escena `unida` (6/6) y las de siempre de
+`catalogo`; `asistente` 29/29 (la escena `mas` ahora pide «Sus discos»). El cierre con video no tiene escena (no hay video en los datos de
+prueba). No visto en el A4.

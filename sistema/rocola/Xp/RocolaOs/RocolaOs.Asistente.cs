@@ -4,9 +4,9 @@
 // cosas»): con el modo Spotify y la llave de la API, la pregunta de la estrella («¿Que quieres hacer?») lleva una cuarta opcion,
 // «Canciones de Spotify», que abre otra pregunta igual con tres guias:
 //   1. «Pedir una cancion de Spotify»: el buscador, lo escrito, las canciones de Spotify entre los resultados (y lo que hace cada tarjeta:
-//      un disco, un artista que solo esta en Spotify, «mas en Spotify», «Todos los discos de»), la moneda (sin creditos no se pide) y PONER.
+//      un disco, un artista que solo esta en Spotify, uno tuyo con su pared unida, «Todos los discos de»), la moneda (sin creditos no se pide) y PONER.
 //   2. «La letra ♫ de Spotify»: ir a la letra ♫ de la pared con ROJO + IZQ/DER, entrar a un disco o lista, la moneda y PONER.
-//   3. «Los discos de un artista»: el buscador, la tarjeta del artista (o «mas en Spotify», o «Todos los discos de»), su pared de discos
+//   3. «Los discos de un artista»: el buscador, la tarjeta del artista (la tuya abre la pared unida, 23-11-2026; o «Todos los discos de»), su pared de discos
 //      («Canciones de» en la primera casilla), entrar a un disco y volver con REGRESAR: a la pared, y otra vez, al buscador.
 // Cada guia es como las de XP: mira lo que pasa DE VERDAD en la rocola cada latido y decide el paso que toca, la estrella senala con la
 // mano y la flecha dorada la pieza de la pantalla (lo mismo que senala XP: el buscador, el teclado, la tarjeta elegida, la barra de letras,
@@ -139,16 +139,17 @@ namespace Rocola
             return i >= 0 && i < albumView.Page.Count ? albumView.Page[i] : null;
         }
         // la tarjeta elegida en el buscador: 0 nada (o lo de XP), 1 cancion de Spotify, 2 disco o lista de Spotify, 3 artista que solo esta
-        // en Spotify, 4 «mas en Spotify», 5 «Todos los discos de»
+        // en Spotify, 4 un artista tuyo con su pared unida (tus discos y los de Spotify; 23-11-2026, antes «mas en Spotify»), 5 «Todos los discos de»
         private int RocolaOsAsTarjeta()
         {
             if (!EnResultados) return 0;
             int s = searchOverlay.SelResult;
             if (s < 0 || s >= searchOverlay.Results.Count) return 0;
             SearchItem it = searchOverlay.Results[s];
+            if (RocolaOsSpotifyUnidaDe(it) != null) return 4;
             if (it == null || !RocolaOsEsSpotify(it.AlbumRef)) return 0;
             RocolaOsSpotifyParedQue q;
-            if (rocolaOsSpParedDe != null && rocolaOsSpParedDe.TryGetValue(it.AlbumRef, out q)) return q.Tipo == "todos" ? 5 : 4;
+            if (rocolaOsSpParedDe != null && rocolaOsSpParedDe.TryGetValue(it.AlbumRef, out q)) return 5;
             if (it.Kind == 2 && it.TrackRef != null) return 1;
             if (it.Kind == 0 && rocolaOsSpDeArtista != null && rocolaOsSpDeArtista.ContainsKey(it.AlbumRef)) return 3;
             if (it.Kind == 1) return 2;
@@ -320,13 +321,13 @@ namespace Rocola
                 case RocolaOsPasoAbreArtista: titulo = "Abre el buscador"; texto = "Mantén el botón ROJO y pulsa la flecha de ARRIBA para buscar al artista."; teclas = "B+U"; break;
                 case RocolaOsPasoSinLetra: titulo = RocolaOsSpotifyLetraEnLaPared ? "Aún no hay letra ♫" : "Spotify, en el buscador"; texto = RocolaOsSpotifyLetraEnLaPared ? "Sale con tu cuenta o al abrir un disco de Spotify. Mientras, búscalas: ROJO + ARRIBA." : "Los discos y listas de Spotify se buscan: ROJO + ARRIBA."; teclas = "B+U"; break;
                 case RocolaOsPasoEscribe: titulo = "Escribe el nombre"; texto = "Elige las letras con las flechas y VERDE. Luego ve con las flechas a las de Spotify."; teclas = "L/R U/D V"; break;
-                case RocolaOsPasoEscribeArtista: titulo = "Escribe el artista"; texto = "Si solo está en Spotify sale su tarjeta. Si ya lo tienes, detrás sale «más en Spotify»."; teclas = "L/R U/D V"; break;
+                case RocolaOsPasoEscribeArtista: titulo = "Escribe el artista"; texto = "Sale su tarjeta, esté en la rocola o solo en Spotify."; teclas = "L/R U/D V"; break;
                 case RocolaOsPasoBuscaSpotify: titulo = "Busca las de Spotify"; texto = "Esa es de la rocola. Muévete con las flechas hasta una canción de Spotify."; teclas = "L/R U/D"; break;
-                case RocolaOsPasoBuscaTarjeta: titulo = "Busca su tarjeta"; texto = "Muévete hasta el artista, «más en Spotify» o «Todos los discos de...»."; teclas = "L/R U/D"; break;
+                case RocolaOsPasoBuscaTarjeta: titulo = "Busca su tarjeta"; texto = "Muévete hasta el artista o «Todos los discos de...»."; teclas = "L/R U/D"; break;
                 case RocolaOsPasoCancionSpotify: titulo = "Pídela con VERDE"; texto = "Esta canción es de Spotify. Se pide como las tuyas y cuesta 1 crédito."; teclas = "V"; break;
                 case RocolaOsPasoDiscoSpotify: titulo = "Un disco de Spotify"; texto = "Pulsa VERDE para abrirlo y elige tu canción con las flechas."; teclas = "V"; break;
                 case RocolaOsPasoArtistaSpotify: titulo = "Un artista de Spotify"; texto = "No está en la rocola. Pulsa VERDE y verás sus discos en su propia pared."; teclas = "V"; break;
-                case RocolaOsPasoMasSpotify: titulo = "Más en Spotify"; texto = "Pulsa VERDE y verás los discos de este artista que la rocola no tiene."; teclas = "V"; break;
+                case RocolaOsPasoMasSpotify: titulo = "Sus discos"; texto = "Pulsa VERDE y verás sus discos de la rocola y los de Spotify juntos."; teclas = "V"; break;
                 case RocolaOsPasoTodos: titulo = "Todos los discos"; texto = "Pulsa VERDE y verás todos los discos que salen con lo que escribiste."; teclas = "V"; break;
                 case RocolaOsPasoMoneda: titulo = "Mete una moneda"; texto = "Sin créditos no se pide: cada canción, también las de Spotify, cuesta 1 crédito."; teclas = "M"; break;
                 case RocolaOsPasoCancionDisco: titulo = "Elige tu canción"; texto = "Sube o baja con las flechas y pulsa VERDE para pedirla. El ROJO te regresa."; teclas = "U/D V"; break;

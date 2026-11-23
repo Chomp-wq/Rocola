@@ -5,7 +5,11 @@
 //     barra de letras (una «letra» que la barra no tiene: RocolaOsSpotifyParedMarca), con su nombre en la cabecera (como «VIDEOS»). La
 //     casilla 1 es «Canciones de ARTISTA» (un disco de XP con sus canciones en el orden de la busqueda artist:"..."; se piden al entrar, de 10
 //     en 10, hasta 50); luego sus discos y sencillos, de 10 en 10, pidiendo solo la pagina que se mira.
-//   - «ARTISTA · mas en Spotify»: detras de la tarjeta de un artista TUYO que Spotify tambien tiene; su pared sin los discos que tienes.
+//   - LA PARED UNIDA (23-11-2026, el dueno: «unificar los discos locales con los de Spotify»; sustituye a «ARTISTA · mas en Spotify»): la
+//     tarjeta de XP de un artista TUYO que Spotify tambien tiene abre una pared del buscador con TUS discos primero (en el orden de XP),
+//     luego «Canciones de ARTISTA» y los discos de Spotify que no tienes. Se abre al momento con los tuyos; lo de Spotify llega detras.
+//   - LA PARED DE VERDAD PRIMERO (23-11-2026): con la funcion «pared» encendida (el catalogo en la pared de XP), si en la letra armada estan
+//     discos del catalogo de ese artista, su tarjeta (tuya o solo de Spotify) lleva ahi, como la de XP, y no a una pared del buscador.
 //   - «Todos los discos de «lo escrito»»: la ultima tarjeta de los discos de Spotify del buscador; una pared con todos los discos de la
 //     busqueda, de 10 en 10 (hasta 1000).
 //   - REGRESAR (la pila, como mucho 4): un disco -> su pared, en la misma pagina y casilla (eso ya lo hace XP: BackToAlbums) -> el buscador,
@@ -44,11 +48,12 @@ namespace Rocola
         // UNA PARED DEL BUSCADOR
         private sealed class RocolaOsSpotifyPared
         {
-            internal string Tipo;                    // ParedArtista (un artista; tambien «mas en Spotify») o ParedTodos
+            internal string Tipo;                    // ParedArtista (un artista; tambien la pared unida) o ParedTodos
             internal string De;                      // el id del artista, o lo escrito (la clave de la busqueda)
             internal string Cabecera;
             internal Album Canciones;                // «Canciones de ARTISTA» (null en la de todos los discos)
-            internal HashSet<string> Excluir;        // («mas en Spotify») los nombres de tus discos, sin acentos ni mayusculas
+            internal HashSet<string> Excluir;        // (la pared unida) los nombres de tus discos, sin acentos ni mayusculas
+            internal List<Album> Tuyos;              // (la pared unida) tus discos de ese artista, en el orden de XP: van primero
             internal int Total = -1;                 // lo que dice Spotify (-1: aun no se sabe)
             internal readonly Dictionary<int, List<Album>> Bloques = new Dictionary<int, List<Album>>();   // de 10 en 10
             internal readonly Dictionary<int, List<Album>> Huecos = new Dictionary<int, List<Album>>();
@@ -71,7 +76,7 @@ namespace Rocola
             internal int Siguiente, Total = -1;
             internal bool Pidiendo, Acabado;
         }
-        // lo que abre cada tarjeta nueva del buscador («mas en Spotify», «Todos los discos de...»)
+        // lo que abre cada tarjeta nueva del buscador («Todos los discos de...») y la pared unida de tus artistas
         private sealed class RocolaOsSpotifyParedQue
         {
             internal string Tipo, De, Nombre, PortadaUrl;
@@ -84,6 +89,7 @@ namespace Rocola
         private Album rocolaOsSpEntrandoHueco;                        // se entro a una casilla que aun no llega
         private Dictionary<Album, RocolaOsSpotifyCancionesDe> rocolaOsSpCancionesDe;
         private Dictionary<Album, RocolaOsSpotifyParedQue> rocolaOsSpParedDe;
+        private Dictionary<string, RocolaOsSpotifyParedQue> rocolaOsSpUnidas;   // (23-11-2026) tus artistas que Spotify tambien tiene, sin acentos ni mayusculas
         private HashSet<string> rocolaOsSpTuyos;                      // tus artistas, sin acentos ni mayusculas
         private Dictionary<string, HashSet<string>> rocolaOsSpTusDiscos;   // (revision) de cada uno de tus artistas, los nombres de sus discos
         private int rocolaOsSpTuyosDe = -1;
@@ -97,11 +103,11 @@ namespace Rocola
 
         // LOS ARTISTAS DE SPOTIFY DE UNA BUSQUEDA (lo llama la mezcla del catalogo): los que NO estan en la rocola (ni por el artista de un
         // disco tuyo, sin acentos ni mayusculas), hasta 3: el primero si su nombre se parece a lo escrito (lo contiene, esta contenido o a dos
-        // letras; la idea del programa anterior, Motor/Spotify.cs), los demas si lo contienen. Los que SI estan: su «mas en Spotify».
-        private void RocolaOsSpotifyParedesArtistas(RocolaOsSpotifyCatalogoBusqueda b, out List<SearchItem> artistas, out Dictionary<string, SearchItem> mas)
+        // letras; la idea del programa anterior, Motor/Spotify.cs), los demas si lo contienen. Los que SI estan: su tarjeta de XP abre la pared
+        // unida (23-11-2026; antes salia otra tarjeta detras, «ARTISTA · mas en Spotify», que el dueno vio confusa).
+        private void RocolaOsSpotifyParedesArtistas(RocolaOsSpotifyCatalogoBusqueda b, out List<SearchItem> artistas)
         {
             artistas = new List<SearchItem>();
-            mas = new Dictionary<string, SearchItem>(StringComparer.Ordinal);
             string q = MotorBusqueda.Normaliza(b.Consulta ?? "");
             HashSet<string> tuyos = RocolaOsSpotifyTuyos();
             bool primero = true;
@@ -112,7 +118,7 @@ namespace Rocola
                 if (nn.Length == 0 || q.Length == 0) continue;
                 if (tuyos.Contains(nn))
                 {
-                    if (!mas.ContainsKey(nn) && RocolaOsSpotifyHayMas(ar, nn)) mas[nn] = RocolaOsSpotifyMasTarjeta(ar, nn);
+                    RocolaOsSpotifyApuntaUnida(ar, nn);
                     continue;
                 }
                 if (artistas.Count >= RocolaOsSpotifyArtistasMax) continue;
@@ -165,19 +171,76 @@ namespace Rocola
             foreach (RocolaOsSpotifyCatalogoDisco d in p.Discos) if (!tuyos.Contains(MotorBusqueda.Normaliza(d.Nombre ?? ""))) return true;
             return false;
         }
-        private SearchItem RocolaOsSpotifyMasTarjeta(RocolaOsSpotifyCatalogoArtista ar, string nn)
+        // (23-11-2026) TU ARTISTA QUE SPOTIFY TAMBIEN TIENE: se apunta su pared unida (la abre tu tarjeta de XP), solo si puede haber discos suyos
+        // que no tienes (RocolaOsSpotifyHayMas: si ya se saben todos y los tienes todos, tu tarjeta hace lo de XP). El primero que da Spotify con
+        // ese nombre manda (el mas conocido).
+        private void RocolaOsSpotifyApuntaUnida(RocolaOsSpotifyCatalogoArtista ar, string nn)
         {
-            string clave = "mas:" + ar.Id;
-            Album a;
-            if (!rocolaOsSpDiscos.TryGetValue(clave, out a))
+            if (string.IsNullOrEmpty(ar.Id)) return;
+            if (rocolaOsSpUnidas == null) rocolaOsSpUnidas = new Dictionary<string, RocolaOsSpotifyParedQue>(StringComparer.Ordinal);
+            RocolaOsSpotifyParedQue q;
+            if (rocolaOsSpUnidas.TryGetValue(nn, out q) && q.De != ar.Id) return;   // (ya hay otro con ese nombre, de una busqueda de antes)
+            if (!RocolaOsSpotifyHayMas(ar, nn)) { rocolaOsSpUnidas.Remove(nn); return; }
+            if (rocolaOsSpUnidas.Count > 500) rocolaOsSpUnidas.Clear();   // (sin crecer toda la sesion)
+            rocolaOsSpUnidas[nn] = new RocolaOsSpotifyParedQue { Tipo = "unida", De = ar.Id, Nombre = ar.Nombre ?? "", PortadaUrl = ar.PortadaUrl, Excluir = RocolaOsSpotifyTusDiscos(nn) };
+        }
+        // la pared unida de esa tarjeta: tu tarjeta de artista (de XP) con un artista de Spotify apuntado; null si no
+        private RocolaOsSpotifyParedQue RocolaOsSpotifyUnidaDe(SearchItem it)
+        {
+            if (it == null || it.Kind != 0 || it.AlbumRef == null || rocolaOsSpUnidas == null || RocolaOsEsSpotify(it.AlbumRef) || !RocolaOsSpotifyCatalogoVa) return null;
+            RocolaOsSpotifyParedQue q;
+            return rocolaOsSpUnidas.TryGetValue(MotorBusqueda.Normaliza(it.Display ?? ""), out q) ? q : null;
+        }
+        // (para el adelanto del buscador) el id del artista de Spotify de su pared unida, o null
+        private string RocolaOsSpotifyUnidaId(SearchItem it)
+        {
+            RocolaOsSpotifyParedQue q = RocolaOsSpotifyUnidaDe(it);
+            return q == null ? null : q.De;
+        }
+        // ELEGIR TU TARJETA DE ARTISTA (desde g41). true = abrio la pared unida o llevo a la pared de verdad; false = lo de XP
+        private bool RocolaOsSpotifyParedUnidaElige(SearchItem it)
+        {
+            RocolaOsSpotifyParedQue q = RocolaOsSpotifyUnidaDe(it);
+            if (q == null) return false;
+            string nn = MotorBusqueda.Normaliza(it.Display ?? "");
+            // con la funcion «pared»: si sus discos del catalogo estan en la pared de verdad, alli (lo de XP; false y XP lo hace con su disco,
+            // salvo que el primero del artista en la letra sea otro: entonces se va a ese)
+            Album real = RocolaOsSpotifyEnLaParedReal(nn, it.AlbumRef.Letter);
+            if (real != null)
             {
-                a = new Album { Folder = RocolaOsSpotifyCarpeta + clave, Name = "", Artist = ar.Nombre ?? "", Letter = RocolaOsSpotifyMarca };
-                rocolaOsSpDiscos[clave] = a;
-                RocolaOsSpotifyCatalogoPortada(a, "artista-" + ar.Id, ar.PortadaUrl);   // (la foto del artista: el mismo archivo que su tarjeta)
+                if (ReferenceEquals(real, it.AlbumRef)) return false;
+                MarkSearchActivity(); ApuntaBusqueda(it);
+                CloseSearch(); NavigateToAlbum(real);
+                return true;
             }
-            if (rocolaOsSpParedDe == null) rocolaOsSpParedDe = new Dictionary<Album, RocolaOsSpotifyParedQue>();
-            rocolaOsSpParedDe[a] = new RocolaOsSpotifyParedQue { Tipo = "mas", De = ar.Id, Nombre = ar.Nombre ?? "", PortadaUrl = ar.PortadaUrl, Excluir = RocolaOsSpotifyTusDiscos(nn) };
-            return new SearchItem { Kind = 0, Display = (ar.Nombre ?? "") + " · más en Spotify", Key = "", AlbumRef = a, Albums = new List<Album> { a } };
+            // tus discos de ese artista, en el orden de XP (la biblioteca ya va asi)
+            List<Album> tuyos = new List<Album>();
+            if (!libBuilding)
+                foreach (Album a in albums)
+                    if (a != null && !a.IsTop && !RocolaOsEsSpotify(a) && MotorBusqueda.Normaliza(a.Artist ?? "") == nn) tuyos.Add(a);
+            if (tuyos.Count == 0) return false;
+            MarkSearchActivity(); ApuntaBusqueda(it);   // (lo de XP con un artista: «Buscaste: ...» en los atajos)
+            RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedArtista, q.De, q.Nombre, q.PortadaUrl, q.Excluir, "DISCOS · " + (it.Display ?? q.Nombre).ToUpperInvariant(), tuyos);
+            return true;
+        }
+        // (23-11-2026) LA PARED DE VERDAD: con la funcion «pared» encendida (el catalogo en la pared de XP) y la letra ya armada, el primer disco
+        // de ese artista en ella si alli hay discos suyos del catalogo; null si no (sin la funcion, sin armar la letra o sin discos suyos del
+        // catalogo: entonces su pared del buscador). Solo mira la memoria, no pide nada.
+        private Album RocolaOsSpotifyEnLaParedReal(string nn, char letra)
+        {
+            if (nn.Length == 0 || !rocolaOsPgArrancada || !RocolaOsPgVa || !RocolaOsPgLetraSuya(letra) || rocolaOsPgListas == null) return null;
+            if (!ReferenceEquals(albums, rocolaOsPgAlbumsXp) || libBuilding) return null;
+            RocolaOsPgLetra e = null;
+            for (int i = rocolaOsPgListas.Count - 1; i >= 0; i--) if (rocolaOsPgListas[i].Letra == letra) { e = rocolaOsPgListas[i]; break; }
+            if (e == null || e.Lista == null || e.Catalogo == null || !ReferenceEquals(e.De, rocolaOsPgCat)) return null;
+            Album primero = null;
+            foreach (Album a in e.Lista)
+            {
+                if (a == null || MotorBusqueda.Normaliza(a.Artist ?? "") != nn) continue;
+                if (primero == null) primero = a;
+                if (e.Catalogo.ContainsKey(a)) return primero;
+            }
+            return null;
         }
         // «Todos los discos de «lo escrito»»: una tarjeta de disco de XP (su portada, la del primer disco de la busqueda), si hubo discos
         private SearchItem RocolaOsSpotifyParedesTodosTarjeta(RocolaOsSpotifyCatalogoBusqueda b)
@@ -231,14 +294,17 @@ namespace Rocola
             RocolaOsSpotifyParedQue q;
             if (rocolaOsSpParedDe != null && rocolaOsSpParedDe.TryGetValue(a, out q))
             {
-                if (q.Tipo == "todos") RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedTodos, q.De, null, null, null, "DISCOS · «" + q.Nombre.ToUpperInvariant() + "»");   // (22-11-2026, el dueno: «el anuncio Discos-tal artista y al lado un icono de Spotify»; el icono: RocolaOs.ParedLetrero.cs)
-                else RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedArtista, q.De, q.Nombre, q.PortadaUrl, q.Excluir, "DISCOS · " + q.Nombre.ToUpperInvariant());
+                RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedTodos, q.De, null, null, null, "DISCOS · «" + q.Nombre.ToUpperInvariant() + "»", null);   // (22-11-2026, el dueno: «el anuncio Discos-tal artista y al lado un icono de Spotify»; el icono: RocolaOs.ParedLetrero.cs)
                 return true;
             }
             RocolaOsSpotifyCatalogoArtista ar;
             if (it.Kind == 0 && rocolaOsSpDeArtista.TryGetValue(a, out ar))
             {
-                RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedArtista, ar.Id, ar.Nombre ?? "", ar.PortadaUrl, null, "DISCOS · " + (ar.Nombre ?? "").ToUpperInvariant());
+                // (23-11-2026) con la funcion «pared», si sus discos del catalogo estan en la pared de verdad, alli (como la tarjeta de XP)
+                string nn = MotorBusqueda.Normaliza(ar.Nombre ?? "");
+                Album real = RocolaOsSpotifyEnLaParedReal(nn, FirstLetter(ar.Nombre));
+                if (real != null) { CloseSearch(); NavigateToAlbum(real); return true; }
+                RocolaOsSpotifyAbrePared(RocolaOsSpotifyCatalogoApi.ParedArtista, ar.Id, ar.Nombre ?? "", ar.PortadaUrl, null, "DISCOS · " + (ar.Nombre ?? "").ToUpperInvariant(), null);
                 return true;
             }
             return false;
@@ -247,10 +313,10 @@ namespace Rocola
         // ================================================================= abrir una pared ============================================
 
         // Se pide lo de su primera pagina (1 o 2 peticiones) y se abre al llegar, si nadie eligio otra cosa mientras tanto; si no llega, el
-        // aviso de XP y el buscador se queda como estaba
-        private void RocolaOsSpotifyAbrePared(string tipo, string de, string nombre, string portadaUrl, HashSet<string> excluir, string cabecera)
+        // aviso de XP y el buscador se queda como estaba. La pared unida (con tus discos) se abre al momento y lo de Spotify llega detras.
+        private void RocolaOsSpotifyAbrePared(string tipo, string de, string nombre, string portadaUrl, HashSet<string> excluir, string cabecera, List<Album> tuyos)
         {
-            RocolaOsSpotifyPared p = new RocolaOsSpotifyPared { Tipo = tipo, De = de, Cabecera = cabecera, Excluir = excluir };
+            RocolaOsSpotifyPared p = new RocolaOsSpotifyPared { Tipo = tipo, De = de, Cabecera = cabecera, Excluir = excluir, Tuyos = tuyos };
             if (tipo == RocolaOsSpotifyCatalogoApi.ParedArtista) p.Canciones = RocolaOsSpotifyCancionesAlbum(de, nombre, portadaUrl);
             p.Vuelta = RocolaOsSpotifyGuardaBuscador();
             int yo = ++rocolaOsSpAbriendo;
@@ -260,17 +326,28 @@ namespace Rocola
         {
             if (yo != rocolaOsSpAbriendo || !searchOpen) return;
             List<int> falta = RocolaOsSpotifyFaltan(p, 0);
-            if (falta.Count > 0)
+            bool unida = p.Tuyos != null && p.Tuyos.Count > 0;
+            if (unida)
             {
-                foreach (int b in falta)
-                    RocolaOsSpotifyPideBloque(p, b, delegate { if (p.Pedidos.Count == 0) RocolaOsSpotifyParedPrepara(p, yo); });
-                return;
+                // (la pared unida) se abre YA con tus discos (y «Canciones de»); lo de Spotify se pide y, al llegar, la pared se rehace
+                // (RocolaOsSpotifyLlegoBloque); si no llega, quedan tus discos, como la pared de XP
+                foreach (int b in falta) RocolaOsSpotifyPideBloque(p, b, null);
+                RocolaOsSpotifyRecompone(p);
             }
-            if (p.Pedidos.Count > 0) return;   // (llega lo que falta y se vuelve aqui)
-            if (p.Total < 0)
+            else
             {
-                RocolaOsSpotifyCatalogoAviso("Espera un momento y vuelve a intentarlo");
-                return;
+                if (falta.Count > 0)
+                {
+                    foreach (int b in falta)
+                        RocolaOsSpotifyPideBloque(p, b, delegate { if (p.Pedidos.Count == 0) RocolaOsSpotifyParedPrepara(p, yo); });
+                    return;
+                }
+                if (p.Pedidos.Count > 0) return;   // (llega lo que falta y se vuelve aqui)
+                if (p.Total < 0)
+                {
+                    RocolaOsSpotifyCatalogoAviso("Espera un momento y vuelve a intentarlo");
+                    return;
+                }
             }
             // lo de XP con un artista del buscador (ChooseSearchResult, Kind 0): CloseSearch y NavigateToAlbum, aqui a la pared
             if (rocolaOsSpPared != null && !ReferenceEquals(rocolaOsSpPared, p)) rocolaOsSpPared.PaginaPub = -1;   // (lo que pedia ya no se mira)
@@ -348,7 +425,7 @@ namespace Rocola
             {
                 p.Fallados.Add(b);
                 RocolaOsSpotifyCatalogoApi.ApuntaCallado("no llego una pagina de la pared: " + (error ?? "sin respuesta"));
-                if (mirando && !searchOpen) RocolaOsSpotifyCatalogoAviso("Espera un momento y vuelve a intentarlo");
+                if (mirando && !searchOpen && (p.Tuyos == null || p.Tuyos.Count == 0)) RocolaOsSpotifyCatalogoAviso("Espera un momento y vuelve a intentarlo");   // (la unida: se quedan tus discos)
                 return;
             }
             p.Fallados.Remove(b);
@@ -370,12 +447,12 @@ namespace Rocola
             List<Album> l = new List<Album>();
             foreach (RocolaOsSpotifyCatalogoDisco d in pg.Discos)
             {
-                if (p.Excluir != null && p.Excluir.Contains(MotorBusqueda.Normaliza(d.Nombre ?? ""))) continue;   // («mas en Spotify»: los tuyos no)
+                if (p.Excluir != null && p.Excluir.Contains(MotorBusqueda.Normaliza(d.Nombre ?? ""))) continue;   // (la pared unida: los que ya tienes no, ya van arriba)
                 Album a = RocolaOsSpotifyCatalogoAlbum(d);
                 if (!l.Contains(a)) l.Add(a);
             }
             p.Bloques[b] = l;
-            // (revision cuota-hilos-y-fallos) un bloque que llega con menos de 10 (los tuyos quitados en «mas en Spotify», o Spotify que da
+            // (revision cuota-hilos-y-fallos) un bloque que llega con menos de 10 (los tuyos quitados en la pared unida, o Spotify que da
             // menos) corre las casillas de detras: la elegida, si ya era un disco y sigue en esta pagina, se queda en SU disco
             Album elegido = mirando && selAlbumIndex >= 0 && selAlbumIndex < p.Lista.Count ? p.Lista[selAlbumIndex] : null;
             Album hueco = rocolaOsSpEntrandoHueco;
@@ -407,10 +484,11 @@ namespace Rocola
                 AbortDiscTrans();
             }
         }
-        // la lista de la pared: «Canciones de», y cada bloque de 10 como llego, o sus casillas por llenar
+        // la lista de la pared: tus discos (la unida), «Canciones de», y cada bloque de 10 como llego, o sus casillas por llenar
         private void RocolaOsSpotifyRecompone(RocolaOsSpotifyPared p)
         {
             List<Album> l = new List<Album>();
+            if (p.Tuyos != null) l.AddRange(p.Tuyos);
             if (p.Canciones != null) l.Add(p.Canciones);
             int por = RocolaOsSpotifyCatalogoApi.PorPaginaPared;
             int nb = p.Total < 0 ? 0 : (p.Total + por - 1) / por;

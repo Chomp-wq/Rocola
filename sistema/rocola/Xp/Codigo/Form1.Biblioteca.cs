@@ -2390,7 +2390,7 @@ namespace Rocola
 
         private void RefreshAlbums()
         {
-            if (currentLetter == TopMark) BuildTopDiscs();   // discos TOP siempre al dia
+            RocolaOsParedCasillasAlDia(); if (currentLetter == TopMark) BuildTopDiscs();   // discos TOP siempre al dia   // ROCOLA OS g263: (XP) if (currentLetter == TopMark) BuildTopDiscs();   // discos TOP siempre al dia — al entrar o salir de una pared del buscador, la fila de arriba se acomoda otra vez (sin o con BUSCAR y AYUDA; RocolaOs/RocolaOs.ParedLetrero.cs; de XP, nada)
             List<Album> list = CurrentList();
             int totalPages = Math.Max(1, (list.Count + PageSize - 1) / PageSize);
             if (page < 0) page = 0;

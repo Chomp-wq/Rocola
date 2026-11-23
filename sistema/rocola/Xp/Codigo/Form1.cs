@@ -1426,7 +1426,7 @@ namespace Rocola
                 busW = Math.Min(BuscaView.Ancho(filaH), Math.Max(0, barraDer - busX));
                 busX = SitioBusca(W, busW, busX, barraDer);
                 buscaView.SetBounds(busX, 8, busW, filaH);
-                buscaView.Visible = (busW >= 120 && !videoOn);
+                buscaView.Visible = (busW >= 120 && !videoOn && !RocolaOsParedSinCasillas());   // ROCOLA OS g262: (XP) buscaView.Visible = (busW >= 120 && !videoOn); — en una pared del buscador (la letra que la barra no tiene) ni BUSCAR ni AYUDA ni sus brillos: la cabecera se queda con su sitio (RocolaOs/RocolaOs.ParedLetrero.cs; de XP, false)
             }
             int finBusca = busX + busW;
 #if ROCOLA_GPU

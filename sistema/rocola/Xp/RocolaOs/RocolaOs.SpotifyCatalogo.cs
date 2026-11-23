@@ -89,10 +89,11 @@ namespace Rocola
             if (abierto && !rocolaOsSpBuscadorAntes && RocolaOsSpotifyCatalogoVa && RocolaOsSpotifyCatalogoApi.HayLlave) RocolaOsSpotifyCatalogoApi.Calienta();
             rocolaOsSpBuscadorAntes = abierto;
             RocolaOsSpotifyCatalogoMiraTarjeta(abierto);
+            RocolaOsParedCasillasAlDia();   // (BUSCAR y AYUDA fuera de las paredes del buscador: RocolaOs.ParedLetrero.cs)
         }
         // (rapido-spotify) LA TARJETA DE SPOTIFY EN QUE SE QUEDA EL BUSCADOR (dos latidos seguidos en la misma: 1 a 2 s), como g52 en la pared: lo
         // que abriria PONER se pide ya, para que al pulsarlo se abra al momento. Un disco: sus canciones (1 peticion, la misma que haria al
-        // abrirlo); un artista, «mas en Spotify» o «Todos los discos de...»: la primera pagina de su pared (1 peticion de 10 y, si hay mas de 10,
+        // abrirlo); un artista (tambien uno tuyo con su pared unida) o «Todos los discos de...»: la primera pagina de su pared (1 peticion de 10 y, si hay mas de 10,
         // la 2a: las mismas que al abrirla).
         // Lo contestado se queda en la memoria de la sesion como siempre (abrirlo despues: 0 peticiones). Para la cuota: solo lo que alguien esta
         // mirando, una tarjeta como mucho cada 3 s, cada una una vez, nada con 429 ni sin la llave.
@@ -117,7 +118,8 @@ namespace Rocola
             if (it == null || !ReferenceEquals(it, rocolaOsSpTarjetaMirada)) { rocolaOsSpTarjetaMirada = it; return; }
             if (rocolaOsSpAdelantosBuscador >= RocolaOsSpTopeAdelantos) return;   // (revision: la cuota; quien baja despacio por la lista no gasta mas)
             Album a = it.AlbumRef;
-            if (!RocolaOsEsSpotify(a) || !RocolaOsSpotifyCatalogoVa || RocolaOsSpotifyCatalogoApi.Frena || !RocolaOsSpotifyCatalogoApi.HayLlave) return;
+            string unida = RocolaOsSpotifyUnidaId(it);   // (23-11-2026) tu artista que Spotify tambien tiene: la primera pagina de su pared unida
+            if ((!RocolaOsEsSpotify(a) && unida == null) || !RocolaOsSpotifyCatalogoVa || RocolaOsSpotifyCatalogoApi.Frena || !RocolaOsSpotifyCatalogoApi.HayLlave) return;
             if (rocolaOsSpTarjetasAdelantadas == null) rocolaOsSpTarjetasAdelantadas = new HashSet<Album>();
             if (rocolaOsSpTarjetasAdelantadas.Contains(a)) return;
             long ahora = Environment.TickCount64;
@@ -125,7 +127,12 @@ namespace Rocola
             RocolaOsSpotifyCatalogoDisco d;
             RocolaOsSpotifyCatalogoArtista ar;
             RocolaOsSpotifyParedQue q;
-            if (it.Kind == 1 && rocolaOsSpDeDisco.TryGetValue(a, out d) && d.Tipo == "album" && d.Canciones == null && a.Tracks.Count == 0)
+            if (unida != null)
+            {
+                if (RocolaOsSpotifyCatalogoAdelantaPared(RocolaOsSpotifyCatalogoApi.ParedArtista, unida))
+                { rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; rocolaOsSpAdelantosBuscador++; }
+            }
+            else if (it.Kind == 1 && rocolaOsSpDeDisco.TryGetValue(a, out d) && d.Tipo == "album" && d.Canciones == null && a.Tracks.Count == 0)
             {
                 rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; rocolaOsSpAdelantosBuscador++;
                 RocolaOsSpotifyCatalogoApi.AbreDisco(d.Id, delegate (object r, string error)
@@ -134,7 +141,7 @@ namespace Rocola
                 });
             }
             else if (rocolaOsSpParedDe != null && rocolaOsSpParedDe.TryGetValue(a, out q) && !string.IsNullOrEmpty(q.De))
-            {   // «ARTISTA · mas en Spotify» (la pared del artista) o «Todos los discos de «lo escrito»»
+            {   // «Todos los discos de «lo escrito»»
                 if (RocolaOsSpotifyCatalogoAdelantaPared(q.Tipo == "todos" ? RocolaOsSpotifyCatalogoApi.ParedTodos : RocolaOsSpotifyCatalogoApi.ParedArtista, q.De))
                 { rocolaOsSpTarjetasAdelantadas.Add(a); rocolaOsSpUltimoAdelantoMs = ahora; RocolaOsSpAdelantadas++; rocolaOsSpAdelantosBuscador++; }
             }
@@ -225,8 +232,7 @@ namespace Rocola
         private List<SearchItem> RocolaOsSpotifyCatalogoMezcla(List<SearchItem> xp, RocolaOsSpotifyCatalogoBusqueda b)
         {
             List<SearchItem> artistas;
-            Dictionary<string, SearchItem> mas;
-            RocolaOsSpotifyParedesArtistas(b, out artistas, out mas);   // (RocolaOs.SpotifyCatalogoParedes.cs)
+            RocolaOsSpotifyParedesArtistas(b, out artistas);   // (RocolaOs.SpotifyCatalogoParedes.cs; tus artistas que Spotify tambien tiene: su pared unida, sin otra tarjeta)
             List<SearchItem> sp = new List<SearchItem>();
             // (letras, revision) las de Spotify que ya van en la lista (las tarjetas de Genius, g114): no otra vez
             HashSet<string> yaVan = null;
@@ -255,18 +261,16 @@ namespace Rocola
             SearchItem todos = RocolaOsSpotifyParedesTodosTarjeta(b);
             if (todos != null) sp.Add(todos);
             // LOS ARTISTAS (pedido del dueno del 7-11-2026): los de Spotify que NO estan en la rocola, justo despues de tus artistas que salgan
-            // primero (si no hay, arriba); y detras de cada artista tuyo que Spotify tambien tiene, «ARTISTA · mas en Spotify»
+            // primero (si no hay, arriba). (23-11-2026) Ya no sale «ARTISTA · mas en Spotify» detras de tu tarjeta: tu tarjeta abre la pared unida
             int lideres = 0;
             while (lideres < xp.Count && xp[lideres] != null && xp[lideres].Kind == 0) lideres++;
-            List<SearchItem> m = new List<SearchItem>(xp.Count + sp.Count + artistas.Count + mas.Count);
+            List<SearchItem> m = new List<SearchItem>(xp.Count + sp.Count + artistas.Count);
             int arriba = Math.Min(RocolaOsSpotifyXpArriba, xp.Count);
             if (lideres == 0) m.AddRange(artistas);
             for (int i = 0; i < xp.Count; i++)
             {
                 SearchItem it = xp[i];
                 m.Add(it);
-                SearchItem otro;
-                if (it != null && it.Kind == 0 && mas.Count > 0 && mas.TryGetValue(MotorBusqueda.Normaliza(it.Display ?? ""), out otro)) m.Add(otro);
                 if (i == lideres - 1) m.AddRange(artistas);
                 if (i == arriba - 1) m.AddRange(sp);
             }
@@ -277,10 +281,11 @@ namespace Rocola
         // g41 (Form1.Biblioteca.cs, ChooseSearchResult: «if (it == null) return;»): ELEGIR UN RESULTADO DE SPOTIFY. true = ya lo atendio.
         private bool RocolaOsSpotifyCatalogoElige(SearchItem it)
         {
+            if (it != null && RocolaOsSpotifyParedUnidaElige(it)) return true;   // (23-11-2026) un artista tuyo que Spotify tambien tiene: su pared unida
             if (it == null || !RocolaOsEsSpotify(it.AlbumRef) || !RocolaOsSpotifyCatalogoVa) return false;
             MarkSearchActivity();
             if (it.Kind == 2 && it.TrackRef != null) { RocolaOsSpotifyCatalogoPide(it.TrackRef, it.AlbumRef); return true; }   // (no cierra el buscador: como XP)
-            if (RocolaOsSpotifyParedesElige(it)) return true;   // un artista, «mas en Spotify» o «Todos los discos de...»: su pared
+            if (RocolaOsSpotifyParedesElige(it)) return true;   // un artista o «Todos los discos de...»: su pared (o la pared de verdad, si ahi esta)
             if (it.Kind == 1) { RocolaOsSpotifyCatalogoAbre(it.AlbumRef, true); return true; }
             return true;
         }

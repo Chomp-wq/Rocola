@@ -3,7 +3,7 @@
 // va a confundir a la gente, debe salir un letrero que diga regresar al buscador y el boton rojo, y el anuncio Discos-tal artista y al lado un
 // icono de Spotify»).
 //
-// En una pared del buscador (la letra que la barra no tiene: RocolaOsSpotifyParedMarca; la de un artista solo de Spotify, «mas en Spotify» y
+// En una pared del buscador (la letra que la barra no tiene: RocolaOsSpotifyParedMarca; la de un artista solo de Spotify, la unida de tus artistas y
 // «Todos los discos de...», RocolaOs.SpotifyCatalogoParedes.cs) la barra de letras de XP no se dibuja ni se puede tocar con el raton: en su
 // franja va, centrado, el boton rojo como lo dibuja el pie de XP (CtrlDot de Form1.Pared.cs, el mismo rojo de HelpBar) y «REGRESAR AL
 // BUSCADOR» con la letra del pie (sin remates, negrita), mas grande a la medida de la franja, sobre una capsula oscura translucida para que se
@@ -35,6 +35,22 @@ namespace Rocola
         private static bool RocolaOsParedSinLetras(char actual)
         {
             return actual == RocolaOsSpotifyParedMarca && RocolaOs.Activo;
+        }
+
+        // g262 (Form1.cs, LayoutControls): en una pared del buscador NO van las casillas de BUSCAR ni de AYUDA, ni su latido ni la interrogacion
+        // que bota (23-11-2026, el dueno: «dentro de una pared de discos temporal, no debe aparecer la celda de buscador ni la de ayuda, ni sus
+        // brillos ni nada relacionado»): BUSCAR queda escondida y con ella AYUDA (AcomodaAyuda), y la cabecera se queda con su sitio. Todo lo
+        // que la tarjeta les pone encima mira su Visible. Las teclas no cambian (el rojo ya vuelve al buscador; ROJO+ABAJO, la ayuda de XP).
+        private bool RocolaOsParedSinCasillas() { return RocolaOsParedSinLetras(currentLetter); }
+        // g263 (Form1.Biblioteca.cs, RefreshAlbums): al entrar o salir de una pared del buscador, la fila de arriba se acomoda otra vez (una vez
+        // por cambio; tambien desde el latido del catalogo por si la letra cambio sin RefreshAlbums)
+        private bool rocolaOsParedSinCasillasPuesto;
+        private void RocolaOsParedCasillasAlDia()
+        {
+            bool quiere = RocolaOsParedSinCasillas();
+            if (quiere == rocolaOsParedSinCasillasPuesto) return;
+            rocolaOsParedSinCasillasPuesto = quiere;
+            LayoutControls(); Invalidate();
         }
 
         // g240: en una pared del buscador, en la franja de la barra, el letrero (y la barra no se dibuja: true)

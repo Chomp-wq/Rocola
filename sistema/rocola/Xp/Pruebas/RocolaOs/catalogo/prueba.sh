@@ -9,7 +9,7 @@
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/catalogo/prueba; se rehace)
 #   CAPTURAS: si se pone, las capturas para el dueno van ahi (PNG)
 # escenas: apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred (las del catalogo) y pared
-#   canciones todos mas atajos pared429 (las de las paredes del buscador, grupo paredes-buscador: FASE11_paredes-buscador.md) y mantenido tiempo
+#   canciones todos unida atajos pared429 (las de las paredes del buscador, grupo paredes-buscador: FASE11_paredes-buscador.md) y mantenido tiempo
 #   (las de su revision: el rojo mantenido; la atraccion, la moneda y el buscador cerrado por tiempo) y hojea (la de la revision
 #   cuota-hilos-y-fallos: hojear deprisa una pared de 17 paginas con la red lenta, y un 503 a media pared) y atajos503 (los atajos de SP9
 #   que no llegaron por un 503 se vuelven a pedir al abrir el buscador pasado un minuto) y sinllave ayuda (la 2a revision funcionamiento-y-reglas:
@@ -27,7 +27,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos mas atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -347,21 +347,23 @@ for e in $escenas; do
     si "todos: lo demas, las busquedas y como mucho un disco por pagina mirada (g52; el de 60 canciones son 2): $(v1 $a) a /v1" bash -c "n=\$(grep -c '/v1/albums/' '$a'); [ \$n -le 4 ] && [ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search app [0-9]* q=[^ ]*$' '$a') + 5 + n)) ]"
     si "todos: la pared en la bitacora (41 casillas)" contiene "$d/rocola_os_bitacora.txt" "pared del buscador: pared_todos (41 casillas)"
     si "todos: el estado cuenta las paginas de las paredes (paredes=5)" bash -c "grep -qx 'paredes=5' '$o/run/rocola-xp/spotify/catalogo'" ;;
-  mas)
-    # «ARTISTA · MAS EN SPOTIFY»: «otra» da tu artista «Otra Banda» (la tarjeta de XP de siempre) y, justo detras, «Otra Banda · más en
-    # Spotify» (Spotify la tiene, con 3 discos). Su pared: «Canciones de Otra Banda» y los discos que NO tienes. En los datos de prueba tu
-    # carpeta «Otra Banda» no lleva « - »: para XP es un disco sin nombre de «Otra Banda», y cuenta como el disco «Otra Banda» (de los 3 de
-    # Spotify quedan Segundo y Tercero). Dos a la derecha (la 3a casilla: el Tercero) y PONER; REGRESAR dos veces: el buscador; la tarjeta de
-    # XP lleva a tu pared, como XP
+  unida)
+    # LA PARED UNIDA (23-11-2026, el dueno: «unificar los discos locales con los de Spotify»; sustituye a «ARTISTA · mas en Spotify»):
+    # «otra» da tu artista «Otra Banda» (la tarjeta de XP de siempre) y ya NO sale otra tarjeta detras. Spotify la tiene (3 discos): tu
+    # tarjeta abre la pared unida, al momento: tu disco primero (tu carpeta «Otra Banda» no lleva « - »: para XP es un disco sin nombre de
+    # «Otra Banda», y cuenta como el disco «Otra Banda» de Spotify, que no se repite), «Canciones de Otra Banda» y los discos de Spotify que
+    # no tienes (Segundo y Tercero). Tres a la derecha (la 4a casilla: el Tercero) y PONER; REGRESAR dos veces: el buscador, con tu tarjeta
+    # elegida; PONER la abre otra vez (de memoria) y PONER entra a TU disco (la 1a casilla); REGRESAR vuelve a la pared unida
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 otra),$(derechas 12.5 14),16.5:13,19:39,19.15:39,19.8:13,22:27,23:27,25:37,25.8:13" 30 ROCOLA_OS=1 \
-      ROCOLA_CAPTURA="$(cap 15.5 buscador-mas-en-spotify),$(cap 18.5 pared-mas-en-spotify),$(cap 21.5 disco-mas-en-spotify),$(cap 24.5 buscador-al-volver-de-mas),$(cap 27.5 pared-xp-del-artista)"
+    abre $e "$d" "$BASE,$(escribe 9.5 otra),$(derechas 12.5 14),15.2:37,16.5:13,19:39,19.15:39,19.3:39,19.8:13,22:27,23:27,25:13,26.5:13,28.5:27" 31 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 15.8 buscador-tu-artista-sin-mas),$(cap 18.5 pared-unida),$(cap 21.5 disco-de-spotify-en-la-unida),$(cap 24.5 buscador-al-volver-de-la-unida),$(cap 27.5 disco-tuyo-en-la-unida),$(cap 30 pared-unida-al-volver-de-tu-disco)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
-    si "mas: sale con 0" test "$(cat $o/salio)" = 0
-    si "mas: UNA pagina de su pared (/v1/artists/art60/albums off=0: tiene 3)" bash -c "[ \$(grep -c 'GET /v1/artists/art60/albums app 200 t=album,single off=0$' '$a') = 1 ] && [ \$(grep -c '/v1/artists/' '$a') = 1 ]"
-    si "mas: sin el disco que ya tienes: la 3a casilla es el Tercero (/v1/albums/dis651), y del que tienes (dis649) nada" bash -c "[ \$(grep -c 'GET /v1/albums/dis651 app 200' '$a') = 1 ] && ! grep -q 'albums/dis649' '$a'"
-    si "mas: la pared en la bitacora (3 casillas)" contiene "$d/rocola_os_bitacora.txt" "pared del buscador: pared_artista (3 casillas)"
-    si "mas: la tarjeta de XP de tu artista llevo a tu pared, sin pedir nada (las peticiones: las busquedas, la pared y el disco)" bash -c "[ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 2)) ]" ;;
+    si "unida: sale con 0" test "$(cat $o/salio)" = 0
+    si "unida: UNA pagina de su pared (/v1/artists/art60/albums off=0: tiene 3), aunque se abrio dos veces" bash -c "[ \$(grep -c 'GET /v1/artists/art60/albums app 200 t=album,single off=0$' '$a') = 1 ] && [ \$(grep -c '/v1/artists/' '$a') = 1 ]"
+    si "unida: sin repetir el disco que ya tienes: la 4a casilla es el Tercero (/v1/albums/dis651), y del que tienes (dis649) nada" bash -c "[ \$(grep -c 'GET /v1/albums/dis651 app 200' '$a') = 1 ] && ! grep -q 'albums/dis649' '$a'"
+    si "unida: tu tarjeta abrio la pared del buscador dos veces (al momento, con tu disco)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (' '$d/rocola_os_bitacora.txt') = 2 ]"
+    si "unida: las peticiones: las busquedas, la pared y el disco de Spotify (tu disco no pide nada)" bash -c "[ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 2)) ]"
+    si "unida: nada pedido (solo se entro)" test "$(pedidos $o)" = 0 ;;
   atajos)
     # SP9, LOS ATAJOS DEL BUSCADOR (con la cuenta): al abrir el buscador se piden «tus mas escuchadas» y «escuchado hace poco» (una vez cada
     # una por sesion) y salen como los atajos de XP, detras de los suyos. ARRIBA dos veces: a los atajos; a la derecha, «Tus mas escuchadas»:

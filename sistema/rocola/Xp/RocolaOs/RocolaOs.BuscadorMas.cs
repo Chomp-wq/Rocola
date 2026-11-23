@@ -3,8 +3,9 @@
 // queda dentro de un disco, despues de 30 segundos se saldra automaticamente de el»; FASE11_paredes-buscador.md).
 // Una pared del buscador a los 60 s sin tocar nada (como el buscador de XP) y un disco de Spotify abierto desde el buscador o desde una de
 // esas paredes a los 30 s (como un disco de XP) cierran TODO (la pila de paredes y el buscador, sin abrirlo otra vez): la rocola queda en la
-// pared de XP en la letra, la pagina y la eleccion de antes de abrir el buscador (g248, g249). Con las mismas excepciones que XP: video,
-// mantenimiento, la ventana de ajustes (y la pared, ademas, con el asistente a la vista). Un disco de XP sigue saliendo a su pared (XP).
+// pared de XP en la letra, la pagina y la eleccion de antes de abrir el buscador (g248, g249). Con las excepciones de XP salvo el video
+// (23-11-2026: con un video puesto tambien se cierra): mantenimiento, la ventana de ajustes (y el asistente a la vista, que se despide solo).
+// Un disco de XP sigue saliendo a su pared (XP).
 using System;
 
 namespace Rocola
@@ -20,10 +21,12 @@ namespace Rocola
             while (v != null && v.Pared != null && v.Pared.Vuelta != null && n++ < 8) v = v.Pared.Vuelta;
             return v;
         }
-        // las excepciones de XP (y el asistente a la vista)
+        // las excepciones de XP (y el asistente a la vista, que se despide solo a los 45 s). (23-11-2026, el dueno: «en cualquier situacion donde el
+        // buscador o algo relacionado a el se quede abierto, el buscador debera cerrarse por inactividad») el video YA NO es excepcion: con un
+        // video puesto una pared del buscador o un disco abierto desde el se quedaban abiertos para siempre (el disco de XP se queda: es de XP)
         private bool RocolaOsInactivoVale()
         {
-            return RocolaOs.Activo && !videoOn && !maintMode && (lblConfig == null || !lblConfig.Visible) && !asistenteVisible;
+            return RocolaOs.Activo && !maintMode && (lblConfig == null || !lblConfig.Visible) && !asistenteVisible;
         }
         // CIERRA TODO: la pila de paredes y discos del buscador, sin abrir el buscador; la pared de XP como estaba antes de abrirlo
         private void RocolaOsSpotifyCierraTodo(RocolaOsSpotifyVuelta v, string porque)
@@ -58,8 +61,14 @@ namespace Rocola
         // true = la cerro (y ese latido no sigue); de XP, false.
         private bool RocolaOsSpotifyParedInactiva()
         {
-            if (!RocolaOs.Activo || currentLetter != RocolaOsSpotifyParedMarca || rocolaOsSpPared == null || searchOpen) return false;
-            if (panelSongs != null && panelSongs.Visible) return false;   // (el disco va por su lado: g248)
+            if (!RocolaOs.Activo || searchOpen) return false;
+            if (panelSongs != null && panelSongs.Visible)
+            {
+                // el disco va por su lado (g248), salvo con un video puesto: ahi el reloj del disco de XP no corre (23-11-2026)
+                if (!videoOn || !RocolaOsInactivoVale() || (DateTime.Now - lastInput).TotalSeconds < DiscoIdleSecs) return false;
+                return RocolaOsSpotifyDiscoInactivo();
+            }
+            if (currentLetter != RocolaOsSpotifyParedMarca || rocolaOsSpPared == null) return false;
             if (!RocolaOsInactivoVale() || (DateTime.Now - lastInput).TotalSeconds < RocolaOsParedIdleSecs) return false;
             RocolaOsSpotifyCierraTodo(rocolaOsSpPared.Vuelta, "una pared del buscador, 60 s sin tocar nada");
             return true;
