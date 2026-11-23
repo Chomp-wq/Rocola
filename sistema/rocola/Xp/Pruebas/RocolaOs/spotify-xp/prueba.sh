@@ -839,7 +839,8 @@ if [[ " $partes " == *" volumen "* ]]; then
   o="$W/volumen"; b="$d/rocola_spotify.txt"
   grep -E 'volumen|acabo' "$b" | sed 's/^/   /'
   si "volumen: sale con 0" test "$(cat $o/salio)" = 0
-  si "volumen: se apunto el 40 y se pidio 100 (una sola linea)" bash -c "[ \$(grep -c 'Soloist tenia el volumen en 40' '$b') = 1 ]"
+  # (23-11-2026) desde la revision, si Soloist aun no dijo su volumen al tocar se le pide 100 de una vez (y se apunta): el 40 puede no llegar
+  si "volumen: se apunto y se pidio 100 (el 40 una sola vez, o antes de que Soloist lo dijera)" bash -c "n=\$(grep -c 'Soloist tenia el volumen en 40' '$b'); [ \$n = 1 ] || { [ \$n = 0 ] && grep -q 'Soloist aun no decia su volumen' '$b'; }"
   si "volumen: Soloist recibio set_volume 100" bash -c "grep -q 'volume.*100\|set_volume' '$o/falso.txt'"
   si "volumen: la cancion suena entera (cobradas=1 devueltas=0)" bash -c "[ '$(estado $o cobradas)$(estado $o devueltas)' = 10 ]"
 fi

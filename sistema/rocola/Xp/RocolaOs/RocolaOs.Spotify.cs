@@ -673,7 +673,7 @@ namespace Rocola
         {
             int v = Estado.Volumen;
             // (23-11-2026, revision) si Soloist aun no dijo su volumen, se le pide 100 una vez por conexion (antes la primera podia sonar baja)
-            if (v < 0 && volumenPedidoEnGen != wsGen) { volumenPedidoEnGen = wsGen; Manda("{\"type\":\"command\",\"command\":\"set_volume\",\"volume\":100}"); return; }
+            if (v < 0 && volumenPedidoEnGen != wsGen) { volumenPedidoEnGen = wsGen; Apunta("Soloist aun no decia su volumen (" + por + "): se le pide 100"); Manda("{\"type\":\"command\",\"command\":\"set_volume\",\"volume\":100}"); return; }
             if (v < 0 || v >= 100) { if (v >= 100) volumenAvisado = -1; return; }
             long ahora = Environment.TickCount64;
             if (ahora - volumenPedidoMs < 2000) return;
