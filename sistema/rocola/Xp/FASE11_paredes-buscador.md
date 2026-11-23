@@ -501,3 +501,23 @@ confunde, pon un delay artificial, hasta que estén cargados los resultados loca
 - La tarjeta elegida no se pierde al cambiar la lista. El código lo escribió un agente (modelo ligero) y lo revisó la sesión.
 - Pruebas: catalogo busca, mezcla, disco, artista, unida, pared, todos: TODO BIEN; asistente tarjetas, mas, artista: 7/7. Ninguna escena
   prueba todavía el tope de 2 s. No visto en el A4.
+
+## La tarjeta «Cargando…» mientras se espera (23-11-2026)
+
+Petición del dueño: «Con el delay artificial del buscador, en donde salen los resultados saldrá cargando... Y un anillo de carga en lo que
+salen los resultados, diséñalo bien para que encaje con el aspecto del resto del programa».
+
+- Mientras se espera a Spotify (sección de arriba), el buscador de portadas ya no enseña lo de antes: en el sitio de la primera fila de
+  tarjetas va una TARJETA DE CARGA hecha con las mismas piezas que las de resultados (fondo, borde y sombra de PegaQuieto/QuietoCarta,
+  1,3 veces su ancho): a la izquierda, en el sitio de la portada, un anillo (pista translúcida y un arco de 100° con puntas redondas en el
+  acento aclarado del buscador, una vuelta cada 0,9 s); a la derecha, como una tarjeta, «BUSCANDO» (la etiqueta de tipo), «Cargando…» (el
+  título) y «En tu música y en Spotify» (el subtítulo). La casilla de arriba dice «Buscando…». Sale a los 150 ms de espera con un fundido
+  de 150 ms (una respuesta rápida no la enseña) y se va cuando llegan los resultados, que entran con su animación de siempre.
+- Va en la imagen chica 3 del buscador (la del texto bajo el cubo, que este buscador no usa), rehecha como mucho 30 veces por segundo y
+  solo mientras se espera: lo demás del buscador no se repinta. Ganchos g266-g270 en Codigo/BuscadorPortadasGpu.cs;
+  RocolaOs/RocolaOs.BuscadorCargando.cs. Sin Rocola OS, sin el modo o sin espera, XP idéntico. Con el otro buscador (sin portadas), sigue
+  viéndose lo de antes mientras se espera.
+- Lo programó un agente (modelo ligero) y lo revisó la sesión (una primera versión con el anillo suelto sobre el cielo se rehízo como
+  tarjeta). Escena nueva «cargando» de Pruebas/RocolaOs/catalogo (la API falsa lenta con /control/lento; anillo.py mira por puntos que el
+  anillo sale en la tarjeta y gira, que no hay tarjetas ni «Sin resultados» durante la espera y que llegan después): catalogo busca, mezcla,
+  disco, artista, unida, pared, todos, inactivo, cargando 70/70; asistente tarjetas, mas, artista 7/7. No visto ni medido en el A4.

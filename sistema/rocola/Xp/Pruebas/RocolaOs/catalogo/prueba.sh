@@ -15,7 +15,8 @@
 #   que no llegaron por un 503 se vuelven a pedir al abrir el buscador pasado un minuto) y sinllave ayuda (la 2a revision funcionamiento-y-reglas:
 #   el modo encendido sin llaves es XP; la ayuda con ROJO+ABAJO en medio de la pila) y miente portadas (la 2a pasada de cuota-hilos-y-fallos:
 #   el «total» de search que dice de mas no hace pedir solo hasta el final; las portadas que no se bajaron por la red se vuelven a pedir);
-#   y inactivo (22-11-2026: lo que se queda abierto del buscador se cierra solo); todas, de fabrica
+#   y inactivo (22-11-2026: lo que se queda abierto del buscador se cierra solo) y cargando (23-11-2026: con Spotify lento el buscador no
+#   ensena lo de antes: «Buscando…», el anillo de carga y «Cargando…», y todo junto al llegar); todas, de fabrica
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
@@ -27,7 +28,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo cargando}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -556,6 +557,22 @@ for e in $escenas; do
     si "inactivo: el disco de XP salio solo a los 30 s a su pared, como siempre ($dx puntos distintos del disco; $dp de la pared de antes)" test "$dx" -gt 20000 -a "$dp" -lt 20000
     si "inactivo: el buscador no se volvio a abrir solo (solo las 3 veces que se abrio a mano)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$b') = 2 ]"
     si "inactivo: nada de Spotify pedido ($(pedidos $o))" test "$(pedidos $o)" = 0 ;;
+  cargando)
+    # (23-11-2026) EL ANILLO DE CARGA: con Spotify 1,2 s mas lento (/control/lento) y «tema» escrito, el buscador NO ensena resultados mientras espera:
+    # la casilla dice «Buscando…», a los 150 ms sale el anillo (arco de color de genero girando una vuelta cada 0,9 s) con «Cargando…» debajo, y al
+    # llegar Spotify salen las tarjetas de XP y de Spotify juntas y el anillo se va. Capturas: durante la espera (dos angulos) y despues.
+    apifalsa $e; d=$(datos $e encendido); control "lento?ms=1700"
+    abre $e "$d" "$BASE,$(escribe 9.5 tema)" 17 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 10.6 cargando-1),$(cap 11.35 cargando-2),$(cap 11.95 cargando-3),$(cap 14.5 cargando-resultados)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; ca="${CAPTURAS:-$W}"
+    si "cargando: sale con 0" test "$(cat $o/salio)" = 0
+    si "cargando: la busqueda a Spotify se hizo una vez con todo lo escrito (q=tema)" bash -c "grep '/v1/search' '$a' | tail -1 | grep -q ' q=tema\$'"
+    # el anillo: dentro de los resultados, centrado, a un cuarto de su alto (RocolaOs.BuscadorCargando.cs): su recuadro, de 220x110, tomado de la captura
+    A1=$(python3 "$G/anillo.py" "$ca/cargando-1.png" "$ca/cargando-2.png" "$ca/cargando-3.png" "$ca/cargando-resultados.png" 2>&1); echo "$A1" | sed 's/^/   /'
+    si "cargando: durante la espera sale el anillo (a unos 0,5 s de empezar a esperar, en su sitio)" bash -c "echo '$A1' | grep -q 'ring1=ok'"
+    si "cargando: el anillo gira (el arco no esta en el mismo sitio en dos capturas con 0,4 s)" bash -c "echo '$A1' | grep -q 'gira=ok'"
+    si "cargando: sin tarjetas mientras se espera, y con ellas (y sin anillo) al llegar Spotify" bash -c "echo '$A1' | grep -q 'tarjetas=ok'"
+    si "cargando: el aviso de XP «Sin resultados para...» no sale mientras se espera (el sitio de arriba de los resultados queda vacio)" bash -c "echo '$A1' | grep -q 'aviso=ok'"
+    si "cargando: la casilla de arriba cambia al llegar (de «Buscando…» al numero)" bash -c "echo '$A1' | grep -q 'casilla=ok'" ;;
   esac
 done
 

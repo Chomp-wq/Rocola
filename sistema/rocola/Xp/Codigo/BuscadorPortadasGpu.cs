@@ -790,7 +790,7 @@ namespace Rocola
                 donde = Rectangle.Empty;
                 RepartoBusca r = AseguraReparto();
                 float s = r.S;
-                if (cual == PiezaTecla)
+                if (cual == 3 && RocolaOsAnilloPieza(out donde)) return true; if (cual == PiezaTecla)   // ROCOLA OS g266: (XP) if (cual == PiezaTecla) — con el buscador esperando a Spotify, la pieza 3 (la que no se usa aqui) es el sitio del anillo de carga (RocolaOs/RocolaOs.BuscadorCargando.cs; de XP, nada)
                 {
                     if (EnChips)
                     {
@@ -830,7 +830,7 @@ namespace Rocola
                 RepartoBusca r = AseguraReparto();
                 AseguraFuentes(r.S);
                 bool suave = true;   // EN LINUX: g.SmoothingMode = SmoothingMode.AntiAlias, en una variable
-                if (cual == PiezaTecla)
+                if (cual == 3) RocolaOsAnilloDibuja(g, ajuste, copia, medio, dx, dy); else if (cual == PiezaTecla)   // ROCOLA OS g267: (XP) if (cual == PiezaTecla) — la pieza 3 dibuja el anillo de carga y «Cargando…» (RocolaOs/RocolaOs.BuscadorCargando.cs; de XP, nada)
                 {
                     if (EnChips) DibujaAtajo(g, suave, ajuste, copia, filtro, medio, SelChip, true, dx, dy);   // EN LINUX: con el estado del lienzo
                     else if (!FocusResults && SelRow >= 0 && SelRow < rows.Count && SelCol >= 0 && SelCol < rows[SelRow].Count)
@@ -860,14 +860,14 @@ namespace Rocola
                 }
                 else if (cual == PiezaEscrito) { h = Mix(h, Escrito); h = Mix(h, ModoAtajo); h = Mix(h, TextoCuenta()); }
                 else if (cual == 2) { h = Mix(h, FocusResults); h = Mix(h, SelResult); h = Mix(h, VersionCartas()); }
-                else if (cual == PiezaCartas) h = Mix(h, VersionCartas());
+                else if (cual == PiezaCartas) h = Mix(h, VersionCartas()); else if (cual == 3) h = Mix(h, RocolaOsAnilloCuadro());   // ROCOLA OS g268: (XP) else if (cual == PiezaCartas) h = Mix(h, VersionCartas()); — el anillo se rehace con su cuadro de giro (30 por segundo) (RocolaOs/RocolaOs.BuscadorCargando.cs; de XP, nada)
                 return h;
             }
 
             // ---------------- LA CASILLA DE LO ESCRITO ----------------
             internal string TextoCuenta()
             {
-                if (Results != null && Results.Count > 0 && Results[0] != null && Results[0].Kind == 3) return "";   // la de servicio no es un resultado
+                if (RocolaOsBuscando()) return "Buscando\u2026"; if (Results != null && Results.Count > 0 && Results[0] != null && Results[0].Kind == 3) return "";   // la de servicio no es un resultado   // ROCOLA OS g270: (XP) if (Results != null && Results.Count > 0 && Results[0] != null && Results[0].Kind == 3) return "";   // la de servicio no es un resultado — mientras se espera a Spotify la casilla dice «Buscando…» (RocolaOs/RocolaOs.BuscadorCargando.cs; de XP, nada)
                 int n;
                 if (ModoAtajo != null) n = (Results != null) ? Results.Count : 0;
                 else if (string.IsNullOrEmpty(Query) || TotalDe != Query) return "";
@@ -1143,7 +1143,7 @@ namespace Rocola
                     using (SKPath gp = ContornoRedondo(new Rectangle(pista.X, y, pista.Width, alto), Math.Max(1, pista.Width / 2))) { pincelS.Color = Color.FromArgb(170, Vivo(Accent)).Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia); }   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs); sbS y g.FillPath (Nativo/Pixel.cs)
                     hornoBarra = Rectangle.Inflate(pista, 1, 1);
                 }
-                if (visibles == 0) DibujaSinCartas(g, ajuste, copia, medio, r, dx, dy);   // EN LINUX: con el estado del lienzo
+                if (visibles == 0 && !RocolaOsBuscando()) DibujaSinCartas(g, ajuste, copia, medio, r, dx, dy);   // EN LINUX: con el estado del lienzo   // ROCOLA OS g269: (XP) if (visibles == 0) DibujaSinCartas(g, ajuste, copia, medio, r, dx, dy);   // EN LINUX: con el estado del lienzo — mientras se espera a Spotify no se dice «Sin resultados» (RocolaOs/RocolaOs.BuscadorCargando.cs; de XP, siempre)
             }
             // Sin tarjetas: que hacer, dicho en el sitio de las tarjetas. Esta imagen se dibuja entera en ese caso.
             private void DibujaSinCartas(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, RepartoBusca r, int dx, int dy)   // EN LINUX: el lienzo de Skia y el estado del Graphics que usa

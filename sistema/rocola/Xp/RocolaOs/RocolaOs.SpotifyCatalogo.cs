@@ -201,17 +201,20 @@ namespace Rocola
             {
                 RocolaOs.Encarga("spotify_catalogo:resultados", delegate { RocolaOsSpotifyCatalogoLlegoBusqueda(q, r as RocolaOsSpotifyCatalogoBusqueda, error); });
             });
-            if (RocolaOsSpotifyCatalogoApi.Frena || rocolaOsSpVisto == null || !object.ReferenceEquals(searchOverlay.Results, rocolaOsSpVisto))
+            // (23-11-2026, «saldra cargando... y un anillo de carga») con el buscador de portadas la espera NO ensena lo de antes: una lista vacia, el
+            // anillo y «Buscando…» en la casilla (RocolaOs.BuscadorCargando.cs); con el otro buscador, lo de antes como siempre
+            bool anillo = searchOverlay.Nuevo;
+            if (RocolaOsSpotifyCatalogoApi.Frena || (!anillo && (rocolaOsSpVisto == null || !object.ReferenceEquals(searchOverlay.Results, rocolaOsSpVisto))))
                 return RocolaOsSpotifyCatalogoVisto(res, consulta);   // (sin tope que esperar, o nada de antes que seguir ensenando: lo local ya)
             // lo local nuevo espera a Spotify: se sigue viendo lo de antes (y su cuenta, que XP ya cambio) hasta que llegue o pasen 2 s
             rocolaOsSpEspera = true;
-            CuentaResultados(rocolaOsSpVistoConsulta, rocolaOsSpVistoCuenta);
+            if (!anillo) CuentaResultados(rocolaOsSpVistoConsulta, rocolaOsSpVistoCuenta);
             int gen = rocolaOsSpGen;
             rocolaOsSpReloj = new System.Threading.Timer(delegate
             {
                 RocolaOs.Encarga("spotify_catalogo:espera", delegate { RocolaOsSpotifyCatalogoSueltaLocal(gen); });
             }, null, RocolaOsSpEsperaMs, System.Threading.Timeout.Infinite);
-            return rocolaOsSpVisto;
+            return anillo ? searchOverlay.RocolaOsListaEspera() : rocolaOsSpVisto;
         }
         // lo que se ensena ahora en el buscador (para seguir ensenandolo mientras se espera a Spotify)
         private List<SearchItem> RocolaOsSpotifyCatalogoVisto(List<SearchItem> lista, string consulta)
