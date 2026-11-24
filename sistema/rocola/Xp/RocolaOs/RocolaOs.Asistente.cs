@@ -147,6 +147,8 @@ namespace Rocola
             if (s < 0 || s >= searchOverlay.Results.Count) return 0;
             SearchItem it = searchOverlay.Results[s];
             if (RocolaOsSpotifyUnidaDe(it) != null) return 4;
+            // (23-11-2026) un artista tuyo que Spotify no conoce: tambien una pared del buscador (solo tus discos); su paso dice lo mismo que la unida
+            if (it != null && it.Kind == 0 && it.AlbumRef != null && !RocolaOsEsSpotify(it.AlbumRef) && RocolaOsSpotifyCatalogoVa && RocolaOsSpotifyTuyos().Contains(MotorBusqueda.Normaliza(it.Display ?? ""))) return 4;
             if (it == null || !RocolaOsEsSpotify(it.AlbumRef)) return 0;
             RocolaOsSpotifyParedQue q;
             if (rocolaOsSpParedDe != null && rocolaOsSpParedDe.TryGetValue(it.AlbumRef, out q)) return 5;
@@ -327,7 +329,7 @@ namespace Rocola
                 case RocolaOsPasoCancionSpotify: titulo = "Pídela con VERDE"; texto = "Esta canción es de Spotify. Se pide como las tuyas y cuesta 1 crédito."; teclas = "V"; break;
                 case RocolaOsPasoDiscoSpotify: titulo = "Un disco de Spotify"; texto = "Pulsa VERDE para abrirlo y elige tu canción con las flechas."; teclas = "V"; break;
                 case RocolaOsPasoArtistaSpotify: titulo = "Un artista de Spotify"; texto = "No está en la rocola. Pulsa VERDE y verás sus discos en su propia pared."; teclas = "V"; break;
-                case RocolaOsPasoMasSpotify: titulo = "Sus discos"; texto = "Pulsa VERDE y verás sus discos de la rocola y los de Spotify juntos."; teclas = "V"; break;
+                case RocolaOsPasoMasSpotify: titulo = "Sus discos"; texto = "Pulsa VERDE y verás sus discos juntos en su propia pared."; teclas = "V"; break;
                 case RocolaOsPasoTodos: titulo = "Todos los discos"; texto = "Pulsa VERDE y verás todos los discos que salen con lo que escribiste."; teclas = "V"; break;
                 case RocolaOsPasoMoneda: titulo = "Mete una moneda"; texto = "Sin créditos no se pide: cada canción, también las de Spotify, cuesta 1 crédito."; teclas = "M"; break;
                 case RocolaOsPasoCancionDisco: titulo = "Elige tu canción"; texto = "Sube o baja con las flechas y pulsa VERDE para pedirla. El ROJO te regresa."; teclas = "U/D V"; break;

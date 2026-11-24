@@ -26,6 +26,7 @@ namespace Rocola
     {
         // la cabecera de la pared del buscador que se mira (la pone RocolaOsSpotifyParedMira; el icono va solo junto a ese texto)
         internal static string RocolaOsParedCabecera;
+        internal static bool RocolaOsParedConIcono = true;   // (23-11-2026) la pared de un artista que Spotify no conoce (solo tus discos) no lleva el icono de Spotify
         private static readonly Color RocolaOsParedRojo = Color.FromArgb(228, 72, 72);        // el rojo de HelpBar (Form1.cs)
         private static readonly Color RocolaOsParedTexto = Color.FromArgb(228, 234, 250);     // el texto de HelpBar
         private static readonly Color RocolaOsSpotifyVerde = Color.FromArgb(0x1D, 0xB9, 0x54);
@@ -75,7 +76,7 @@ namespace Rocola
             // caber junto al pie, y aqui se lee del tamano del letrero). Si no cabe entero en la franja, solo el letrero (la cabecera lo sigue diciendo).
             string titulo = RocolaOsParedCabecera;
             float sep = gap * 2.2f, anchoTit = 0f;
-            if (!string.IsNullOrEmpty(titulo)) anchoTit = d + gap + TextoGdiPlus.Mide(titulo, rocolaOsParedLetra, ajuste, new SizeF(0, 0), null).Width + sep;
+            if (!string.IsNullOrEmpty(titulo)) anchoTit = (RocolaOsParedConIcono ? d + gap : 0f) + TextoGdiPlus.Mide(titulo, rocolaOsParedLetra, ajuste, new SizeF(0, 0), null).Width + sep;
             if (anchoTit > 0f && anchoTit + d + gap + sz.Width + 2 * padX > w - 8) { titulo = null; anchoTit = 0f; }
             float total = anchoTit + d + gap + sz.Width;
             float x0 = (w - total) / 2f; if (x0 < 4f) x0 = 4f;
@@ -92,8 +93,8 @@ namespace Rocola
             float x = x0;
             if (titulo != null)
             {
-                RocolaOsIconoSpotify(g, x + d / 2f, cy, d / 2f, copia, medio);
-                x = CtrlTxt(g, suave, ajuste, copia, medio, rocolaOsParedLetra, titulo, x + d + gap, cy, Color.White);
+                if (RocolaOsParedConIcono) RocolaOsIconoSpotify(g, x + d / 2f, cy, d / 2f, copia, medio);
+                x = CtrlTxt(g, suave, ajuste, copia, medio, rocolaOsParedLetra, titulo, RocolaOsParedConIcono ? x + d + gap : x, cy, Color.White);
                 using (SKPaint raya = new SKPaint { Color = Color.FromArgb(110, 150, 175, 225).Sk(), StrokeWidth = 1f })
                     Pixel.Linea(g, x + sep / 2f, cy - alto * 0.32f, x + sep / 2f, cy + alto * 0.32f, raya, suave, medio, copia);
                 x += sep;
@@ -106,7 +107,7 @@ namespace Rocola
         // g243: lo que ocupa el icono (con su aire) junto a la cabecera de una pared del buscador; 0 en lo demas
         private static float RocolaOsParedIconoAncho(string seccion, int h)
         {
-            if (!RocolaOs.Activo || seccion == null || seccion != RocolaOsParedCabecera) return 0f;
+            if (!RocolaOs.Activo || !RocolaOsParedConIcono || seccion == null || seccion != RocolaOsParedCabecera) return 0f;
             return h * 0.62f + h * 0.30f;
         }
         // g244: el icono de Spotify despues del texto de la cabecera (x: donde acaba el texto); devuelve lo que ocupa (0 si no va)

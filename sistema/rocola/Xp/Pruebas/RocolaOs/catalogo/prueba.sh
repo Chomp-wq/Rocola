@@ -16,7 +16,8 @@
 #   el modo encendido sin llaves es XP; la ayuda con ROJO+ABAJO en medio de la pila) y miente portadas (la 2a pasada de cuota-hilos-y-fallos:
 #   el «total» de search que dice de mas no hace pedir solo hasta el final; las portadas que no se bajaron por la red se vuelven a pedir);
 #   y inactivo (22-11-2026: lo que se queda abierto del buscador se cierra solo) y cargando (23-11-2026: con Spotify lento el buscador no
-#   ensena lo de antes: «Buscando…», el anillo de carga y «Cargando…», y todo junto al llegar); todas, de fabrica
+#   ensena lo de antes: «Buscando…», el anillo de carga y «Cargando…», y todo junto al llegar) y siempre (23-11-2026: un disco o un artista tuyo elegido
+#   en el buscador abre siempre el disco dentro del buscador o una pared del buscador, nunca la pared de verdad); todas, de fabrica
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
@@ -28,7 +29,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo cargando}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo cargando siempre}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -365,6 +366,53 @@ for e in $escenas; do
     si "unida: tu tarjeta abrio la pared del buscador dos veces (al momento, con tu disco)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (' '$d/rocola_os_bitacora.txt') = 2 ]"
     si "unida: las peticiones: las busquedas, la pared y el disco de Spotify (tu disco no pide nada)" bash -c "[ \$(grep -c ' /v1/' '$a') = \$((\$(grep -c '/v1/search' '$a') + 2)) ]"
     si "unida: nada pedido (solo se entro)" test "$(pedidos $o)" = 0 ;;
+  siempre)
+    # SIEMPRE UNA PARED DEL BUSCADOR O EL DISCO DENTRO DEL BUSCADOR (23-11-2026, el dueno: «siempre si se escoge la opcion de artista o album
+    # en el buscador, se abra ya sea una pared de discos temporal, o el disco dentro del buscador»; antes, lo tuyo salia a la pared de XP).
+    # Tres rondas con datos de XP inventados (Los Ejemplos - Disco Uno, que Spotify NO conoce; Otra Banda, que si):
+    #  a) un DISCO TUYO elegido en el buscador (14 a la derecha: la tarjeta «Disco Uno» de «ejemplos»): se abre dentro del buscador; REGRESAR
+    #     vuelve al buscador con lo escrito y la misma tarjeta (PONER lo abre otra vez); sin tocar nada, a los 30 s se cierra todo
+    #  b) un ARTISTA TUYO que Spotify no conoce (13 a la derecha): una pared del buscador SOLO con tus discos, sin pedir nada a la pared de la
+    #     API y sin el icono de Spotify; PONER entra a su disco, REGRESAR a la pared, REGRESAR al buscador, PONER otra vez la pared; a los 60 s
+    #     sin tocar, se cierra todo
+    #  c) un ARTISTA TUYO que Spotify tiene y del que ya tienes TODOS sus discos (los de Spotify estan en tu carpeta): se abre la pared unida
+    #     (tus 3 discos y «Canciones de Otra Banda», con el icono de Spotify), tambien cuando su pagina ya esta en memoria (antes: lo de XP)
+    apifalsa $e-a; da=$(datos $e-a encendido)
+    abre $e-a "$da" "$BASE,$(escribe 9.5 ejemplos),$(derechas 12.5 14),16:13,19:27,22:13" 62 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 15.5 buscador-disco-tuyo-elegido),$(cap 18 disco-tuyo-dentro-del-buscador),$(cap 21 buscador-al-volver-del-disco-tuyo),$(cap 25 disco-tuyo-otra-vez),$(cap 57 pared-xp-tras-30-s-en-el-disco-tuyo)"
+    espera $e-a; oa="$W/$e-a"; aa="$oa/api/peticiones.txt"
+    si "siempre a: sale con 0" test "$(cat $oa/salio)" = 0
+    si "siempre a: el disco tuyo se abrio dentro del buscador (la bitacora, dos veces: la de PONER y la de PONER otra vez)" test "$(cuenta $da/rocola_os_bitacora.txt 'disco tuyo abierto desde el buscador')" = 2
+    si "siempre a: REGRESAR volvio al buscador con lo escrito (la bitacora dice «ejemplos»)" contiene "$da/rocola_os_bitacora.txt" "REGRESAR: de vuelta al buscador con «ejemplos»"
+    si "siempre a: sin tocar nada, a los 30 s se cerro todo (la pared de XP)" contiene "$da/rocola_os_bitacora.txt" "se cierra todo lo del buscador (un disco del buscador, 30 s sin tocar nada)"
+    si "siempre a: lo de Spotify no se mezclo: ninguna pared ni disco de la API, solo la busqueda ($(v1 $aa) a /v1)" bash -c "[ \$(grep -c ' /v1/' '$aa') = \$(grep -c '/v1/search' '$aa') ]"
+    si "siempre a: nada pedido" test "$(pedidos $oa)" = 0
+    # (b) el artista tuyo que Spotify no conoce
+    apifalsa $e-b; db=$(datos $e-b encendido)
+    abre $e-b "$db" "$BASE,$(escribe 9.5 ejemplos),$(derechas 12.5 10),16:13,19:13,22:27,24:27,28:13" 100 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 17.5 pared-solo-tus-discos),$(cap 20.5 disco-de-la-pared-solo-tus-discos),$(cap 26 buscador-al-volver-de-la-pared-solo-tus-discos),$(cap 29.5 pared-solo-tus-discos-otra-vez),$(cap 98 pared-xp-tras-60-s)"
+    espera $e-b; ob="$W/$e-b"; ab="$ob/api/peticiones.txt"
+    ca="${CAPTURAS:-$W}"
+    si "siempre b: sale con 0" test "$(cat $ob/salio)" = 0
+    si "siempre b: la pared del buscador con solo tus discos (1 casilla), abierta dos veces" test "$(cuenta $db/rocola_os_bitacora.txt 'pared del buscador: tuyos \(1 casillas\)')" = 2
+    si "siempre b: ninguna peticion de pared ni de artista ni de disco a la API (solo busquedas: $(v1 $ab) a /v1)" bash -c "[ \$(grep -c ' /v1/' '$ab') = \$(grep -c '/v1/search' '$ab') ] && ! grep -q '/v1/artists/' '$ab' && ! grep -q 'q=artist:' '$ab'"
+    si "siempre b: REGRESAR de la pared volvio al buscador con «ejemplos»" contiene "$db/rocola_os_bitacora.txt" "REGRESAR: de vuelta al buscador con «ejemplos»"
+    verdesb=$(colores "$ca/pared-solo-tus-discos.png" 29 185 84 0 0 1024 100); rojosb=$(colores "$ca/pared-solo-tus-discos.png" 228 72 72 0 58 1024 36)
+    si "siempre b: sin el icono de Spotify en la cabecera ni en el letrero ($verdesb puntos verdes), pero con el letrero de REGRESAR ($rojosb puntos rojos)" test "$verdesb" -lt 10 -a "$rojosb" -gt 60
+    si "siempre b: a los 60 s sin tocar, se cerro todo (la pared de XP)" contiene "$db/rocola_os_bitacora.txt" "se cierra todo lo del buscador (una pared del buscador, 60 s sin tocar nada)"
+    si "siempre b: nada pedido" test "$(pedidos $ob)" = 0
+    # (c) tu artista que Spotify tiene, con todos sus discos ya tuyos: «Otra Banda - Segundo Disco» y «Tercer Disco» junto a tu «Otra Banda»
+    apifalsa $e-c; dc=$(datos $e-c encendido)
+    for n in "Otra Banda - Segundo Disco" "Otra Banda - Tercer Disco"; do mkdir -p "$dc/musica/$n"; cp "$dc/musica/Otra Banda/01 Tema 1.mp3" "$dc/musica/$n/01 Tema.mp3"; done
+    abre $e-c "$dc" "$BASE,$(escribe 9.5 otra),$(derechas 12.5 10),17:13" 26 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 15.5 buscador-tu-artista-con-todo),$(cap 20 pared-unida-con-todo-tuyo)"
+    espera $e-c; oc="$W/$e-c"; ac="$oc/api/peticiones.txt"
+    si "siempre c: sale con 0" test "$(cat $oc/salio)" = 0
+    si "siempre c: se abrio la pared unida (de Spotify: pared_artista), aunque tienes todos sus discos" test "$(cuenta $dc/rocola_os_bitacora.txt 'pared del buscador: pared_artista \(')" = 1
+    si "siempre c: UNA pagina de su pared (art60 off=0) y ningun disco de Spotify (todos son tuyos)" bash -c "[ \$(grep -c 'GET /v1/artists/art60/albums app 200 t=album,single off=0\$' '$ac') = 1 ] && ! grep -q '/v1/albums/' '$ac'"
+    verdesc=$(colores "$ca/pared-unida-con-todo-tuyo.png" 29 185 84 0 0 1024 100)
+    si "siempre c: con el icono de Spotify ($verdesc puntos verdes)" test "$verdesc" -gt 60
+    ;;
   atajos)
     # SP9, LOS ATAJOS DEL BUSCADOR (con la cuenta): al abrir el buscador se piden «tus mas escuchadas» y «escuchado hace poco» (una vez cada
     # una por sesion) y salen como los atajos de XP, detras de los suyos. ARRIBA dos veces: a los atajos; a la derecha, «Tus mas escuchadas»:

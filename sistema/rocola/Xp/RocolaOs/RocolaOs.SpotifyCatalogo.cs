@@ -328,11 +328,14 @@ namespace Rocola
         // g41 (Form1.Biblioteca.cs, ChooseSearchResult: «if (it == null) return;»): ELEGIR UN RESULTADO DE SPOTIFY. true = ya lo atendio.
         private bool RocolaOsSpotifyCatalogoElige(SearchItem it)
         {
-            if (it != null && RocolaOsSpotifyParedUnidaElige(it)) return true;   // (23-11-2026) un artista tuyo que Spotify tambien tiene: su pared unida
+            // (23-11-2026, el dueno: «siempre si se escoge la opcion de artista o album en el buscador, se abra ya sea una pared de discos
+            // temporal, o el disco dentro del buscador») un artista tuyo: SIEMPRE una pared del buscador (la unida si Spotify lo tiene, si no
+            // solo con tus discos); un disco tuyo: dentro del buscador (REGRESAR vuelve a el). Nunca la pared de verdad.
+            if (it != null && (RocolaOsSpotifyArtistaTuyoElige(it) || RocolaOsSpotifyDiscoTuyoElige(it))) return true;
             if (it == null || !RocolaOsEsSpotify(it.AlbumRef) || !RocolaOsSpotifyCatalogoVa) return false;
             MarkSearchActivity();
             if (it.Kind == 2 && it.TrackRef != null) { RocolaOsSpotifyCatalogoPide(it.TrackRef, it.AlbumRef); return true; }   // (no cierra el buscador: como XP)
-            if (RocolaOsSpotifyParedesElige(it)) return true;   // un artista o «Todos los discos de...»: su pared (o la pared de verdad, si ahi esta)
+            if (RocolaOsSpotifyParedesElige(it)) return true;   // un artista o «Todos los discos de...»: su pared del buscador
             if (it.Kind == 1) { RocolaOsSpotifyCatalogoAbre(it.AlbumRef, true); return true; }
             return true;
         }

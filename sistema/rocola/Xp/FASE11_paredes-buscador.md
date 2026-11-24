@@ -521,3 +521,41 @@ salen los resultados, diséñalo bien para que encaje con el aspecto del resto d
   tarjeta). Escena nueva «cargando» de Pruebas/RocolaOs/catalogo (la API falsa lenta con /control/lento; anillo.py mira por puntos que el
   anillo sale en la tarjeta y gira, que no hay tarjetas ni «Sin resultados» durante la espera y que llegan después): catalogo busca, mezcla,
   disco, artista, unida, pared, todos, inactivo, cargando 70/70; asistente tarjetas, mas, artista 7/7. No visto ni medido en el A4.
+
+## Siempre una pared del buscador, o el disco dentro del buscador (23-11-2026)
+
+Petición del dueño: «Te había dicho que en el buscador, el único caso cuando no se haría una pared de discos temporales, sería si la música
+que buscaba el usuario (o discos del artista) estaban en la pared de discos normal, pero cambia eso para que siempre si se escoge la opción
+de artista o álbum en el buscador, se abra ya sea una pared de discos temporal, o el disco dentro del buscador, esto mejora la experiencia
+de búsqueda». SUSTITUYE lo de «lleva a la pared de verdad» (la pared de verdad primero con la función «pared») y lo de «si ya se sabe que
+los tienes todos, lo de XP» de la sección «La pared unida». Solo Rocola OS con el buscador de Spotify (RocolaOsSpotifyCatalogoVa); sin eso,
+XP tal cual. Sin ganchos nuevos (todo pasa por g41: RocolaOsSpotifyCatalogoElige).
+
+- UN DISCO TUYO (Kind 1 de XP) elegido en el buscador se abre dentro del buscador, como uno de Spotify que no está en la letra: REGRESAR
+  vuelve al buscador con lo escrito y la misma elección (rocolaOsSpVueltaDisco/Album, g54) y a los 30 s sin tocar se cierra todo
+  (RocolaOsSpotifyDiscoInactivo, g248; con video, RocolaOsSpotifyParedInactiva). Conserva lo de XP (MarkSearchActivity, ApuntaBusqueda, la
+  animación desde el cubo del buscador) y NO entra a los recientes de Spotify (RocolaOsSpotifyDiscoTuyoElige). Un disco abierto desde una
+  pared del buscador sigue volviendo a su pared.
+- UN ARTISTA TUYO (Kind 0 de XP) abre SIEMPRE una pared del buscador, nunca la pared de verdad (RocolaOsSpotifyArtistaTuyoElige):
+  - si Spotify lo conoce: la pared unida de siempre (tus discos en el orden de XP, «Canciones de ARTISTA» y los de Spotify que no tienes),
+    ya SIN el desvío a la pared de verdad y SIN el corte de «ya los tienes todos» (RocolaOsSpotifyHayMas, quitada): con todos tuyos queda
+    tuyos + «Canciones de». No gasta cuota de más: lo ya sabido sale de memoria (PaginaYa) y el adelanto del buscador (RocolaOsSpotifyUnidaId)
+    solo mira si hay unida apuntada; antes de este cambio una página ya contestada con todo tuyo quitaba la unida, ahora la deja.
+  - si Spotify no lo conoce (no hay unida para ese nombre, o aún no llegó su búsqueda): una pared SOLO con tus discos de ese artista (orden
+    de XP), sin «Canciones de» y sin pedir nada (tipo «tuyos»: De nulo y Total 0; RocolaOsSpotifyFaltan y PideBloque no piden sin De),
+    abierta al momento, con la cabecera «DISCOS · ARTISTA». No es de Spotify: ni la cabecera ni el letrero llevan el icono de Spotify
+    (RocolaOsParedConIcono, RocolaOs.ParedLetrero.cs; el letrero conserva «DISCOS · ARTISTA» y «REGRESAR AL BUSCADOR» con el rojo).
+    REGRESAR vuelve al buscador, sus discos vuelven a ella y a los 60 s sin tocar se cierra todo, como las demás.
+  - sin ningún disco tuyo de ese nombre (raro): lo de XP.
+- UN ARTISTA SOLO DE SPOTIFY: siempre su pared del buscador (sin el desvío a la pared de verdad en RocolaOsSpotifyParedesElige).
+- RocolaOsSpotifyEnLaParedReal queda SIN USO (nada la llama); se deja con su comentario por si el dueño vuelve a pedir lo de la pared de
+  verdad cuando el catálogo regrese a la pared con las portadas por adelantado.
+- Asistente: la tarjeta de un artista tuyo (con o sin Spotify) cuenta como «Sus discos» y el texto dice «Pulsa VERDE y verás sus discos
+  juntos en su propia pared.»
+- La bitácora de spotify_catalogo apunta ahora «disco tuyo abierto desde el buscador», «artista tuyo: pared del buscador solo con tus
+  discos» y «REGRESAR: de vuelta al buscador con «...»».
+- Prueba: escena «siempre» de Pruebas/RocolaOs/catalogo (tres rondas; la c añade a los datos las carpetas «Otra Banda - Segundo Disco» y
+  «Tercer Disco» para que tengas todos los de la API falsa): a) un disco tuyo abre dentro del buscador, REGRESAR vuelve con lo escrito y a
+  los 30 s se cierra todo; b) un artista tuyo que Spotify no conoce abre una pared con solo tus discos, sin peticiones de pared, sin el icono
+  de Spotify, REGRESAR y cierre a los 60 s; c) un artista tuyo con todos sus discos ya tuyos abre la pared unida (1 página de la API, ningún
+  disco de Spotify, con el icono). No probado en el A4 ni con Spotify real.
