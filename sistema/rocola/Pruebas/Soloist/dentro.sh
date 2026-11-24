@@ -8,7 +8,7 @@ P=$(cat /tmp/srv.puerto)
 export PATH=/usr/bin:/bin ROCOLA_RUN=/run ROCOLA_XP_DATOS=/rocola/datos/xp ROCOLA_DISCO=/rocola/disco ROCOLA_DISCOS=/rocola/discos \
 	ROCOLA_SYS_BLOCK=/fsys/block SOLOIST_URL=http://127.0.0.1:$P/soloist_release_x86_64.tar.gz ROCOLA_SPOTIFY_APRESOLVE=http://127.0.0.1:$P/apresolve \
 	ROCOLA_SOLOIST_ESPERAS="1 2 3 4" ROCOLA_SOLOIST_SEGUIDA=8 ROCOLA_SOLOIST_ARRANQUE=6 ROCOLA_SOLOIST_USB=2 ROCOLA_SOLOIST_CADUCADO=3 \
-	ROCOLA_SOLOIST_MIN_DISCO_KB=1024 ROCOLA_SOLOIST_MIN_DATOS_KB=512
+	ROCOLA_SOLOIST_MIN_DISCO_KB=1024 ROCOLA_SOLOIST_MIN_DATOS_KB=512 ROCOLA_SOLOIST_TICK=1
 echo "$P" > /tmp/ws.puerto
 XPD=/rocola/datos/xp; AQ=/run/rocola-soloist; EST=$AQ/estado; BIT=$XPD/rocola_soloist.txt; SD=$XPD/soloist
 DP=/rocola/disco/rocola-os/soloist; DD=$XPD/soloist-programa; SRVF=/srv/soloist_release_x86_64.tar.gz
@@ -319,6 +319,47 @@ cambio)   # (revision) caduca pronto y hay uno nuevo con Soloist en marcha: no s
 	i=0; while [ "$(es version)" != 2.0.0 ] && [ $i -lt 60 ]; do sleep 0.25; i=$((i + 1)); done
 	espera_fase corriendo 6; r=$?
 	ok "$r/$(es version)/$(n 'se cambia ahora')" "0/2.0.0/1" "sin nada de Spotify (sonando= vacio, en_cola=0): se cambia ya a la 2.0.0" ;;
+semanas)   # (24-11-2026, revision de mejoras) caduca en 20 dias (menos de 21) con Soloist en marcha: se baja el nuevo, queda PENDIENTE (el estado lo dice)
+	# mientras suena algo de Spotify y se aplica en cuanto hay hueco; con 2 dias o menos basta con que no suene (aunque haya cola)
+	disco; llave; srv v20 1; rocola-soloist baja >/dev/null; srv v2 0
+	ok "$(sed -n 's/^caduca=//p' $DP/soloist.info)" "$(date -d "@$(( $(date +%s) + 20 * 86400 ))" +%Y-%m-%d)" "la 3.0.0 caduca en 20 dias"
+	mkdir -p /run/rocola-xp/spotify; printf 'ws=1\nsesion=1\nactiva=1\nsonando=spotify:track:inventado0123456789\nen_cola=1\n' > /run/rocola-xp/spotify/estado
+	lanza ROCOLA_SOLOIST_REINTENTO=4 ROCOLA_SOLOIST_REVISA=2; espera_fase corriendo 6; r=$?
+	ok "$r/$(es version)/$(es dias)" "0/3.0.0/20" "arranca la 3.0.0 con 20 dias (el estado los lleva)"
+	sleep 9
+	ok "$(es version)/$(es pendiente)/$(cmp -s $DP/soloist.tar.gz /tars/v2.tar.gz && echo bajado)/$(n 'se cambia ahora')" "3.0.0/1/bajado/0" "baja la 2.0.0 y queda pendiente: suena una de Spotify"
+	printf 'ws=1\nsesion=1\nactiva=1\nsonando=\nen_cola=1\n' > /run/rocola-xp/spotify/estado
+	sleep 3; ok "$(es version)" "3.0.0" "sin sonar pero con cola (y 20 dias): sigue esperando el hueco"
+	printf 'ws=1\nsesion=1\nactiva=1\nsonando=\nen_cola=0\n' > /run/rocola-xp/spotify/estado
+	i=0; while [ "$(es version)" != 2.0.0 ] && [ $i -lt 40 ]; do sleep 0.25; i=$((i + 1)); done; espera_fase corriendo 6; r=$?
+	ok "$r/$(es version)/$(es pendiente)/$(n 'se cambia ahora')" "0/2.0.0//1" "en cuanto hay hueco (nada sonando ni en cola) se cambia y ya no hay pendiente"
+	;;
+diasdos)   # (24-11-2026, revision de mejoras) con 2 dias o menos de vida basta con que no suene nada de Spotify, aunque haya cola
+	disco; llave; srv v2d 1; rocola-soloist baja >/dev/null; srv v2 0
+	mkdir -p /run/rocola-xp/spotify; printf 'ws=1\nsesion=1\nactiva=1\nsonando=\nen_cola=3\n' > /run/rocola-xp/spotify/estado
+	lanza ROCOLA_SOLOIST_REINTENTO=4 ROCOLA_SOLOIST_REVISA=2; espera_fase corriendo 6
+	i=0; while [ "$(es version)" != 2.0.0 ] && [ $i -lt 60 ]; do sleep 0.25; i=$((i + 1)); done
+	ok "$(es version)/$(n 'quedan 2 dias')" "2.0.0/1" "con 2 dias de vida basta con que no suene nada de Spotify (aunque haya cola)" ;;
+atras)   # (24-11-2026, revision de mejoras) la build recien bajada no abre su WebSocket: a los 3 arranques se vuelve a la anterior y no se
+	# vuelve a bajar esa misma build en 24 h
+	disco; llave; srv v20 1; rocola-soloist baja >/dev/null; srv v2 0; echo 2.0.0 > /tmp/soloist.sin_ws
+	lanza ROCOLA_SOLOIST_REINTENTO=4 ROCOLA_SOLOIST_REVISA=2; espera_fase corriendo 6; r=$?
+	ok "$r/$(es version)" "0/3.0.0" "arranca la 3.0.0 (caduca en 20 dias)"
+	i=0; while [ "$(n 'recien bajado no abrio su WebSocket')" = 0 ] && [ $i -lt 240 ]; do sleep 0.25; i=$((i + 1)); done
+	espera_fase corriendo 15; r=$?; sleep 6; bit 8
+	ok "$r/$(es version)/$(n 'Se estrena el programa')/$(grep -c 'soloist 2.0.0.*args: -n' /tmp/soloist.log)" "0/3.0.0/1/3" "la 2.0.0 se estrena, no abre su WebSocket 3 veces y vuelve la 3.0.0"
+	ok "$(cmp -s $DP/soloist.tar.gz /tars/v20.tar.gz && echo anterior)/$(cmp -s $DP/soloist.malo.tar.gz /tars/v2.tar.gz && echo mala)/$(si -s $DP/soloist.malo.marca)" "anterior/mala/si" "la actual es la de antes y la mala queda aparte, con su marca"
+	ok "$(n 'no se vuelve a poner en 24 h' | awk '{print ($1 >= 1)}')/$(grep -c 'soloist 2.0.0.*args: -n' /tmp/soloist.log)" "1/3" "esa build ya no se vuelve a poner aunque Spotify la siga ofreciendo (y la 3.0.0 caduca pronto: lo intento)" ;;
+reinicia)   # (24-11-2026, revision de mejoras) rocola-xp pide reiniciar a Soloist con un archivo «reinicia» en su carpeta de datos: una vez cada ROCOLA_SOLOIST_REINICIA_MIN s
+	disco; llave; srv v2 0; rocola-soloist baja >/dev/null
+	espera_arranques() { i=0; while [ "$(arranques)" -lt "$1" ] && [ $i -lt $(( $2 * 5 )) ]; do sleep 0.2; i=$((i + 1)); done; espera_fase corriendo 8; }
+	lanza ROCOLA_SOLOIST_REINICIA_MIN=6; espera_fase corriendo 8; a=$(arranques)
+	echo "la prueba de reinicio" > $SD/reinicia; espera_arranques $((a + 1)) 8
+	ok "$(arranques)/$(si -e $SD/reinicia)/$(n 'pidio reiniciar a Soloist (la prueba de reinicio): se vuelve a arrancar')" "$((a + 1))/no/1" "reinicia a Soloist una vez, con el motivo, y borra el archivo"
+	echo "otra vez" > $SD/reinicia; sleep 2
+	ok "$(arranques)/$(si -e $SD/reinicia)/$(n 'se ignora')" "$((a + 1))/no/1" "otro enseguida: se borra, se apunta que se ignoro y no reinicia"
+	sleep 5; echo "ya paso el plazo" > $SD/reinicia; espera_arranques $((a + 2)) 8
+	ok "$(arranques)/$(n 'pidio reiniciar a Soloist (ya paso el plazo): se vuelve')" "$((a + 2))/1" "pasado el plazo vuelve a poder reiniciar" ;;
 padrebaja)   # (revision) muere el padre mientras baja el programa (una bajada lenta): el vigilante no se queda minutos bajando con el candado
 	disco; llave; echo "lento 30" > /srv/.modo; srv v2 0
 	lanza; espera_fase bajando 6; kill -KILL "$(cat /tmp/o.padre)"; t=$(hasta_que_no_quede)

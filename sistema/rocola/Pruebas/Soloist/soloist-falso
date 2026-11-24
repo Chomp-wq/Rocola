@@ -10,7 +10,7 @@
 #   -p (emparejar)       espera 1 s, deja una sesion en -D y sale con lo de /tmp/soloist.par (0 si no esta)
 #   (la bocina)          /tmp/soloist.modo: «sale N» (sale con N enseguida), «lento N» (abre su WebSocket a los N s), «sin_ws» (nunca
 #                        lo abre), «terco» (no atiende SIGTERM), «escapa» (deja un hijo en otra sesion con su salida); sin el archivo, normal. Si VER esta en /tmp/soloist.caducadas, sale con
-#                        10 (caducado). El WebSocket: ws.addr y ws.port en -D (el puerto del servidor de mentira, /tmp/ws.puerto).
+#                        10 (caducado); si VER esta en /tmp/soloist.sin_ws, no abre nunca su WebSocket (como «sin_ws»). El WebSocket: ws.addr y ws.port en -D (el puerto del servidor de mentira, /tmp/ws.puerto).
 VER=@VER@
 DIAS=@DIAS@
 L=/tmp/soloist.log
@@ -39,7 +39,7 @@ if [ -n "$P" ]; then
 	r=$(cat /tmp/soloist.par 2>/dev/null); apunta "emparejado, sale con ${r:-0}"; exit "${r:-0}"
 fi
 grep -qx "$VER" /tmp/soloist.caducadas 2>/dev/null && { echo "ERROR client expired, please update to a newer version. Exiting with exit code 10" >&2; apunta "sale con 10 (caducado)"; exit 10; }
-set -- $(cat /tmp/soloist.modo 2>/dev/null)
+if grep -qx "$VER" /tmp/soloist.sin_ws 2>/dev/null; then set -- sin_ws; else set -- $(cat /tmp/soloist.modo 2>/dev/null); fi
 case "$1" in
 sale) echo "ERROR algo fallo (falso)" >&2; apunta "sale con $2"; exit "$2" ;;
 terco) trap 'apunta "SIGTERM: no hago caso"' TERM ;;

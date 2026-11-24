@@ -56,6 +56,10 @@ TERMINA=${ROCOLA_SOLOIST_TERM:-8}              # lo que se le espera tras SIGTER
 CADA_USB=${ROCOLA_SOLOIST_USB:-30}             # sin llave, cada cuanto se mira la memoria USB
 REVISA=${ROCOLA_SOLOIST_REVISA:-3600}          # con Soloist en marcha, cada cuanto se mira si caduca pronto (y la USB si falta algo: 900)
 REINTENTO=${ROCOLA_SOLOIST_REINTENTO:-3600}    # bajar uno nuevo porque caduca pronto: como mucho una vez cada tanto
+UMBRAL=${ROCOLA_SOLOIST_UMBRAL:-21}            # (24-11-2026, revision de mejoras) con menos de tantos dias de vida se baja el nuevo (antes 7)
+TICK=${ROCOLA_SOLOIST_TICK:-30}                # lo que no hace falta cada 0,5 s (rotar la bitacora, la huella de la llave, los dias, lo pendiente)
+ESTRENO=${ROCOLA_SOLOIST_ESTRENO:-600}         # un programa recien bajado: 3 arranques sin WebSocket en tantos segundos y se vuelve al anterior
+REINICIA_MIN=${ROCOLA_SOLOIST_REINICIA_MIN:-600}  # el archivo «reinicia» de rocola-xp: como mucho un reinicio cada tanto
 CADUCADO_ESPERA=${ROCOLA_SOLOIST_CADUCADO:-600}  # caducado y sin uno nuevo que bajar: se vuelve a intentar a los tantos segundos
 MIN_DISCO=${ROCOLA_SOLOIST_MIN_DISCO_KB:-65536}  # sitio libre para bajarlo al disco de la rocola (14 MB, su anterior y el de paso)
 MIN_DATOS=${ROCOLA_SOLOIST_MIN_DATOS_KB:-40960}  # y en los datos (datos.img mide 512 MB)
@@ -91,7 +95,7 @@ FASE=parado; VERSION=; CADUCA=; DIAS=; SPID=; REINICIOS=0; ERROR=; PROGRAMA=
 estado() {
 	[ -n "$1" ] && FASE=$1
 	mkdir -p "$AQUI" 2>/dev/null
-	{ echo "fase=$FASE"; echo "version=$VERSION"; echo "caduca=$CADUCA"; echo "dias=$DIAS"; echo "pid=$SPID"; echo "reinicios=$REINICIOS"
+	{ echo "fase=$FASE"; echo "version=$VERSION"; echo "caduca=$CADUCA"; echo "dias=$DIAS"; echo "pid=$SPID"; echo "reinicios=$REINICIOS"; echo "pendiente=$([ -f "$AQUI/pendiente" ] && echo 1)"
 	  echo "error=$ERROR"; echo "programa=$PROGRAMA"; echo "vigilante=$$"; echo "cambio=$(date '+%Y-%m-%d %H:%M:%S')"; } > "$ESTADO.n" 2>/dev/null \
 		&& mv -f "$ESTADO.n" "$ESTADO"
 }
@@ -250,7 +254,19 @@ baja_ya() {
 		[ -n "$(tar_actual)" ]; return
 	fi
 	if [ -s "$tg" ] && cmp -s "$t" "$tg"; then rm -f "$t"; apunta "El programa de Spotify ya es el ultimo"; return 0; fi
-	[ -s "$tg" ] && mv -f "$tg" "$d/soloist.anterior.tar.gz"
+	# (24-11-2026, revision de mejoras) la build que no abrio su WebSocket y se devolvio a la anterior no se vuelve a poner en 24 h
+	if [ -s "$d/soloist.malo.tar.gz" ] && cmp -s "$t" "$d/soloist.malo.tar.gz"; then
+		m=$(cat "$d/soloist.malo.marca" 2>/dev/null)
+		if [ $(( $(ahora) - ${m:-0} )) -lt 86400 ]; then
+			rm -f "$t"; apunta "Lo que ofrece Spotify es la build que fallo y se devolvio: no se vuelve a poner en 24 h"; [ -n "$(tar_actual)" ]; return
+		fi
+	fi
+	if [ -s "$tg" ]; then
+		mv -f "$tg" "$d/soloist.anterior.tar.gz"
+		# (y lo que se sabia de ella, para saber si el anterior esta caducado cuando haga falta volver)
+		cp -f "$(info_de "$tg")" "$d/soloist.anterior.info" 2>/dev/null || rm -f "$d/soloist.anterior.info"
+		: > "$AQUI/recien"   # (esta se estrena al sacarla: prepara)
+	fi
 	mv -f "$t" "$tg" && sync
 	ERROR=; apunta "Programa de Spotify bajado ($(wc -c < "$tg") bytes, del $(date -r "$tg" '+%Y-%m-%d'), en $d)"
 	return 0
@@ -285,7 +301,10 @@ saca() {
 # contesta: «--version» salio bien (o con 10, caducado) o dijo algo
 contesta() { [ "$VR" = 0 ] || [ "$VR" = 10 ] || [ -n "$VERSION_DICE" ]; }
 # usa_anterior TAR: el anterior pasa a ser el actual (el actual queda como soloist.malo.tar.gz)
-usa_anterior() { d=${1%/*}; mv -f "$1" "$d/soloist.malo.tar.gz" && mv -f "$d/soloist.anterior.tar.gz" "$1" && rm -f "$(info_de "$1")"; }
+usa_anterior() {
+	d=${1%/*}; rm -f "$AQUI/recien" "$AQUI/estrenando" "$AQUI/estrenando.fallos"
+	mv -f "$1" "$d/soloist.malo.tar.gz" && ahora > "$d/soloist.malo.marca" && mv -f "$d/soloist.anterior.tar.gz" "$1" && rm -f "$(info_de "$1")" "$d/soloist.anterior.info"
+}
 prepara() {
 	if [ -n "$SOLOIST_BIN" ]; then BIN=$SOLOIST_BIN; PROGRAMA=$SOLOIST_BIN; [ -x "$BIN" ] || { falla "SOLOIST_BIN no es un programa: $BIN"; return 1; }
 		version_de "$BIN" ""; return 0; fi
@@ -307,6 +326,12 @@ prepara() {
 		else
 			apunta "el anterior tampoco: se sigue con el nuevo"; saca "$tg"; version_de "$BIN" "$tg"; VR=$v0
 		fi
+	fi
+	# (24-11-2026, revision de mejoras) una build recien bajada se anota como «estrenando»: si no abre su WebSocket en 3 arranques seguidos
+	# dentro de ESTRENO s, el vigilante vuelve a la anterior (estreno_falla)
+	if [ -f "$AQUI/recien" ]; then
+		rm -f "$AQUI/recien"; segundos > "$AQUI/estrenando"; : > "$AQUI/estrenando.fallos"
+		apunta "Se estrena el programa de Spotify bajado${VERSION:+ (version $VERSION)}: si no abre su WebSocket en 3 arranques en $ESTRENO s, se vuelve al anterior"
 	fi
 	return 0
 }
@@ -339,9 +364,36 @@ mira_expira() {
 		&& mv -f "$AQUI/info.n" "$(info_de "$PROGRAMA")"
 	estado
 }
-# caduca pronto (menos de 7 dias) o ya caduco
-caduca_pronto() { [ -n "$DIAS" ] && [ "$DIAS" -lt 7 ]; }
-puede_reintentar() { u=$(cat "$AQUI/ultimo_intento" 2>/dev/null); [ $(( $(ahora) - ${u:-0} )) -ge "$REINTENTO" ]; }
+# caduca pronto (menos de UMBRAL dias: 21) o ya caduco
+caduca_pronto() { [ -n "$DIAS" ] && [ "$DIAS" -lt "$UMBRAL" ]; }
+# (el margen: ultimo_intento se apunta unos segundos DESPUES de empezar la revision, y la siguiente cae a REVISA s de la que empezo: sin el
+# margen, con REVISA = REINTENTO la 2.a revision se saltaba el intento y esperaba una hora mas)
+puede_reintentar() { u=$(cat "$AQUI/ultimo_intento" 2>/dev/null); m=$(( REINTENTO / 10 )); [ "$m" -gt 60 ] && m=60; [ $(( $(ahora) - ${u:-0} + m )) -ge "$REINTENTO" ]; }
+# quien es el .tar.gz de ahora (ruta, tamano y fecha: barato, sin leerlo entero): para saber si lo que corre es lo que hay bajado
+identidad_tar() { t=$(tar_actual); [ -n "$t" ] && echo "$t $(wc -c < "$t") $(date -r "$t" +%s 2>/dev/null)"; }
+# hueco_spotify: se puede cambiar el programa de Soloist ya (nada de Spotify sonando ni en cola; con 2 dias o menos, basta con que no suene)
+hueco_spotify() {
+	x=${ROCOLA_SPOTIFY_ESTADO:-$RUN/rocola-xp/spotify/estado}
+	case "$(sed -n 's/^sonando=//p' "$x" 2>/dev/null | head -n 1)" in ""|0|no|false) ;; *) return 1 ;; esac
+	[ -n "$DIAS" ] && [ "$DIAS" -le 2 ] && return 0
+	[ ! -f "$x" ] || [ "$(sed -n 's/^en_cola=//p' "$x" 2>/dev/null | head -n 1)" = 0 ]
+}
+# estreno_falla: Soloist recien bajado que no llego a abrir su WebSocket; con 3 en ESTRENO s y el anterior sin caducar, vuelve al anterior (0)
+estreno_falla() {
+	[ -f "$AQUI/estrenando" ] || return 1
+	_s=$(segundos); echo "$_s" >> "$AQUI/estrenando.fallos"
+	c=0; while read -r f; do [ $(( _s - f )) -le "$ESTRENO" ] && c=$((c + 1)); done < "$AQUI/estrenando.fallos"
+	[ "$c" -ge 3 ] || return 1
+	tg=$(tar_actual); [ -n "$tg" ] || return 1; d=${tg%/*}; a=$d/soloist.anterior.tar.gz
+	if [ ! -s "$a" ]; then apunta "El programa de Spotify recien bajado no abre su WebSocket ($c veces) y no hay anterior a donde volver"; rm -f "$AQUI/estrenando" "$AQUI/estrenando.fallos"; return 1; fi
+	ca=$(sed -n 's/^caduca=//p' "$d/soloist.anterior.info" 2>/dev/null)
+	[ -n "$ca" ] || { _c=$(date -r "$a" +%s 2>/dev/null) && ca=$(date -d "@$(( _c + 90 * 86400 ))" +%Y-%m-%d); }
+	da=$(dias_hasta "$ca" 2>/dev/null)
+	if [ -n "$da" ] && [ "$da" -lt 0 ]; then apunta "El programa de Spotify recien bajado no abre su WebSocket ($c veces) pero el anterior esta caducado: se sigue con este"; rm -f "$AQUI/estrenando" "$AQUI/estrenando.fallos"; return 1; fi
+	apunta "El programa de Spotify recien bajado no abrio su WebSocket en $c arranques en $ESTRENO s: se vuelve al anterior (y no se vuelve a bajar esa build en 24 h)"
+	usa_anterior "$tg"; ERROR="el programa de Spotify nuevo no abria su WebSocket: se volvio al anterior"
+	return 0
+}
 
 # ---------------- Soloist en marcha ----------------
 # lo que dice Soloist (la salida y los errores) a la bitacora, con la hora y SIN NINGUNA linea que lleve la llave; «client expires in N
@@ -498,8 +550,12 @@ corre() {
 		while ! flock -n 9; do duerme 1 || { apunta "Vigilante: se cierra sin haber arrancado (${PARAR})"; exit 0; }; done
 	fi
 	apunta "Vigilante en marcha (pid $$)"
+	# (24-11-2026, revision de mejoras) quita_huerfanos recorre todo /proc: solo si el vigilante de antes dejo sus pid (murio sin cerrar);
+	# se mira ANTES de escribir los nuevos
+	if [ -e "$AQUI/soloist.pid" ] || [ -e "$AQUI/vigilante.pid" ]; then quita_huerfanos; fi
 	echo "$$" > "$AQUI/vigilante.pid"
-	quita_huerfanos
+	rm -f "$SDATOS/reinicia" "$AQUI/pendiente"
+	ULT_REINICIO=-999999
 	nivel=0; ULTIMA_USB=0; ULTIMA_REVISION=$(segundos)
 	while [ -z "$PARAR" ]; do
 		padre_vivo || { PARAR=padre; break; }
@@ -533,39 +589,58 @@ corre() {
 		[ -n "$PARAR" ] && break
 		# 3. arrancarlo y vigilarlo
 		arranca
-		ULTIMA_REVISION=$(segundos)
+		ULTIMA_REVISION=$(segundos); T30=$ULTIMA_REVISION; QUE=$(identidad_tar); rm -f "$AQUI/pendiente"
 		while vivo; do
 			pausa || break
 			mira_expira
+			# (cada 0,5 s solo lo barato, sin abrir programas: el reloj, tests de archivos, lecturas con read; 24-11-2026, revision de mejoras)
+			uptime_ms; AHORA_S=$((U / 1000))
 			if [ -z "$LISTO" ] && [ -s "$SDATOS/ws.port" ]; then
 				LISTO=1; ERROR=; CADUCO_YA=; estado corriendo
 				apunta "Soloist en marcha (pid $SPID), WebSocket en $(cat "$SDATOS/ws.addr" 2>/dev/null):$(cat "$SDATOS/ws.port")"
 			fi
-			if [ -z "$LISTO" ] && [ $(( $(segundos) - T0 )) -ge "$ARRANQUE" ]; then
+			if [ -z "$LISTO" ] && [ $(( AHORA_S - T0 )) -ge "$ARRANQUE" ]; then
 				falla "Soloist no abrio su WebSocket en $ARRANQUE s: se vuelve a arrancar"; para; R=sinws; break
 			fi
+			# rocola-xp pide reiniciar a Soloist (un archivo «reinicia» con el motivo en su carpeta de datos): como mucho uno cada REINICIA_MIN s
+			if [ -e "$SDATOS/reinicia" ]; then
+				mv=$(head -c 200 "$SDATOS/reinicia" 2>/dev/null | tr -d '\000-\037'); rm -f "$SDATOS/reinicia"
+				if [ $(( AHORA_S - ULT_REINICIO )) -lt "$REINICIA_MIN" ]; then
+					apunta "rocola-xp pidio reiniciar a Soloist (${mv:-sin motivo}): se ignora, hubo otro reinicio hace menos de $REINICIA_MIN s"
+				else
+					ULT_REINICIO=$AHORA_S; apunta "rocola-xp pidio reiniciar a Soloist (${mv:-sin motivo}): se vuelve a arrancar"; para; R=reinicia; break
+				fi
+			fi
+			[ $(( AHORA_S - T30 )) -ge "$TICK" ] || continue
+			T30=$AHORA_S
 			rota
+			# los dias que quedan, de la fecha de caducidad (con Soloist semanas en pie el numero de arriba envejece)
+			if [ -n "$CADUCA" ]; then _d=$(dias_hasta "$CADUCA"); [ -n "$_d" ] && [ "$_d" != "$DIAS" ] && { DIAS=$_d; estado; }; fi
+			if [ -f "$AQUI/estrenando" ] && [ -n "$LISTO" ] && [ $(( AHORA_S - $(cat "$AQUI/estrenando") )) -ge "$ESTRENO" ]; then
+				rm -f "$AQUI/estrenando" "$AQUI/estrenando.fallos"; apunta "El programa de Spotify nuevo se ha portado bien $ESTRENO s: ya no se estrena"
+			fi
 			# la llave cambio (otra de la USB o escrita): con la nueva
 			if [ "$(huella_llave)" != "$HUELLA" ]; then apunta "La llave de Soloist cambio: se vuelve a arrancar"; para; R=llave; break; fi
-			if [ $(( $(segundos) - ULTIMA_REVISION )) -ge "$REVISA" ]; then
-				ULTIMA_REVISION=$(segundos)
+			if [ $(( AHORA_S - ULTIMA_REVISION )) -ge "$REVISA" ]; then
+				ULTIMA_REVISION=$AHORA_S
 				{ [ ! -s "$APIF" ] || ! lee_llave; } && importa_llaves >/dev/null
-				# caduca pronto: se baja el nuevo y, si la rocola no esta tocando nada de Spotify, se cambia ya
-				if [ -z "$SOLOIST_BIN" ] && caduca_pronto && puede_reintentar && baja && [ "$(cat "$AQUI/bin/de" 2>/dev/null)" != "$(de_de "$(tar_actual)")" ]; then
-					x=${ROCOLA_SPOTIFY_ESTADO:-$RUN/rocola-xp/spotify/estado}
-					# (sonando= trae la uri de la que suena -rocola-xp, grupo spotify-xp- o 1; vacio, 0 o no: nada)
-					case "$(sed -n 's/^sonando=//p' "$x" 2>/dev/null | head -n 1)" in ""|0|no|false) so= ;; *) so=1 ;; esac
-					if [ -z "$so" ] && [ "$(sed -n 's/^en_cola=//p' "$x" 2>/dev/null)" = 0 -o ! -f "$x" ]; then
-						apunta "Programa de Spotify nuevo y la rocola sin nada de Spotify: se cambia ahora"; para; R=nuevo; break
-					fi
+				# caduca pronto: se baja el nuevo y queda PENDIENTE hasta que haya hueco
+				if [ -z "$SOLOIST_BIN" ] && [ ! -f "$AQUI/pendiente" ] && caduca_pronto && puede_reintentar && baja; then
+					if [ "$(identidad_tar)" != "$QUE" ]; then : > "$AQUI/pendiente"; estado; apunta "Programa de Spotify nuevo bajado: se cambia en cuanto la rocola no tenga nada de Spotify"; fi
 				fi
+			fi
+			# lo pendiente se aplica en el primer hueco (se mira cada TICK s: leer el estado de rocola-xp es barato, sin md5 del tar)
+			if [ -f "$AQUI/pendiente" ] && hueco_spotify; then
+				apunta "Programa de Spotify nuevo y la rocola sin nada de Spotify${DIAS:+ (quedan $DIAS dias)}: se cambia ahora"; para; R=nuevo; break
 			fi
 		done
 		if [ -n "$PARAR" ] || vivo; then break; fi
 		[ -n "$SPID" ] && recoge
 		duro=$(( $(segundos) - T0 ))
+		# (24-11-2026, revision de mejoras) no abrio su WebSocket: ¿es la build recien bajada? con 3 en ESTRENO s, la anterior
+		if [ -z "$LISTO" ] && [ -z "$SOLOIST_BIN" ]; then case "$R" in 10|llave|nuevo|reinicia) ;; *) estreno_falla && { nivel=0; continue; } ;; esac; fi
 		case "$R" in
-		llave|nuevo) nivel=0; continue ;;
+		llave|nuevo|reinicia) nivel=0; continue ;;
 		10)
 			FASE=caducado; DIAS=-1; falla "El programa de Spotify caduco (salio con 10): se baja el ultimo"
 			estado caducado
@@ -615,7 +690,7 @@ cuenta_estado() {
 		echo "Programa de Spotify: $tg (bajado el $(date -r "$tg" '+%Y-%m-%d'))${VERSION:+, version $VERSION}."
 		if [ -n "$CADUCA" ]; then
 			if [ "$DIAS" -lt 0 ] 2>/dev/null; then echo "  CADUCO el $CADUCA: hace falta uno nuevo («spotify bajar», con internet)."
-			else echo "  Caduca el $CADUCA: quedan $DIAS dias (se pone al dia solo cuando quedan menos de 7)."; fi
+			else echo "  Caduca el $CADUCA: quedan $DIAS dias (se pone al dia solo cuando quedan menos de $UMBRAL)."; fi
 		else echo "  No se sabe cuando caduca (se sabra al arrancarlo)."; fi
 	else echo "Programa de Spotify: no esta bajado todavia (se baja solo al encender el modo; o «spotify bajar»)."; fi
 	if [ -s "$LLAVE" ]; then echo "Llave de Soloist: puesta."; else echo "Llave de Soloist: FALTA."; fi

@@ -165,6 +165,8 @@ estado_json() {
 	# bajadas del programa: programa_nueva y programa_malas quedan vacios)
 	xpver=$(timeout 20 "$XPBIN" --version 2>/dev/null | head -1)
 	desde=; [ -n "$pid" ] && desde=$(( $(cut -d. -f1 /proc/uptime) - $(awk '{print int($22/100)}' /proc/$pid/stat 2>/dev/null || echo 0) ))
+	# (24-11-2026, revision de mejoras) spotify.vigilante (fase, dias, version...), spotify.rocola (sesion, cobradas...) y spotify.catalogo (la API web:
+	# api=, peticiones, ultimo 429 y ultimo exito) son el texto clave=valor de sus archivos de /run, que no llevan secretos (el vigilante sin su «cambio=»)
 	slot=$(sed -n 's/^set rocola_slot=\([ab]\).*/\1/p' "$OS/arranque.cfg" 2>/dev/null)
 	jq -n \
 		--arg fecha "$(date '+%Y-%m-%d %H:%M:%S')" --arg zona "$(date '+%z')" --arg arriba "$(cut -d. -f1 /proc/uptime)" \
@@ -190,6 +192,7 @@ estado_json() {
 		--arg sp_modo "$(tr -d '\r' 2>/dev/null < "$XPD/rocola_os.txt" | sed -n 's/^[ \t]*spotify[ \t]*=[ \t]*//p' | tail -1)" \
 		--arg sp_llave "$([ -s "$XPD/rocola_spotify_llave.txt" ] && echo si)" --arg sp_api "$([ -s "$XPD/rocola_spotify_api.txt" ] && echo si)" \
 		--arg sp_vigilante "$(grep -v '^cambio=' "$RUN/rocola-soloist/estado" 2>/dev/null)" --arg sp_rocola "$(leer "$RUN/rocola-xp/spotify/estado")" \
+		--arg sp_catalogo "$(leer "$RUN/rocola-xp/spotify/catalogo")" \
 		--arg nucleo "$(dmesg 2>/dev/null | grep -iE 'error|fail|warn|oops|bug|i/o' | tail -n 25)" \
 		--arg discos "$(leer "$RUN/rocola-discos.txt" | tail -n 15)" \
 		--arg tarjeta "$(cat /proc/asound/cards 2>/dev/null)" \
@@ -202,7 +205,7 @@ estado_json() {
 		  rocola:{corriendo:$rocola_corre, segundos_abierta:$rocola_desde, vivo:$vivo},
 		  errores:{total_lineas:($n_errores|tonumber? // 0), ultimos:$errores}, bitacoras:{actualizaciones:$actualizaciones, sistema:$sistema_txt,
 		  rocola:$registro, spotify:$spotify, soloist:$soloist, nucleo:$nucleo, discos:$discos},
-		  spotify:{modo:$sp_modo, llave:$sp_llave, llave_api:$sp_api, vigilante:$sp_vigilante, rocola:$sp_rocola}, buzon:$buzon}'
+		  spotify:{modo:$sp_modo, llave:$sp_llave, llave_api:$sp_api, vigilante:$sp_vigilante, rocola:$sp_rocola, catalogo:$sp_catalogo}, buzon:$buzon}'
 }
 # Lo que cambia de verdad (sin la hora ni lo que dura encendida): para no subir lo mismo una y otra vez.
 huella() { jq -c 'del(.fecha, .arriba_s, .rocola.segundos_abierta, .equipo.carga, .equipo.temperatura_c, .equipo.memoria, .buzon, .rocola.vivo)' "$1" | md5sum | cut -c1-32; }

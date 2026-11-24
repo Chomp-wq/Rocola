@@ -219,7 +219,7 @@ prueba)
 	ver=$(echo "$o" | sed -n 's/^version=//p'); cad=$(echo "$o" | sed -n 's/^caduca=//p'); d=$(echo "$o" | sed -n 's/^dias=//p')
 	if [ $r = 0 ]; then
 		b "el programa de Spotify contesta${ver:+ (version $ver)}${cad:+; caduca el $cad: quedan $d dias}"
-		[ -n "$d" ] && [ "$d" -lt 7 ] 2>/dev/null && m "el programa caduca en menos de 7 dias: «spotify bajar»"
+		[ -n "$d" ] && [ "$d" -lt 21 ] 2>/dev/null && m "el programa caduca en menos de 21 dias: «spotify bajar»"
 	elif echo "$o" | grep -q 'no hay programa'; then m "el programa de Spotify no esta bajado («spotify bajar», con internet)"
 	else m "el programa de Spotify no contesta a --version ($(echo "$o" | sed -n 's/^codigo=//p'))"; fi
 	if llave_ok; then b "la llave de Soloist esta puesta"; else m "falta la llave de Soloist («spotify llave»)"; fi

@@ -216,10 +216,34 @@ function pintaTarjetas(e){
    `<div class="tarjeta"><h3>Versiones</h3>${kv([["Programa",v.programa+(v.programa_nueva?" (bajada la "+v.programa_nueva+")":"")],["Sistema",v.sistema+(v.copia?" · copia "+v.copia:"")+(v.sistema_en_prueba?" · en prueba":"")],["Pendiente",v.reinicio_pendiente||"nada"],["Malas",(v.programa_malas||"—")+" / "+(v.sistema_malas||"—")],["Actualización",(e.actualizacion||{}).estado||""],["Llave GitHub",(e.actualizacion||{}).llave_github?"puesta":"FALTA"]])}</div>`+
    `<div class="tarjeta"><h3>Equipo</h3>${kv([["Encendido",horas(e.arriba_s)],["Carga",q.carga],["Temperatura",(q.temperatura_c||"?")+" °C"],["Memoria",q.memoria],["Datos",q.disco_datos],["Disco rocola",q.disco_rocola]])}<pre style="margin-top:8px">${esc(q.tarjeta)}</pre></div>`+
    `<div class="tarjeta"><h3>Red</h3>${kv([["IP",r.ip],["Puerta",r.puerta],["MAC",r.mac],["Wake on LAN",r.wake_on_lan],["Buzón",e.buzon]])}</div>`+
-   `<div class="tarjeta"><h3>Spotify</h3><pre>${esc((e.bitacoras||{}).spotify||"—")}</pre></div>`+
+   tarjetaSpotify(e)+
+   `<div class="tarjeta"><h3>Spotify (bitácora)</h3><pre>${esc((e.bitacoras||{}).spotify||"—")}</pre></div>`+
    `<div class="tarjeta"><h3>Núcleo (dmesg)</h3><pre>${esc((e.bitacoras||{}).nucleo||"—")}</pre></div>`+
    `<div class="tarjeta"><h3>rocola.txt (lo último)</h3><pre>${esc((e.bitacoras||{}).rocola||"—")}</pre></div>`+
    `<div class="tarjeta"><h3>Discos de música</h3><pre>${esc((e.bitacoras||{}).discos||"—")}</pre></div>`;
+}
+// (24-11-2026, revision de mejoras) la tarjeta «Spotify»: el vigilante de Soloist (fase, dias de vida), la rocola (sesion, cobradas) y la API web
+function kvTxt(t){const o={};String(t||"").split("\n").forEach(l=>{const i=l.indexOf("=");if(i>0)o[l.slice(0,i).trim()]=l.slice(i+1).trim()});return o}
+function tarjetaSpotify(e){
+  const sp=e.spotify||{},vg=kvTxt(sp.vigilante),ro=kvTxt(sp.rocola),ca=kvTxt(sp.catalogo);
+  const sinVig=!sp.vigilante;
+  const dias=vg.dias===undefined||vg.dias===""?null:+vg.dias;
+  const diasTxt=dias===null?"?":dias<0?"<b class=mal-t>CADUCADO</b>":dias<14?`<b class=mal-t>${dias} días</b>`:dias+" días";
+  const si=x=>x=="1"?"sí":x=="0"?"no":(x||"—");
+  const fila=(n,t)=>`<span>${esc(n)}</span><span>${t}</span>`;
+  const nombres={api:"API web",peticiones_60min:"Peticiones (60 min)",peticiones:"Peticiones",ultimo_429:"Último 429",ultimo_exito:"Último éxito",error:"Error de la API"};
+  const filasCat=Object.keys(ca).map(k=>fila(nombres[k]||k,esc(ca[k]||"—"))).join("");
+  const cuerpo=sinVig&&!sp.rocola?`<p class="tenue">Sin datos de Spotify (modo apagado o la rocola aún no los sube). Modo: ${esc(sp.modo||"?")} · llave Soloist: ${sp.llave=="si"?"puesta":"FALTA"} · llave API: ${sp.llave_api=="si"?"puesta":"FALTA"}</p>`:
+   `<div class="kv">`+
+   fila("Vigilante",esc(vg.fase||"—")+(vg.pendiente=="1"?" · cambio pendiente":""))+
+   fila("Soloist le quedan",diasTxt+(vg.caduca?` <span class="tenue">(caduca ${esc(vg.caduca)})</span>`:""))+
+   fila("Versión",esc(vg.version||"—"))+
+   fila("Reinicios",esc(vg.reinicios||"0"))+
+   fila("Sesión / activa",esc(si(ro.sesion)+" / "+si(ro.activa)))+
+   fila("Cobradas / devueltas",esc((ro.cobradas||"0")+" / "+(ro.devueltas||"0")))+
+   fila("Último error",esc(ro.error||vg.error||"—"))+
+   filasCat+`</div>`;
+  return `<div class="tarjeta"><h3>Spotify</h3>${cuerpo}</div>`;
 }
 function sinHora(l){return l.replace(/^\s*\[?\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d(\.\d+)?)?\]?\s*/,"").replace(/\d+/g,"#").trim()}
 function grupos(txt){const m=new Map();txt.split("\n").forEach(l=>{if(!l.trim())return;const k=sinHora(l).slice(0,160);m.set(k,(m.get(k)||0)+1)});return [...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,25)}

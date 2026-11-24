@@ -139,7 +139,7 @@ pagado de Spotify que no sonó vuelve como crédito al apagar el modo o tras un 
 ### Cuántos días le quedan al programa
 
 Spotify hace que **cada versión de Soloist caduque a los 90 días** de compilada. `spotify estado` dice «Caduca el AAAA-MM-DD: quedan N
-días». La rocola se pone al día **sola** cuando quedan menos de 7 días (con internet): baja la nueva y la usa en cuanto no esté sonando
+días». La rocola se pone al día **sola** cuando quedan menos de 21 días (con internet): baja la nueva y la usa en cuanto no esté sonando
 nada de Spotify. Si caducara de todos modos (por ejemplo, semanas sin internet), lo dice, baja la última en cuanto puede y mientras tanto
 la música de la rocola sigue. `spotify bajar` lo hace a mano.
 
@@ -192,7 +192,7 @@ debe contestar con un `"access_token"`. Si contesta `invalid_client`, el Client 
 - **Un Soloist huérfano** (de un vigilante muerto con SIGKILL) que use la misma carpeta de datos se cierra antes de arrancar otro.
 - **La llave**: de `rocola_spotify_llave.txt`; si falta, fase `sin_llave` y busca la memoria USB cada 30 s. Si el archivo cambia, se
   vuelve a arrancar Soloist con la nueva. Si falta la de la API, se mira la USB al empezar y cada 15 min.
-- **El programa**: si no hay, se baja; si caduca en menos de 7 días, se intenta bajar uno nuevo (como mucho una vez por hora) antes de
+- **El programa**: si no hay, se baja; si caduca en menos de 21 días, se intenta bajar uno nuevo (como mucho una vez por hora) antes de
   arrancar, y con Soloist en marcha se revisa cada hora; si se bajó uno nuevo y la rocola no tiene nada de Spotify sonando ni en la cola
   (`/run/rocola-xp/spotify/estado`: `sonando=1` / `en_cola=0`), se cambia ya.
 - **Arranca** Soloist así (la orden **no se apunta**):
