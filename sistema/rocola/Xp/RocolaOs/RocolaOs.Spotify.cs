@@ -48,6 +48,9 @@ namespace Rocola
         internal int Volumen = -1;
         internal bool Shuffle;
         internal string Repeat = "";
+        // (24-11-2026, revision de mejoras) cuando Soloist dijo por ultima vez sus opciones (shuffle y repeat; 0 = no las ha dicho en esta
+        // conexion): con ellas en «off» y de hace menos de 60 s no se les vuelven a mandar antes de cada play (ArreglaOpciones)
+        internal long OpcionesMs;
         internal RocolaOsSpotifyEstado Copia() { return (RocolaOsSpotifyEstado)MemberwiseClone(); }
     }
 
@@ -105,6 +108,13 @@ namespace Rocola
         internal int AnclaPosMs;
         internal int PosicionMs;
         internal bool Continuada, ContinuaMandada;
+        // (24-11-2026, revision de mejoras) Soloist se estaba reiniciando (fase del vigilante «esperando» o «arrancando») al cortarse: la
+        // ventana de seguir es de 60 s y no de 15 (y la seguridad de la fuente, a la par); la regla de devolver el credito no cambia
+        internal volatile bool ContinuaLarga;
+        // (24-11-2026) diagnostico del «acabo»: ms entregados en silencio DESPUES del primer sonido (huecos a media cancion) y subdesbordes
+        // del anillo desde ese primer sonido; los pone la fuente al acabar
+        internal int HuecoMs;
+        internal long Subdesb;
         internal int ContinuaMotivo;
         internal long ContinuaDesdeMs;
         internal RocolaOsSpotifyPeticion(string uri, string titulo, int duracionMs)
@@ -161,23 +171,49 @@ namespace Rocola
         private static RocolaOsSpotifyPeticion adelantada;
         internal const int AdelantoMaxMs = 30000;
         internal static long Adelantadas, AdelantadasUsadas;
-        // (revision) la salvaguarda (Remata): una adelantada que sono mas de 300 ms menos que su duracion apaga el adelanto para siempre
+        // (revision) la salvaguarda (Remata): una adelantada que sono mas de 300 ms menos que su duracion cuenta un fallo; (24-11-2026, revision
+        // de mejoras) con 3 fallos SEGUIDOS (un uso bueno pone la cuenta a 0; antes UNO la apagaba para siempre) se apaga, y el archivo
+        // caduca a los 7 dias: al arrancar, uno mas viejo se borra y se vuelve a probar
         internal const int AdelantoFaltaMaxMs = 300;
+        internal const int AdelantoCortosMax = 3;
+        internal const int AdelantoCaducaDias = 7;
         internal const string ArchivoSinAdelanto = "rocola_spotify_sin_adelanto.txt";
         private static int adelantoApagado = -1;   // -1 sin leer (lo lee el hilo de Spotify la primera vez), 0 va, 1 apagado
+        private static int adelantoCortos;          // fallos seguidos de la salvaguarda (solo el hilo de Spotify)
         private static bool AdelantoApagado
         {
             get
             {
                 int v = Volatile.Read(ref adelantoApagado);
-                if (v < 0) { bool hay = false; try { hay = File.Exists(RocolaOs.Datos(ArchivoSinAdelanto)); } catch { } v = hay ? 1 : 0; Volatile.Write(ref adelantoApagado, v); }
+                if (v < 0)
+                {
+                    bool hay = false;
+                    try
+                    {
+                        string ruta = RocolaOs.Datos(ArchivoSinAdelanto);
+                        hay = File.Exists(ruta);
+                        if (hay && DateTime.UtcNow - File.GetLastWriteTimeUtc(ruta) > TimeSpan.FromDays(AdelantoCaducaDias))
+                        {
+                            File.Delete(ruta); hay = false;
+                            Apunta("el play adelantado estaba apagado de hace mas de " + AdelantoCaducaDias.ToString(CultureInfo.InvariantCulture) + " dias (" + ArchivoSinAdelanto + "): se borra el archivo y se vuelve a probar");
+                        }
+                    }
+                    catch { }
+                    v = hay ? 1 : 0; Volatile.Write(ref adelantoApagado, v);
+                }
                 return v == 1;
             }
         }
         private static void ApagaAdelanto(string por)
         {
+            adelantoCortos++;
+            if (adelantoCortos < AdelantoCortosMax)
+            {
+                Apunta("el play adelantado fallo (" + por + "): lleva " + adelantoCortos.ToString(CultureInfo.InvariantCulture) + " de " + AdelantoCortosMax.ToString(CultureInfo.InvariantCulture) + " fallos seguidos; con " + AdelantoCortosMax.ToString(CultureInfo.InvariantCulture) + " se apaga");
+                return;
+            }
             if (Interlocked.Exchange(ref adelantoApagado, 1) == 1) return;
-            Apunta("EL PLAY ADELANTADO SE APAGA para siempre (" + por + "): Soloist no espera sin lector; desde ahora el play al abrir la fuente, como antes");
+            Apunta("EL PLAY ADELANTADO SE APAGA (" + AdelantoCortosMax.ToString(CultureInfo.InvariantCulture) + " fallos seguidos; el ultimo: " + por + "): Soloist no espera sin lector; desde ahora el play al abrir la fuente, como antes (se vuelve a probar a los " + AdelantoCaducaDias.ToString(CultureInfo.InvariantCulture) + " dias)");
             try { File.WriteAllText(RocolaOs.Datos(ArchivoSinAdelanto), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + "\t" + por + "\n"); } catch { }
         }
         // la fuente, en su primera lectura (hilo del sonido, sin esperar): la adelantada si es la suya y sigue viva (si no, null: la de siempre)
@@ -190,6 +226,9 @@ namespace Rocola
             if (q == null || q.Uri != uri || Volatile.Read(ref q.Motivo) != 0 || Volatile.Read(ref q.Fase) == RocolaOsSpotifyPeticion.Acabada) return null;
             if (Interlocked.CompareExchange(ref adelantada, null, q) != q) return null;
             q.Adoptada = true;
+            // (24-11-2026, revision de mejoras) el diagnostico: se uso de verdad
+            long usadas = Interlocked.Increment(ref AdelantadasUsadas);
+            Apunta("play adelantado usado: " + uri + " la tomo la fuente a " + (Environment.TickCount64 - Volatile.Read(ref q.MandadaMs)).ToString(CultureInfo.InvariantCulture) + " ms del play (usadas " + usadas.ToString(CultureInfo.InvariantCulture) + " de " + Interlocked.Read(ref Adelantadas).ToString(CultureInfo.InvariantCulture) + ")");
             return q;
         }
 
@@ -288,6 +327,7 @@ namespace Rocola
         {
             RocolaOsSpotifyAnillo a = Anillo;
             if (!a.Abre()) Apunta("el anillo no se pudo abrir: " + a.UltimoError + " (se reintenta cada segundo)");
+            if (AdelantoApagado) Apunta("el play adelantado esta apagado (" + ArchivoSinAdelanto + "): el play al abrir la fuente, como antes");   // (lee tambien si el archivo ya caduco)
             while (!parar)
             {
                 long ahora = Environment.TickCount64;
@@ -298,6 +338,7 @@ namespace Rocola
                     while (eventos.TryDequeue(out e)) Atiende(e, ahora);
                     Peticiones(ahora);
                     NoPedido(ahora);
+                    Sordo(ahora);
                     if (ahora - ultimoAnilloMs >= 1000)
                     {
                         ultimoAnilloMs = ahora;
@@ -312,7 +353,9 @@ namespace Rocola
                     if (ahora - ultimoEstadoMs >= 1000) { ultimoEstadoMs = ahora; EscribeEstado(); VaciaBitacora(); }
                 }
                 catch (Exception ex) { RocolaOs.Falla(Nombre, "hilo de Spotify", ex); UltimoError = ex.Message; }
-                despierta.WaitOne(50);
+                // (24-11-2026, revision de mejoras) con ninguna pedida viva ni nada en cola, 250 ms (los eventos de Soloist y las pedidas ya
+                // despiertan al hilo con «despierta»); con alguna viva o un lector abierto, 50 ms como siempre
+                despierta.WaitOne(vivas.Count > 0 || !nuevas.IsEmpty || !eventos.IsEmpty || Volatile.Read(ref LectoresAbiertos) > 0 ? 50 : 250);
             }
             // al parar: lo que suene en Soloist se pausa (que no siga tocando para nadie) y el WebSocket se cierra
             try
@@ -327,6 +370,66 @@ namespace Rocola
             // devuelta (SIGSEGV al cerrar). Se retira (lector_presente 0; Toma ya no ve nada) y el mapa se va con el programa.
             try { a.Late(false, 0); a.Cierra(); } catch { }
             EscribeEstado();
+        }
+
+        // ---------- SOLOIST VIVO PERO SORDO (24-11-2026, revision de mejoras) ----------
+        // Con las llaves y el programa en orden (fase del vigilante «corriendo»), Soloist puede estar vivo, con el WebSocket abierto, y no
+        // oir: mas de 10 min conectado sin sesion de Spotify, o mas de 30 s sin contestar a get_auth_state. Entonces rocola-xp le pide al
+        // vigilante que lo reinicie creando «reinicia» (una linea con el motivo, sin llaves) en la carpeta de datos de Soloist, la misma de
+        // ws.port; el vigilante (rocola-soloist) lo lee, lo borra y reinicia a Soloist. Como mucho uno cada 10 min y 6 al dia, y nunca con una
+        // pedida sonando. (Pruebas: ROCOLA_SPOTIFY_SORDO_MS=sin_sesion,sin_auth,entre_reinicios, en ms.)
+        internal static int SordoSinSesionMs = 600000, SordoSinAuthMs = 30000, SordoEntreMs = 600000;
+        internal const int SordoPorDia = 6;
+        internal static string ArchivoReinicia { get { return Path.Combine(CarpetaSoloist, "reinicia"); } }
+        private static long sinSesionDesdeMs, ultimoAuthPedidoMs, ultimoReiniciaMs;
+        private static int reiniciosHoy; private static DateTime reiniciosDia;
+        private static bool sordoConfigurado, reiniciaPedido, topeAvisado;
+        private static void Sordo(long ahora)
+        {
+            if (!sordoConfigurado)
+            {
+                sordoConfigurado = true;
+                try
+                {
+                    string v = Environment.GetEnvironmentVariable("ROCOLA_SPOTIFY_SORDO_MS");
+                    string[] x = string.IsNullOrWhiteSpace(v) ? null : v.Split(',');
+                    int a, b, c;
+                    if (x != null && x.Length == 3 && int.TryParse(x[0], out a) && int.TryParse(x[1], out b) && int.TryParse(x[2], out c) && a > 0 && b > 0 && c > 0) { SordoSinSesionMs = a; SordoSinAuthMs = b; SordoEntreMs = c; }
+                }
+                catch { }
+            }
+            RocolaOsSpotifyEstado st = Estado;
+            if (!st.Ws || st.Sesion) { sinSesionDesdeMs = 0; return; }
+            if (sinSesionDesdeMs == 0) sinSesionDesdeMs = Math.Max(1, ahora);
+            bool sinAuth = authRespondidoGen != wsGen && ahora - st.WsCambioMs > SordoSinAuthMs;
+            bool sinSesion = ahora - sinSesionDesdeMs > SordoSinSesionMs;
+            // sin respuesta, se le vuelve a preguntar cada 10 s (puede que la primera se perdiera)
+            if (authRespondidoGen != wsGen && ahora - st.WsCambioMs > 5000 && ahora - ultimoAuthPedidoMs >= 10000) { ultimoAuthPedidoMs = ahora; Manda(Orden("get_auth_state")); }
+            if (!sinAuth && !sinSesion) return;
+            if (FaseVigilante != "corriendo") return;   // sin llave, sin programa, caducado, bajando o reiniciandose ya: no hay nada que pedir
+            foreach (RocolaOsSpotifyPeticion v in vivas)
+                if (Volatile.Read(ref v.Fase) == RocolaOsSpotifyPeticion.Suena && Volatile.Read(ref v.Motivo) == 0) return;   // (nunca con una pedida sonando)
+            if (reiniciaPedido && ahora - ultimoReiniciaMs < SordoEntreMs) return;
+            DateTime hoy = DateTime.Now.Date;
+            if (hoy != reiniciosDia) { reiniciosDia = hoy; reiniciosHoy = 0; topeAvisado = false; }
+            if (reiniciosHoy >= SordoPorDia)
+            {
+                if (!topeAvisado) { topeAvisado = true; Apunta("Soloist sigue sordo pero ya se pidieron " + SordoPorDia.ToString(CultureInfo.InvariantCulture) + " reinicios hoy: no se pide otro hasta manana"); }
+                return;
+            }
+            string motivo = sinAuth ? "el WebSocket lleva " + ((ahora - st.WsCambioMs) / 1000).ToString(CultureInfo.InvariantCulture) + " s conectado sin contestar a get_auth_state"
+                                    : "el WebSocket lleva " + ((ahora - sinSesionDesdeMs) / 1000).ToString(CultureInfo.InvariantCulture) + " s conectado sin sesion de Spotify";
+            try
+            {
+                string ruta = ArchivoReinicia;
+                if (File.Exists(ruta)) return;   // (el vigilante aun no leyo el de antes)
+                Directory.CreateDirectory(CarpetaSoloist);
+                File.WriteAllText(ruta + ".n", "rocola-xp: " + motivo + "\n");
+                File.Move(ruta + ".n", ruta, true);
+            }
+            catch (Exception ex) { UltimoError = "no se pudo pedir el reinicio de Soloist: " + ex.GetType().Name; Apunta(UltimoError); ultimoReiniciaMs = ahora; reiniciaPedido = true; return; }
+            reiniciaPedido = true; ultimoReiniciaMs = ahora; reiniciosHoy++; sinSesionDesdeMs = 0;
+            Apunta("SOLOIST VIVO PERO SORDO: " + motivo + "; se pide al vigilante reiniciarlo (archivo reinicia; " + reiniciosHoy.ToString(CultureInfo.InvariantCulture) + " de " + SordoPorDia.ToString(CultureInfo.InvariantCulture) + " hoy)");
         }
 
         // ---------- la conexion (I2) ----------
@@ -416,7 +519,7 @@ namespace Rocola
             catch { }
             try { w.Abort(); w.Dispose(); } catch { }
             bool estaba = Estado.Ws;
-            CambiaEstado(e => { e.Ws = false; e.WsCambioMs = Environment.TickCount64; e.Sesion = false; e.Status = ""; e.Volumen = -1; });
+            CambiaEstado(e => { e.Ws = false; e.WsCambioMs = Environment.TickCount64; e.Sesion = false; e.Status = ""; e.Volumen = -1; e.OpcionesMs = 0; });
             sesionAntes = false;
             if (estaba) Apunta("desconectado de Soloist: " + por);
         }
@@ -460,6 +563,8 @@ namespace Rocola
             internal Entidad Item;
             internal int EnColaSpotify = -1;   // queue_changed: cuantas vienen (para la bitacora)
             internal string FuentesCola;
+            internal bool ConError;            // (24-11-2026) command_result con campos de error (Mensaje: lo que dice, recortado y sin llaves)
+            internal string Campos;            // (24-11-2026) evento que no se conoce: solo los NOMBRES de sus campos
         }
         private sealed class Entidad { internal string Uri = "", Tipo = "", Nombre = "", Artista = "", Disco = "", Portada = ""; internal int DuracionMs; }
         private static void Recibe(ClientWebSocket w, int gen)
@@ -499,6 +604,14 @@ namespace Rocola
                     e.LoggedIn = SiNo(r, "logged_in"); e.IsActive = SiNo(r, "is_active");
                     e.DeviceName = TextoONull(r, "device_name"); e.Status = TextoONull(r, "status"); e.Mensaje = TextoONull(r, "message");
                     e.Comando = TextoONull(r, "command");
+                    // (24-11-2026, revision de mejoras) lo que no se conoce (solo los nombres de los campos) y un command_result con error
+                    if (e.Tipo == "command_result") LeeResultado(r, e);
+                    else if (!TipoConocido(e.Tipo))
+                    {
+                        StringBuilder cs = new StringBuilder();
+                        foreach (JsonProperty pr in r.EnumerateObject()) { if (cs.Length > 120) break; cs.Append(cs.Length > 0 ? "," : "").Append(LimpiaTexto(pr.Name, 24)); }
+                        e.Campos = cs.ToString();
+                    }
                     JsonElement v;
                     if (r.TryGetProperty("volume", out v) && v.ValueKind == JsonValueKind.Number) e.Volumen = (int)v.GetDouble();
                     if (r.TryGetProperty("item", out v) && v.ValueKind == JsonValueKind.Object) e.Item = LeeEntidad(v);
@@ -516,6 +629,32 @@ namespace Rocola
                 }
             }
             catch { return null; }
+        }
+        private static readonly HashSet<string> tiposConocidos = new HashSet<string>(StringComparer.Ordinal) { "auth_state", "playback_state", "track_changed",
+            "playback_changed", "volume_changed", "device_changed", "context_changed", "options_changed", "queue_changed", "error", "command_result", "position_sync" };
+        private static bool TipoConocido(string t) { return t.Length == 0 || tiposConocidos.Contains(t); }
+        // (24-11-2026) un texto que viene de fuera para la bitacora: recortado, sin controles y sin nada que parezca una llave (24 o mas
+        // letras, cifras, guiones seguidos): nunca llaves
+        internal static string LimpiaTexto(string t, int max)
+        {
+            if (string.IsNullOrEmpty(t)) return "";
+            t = System.Text.RegularExpressions.Regex.Replace(t, "[A-Za-z0-9_-]{24,}", "[...]");
+            StringBuilder b = new StringBuilder(Math.Min(t.Length, max + 1));
+            foreach (char c in t) { if (b.Length >= max) { b.Append('…'); break; } b.Append(c < 0x20 ? ' ' : c); }
+            return b.ToString();
+        }
+        private static void LeeResultado(JsonElement r, Evento e)
+        {
+            JsonElement v;
+            bool malo = false; string que = "";
+            if (r.TryGetProperty("error", out v) && v.ValueKind != JsonValueKind.Null && v.ValueKind != JsonValueKind.False) { malo = true; que = v.ValueKind == JsonValueKind.String ? v.GetString() : v.GetRawText(); }
+            if (r.TryGetProperty("success", out v) && v.ValueKind == JsonValueKind.False) malo = true;
+            if (r.TryGetProperty("ok", out v) && v.ValueKind == JsonValueKind.False) malo = true;
+            if (r.TryGetProperty("status", out v) && v.ValueKind == JsonValueKind.String && (v.GetString() ?? "").IndexOf("err", StringComparison.OrdinalIgnoreCase) >= 0) malo = true;
+            if (!malo) return;
+            e.ConError = true;
+            if (que.Length == 0 && r.TryGetProperty("message", out v) && v.ValueKind == JsonValueKind.String) que = v.GetString() ?? "";
+            e.Mensaje = LimpiaTexto(que, 160);
         }
         private static Entidad LeeEntidad(JsonElement v)
         {
@@ -572,6 +711,14 @@ namespace Rocola
 
         // ---------- lo que se hace con cada evento ----------
         private static int colaAvisada = -1;
+        private static readonly HashSet<string> apuntadasUnaVez = new HashSet<string>(StringComparer.Ordinal);
+        private static int authRespondidoGen = -1;
+        // (24-11-2026, revision de mejoras) solo el hilo de Spotify; tope de 64 para que un Soloist raro no llene la memoria
+        private static void ApuntaUnaVez(string clave, string que)
+        {
+            if (apuntadasUnaVez.Count >= 64 || !apuntadasUnaVez.Add(clave)) return;
+            Apunta(que + " (se apunta una vez por sesion)");
+        }
         private static void Atiende(Evento e, long ahora)
         {
             if (e.Gen != wsGen) return;   // (de una conexion vieja)
@@ -579,9 +726,11 @@ namespace Rocola
             {
                 case "_cerrado":
                     CierraWs("Soloist cerro la conexion");
-                    proximoIntentoMs = ahora + 500;
+                    // (24-11-2026, revision de mejoras) sin pisar la espera creciente que CierraWs acaba de poner para una conexion corta
+                    proximoIntentoMs = Math.Max(proximoIntentoMs, ahora + 500);
                     return;
                 case "auth_state":
+                    authRespondidoGen = wsGen;
                     CambiaEstado(s => { if (e.LoggedIn.HasValue) s.Sesion = e.LoggedIn.Value; if (e.IsActive.HasValue) s.Activa = e.IsActive.Value; if (e.DeviceName != null) s.Dispositivo = e.DeviceName; });
                     break;
                 case "playback_state":
@@ -592,6 +741,7 @@ namespace Rocola
                         if (e.Volumen >= 0) s.Volumen = e.Volumen;
                         if (e.Shuffle.HasValue) s.Shuffle = e.Shuffle.Value;
                         if (e.Repeat != null) s.Repeat = e.Repeat;
+                        if (e.Shuffle.HasValue && e.Repeat != null) s.OpcionesMs = Math.Max(1, Environment.TickCount64);
                         if (e.ContextoUri != null) s.ContextoUri = e.ContextoUri;
                         PonItem(s, e.Item);
                     });
@@ -614,7 +764,7 @@ namespace Rocola
                     CambiaEstado(s => { if (e.ContextoUri != null) s.ContextoUri = e.ContextoUri; });
                     break;
                 case "options_changed":
-                    CambiaEstado(s => { if (e.Shuffle.HasValue) s.Shuffle = e.Shuffle.Value; if (e.Repeat != null) s.Repeat = e.Repeat; });
+                    CambiaEstado(s => { if (e.Shuffle.HasValue) s.Shuffle = e.Shuffle.Value; if (e.Repeat != null) s.Repeat = e.Repeat; if (e.Shuffle.HasValue && e.Repeat != null) s.OpcionesMs = Math.Max(1, Environment.TickCount64); });
                     break;
                 case "queue_changed":
                     // (22-11-2026) solo el aviso, y una vez por cambio (nada mas: no se pausa ni se acaba nada por ella)
@@ -626,8 +776,15 @@ namespace Rocola
                     UltimoError = "Soloist: " + (e.Mensaje ?? "");
                     Apunta("Soloist contesto un error: " + (e.Mensaje ?? ""));
                     return;
+                case "command_result":
+                    // (24-11-2026, revision de mejoras) la respuesta a get_auth_state cuenta como que Soloist oye; un resultado con error se
+                    // apunta UNA vez por orden y sesion
+                    if (e.Comando == "get_auth_state") authRespondidoGen = wsGen;
+                    if (e.ConError) ApuntaUnaVez("cr:" + LimpiaTexto(e.Comando ?? "", 32), "Soloist contesto con error a «" + LimpiaTexto(e.Comando ?? "?", 32) + "»: " + (e.Mensaje ?? ""));
+                    return;
                 default:
-                    return;   // (command_result y lo que no se conoce)
+                    if (e.Campos != null) ApuntaUnaVez("ev:" + LimpiaTexto(e.Tipo, 32), "Soloist mando un evento que no se conoce: «" + LimpiaTexto(e.Tipo, 32) + "» con los campos " + e.Campos);
+                    return;   // (lo que no se conoce)
             }
             RocolaOsSpotifyEstado st = Estado;
             // LA SESION (R2): al entrar, shuffle y repeat apagados y, si no es la bocina activa, activate
@@ -654,13 +811,21 @@ namespace Rocola
             s.ItemUri = x.Uri; s.ItemNombre = x.Nombre; s.ItemArtista = x.Artista; s.ItemDisco = x.Disco; s.ItemPortada = x.Portada; s.ItemDuracionMs = x.DuracionMs;
         }
         // shuffle y los dos repeat apagados (R3; el orden de la documentacion de Soloist para «off»: primero track, luego context)
+        internal const int OpcionesCiertasMs = 60000;
         private static void ArreglaOpciones(long ahora, bool siempre)
         {
             if (!siempre && ahora - ultimoArregloOpcionesMs < 3000) return;
             ultimoArregloOpcionesMs = ahora;
-            Manda(OrdenSiNo("set_shuffle", false));
-            Manda(OrdenSiNo("set_repeat_track", false));
-            Manda(OrdenSiNo("set_repeat_context", false));
+            // (24-11-2026, revision de mejoras) si Soloist ya dijo con certeza (hace menos de 60 s) que shuffle y repeat estan apagados, no se
+            // le repiten las tres ordenes antes de cada play; si un options_changed o playback_state trae otra cosa, se corrige como siempre
+            RocolaOsSpotifyEstado st = Estado;
+            bool ciertas = !st.Shuffle && st.Repeat == "off" && st.OpcionesMs != 0 && ahora - st.OpcionesMs < OpcionesCiertasMs;
+            if (!ciertas)
+            {
+                Manda(OrdenSiNo("set_shuffle", false));
+                Manda(OrdenSiNo("set_repeat_track", false));
+                Manda(OrdenSiNo("set_repeat_context", false));
+            }
             VolumenAl100("antes de tocar");
         }
         // (22-11-2026, el dueno eligio «Vigilar el volumen de Soloist») EL VOLUMEN DE SOLOIST AL 100: el volumen lo pone la rocola (su cadena,
@@ -737,6 +902,17 @@ namespace Rocola
             return b.ToString();
         }
 
+        // (24-11-2026, revision de mejoras) el sello de tiempo del diagnostico: cuanto va desde que acabo la anterior (Remata); vacio si no hubo una
+        // reciente. Solo el hilo de Spotify.
+        private static long ultimoAcaboMs;
+        private static string HuecoDesdeLaAnterior(long ahora, bool alPlay)
+        {
+            long u = ultimoAcaboMs;
+            if (u == 0 || ahora - u > 120000) return "";
+            string ms = Math.Max(0, ahora - u).ToString(CultureInfo.InvariantCulture);
+            return alPlay ? ", a " + ms + " ms de que acabo la anterior" : ", hueco " + ms + " ms desde que acabo la anterior";
+        }
+
         // ---------- las reglas de la cancion que suena (R4) ----------
         private static void Evalua(long ahora)
         {
@@ -763,7 +939,7 @@ namespace Rocola
                     }
                     Volatile.Write(ref p.Fase, RocolaOsSpotifyPeticion.Suena);
                     if (st.ItemDuracionMs > 0) Volatile.Write(ref p.DuracionMs, st.ItemDuracionMs);
-                    Apunta("suena " + p.Uri + " (" + p.Titulo + ")");
+                    Apunta("suena " + p.Uri + " (" + p.Titulo + "), a " + (ahora - Volatile.Read(ref p.MandadaMs)).ToString(CultureInfo.InvariantCulture) + " ms del play" + HuecoDesdeLaAnterior(ahora, false));
                     f = RocolaOsSpotifyPeticion.Suena;
                 }
                 if (f != RocolaOsSpotifyPeticion.Suena || Volatile.Read(ref p.Motivo) != 0) continue;
@@ -778,6 +954,10 @@ namespace Rocola
         // (22-11-2026) UN CORTE A MEDIA CANCION: con 10 s o mas sonados se intenta seguir una vez desde donde iba (la fuente espera en silencio,
         // Fase «Mandada»); con menos, o la segunda vez, se acaba como antes (Termina). El credito: con 10 s o mas nunca se devuelve.
         internal const int ContinuaMaxMs = 15000, ContinuaGraciaMs = 3000;
+        // (24-11-2026, revision de mejoras) con Soloist reiniciandose (fase del vigilante «esperando» o «arrancando») seguir una cortada tiene
+        // 60 s en vez de 15, y la seguridad de la fuente va a la par; el credito se devuelve por las mismas reglas de siempre
+        internal const int ContinuaLargaMs = 60000;
+        internal static bool SoloistReiniciandose { get { string f = FaseVigilante; return f == "esperando" || f == "arrancando"; } }
         internal const double PocoSonidoSeg = 10.0;   // (= RocolaOsFuenteSpotify.PocoSonidoSeg)
         private static void Corta(RocolaOsSpotifyPeticion p, int motivo, long ahora)
         {
@@ -790,8 +970,9 @@ namespace Rocola
                 return;
             }
             p.Continuada = true; p.ContinuaMotivo = motivo; p.ContinuaDesdeMs = ahora; p.ContinuaMandada = false;
+            p.ContinuaLarga = SoloistReiniciandose;
             Volatile.Write(ref p.Fase, RocolaOsSpotifyPeticion.Mandada);
-            Apunta("se corto " + p.Uri + " (" + p.Titulo + ") a los " + Seg(pos) + " s: " + RocolaOsSpotifyPeticion.Motivos[motivo] + "; se intenta seguir desde ahi (una vez)");
+            Apunta("se corto " + p.Uri + " (" + p.Titulo + ") a los " + Seg(pos) + " s: " + RocolaOsSpotifyPeticion.Motivos[motivo] + "; se intenta seguir desde ahi (una vez)" + (p.ContinuaLarga ? "; Soloist se esta reiniciando (vigilante " + FaseVigilante + "): seguir tiene " + (ContinuaLargaMs / 1000).ToString(CultureInfo.InvariantCulture) + " s en vez de " + (ContinuaMaxMs / 1000).ToString(CultureInfo.InvariantCulture) : ""));
             MandaSeguir(p, ahora);
         }
         // activate, play y seek a donde iba (si Soloist esta para tocar; si no, Peticiones lo vuelve a intentar hasta ContinuaMaxMs)
@@ -887,9 +1068,11 @@ namespace Rocola
                 // de 15 s de silencio por cada una de la cola. La fuente la remata al momento (Frontera y Motivo antes de mandar play).
                 if (f == RocolaOsSpotifyPeticion.Mandada && p.Continuada && Volatile.Read(ref p.Motivo) == 0)
                 {   // (22-11-2026) la cortada que se intenta seguir: el play si aun no se pudo mandar; a los 15 s sin volver a sonar, acaba sin devolver
-                    if (ahora - p.ContinuaDesdeMs > ContinuaMaxMs)
+                    if (SoloistReiniciandose && !p.ContinuaLarga) { p.ContinuaLarga = true; Apunta("Soloist se esta reiniciando (vigilante " + FaseVigilante + "): seguir " + p.Uri + " tiene " + (ContinuaLargaMs / 1000).ToString(CultureInfo.InvariantCulture) + " s en vez de " + (ContinuaMaxMs / 1000).ToString(CultureInfo.InvariantCulture)); }
+                    int maxMs = p.ContinuaLarga ? ContinuaLargaMs : ContinuaMaxMs;
+                    if (ahora - p.ContinuaDesdeMs > maxMs)
                     {
-                        Apunta("no se pudo seguir " + p.Uri + " en " + (ContinuaMaxMs / 1000).ToString(CultureInfo.InvariantCulture) + " s: acaba (" + RocolaOsSpotifyPeticion.Motivos[p.ContinuaMotivo] + "), sin devolver el credito: ya habia sonado " + Seg(Volatile.Read(ref p.PosicionMs)) + " s");
+                        Apunta("no se pudo seguir " + p.Uri + " en " + (maxMs / 1000).ToString(CultureInfo.InvariantCulture) + " s: acaba (" + RocolaOsSpotifyPeticion.Motivos[p.ContinuaMotivo] + "), sin devolver el credito: ya habia sonado " + Seg(Volatile.Read(ref p.PosicionMs)) + " s");
                         Termina(p, p.ContinuaMotivo);
                     }
                     else MandaSeguir(p, ahora);
@@ -914,7 +1097,7 @@ namespace Rocola
                         if (p.SeekMs > 0) { Manda(OrdenSeek(p.SeekMs)); p.AnclaPendienteMs = p.SeekMs; }   // (22-11-2026: la retomada, desde donde iba)
                         Volatile.Write(ref p.MandadaMs, ahora);
                         Volatile.Write(ref p.Fase, RocolaOsSpotifyPeticion.Mandada);
-                        Apunta("play " + p.Uri + " (" + p.Titulo + ")" + (p.SeekMs > 0 ? ": retomada, seek a " + Seg(p.SeekMs) + " s" : ""));
+                        Apunta("play " + p.Uri + " (" + p.Titulo + ")" + (p.SeekMs > 0 ? ": retomada, seek a " + Seg(p.SeekMs) + " s" : "") + HuecoDesdeLaAnterior(ahora, true));
                         Evalua(ahora);
                     }
                 }
@@ -973,11 +1156,18 @@ namespace Rocola
             // apagaba para siempre
             if (p.Adelantada && p.Adoptada && !p.Devolver && p.TerminoReal && !p.Continuada && p.DesdeMs == 0 && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && durAd > 0 && p.SegundosSonados * 1000 < durAd - AdelantoFaltaMaxMs)
                 ApagaAdelanto("la adelantada " + p.Uri + " sono " + p.SegundosSonados.ToString("0.0", CultureInfo.InvariantCulture) + " s de " + (durAd / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s");
+            else if (p.Adelantada && p.Adoptada && !p.Devolver && p.TerminoReal && !p.Continuada && p.DesdeMs == 0 && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && durAd > 0 && adelantoCortos > 0)
+            {   // un uso bueno: la cuenta de fallos seguidos vuelve a 0
+                Apunta("el play adelantado de " + p.Uri + " sono entera: la cuenta de fallos seguidos (" + adelantoCortos.ToString(CultureInfo.InvariantCulture) + ") vuelve a 0");
+                adelantoCortos = 0;
+            }
             string s = Estado.Status;
             if (ReferenceEquals(p, Actual) && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && !p.Devolver && Adelanta(p)) { }   // (rapido-spotify)
             else if (ReferenceEquals(p, Actual) && (s == "playing" || s == "buffering")) { PausaNuestra(); }
+            ultimoAcaboMs = Environment.TickCount64;
             string seg = p.SegundosSonados.ToString("0.0", CultureInfo.InvariantCulture);
-            string extra = (p.DesdeMs > 0 ? " (retomada desde " + Seg(p.DesdeMs) + " s)" : "") + (p.Continuada ? " (siguio tras un corte: " + RocolaOsSpotifyPeticion.Motivos[p.ContinuaMotivo] + ")" : "");
+            string extra = " [huecos a media cancion " + p.HuecoMs.ToString(CultureInfo.InvariantCulture) + " ms, subdesbordes del anillo " + p.Subdesb.ToString(CultureInfo.InvariantCulture) + "]"
+                + (p.DesdeMs > 0 ? " (retomada desde " + Seg(p.DesdeMs) + " s)" : "") + (p.Continuada ? " (siguio tras un corte: " + RocolaOsSpotifyPeticion.Motivos[p.ContinuaMotivo] + ")" : "");
             if (p.Devolver)
             {
                 Interlocked.Increment(ref Devueltas);
@@ -1017,7 +1207,7 @@ namespace Rocola
             vivas.Add(q);
             Volatile.Write(ref adelantada, q);
             Interlocked.Increment(ref Adelantadas);
-            Apunta("play adelantado " + q.Uri + " (" + q.Titulo + "): la siguiente de la cola, al acabar " + (acabada != null ? acabada.Uri : "la de XP que suena"));
+            Apunta("play adelantado " + q.Uri + " (" + q.Titulo + "): la siguiente de la cola, al acabar " + (acabada != null ? acabada.Uri : "la de XP que suena") + (adelantoCortos > 0 ? " (lleva " + adelantoCortos.ToString(CultureInfo.InvariantCulture) + " de " + AdelantoCortosMax.ToString(CultureInfo.InvariantCulture) + " fallos seguidos)" : ""));
             return true;
         }
 

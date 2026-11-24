@@ -8,7 +8,7 @@
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
 #   escenas (de fabrica todas): apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso
-#   vigilante noche (adelanto y adelantoxp: el play adelantado de la siguiente de Spotify, rapido-spotify: FASE11_rapido-spotify.md); del 22-11-2026: copiauri nivela portadatarde repetida vacia cortada speq (speq: el EQ automatico y el brillo a la medida de una de Spotify, FASE11_spotify-nivela.md §7)
+#   vigilante noche (adelanto y adelantoxp: el play adelantado de la siguiente de Spotify, rapido-spotify: FASE11_rapido-spotify.md); del 22-11-2026: copiauri nivela portadatarde repetida vacia cortada speq (speq: el EQ automatico y el brillo a la medida de una de Spotify, FASE11_spotify-nivela.md §7); del 24-11-2026 (revision de mejoras): cierraws sordo adelantoviejo diag repetidad cortadalarga (cierraws: Soloist que cuelga el WebSocket al instante; sordo: Soloist vivo pero sordo, se pide el reinicio al vigilante con el archivo «reinicia»; adelantoviejo: el archivo sin_adelanto caduca a los 7 dias; diag: sellos en ms, huecos, adelanto usado, eventos raros una vez y las opciones ya sabidas; repetidad: la pareja es otra uri; cortadalarga: con Soloist reiniciandose seguir una cortada tiene 60 s)
 #   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
 #   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
 #   «vigilante» (sin el, no se corre): rocola-xp lo abre y el abre el Soloist falso por soloist-envoltorio.sh (SOLOIST_BIN); y para «fabrica»
@@ -29,7 +29,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche copiauri nivela portadatarde repetida vacia cortada speq volumen}"
+partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche copiauri nivela portadatarde repetida vacia cortada speq volumen cierraws sordo adelantoviejo diag repetidad cortadalarga}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -962,6 +962,125 @@ import sys
 a = dict(p.split('=') for p in sys.argv[1].split()); b = dict(p.split('=') for p in sys.argv[2].split())
 sys.exit(0 if all(abs(float(a[k]) - float(b[k])) <= 0.3 for k in 'gmas') else 1)
 EOP
+fi
+
+# ---------------------------------------------------------------- revision de mejoras del 24-11-2026 (rocola-xp, Spotify): cierraws, sordo, adelantoviejo, diag, repetidad
+# cierraws: un Soloist que acepta el WebSocket y lo cuelga al instante, una y otra vez: la espera de reconexion crece (500 ms, 1, 2, 4 y 5 s) y
+# no se queda en 0,5 s (antes «_cerrado» la pisaba): en 30 s unas 8 conexiones, no 40 o mas.
+if [[ " $partes " == *" cierraws "* ]]; then
+  echo "== cierraws (el WebSocket que se cuelga al instante no se reconecta cada 0,5 s)"
+  d=$(datos cierraws); T0=$(date +%s.%N)
+  abre cierraws "$d" "7:67" "" 30 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_CIERRA_AL_CONECTAR=1
+  o="$W/cierraws"; b="$d/rocola_spotify.txt"; n=$(cuenta "$b" "conectado con Soloist")
+  echo "   conectado con Soloist: $n veces en 30 s"
+  si "cierraws: sale con 0" test "$(cat $o/salio)" = 0
+  si "cierraws: se reconecto (al menos 3 veces) y con espera creciente (menos de 16 en 30 s: $n)" bash -c "[ $n -ge 3 ] && [ $n -lt 16 ]"
+fi
+
+# sordo (24-11-2026): Soloist vivo pero sordo. El vigilante (la fase de /run/rocola-soloist/estado, que aqui se escribe a mano) en «corriendo»; el
+# Soloist falso acepta el WebSocket y no dice ni contesta nada (SOLOIST_FALSO_SORDO=1); los umbrales se achican con ROCOLA_SPOTIFY_SORDO_MS
+# (sin_sesion,sin_auth,entre_reinicios). Un lector hace de vigilante: guarda cada «reinicia» que aparece y lo borra.
+sordo() {   # sordo NOMBRE FASE UMBRALES SEGUNDOS [VAR=valor...]
+  local n="$1" fase="$2" um="$3" seg="$4"; shift 4
+  local o="$W/$n"; mkdir -p "$o/run/rocola-soloist" "$o/soloist"; echo "fase=$fase" > "$o/run/rocola-soloist/estado"
+  ( for i in $(seq 1 $((seg * 5))); do if [ -e "$o/soloist/reinicia" ]; then { date +%s; cat "$o/soloist/reinicia"; } >> "$o/reinicias.txt"; rm -f "$o/soloist/reinicia"; fi; sleep 0.2; done ) & local c=$!
+  abre "$n" "$(datos $n)" "7:67" "" "$seg" TERM ROCOLA_OS=spotify,spotify-prueba ROCOLA_SPOTIFY_SORDO_MS="$um" "$@"
+  kill $c 2>/dev/null; wait $c 2>/dev/null
+}
+if [[ " $partes " == *" sordo "* ]]; then
+  echo "== sordo (Soloist vivo pero sordo: se pide al vigilante reiniciarlo, sin repetir)"
+  T0=$(date +%s.%N); sordo sordo-a corriendo 600000,3000,600000 22 SOLOIST_FALSO_SORDO=1
+  o="$W/sordo-a"; b="$W/datos-sordo-a/rocola_spotify.txt"; grep -E 'SORDO' "$b" | sed 's/^/   /'
+  si "sordo-a: sale con 0" test "$(cat $o/salio)" = 0
+  si "sordo-a: sin contestar a get_auth_state en 3 s: se pidio UN reinicio (el archivo reinicia, con su motivo y sin llaves)" bash -c "[ \$(grep -c 'rocola-xp: ' '$o/reinicias.txt') = 1 ] && grep -q 'sin contestar a get_auth_state' '$o/reinicias.txt'"
+  si "sordo-a: la bitacora lo apunta una vez (1 de 6 hoy) y, con 10 min entre reinicios, no se repite" bash -c "[ \$(grep -c 'SOLOIST VIVO PERO SORDO' '$b') = 1 ] && grep -q '1 de 6 hoy' '$b'"
+  si "sordo-a: se le volvio a preguntar get_auth_state (cada 10 s sin respuesta)" bash -c "[ \$(grep -c 'get_auth_state' '$o/falso.txt') -ge 2 ]"
+  T0=$(date +%s.%N); sordo sordo-b sin_llave 600000,3000,600000 14 SOLOIST_FALSO_SORDO=1
+  o="$W/sordo-b"; b="$W/datos-sordo-b/rocola_spotify.txt"
+  si "sordo-b: con el vigilante sin llave (no «corriendo») no se pide nada" bash -c "[ ! -e '$o/reinicias.txt' ] && ! grep -q 'SORDO' '$b'"
+  T0=$(date +%s.%N); sordo sordo-c corriendo 600000,3000,6000 24 SOLOIST_FALSO_SORDO=1
+  o="$W/sordo-c"; b="$W/datos-sordo-c/rocola_spotify.txt"
+  si "sordo-c: con 6 s entre reinicios se pide otro despues (3 o 4 en 22 s, no uno por vuelta)" bash -c "n=\$(grep -c 'SOLOIST VIVO PERO SORDO' '$b'); [ \$n -ge 3 ] && [ \$n -le 4 ]"
+  T0=$(date +%s.%N); sordo sordo-d corriendo 4000,600000,600000 16 SOLOIST_FALSO_SESION=0
+  o="$W/sordo-d"; b="$W/datos-sordo-d/rocola_spotify.txt"; grep -E 'SORDO' "$b" | sed 's/^/   /'
+  si "sordo-d: conectado sin sesion de Spotify mas de 4 s (umbral de la prueba): se pide el reinicio" bash -c "[ \$(grep -c 'rocola-xp: ' '$o/reinicias.txt') = 1 ] && grep -q 'sin sesion de Spotify' '$o/reinicias.txt'"
+  T0=$(date +%s.%N); sordo sordo-e esperando 600000,3000,600000 14 SOLOIST_FALSO_SORDO=1
+  si "sordo-e: con el vigilante reiniciando Soloist (esperando) no se pide otro" bash -c "[ ! -e '$W/sordo-e/reinicias.txt' ]"
+  T0=$(date +%s.%N); sordo sordo-f corriendo 600000,3000,600000 14
+  si "sordo-f: un Soloist que si oye (sesion y respuestas) nunca se reinicia" bash -c "[ ! -e '$W/sordo-f/reinicias.txt' ] && ! grep -q 'SORDO' '$W/datos-sordo-f/rocola_spotify.txt'"
+fi
+
+# adelantoviejo (24-11-2026): el archivo que apaga el play adelantado caduca a los 7 dias (se borra y se vuelve a probar, apuntandolo)
+if [[ " $partes " == *" adelantoviejo "* ]]; then
+  echo "== adelantoviejo (rocola_spotify_sin_adelanto.txt caduca a los 7 dias)"
+  d=$(datos adelantoviejo-a); printf '2026-11-01 00:00:00\tprueba\n' > "$d/rocola_spotify_sin_adelanto.txt"; touch -d '8 days ago' "$d/rocola_spotify_sin_adelanto.txt"; T0=$(date +%s.%N)
+  abre adelantoviejo-a "$d" "7:67" "" 12 TERM ROCOLA_OS=spotify,spotify-prueba
+  si "adelantoviejo-a: de hace 8 dias: se borro y se apunto" bash -c "[ ! -e '$d/rocola_spotify_sin_adelanto.txt' ] && grep -q 'de hace mas de 7 dias' '$d/rocola_spotify.txt'"
+  d=$(datos adelantoviejo-b); printf '2026-11-23 00:00:00\tprueba\n' > "$d/rocola_spotify_sin_adelanto.txt"; touch -d '2 days ago' "$d/rocola_spotify_sin_adelanto.txt"; T0=$(date +%s.%N)
+  abre adelantoviejo-b "$d" "7:67" "" 12 TERM ROCOLA_OS=spotify,spotify-prueba
+  si "adelantoviejo-b: de hace 2 dias: se queda y se apunta que esta apagado" bash -c "[ -e '$d/rocola_spotify_sin_adelanto.txt' ] && grep -q 'el play adelantado esta apagado' '$d/rocola_spotify.txt'"
+fi
+
+# diag (24-11-2026): lo que apunta la bitacora de Spotify (sellos en ms, huecos, el adelanto usado, eventos raros y errores de command_result una vez)
+# y las opciones (shuffle/repeat) que ya se saben no se vuelven a mandar antes de cada play: dos canciones de 6 s seguidas con el play adelantado.
+if [[ " $partes " == *" diag "* ]]; then
+  echo "== diag (sellos en ms, huecos, adelanto usado, eventos raros una vez, opciones ya sabidas)"
+  d=$(datos diag); T0=$(date +%s.%N)
+  abre diag "$d" "7:67" "9:pide spotify:track:f440d006di|$P|6000;9.2:pide spotify:track:f550d006dj|$P|6000;24:copia" 25 TERM ROCOLA_OS=spotify,spotify-prueba \
+    SOLOIST_FALSO_GUION="14:raro;15:raro;16:resulterr;17:resulterr"
+  o="$W/diag"; b="$d/rocola_spotify.txt"
+  grep -E 'suena|play|acabo|adelantado|raro|error a' "$b" | sed 's/^/   /'
+  si "diag: sale con 0" test "$(cat $o/salio)" = 0
+  si "diag: «suena» dice a cuantos ms del play" bash -c "[ \$(grep -cE 'suena spotify:track:f[45]{2}0d006d[ij] .*, a [0-9]+ ms del play' '$b') = 2 ]"
+  si "diag: la segunda dice el hueco desde que acabo la anterior" bash -c "grep -qE 'suena spotify:track:f550d006dj .*, hueco [0-9]+ ms desde que acabo la anterior' '$b'"
+  si "diag: «acabo» dice los huecos a media cancion y los subdesbordes" bash -c "[ \$(grep -cE 'acabo spotify:track:f[45]{2}0d006d[ij] .*\[huecos a media cancion [0-9]+ ms, subdesbordes del anillo [0-9]+\]' '$b') = 2 ]"
+  si "diag: el adelanto usado se apunta (con su cuenta)" bash -c "grep -qE 'play adelantado usado: spotify:track:f550d006dj .*usadas 1 de 1' '$b'"
+  si "diag: el evento raro se apunta UNA vez (mandado 2) y solo con los nombres de sus campos" bash -c "[ \$(grep -c 'evento que no se conoce: «zz_evento_raro» con los campos type,campo_a,campo_b' '$b') = 1 ]"
+  si "diag: el command_result con error, una vez (mandado 2)" bash -c "[ \$(grep -c 'Soloist contesto con error a «play»: fallo de prueba' '$b') = 1 ]"
+  si "diag: set_shuffle una sola vez (al entrar la sesion: las opciones ya sabidas no se repiten antes de cada play)" bash -c "[ \$(grep -c 'set_shuffle' '$o/falso.txt') = 1 ]"
+fi
+
+# repetidad (24-11-2026): tu MP3 tiene pareja en la sustitucion invisible pero con OTRA uri que la de Spotify que se pide: antes no se miraba mas y
+# la misma grabacion se repetia; ahora cae a titulo, artista y duracion (salvo pareja confirmada como otra grabacion, Verif -1)
+if [[ " $partes " == *" repetidad "* ]]; then
+  echo "== repetidad (la pareja de tu MP3 es otra uri: se mira titulo, artista y duracion)"
+  R="spotify:track:f440d003re|01 Cancion 1|Disco Uno|Disco Uno|3240"
+  for v in 0 -1; do
+    n=repetidad$([ $v = 0 ] && echo a || echo b)
+    d=$(datos $n); T0=$(date +%s.%N)
+    { printf 'ROCOLA-SPOTIFY-PARES v1\n'; printf '%s\t0\t0\tf990d003zz\t-\t3240\t3240\t%s\t%s\t-\t-\t-\t-\ttitulo\n' "$d/musica/Los Ejemplos - Disco Uno/01 Cancion 1.mp3" "$v" "$(date +%s)"; } > "$d/rocola_spotify_pares.txt"
+    abre $n "$d" "7:67,10:13,11.5:13" "9:pide spotify:track:f550d020xa|$P|20000;13:pide $R;18:copia" 19 TERM ROCOLA_OS=spotify,spotify-prueba
+    o="$W/$n"; sed 's/^/   /' "$(log $o)"
+    si "$n: sale con 0" test "$(cat $o/salio)" = 0
+    if [ $v = 0 ]; then
+      si "$n: pareja con otra uri sin Verif -1: la de Spotify de la misma grabacion no entra ni se cobra" contiene "$(log $o)" "pide spotify:track:f440d003re listo=1 entro=0 creditos 2->2"
+    else
+      si "$n: pareja confirmada como otra grabacion (Verif -1): si entra (2->1)" contiene "$(log $o)" "pide spotify:track:f440d003re listo=1 entro=1 creditos 2->1"
+    fi
+  done
+fi
+
+# cortadalarga (24-11-2026): Soloist se cae a los 25 s y el vigilante tarda 30 s en volver a abrirlo (VIGILANTE_FALSO_ESPERA). Con la fase del
+# vigilante en «esperando» (Soloist se esta reiniciando) la ventana de seguir la cortada es de 60 s y, cuando vuelve, sigue desde donde iba
+# sin devolver el credito; con «corriendo» se rinde a los 15 s (acaba sin devolver: ya habia sonado mas de 10 s)
+if [[ " $partes " == *" cortadalarga "* ]]; then
+  echo "== cortadalarga (con Soloist reiniciandose, seguir una cortada tiene 60 s y no 15)"
+  for v in esperando corriendo; do
+    n=cortadalarga-$v; d=$(datos $n); o="$W/$n"; mkdir -p "$o/run/rocola-soloist"; echo "fase=$v" > "$o/run/rocola-soloist/estado"; T0=$(date +%s.%N)
+    abre $n "$d" "7:67" "9:pide spotify:track:f770d030cd|$P|30000;88:copia" 89 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="25:cae" VIGILANTE_FALSO_ESPERA=30
+    f="$o/frec.txt"; b="$d/rocola_spotify.txt"
+    grep -E 'play|suena|acaba|acabo|corto|sigue|seguir|reiniciando|DEVUELTA|desconect' "$b" | sed 's/^/   /'
+    t770=$(oye "$f" 770)
+    si "$n: sale con 0" test "$(cat $o/salio)" = 0
+    si "$n: se corto por el WebSocket caido y se intento seguir" contiene "$b" "se corto spotify:track:f770d030cd (Prueba) a los 1"
+    if [ $v = esperando ]; then
+      si "$n: se apunta que seguir tiene 60 s en vez de 15" contiene "$b" "Soloist se esta reiniciando (vigilante esperando): seguir tiene 60 s en vez de 15"
+      si "$n: no se rindio a los 15 s" nocontiene "$b" "no se pudo seguir"
+      si "$n: cuando Soloist volvio siguio desde donde iba y acabo de verdad, sin devolver" bash -c "grep -q 'acabo spotify:track:f770d030cd (Prueba): termino, sono .* (siguio tras un corte' '$b' && ! grep -q DEVUELTA '$b'"
+    else
+      si "$n: con el vigilante «corriendo» se rinde a los 15 s, sin devolver el credito (ya habia sonado)" bash -c "grep -q 'no se pudo seguir spotify:track:f770d030cd en 15 s' '$b' && ! grep -q DEVUELTA '$b' && ! grep -q 'se esta reiniciando' '$b'"
+    fi
+  done
 fi
 
 echo

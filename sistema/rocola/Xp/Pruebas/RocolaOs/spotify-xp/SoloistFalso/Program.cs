@@ -32,6 +32,8 @@
 //       cae           se cae (sale con 1, sin borrar ws.port: como un fallo de verdad)
 //       cierraws      cierra las conexiones WebSocket (y sigue)
 //       cola:URI      alguien anade URI a la cola de Spotify (queue_changed)
+//   - SOLOIST_FALSO_SORDO=1: vivo pero sordo (acepta el WebSocket y no manda ni contesta nada); SOLOIST_FALSO_CIERRA_AL_CONECTAR=1: cierra cada
+//     conexion al instante (revision de mejoras del 24-11-2026)
 //   - lo que recibe y lo que pasa, en SOLOIST_FALSO_LOG (un renglon por cosa: «ms  quien  que»)
 // Variables: SOLOIST_FALSO_SESION (1 de fabrica: ya emparejado), SOLOIST_FALSO_ACTIVA (0 de fabrica: la rocola tiene que mandar activate),
 // SOLOIST_FALSO_LOG, SOLOIST_FALSO_GUION, SOLOIST_FALSO_FIN, SOLOIST_FALSO_CADUCADO, SOLOIST_FALSO_SEG (la duracion de las que no la dicen en su id; 30 s de fabrica), SOLOIST_FALSO_PULSO, ROCOLA_SPOTIFY_ANILLO (o /run/rocola-xp/spotify/sonido.anillo).
@@ -58,6 +60,7 @@ static unsafe class SoloistFalso
     static string repeat = "off";
     static string status = "idle";
     static string item = "";           // la uri que suena
+    static readonly bool Sordo = Environment.GetEnvironmentVariable("SOLOIST_FALSO_SORDO") == "1";
     static int genPlay;                // (SOLOIST_FALSO_LENTO: cada play o celular nuevo cancela el play lento de antes)
     static int carreraHecha;           // (SOLOIST_FALSO_CELULAR_TRAS_PLAY: una vez)
     static int volumen = 100;
@@ -388,9 +391,15 @@ static unsafe class SoloistFalso
             c = new Cliente { Ws = WebSocket.CreateFromStream(s, true, null, TimeSpan.FromSeconds(30)) };
             lock (clientes) clientes.Add(c);
             Apunta("ws", "conecta un cliente");
-            MandaA(c, Auth());
-            bool s2; lock (cerrojo) s2 = sesion;
-            if (s2) MandaA(c, Estado());
+            // (24-11-2026, revision de mejoras) SOLOIST_FALSO_CIERRA_AL_CONECTAR=1: cierra la conexion al instante, una y otra vez (un Soloist que
+            // acepta y cuelga); SOLOIST_FALSO_SORDO=1: vivo pero sordo, acepta la conexion y no dice ni contesta nada (ni auth_state)
+            if (Environment.GetEnvironmentVariable("SOLOIST_FALSO_CIERRA_AL_CONECTAR") == "1") { Apunta("ws", "cierra al instante"); c.Ws.Abort(); throw new IOException("cierra al conectar"); }
+            if (!Sordo)
+            {
+                MandaA(c, Auth());
+                bool s2; lock (cerrojo) s2 = sesion;
+                if (s2) MandaA(c, Estado());
+            }
             byte[] buf = new byte[65536];
             while (true)
             {
@@ -424,6 +433,7 @@ static unsafe class SoloistFalso
         catch { MandaA(c, "{\"type\":\"error\",\"message\":\"malformed JSON\"}"); return; }
         if (tipo != "command") { MandaA(c, "{\"type\":\"error\",\"message\":\"unknown message type\"}"); return; }
         bool s; lock (cerrojo) s = sesion;
+        if (Sordo) return;   // (SOLOIST_FALSO_SORDO=1: no contesta a nada)
         if (cmd == "get_auth_state") { MandaA(c, Auth()); return; }
         if (!s) { MandaA(c, "{\"type\":\"error\",\"message\":\"command requires authentication\"}"); return; }
         switch (cmd)
@@ -541,6 +551,9 @@ static unsafe class SoloistFalso
                 case "cierraws":
                     { Cliente[] cs; lock (clientes) cs = clientes.ToArray(); foreach (Cliente c in cs) try { c.Ws.Abort(); } catch { } }
                     break;
+                // (24-11-2026, revision de mejoras) un evento que la rocola no conoce, y un command_result con error
+                case "raro": Manda("{\"type\":\"zz_evento_raro\",\"campo_a\":1,\"campo_b\":\"x\"}"); break;
+                case "resulterr": Manda("{\"type\":\"command_result\",\"command\":\"play\",\"error\":\"fallo de prueba\"}"); break;
                 case "cae": Apunta("soloist", "se cae (sale con 1)"); Environment.Exit(1); break;
             }
         }

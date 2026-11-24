@@ -32,6 +32,9 @@ namespace Rocola
         {
             internal const int NoEmpiezaMs = 15000;      // R4: no llega a sonar en 15 s desde el play
             internal const int SeguridadMs = 30000;      // (por si el hilo de Spotify no contestara: 30 s sin nada, se acaba)
+            // (24-11-2026, revision de mejoras) con Soloist reiniciandose y una cortada que se intenta seguir (ContinuaLarga: 60 s), la seguridad
+            // va a la par (un poco mas, para que decida primero el hilo de Spotify, que sabe el motivo)
+            internal const int SeguridadLargaMs = RocolaOsSpotify.ContinuaLargaMs + 5000;
             internal const double PocoSonidoSeg = 10.0;   // R4: un fallo con menos de 10 s de sonido devuelve el credito
             // (revision «sonido-hilos-y-fallos») EL ARRANQUE SIN HUECO. Al abrirse la salida, el hilo de la musica de XP (BombaSonido) lee de
             // golpe su primer segundo y su colchon (ArranqueMs + ColchonMs) y despues va al paso de la tarjeta. El anillo solo guarda lo que
@@ -58,6 +61,13 @@ namespace Rocola
             private long inicioCancion = -1;    // el cuadro del anillo donde empieza (EscritoAlPedir)
             private long silencioAntes;         // cuadros de silencio antes del primer sonido (para TotalTime)
             private long ultimoSonidoMs;
+            private long huecoCuadros, subdesbAlSonar;   // (24-11-2026) diagnostico: silencio entregado tras el primer sonido, y los subdesbordes del anillo desde entonces
+            private void MideDiagnostico(RocolaOsSpotifyPeticion q)
+            {
+                q.HuecoMs = (int)Math.Min(int.MaxValue, Interlocked.Read(ref huecoCuadros) * 1000 / Math.Max(1, hz));
+                RocolaOsSpotifyAnillo an = RocolaOsSpotify.Anillo;
+                q.Subdesb = an != null && Interlocked.Read(ref cuadrosSonido) > 0 ? Math.Max(0, an.Subdesbordes - subdesbAlSonar) : 0;
+            }
             // (conversion de frecuencia, si el anillo trae otra que la declarada: revision «sonido-hilos-y-fallos»; antes se perdia un cuadro
             // en cada lectura -un chasquido cada 20 a 100 ms-: ahora lo que no se uso se queda para la siguiente)
             private float[] tmp;                // los cuadros del anillo que aun hacen falta (los primeros «tmpN»)
@@ -171,7 +181,11 @@ namespace Rocola
                     if (vaciado && yaSuena) { RocolaOsSpotify.Apunta("vaciado a media cancion en " + uri + ": acaba ahi"); return Acaba(d, 0, RocolaOsSpotifyPeticion.OtraCancion); }
                     if (n > 0)
                     {
-                        if (Interlocked.Read(ref cuadrosSonido) == 0) Interlocked.Exchange(ref silencioAntes, Interlocked.Read(ref cuadrosEntregados));
+                        if (Interlocked.Read(ref cuadrosSonido) == 0)
+                        {
+                            Interlocked.Exchange(ref silencioAntes, Interlocked.Read(ref cuadrosEntregados));
+                            subdesbAlSonar = a.Subdesbordes;
+                        }
                         Interlocked.Add(ref cuadrosSonido, n);
                         ultimoSonidoMs = ahora;
                         long pos = (leidoDespues - inicioCancion) * 1000 / FrecuenciaAnillo(a);
@@ -185,9 +199,13 @@ namespace Rocola
                 else if (a != null && fasePedida == RocolaOsSpotifyPeticion.Mandada) a.SaltaVaciado();   // (esperando: sin consumir, pero el vaciado si se salta)
                 // sin sonar en 15 s desde que se pidio: se acaba y el credito vuelve (R4); y la seguridad de 30 s sin nada
                 if (Interlocked.Read(ref cuadrosSonido) == 0 && ahora - inicioMs > NoEmpiezaMs) return Acaba(d, n, RocolaOsSpotifyPeticion.NoEmpezo);
-                if (ahora - Math.Max(ultimoSonidoMs, p.Continuada ? p.ContinuaDesdeMs : 0) > SeguridadMs) return Acaba(d, n, RocolaOsSpotifyPeticion.SinSonido);
+                if (ahora - Math.Max(ultimoSonidoMs, p.Continuada ? p.ContinuaDesdeMs : 0) > (p.Continuada && p.ContinuaLarga ? SeguridadLargaMs : SeguridadMs)) return Acaba(d, n, RocolaOsSpotifyPeticion.SinSonido);
                 // lo que no llego, en silencio (la red que tarda); la cancion sigue
-                if (n * 2 < d.Length) d.Slice(n * 2).Clear();
+                if (n * 2 < d.Length)
+                {
+                    d.Slice(n * 2).Clear();
+                    if (Interlocked.Read(ref cuadrosSonido) > 0) Interlocked.Add(ref huecoCuadros, pedidos - n);   // (24-11-2026: un hueco a media cancion, para el diagnostico del «acabo»)
+                }
                 if (Corte != null && n > 0) Corte.Procesa(d, n);
                 if (Nivela != null && n > 0) Nivela.Procesa(d, n);
                 Aplica(d.Slice(0, n * 2));
@@ -256,6 +274,7 @@ namespace Rocola
                 p.FinMotivo = natural ? RocolaOsSpotifyPeticion.Termino : motivo;
                 p.Devolver = devolver;
                 p.SegundosSonados = seg;
+                MideDiagnostico(p);
                 Suelta();
                 Volatile.Write(ref p.Fase, RocolaOsSpotifyPeticion.Acabada);
                 if (Corte != null && n > 0) Corte.Procesa(d, n);
@@ -278,6 +297,7 @@ namespace Rocola
                     q.FinMotivo = RocolaOsSpotify.CerrandoLaRocola ? RocolaOsSpotifyPeticion.Cierre : RocolaOsSpotifyPeticion.Cortada;
                     q.SegundosSonados = Interlocked.Read(ref cuadrosSonido) / (double)hz;
                     q.Devolver = false;
+                    MideDiagnostico(q);
                     Suelta();
                     Volatile.Write(ref q.Fase, RocolaOsSpotifyPeticion.Acabada);
                 }

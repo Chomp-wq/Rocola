@@ -3,8 +3,8 @@
 // La regla de XP (AddItem, Form1.Ajustes.cs: no entra la misma que la ultima en sonar o en la cola, «Esa ya va seguida», sin cobrar) solo
 // comparaba rutas: una de Spotify («spotify:track:ID») y tu MP3 de la misma grabacion pasaban como distintas. Con el modo Spotify, el gancho g230
 // las cuenta como la misma, en los dos sentidos:
-//   - si tu cancion tiene pareja en la sustitucion invisible (rocola_spotify_pares.txt, RocolaOs.Calidad.cs), es la misma si es esa uri (y no,
-//     si la pareja dice otra);
+//   - si tu cancion tiene pareja en la sustitucion invisible (rocola_spotify_pares.txt, RocolaOs.Calidad.cs), es la misma si es esa uri; si la
+//     pareja es otra uri (24-11-2026) se sigue con la regla de abajo, salvo que la pareja este confirmada como otra grabacion (Verif -1);
 //   - si no, por lo que se sabe de las dos: el titulo base y las marcas de version (las reglas de la pareja: TituloBase y MarcasDe; «- Remastered
 //     2012» o «(Remasterizado)» no cuentan, «(En vivo)» solo si las dos lo traen), el artista principal (MismoArtista) y la duracion a 3 s
 //     (la tuya, la del repaso; sin ella no se dan por iguales);
@@ -50,8 +50,11 @@ namespace Rocola
             if (RocolaOsCalidad.Pares.TryGetValue(local.Path, out par) && par != null && par.Id != null)
             {
                 if (par.Verif < 0 && string.Equals(par.Uri, sp.Path, StringComparison.Ordinal)) { porQue = "otra grabacion (medida)"; return false; }
-                porQue = "su pareja de la sustitucion";
-                return string.Equals(par.Uri, sp.Path, StringComparison.Ordinal);
+                if (string.Equals(par.Uri, sp.Path, StringComparison.Ordinal)) { porQue = "su pareja de la sustitucion"; return true; }
+                // (24-11-2026, revision de mejoras) su pareja es OTRA uri: antes se devolvia false sin mirar mas, y la misma grabacion en otra edicion
+                // del disco (Spotify tiene varias uris de una cancion) se podia repetir. Solo si la pareja esta confirmada como OTRA grabacion
+                // (Verif -1) esta se descarta; si no, cae a la regla de titulo base, marcas, artista y duracion
+                if (par.Verif < 0) { porQue = "su pareja es otra grabacion (medida)"; return false; }
             }
             string ts, ars; int ds;
             RocolaOsDatosSpotify(sp, out ts, out ars, out ds);

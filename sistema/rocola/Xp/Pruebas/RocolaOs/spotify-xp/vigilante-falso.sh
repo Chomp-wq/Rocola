@@ -23,5 +23,5 @@ while kill -0 "$padre" 2>/dev/null; do
   if [ "${VIGILANTE_FALSO_UNA:-0}" = 1 ]; then hijo=; while kill -0 "$padre" 2>/dev/null; do sleep 0.5 & wait $!; done; echo "$(date +%s.%N) murio el padre" >> "$log"; exit 0; fi
   # (el guion de eventos es de la primera vida: la segunda arranca limpia)
   unset SOLOIST_FALSO_GUION
-  sleep 2 & wait $!
+  sleep "${VIGILANTE_FALSO_ESPERA:-2}" & wait $!   # (24-11-2026: VIGILANTE_FALSO_ESPERA=SEG, cuanto tarda en volver a abrirlo; 2 de fabrica)
 done

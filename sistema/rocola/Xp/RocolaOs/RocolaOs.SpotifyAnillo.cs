@@ -322,7 +322,11 @@ namespace Rocola
             Volatile.Write(ref L(b, OLeido), leido);   // (release)
             Volatile.Write(ref L(b, OLatidoLector), Monotonico());
             // sin datos con el flujo sonando: un subdesborde (se cuenta una vez por cada vez que se queda seco)
-            bool seco = k * Canales < destino.Length && leido >= escrito && Volatile.Read(ref U(b, OTapado)) == 0 && hasta == long.MaxValue;
+            // (24-11-2026, revision de mejoras) «seco» es quedarse sin datos a mas de 1 s de donde acaba la cancion (hasta); antes pedia hasta ==
+            // long.MaxValue (sin limite) y con la duracion sabida, lo normal, nunca contaba; el segundo del final no cuenta (Soloist suele
+            // escribir unos cuadros menos que la duracion y eso no es un subdesborde)
+            long cola = Math.Max(8000, (long)Volatile.Read(ref U(b, OFrecuencia)));
+            bool seco = k * Canales < destino.Length && leido >= escrito && Volatile.Read(ref U(b, OTapado)) == 0 && (hasta == long.MaxValue || leido + cola < hasta);
             if (seco && !enSubdesborde) Interlocked.Increment(ref L(b, OSubdesbordes));
             enSubdesborde = seco;
             leidoDespues = leido;
