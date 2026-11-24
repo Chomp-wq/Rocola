@@ -18,6 +18,8 @@
 #   y inactivo (22-11-2026: lo que se queda abierto del buscador se cierra solo) y cargando (23-11-2026: con Spotify lento el buscador no
 #   ensena lo de antes: «Buscando…», el anillo de carga y «Cargando…», y todo junto al llegar) y siempre (23-11-2026: un disco o un artista tuyo elegido
 #   en el buscador abre siempre el disco dentro del buscador o una pared del buscador, nunca la pared de verdad); todas, de fabrica
+#   y colgada y recorte (24-11-2026, revision de mejoras: A3 la API que no contesta se recuerda «sin red» y no ocupa el hilo; A8 el recorte de /run); la escena
+#   cuenta (A1) ya NO espera las peticiones de la cuenta (la letra ♫ no esta en la pared: ni se piden), y sinred prueba el «sin red» recordado
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
@@ -29,7 +31,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo cargando siempre}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo cargando siempre colgada recorte}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -215,19 +217,16 @@ for e in $escenas; do
     si "fallos: el estado dice api=frena (y frena_s con la cuota)" bash -c "grep -qx 'api=frena' '$o/run/rocola-xp/spotify/catalogo' && grep -qE '^frena_s=[0-9]+ cuota$' '$o/run/rocola-xp/spotify/catalogo'"
     si "fallos: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
   cuenta)
-    # LA CUENTA (refresh_token): la letra de Spotify desde el arranque con «Tus favoritas», tus discos y tu lista (la de otro no); REGRESAR+
-    # IZQUIERDA desde la primera letra da la vuelta hasta ella
+    # LA CUENTA (refresh_token) SIN LA LETRA ♫ EN LA PARED (24-11-2026, revision de mejoras, A1): lo de la cuenta (/me/tracks, /me/albums,
+    # /me/playlists) solo alimenta esa letra, que no sale (RocolaOsSpotifyLetraEnLaPared = false): ni se pide. Antes esta escena esperaba las tres
+    # peticiones, la lista propia y la renovacion de la llave de la cuenta; ahora nada de eso (los atajos de SP9, que si usan la cuenta, tienen su escena)
     apifalsa $e; d=$(datos $e cuenta)
-    abre $e "$d" "7:67,10:27+37,12:39,12.6:39,13.2:39,14:13,16.5:13,18:27" 22 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11.5 pared-cuenta),$(cap 16 disco-lista-propia)"
+    abre $e "$d" "7:67,10:27+37,12:39,12.6:39,13.2:39,14:13,16.5:13,18:27" 22 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11.5 pared-cuenta)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     sed 's/^/   /' "$a" | grep -v '/img/' | head -12
     si "cuenta: sale con 0" test "$(cat $o/salio)" = 0
-    si "cuenta: tres peticiones de la cuenta (me/tracks, me/albums, me/playlists) con la llave de la cuenta" bash -c "[ \$(grep -cE 'GET /v1/me/(tracks|albums|playlists) cuenta 200' '$a') = 3 ]"
-    si "cuenta: la lista propia se abrio con UNA peticion (/v1/playlists/lis001/items)" bash -c "[ \$(grep -c 'GET /v1/playlists/lis001/items cuenta 200' '$a') = 1 ]"
-    si "cuenta: la de otro no se pide nunca" nocontiene "$a" "lis002"
-    si "cuenta: Spotify roto la llave de refresco y se guardo encima (0600, sin la vieja)" bash -c "grep -qE '^refresh_token=refresco-[0-9]+$' '$d/rocola_spotify_api.txt' && ! grep -qx 'refresh_token=refresco-1' '$d/rocola_spotify_api.txt' && [ \"\$(find '$d/rocola_spotify_api.txt' -perm 600 | wc -l)\" = 1 ]"
-    si "cuenta: un pedido desde la lista propia ($(pedidos $o))" test "$(pedidos $o)" = 1
-    si "cuenta: la llave de la cuenta se renovo como PKCE (client_id en el cuerpo, sin el secreto)" bash -c "grep -q '^POST /api/token nada 200' '$a' && ! grep -q '^POST /api/token nada 400' '$a'"
+    si "cuenta: ninguna peticion de la cuenta (nada de /v1/me/)" bash -c "! grep -q '/v1/me/' '$a'"
+    si "cuenta: ninguna peticion a /v1 ni a la llave (la letra no sale: nada que pedir)" test "$(wc -l < $a)" = 0
     si "cuenta: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
   suena)
     # LO QUE SUENA CON UNA DE SPOTIFY: se pide la 1a de «inventad», se cierra el buscador y la barra de abajo de XP dice lo que suena. Con la
@@ -274,17 +273,41 @@ for e in $escenas; do
     si "reabre: el estado dice api=frena con la cuota" bash -c "grep -qx 'api=frena' '$o/run/rocola-xp/spotify/catalogo' && grep -qE '^frena_s=[0-9]+ cuota$' '$o/run/rocola-xp/spotify/catalogo'" ;;
   sinred)
     # SIN INTERNET AL ARRANCAR (la API no contesta: nada escucha en su puerto) con la cuenta: XP sigue; lo buscado no traba ni llena la
-    # bitacora (el mismo renglon una vez); lo de la cuenta se vuelve a intentar solo y, cuando vuelve la red (la API a los 12 s), llega
+    # bitacora (el mismo renglon una vez). (24-11-2026, A3) el «sin red» se RECUERDA: tras el primer fallo no se vuelve a preguntar en 15 s (lo
+    # escrito despues contesta «sin red» al instante, sin tocar la red); la API vuelve a los 12 s, pero hasta pasar el plazo nadie la prueba; pasado,
+    # una peticion de prueba (la busqueda a los 28 s) sale bien y todo vuelve
     d=$(datos $e cuenta); P=$((P + 1)); o="$W/$e"; mkdir -p "$o/api"; : > "$o/api/peticiones.txt"
-    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(escribe 11.4 x)" 46 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11.8 buscador-sin-red)"
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(escribe 11.4 x),28:8" 36 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11.8 buscador-sin-red)"
     sleep 12.5; apifalsa $e mismo
     espera $e; a="$o/api/peticiones.txt"
     grep -v '/img/' "$a" | sed 's/^/   /' | head -8
     si "sinred: sale con 0" test "$(cat $o/salio)" = 0
-    si "sinred: sin red, «busqueda sin respuesta: sin red» UNA vez en la bitacora aunque se busco dos veces ($(grep -c 'busqueda sin respuesta: sin red' $d/rocola_os_bitacora.txt))" test "$(grep -c 'busqueda sin respuesta: sin red' $d/rocola_os_bitacora.txt)" = 1
-    si "sinred: lo de la cuenta se vuelve a intentar solo" contiene "$d/rocola_os_bitacora.txt" "se vuelve a intentar solo"
-    si "sinred: al volver la red, lo de la cuenta llego (me/tracks, me/albums, me/playlists: una vez cada una)" bash -c "[ \$(grep -cE 'GET /v1/me/(tracks|albums|playlists) cuenta 200' '$a') = 3 ]"
-    si "sinred: la bitacora dice lo de la cuenta" contiene "$d/rocola_os_bitacora.txt" "lo de la cuenta: " ;;
+    si "sinred: sin red, el renglon «sin red: Spotify no contesta» UNA vez en la bitacora aunque se busco varias veces ($(grep -c 'sin red: Spotify no contesta' $d/rocola_os_bitacora.txt))" test "$(grep -c 'sin red: Spotify no contesta' $d/rocola_os_bitacora.txt)" = 1
+    si "sinred: la API que volvio a los 12 s NO recibio nada hasta pasar el plazo (nada de lo escrito entre 12,5 s y 25 s llego a ella: solo la prueba de los 28 s)" bash -c "[ \$(grep -c '/v1/search' '$a') = 1 ] && grep '/v1/search' '$a' | grep -q ' 200 q=inventad\$'"
+    si "sinred: la prueba pidio una llave y salio bien (una sola)" bash -c "[ \$(grep -c '^POST /api/token' '$a') = 1 ]"
+    si "sinred: la cuenta no se pide (A1: ni /v1/me ni reintentos de la cuenta)" bash -c "! grep -q '/v1/me/' '$a' && ! grep -q 'se vuelve a intentar solo' '$d/rocola_os_bitacora.txt'"
+    si "sinred: al salir bien, el estado dice api=bien y con la hora del ultimo exito" bash -c "grep -qx 'api=bien' '$o/run/rocola-xp/spotify/catalogo' && grep -qE '^ultimo_exito=20[0-9-]+T[0-9:]+Z\$' '$o/run/rocola-xp/spotify/catalogo'" ;;
+  colgada)
+    # LA API QUE NO CONTESTA (24-11-2026, A3): un puerto que acepta la conexion y se queda callado. Lo que alguien espera (busqueda, la llave) vale 6 s
+    # en total (antes 15 s de tiempo y 8 de conexion, con un reintento tras dormir 1 s); al agotarse se recuerda «sin red» y lo escrito despues
+    # contesta al instante sin abrir otra conexion. El estado dice api=sin_red
+    d=$(datos $e encendido); P=$((P + 1)); o="$W/$e"; mkdir -p "$o/api"
+    python3 - "$P" "$o/api/conexiones.txt" <<'PY' &
+import socket, sys
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(16)
+guardadas = []; f = open(sys.argv[2], "a")
+while True:
+    c, _ = s.accept(); guardadas.append(c); f.write("conexion\n"); f.flush()
+PY
+    APIPID=$!; sleep 0.5
+    abre $e "$d" "$BASE,$(escribe 9.5 inventad),$(escribe 11.4 x)" 23 ROCOLA_OS=1
+    t0=$(date +%s)
+    espera $e
+    si "colgada: sale con 0" test "$(cat $o/salio)" = 0
+    si "colgada: la rocola salio a su hora (no se quedo esperando a la API: $(( $(date +%s) - t0 )) s)" test $(( $(date +%s) - t0 )) -le 40
+    si "colgada: UNA sola conexion a la API (la de la llave, que se corto a los 6 s); lo escrito despues no abrio otras ($(grep -c conexion $o/api/conexiones.txt))" test "$(grep -c conexion $o/api/conexiones.txt)" = 1
+    si "colgada: el estado dice api=sin_red" bash -c "grep -qx 'api=sin_red' '$o/run/rocola-xp/spotify/catalogo'"
+    si "colgada: «sin red: Spotify no contesta» una vez en la bitacora" test "$(grep -c 'sin red: Spotify no contesta' $d/rocola_os_bitacora.txt)" = 1 ;;
   sinsesion)
     # SOLOIST SIN SESION (I6 dice que no esta listo: el vigilante sale al momento y no hay Soloist): no se pide ni se cobra; el aviso de XP
     apifalsa $e; d=$(datos $e encendido)
@@ -507,7 +530,7 @@ for e in $escenas; do
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
     grep '/v1/me/' "$a" | sed 's/^/   /'
     si "atajos503: sale con 0" test "$(cat $o/salio)" = 0
-    si "atajos503: lo de la cuenta llego antes (me/tracks, me/albums, me/playlists: 200 una vez cada una)" bash -c "[ \$(grep -cE 'GET /v1/me/(tracks|albums|playlists) cuenta 200' '$a') = 3 ]"
+    si "atajos503: lo de la cuenta de la letra (me/tracks, me/albums, me/playlists) NO se pide (24-11-2026, A1: sin la letra en la pared no se ve)" bash -c "! grep -qE 'GET /v1/me/(tracks|albums|playlists) ' '$a'"
     si "atajos503: cada atajo, un 503 y despues (pasado el minuto) un 200, nada mas" bash -c "for r in top/tracks player/recently-played; do [ \$(grep -c \"GET /v1/me/\$r cuenta 503\" '$a') = 1 ] && [ \$(grep -c \"GET /v1/me/\$r cuenta 200\" '$a') = 1 ] && [ \$(grep -c \"/v1/me/\$r\" '$a') = 2 ] || exit 1; done"
     si "atajos503: la 1a pedida es la 1a de tus mas escuchadas (can0012)" test "$(pedido $o 1)" = "$(printf 'pedida\tspotify:track:can0012')"
     si "atajos503: solo esa pedida ($(pedidos $o))" test "$(pedidos $o)" = 1
@@ -621,6 +644,23 @@ for e in $escenas; do
     si "cargando: sin tarjetas mientras se espera, y con ellas (y sin anillo) al llegar Spotify" bash -c "echo '$A1' | grep -q 'tarjetas=ok'"
     si "cargando: el aviso de XP «Sin resultados para...» no sale mientras se espera (el sitio de arriba de los resultados queda vacio)" bash -c "echo '$A1' | grep -q 'aviso=ok'"
     si "cargando: la casilla de arriba cambia al llegar (de «Buscando…» al numero)" bash -c "echo '$A1' | grep -q 'casilla=ok'" ;;
+  recorte)
+    # EL RECORTE DE /run (24-11-2026, A8): al abrir el buscador, un hilo de fondo suma portadas y miniaturas de Spotify de /run y, si pasan del tope
+    # (aqui 100 KB, ROCOLA_SPOTIFY_RECORTE_BYTES), borra las de acceso mas viejo, nunca las de menos de 30 min ni las protegidas. Se preparan en /run
+    # 20 portadas falsas de 10 KB y 10 miniaturas, todas de hace dos horas salvo una portada de ayer-noche y dos recientes (de hace 5 min)
+    apifalsa $e; d=$(datos $e encendido); o="$W/$e"
+    r="$o/run/rocola-xp/spotify"; mkdir -p "$r/portadas" "$r/miniaturas"
+    for i in $(seq 1 20); do head -c 10240 /dev/zero > "$r/portadas/vieja$i.jpg"; done
+    for i in $(seq 1 10); do head -c 10240 /dev/zero > "$r/miniaturas/mini$i.png"; done
+    touch -d '2 hours ago' "$r"/portadas/vieja*.jpg "$r"/miniaturas/mini*.png
+    for i in 1 2; do head -c 10240 /dev/zero > "$r/portadas/reciente$i.jpg"; touch -d '5 minutes ago' "$r/portadas/reciente$i.jpg"; done
+    abre $e "$d" "$BASE" 14 ROCOLA_OS=1 ROCOLA_SPOTIFY_RECORTE_BYTES=102400
+    espera $e
+    n=$(ls "$r/portadas" "$r/miniaturas" | grep -cE 'jpg|png'); mb=$(cat "$r"/portadas/* "$r"/miniaturas/* 2>/dev/null | wc -c)
+    si "recorte: sale con 0" test "$(cat $o/salio)" = 0
+    si "recorte: queda por debajo del tope de 100 KB entre las dos carpetas ($mb bytes en $n archivos)" test "$mb" -le 102400
+    si "recorte: se borraron las mas viejas (y quedan algunas: no se barrio todo)" bash -c "[ $n -gt 2 ] && [ \$(ls '$r/portadas' | grep -c vieja) -lt 20 ]"
+    si "recorte: las recientes (5 min) siguen" bash -c "[ -f '$r/portadas/reciente1.jpg' ] && [ -f '$r/portadas/reciente2.jpg' ]" ;;
   esac
 done
 

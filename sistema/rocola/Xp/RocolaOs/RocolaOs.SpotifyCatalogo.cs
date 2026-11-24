@@ -96,6 +96,7 @@ namespace Rocola
         {
             bool abierto = searchOpen;
             if (abierto && !rocolaOsSpBuscadorAntes && RocolaOsSpotifyCatalogoVa && RocolaOsSpotifyCatalogoApi.HayLlave) RocolaOsSpotifyCatalogoApi.Calienta();
+            if (abierto && !rocolaOsSpBuscadorAntes && RocolaOsSpotifyCatalogoVa) RocolaOsSpotifyCatalogoRecorta();   // (A8: como mucho una vez por hora)
             rocolaOsSpBuscadorAntes = abierto;
             RocolaOsSpotifyCatalogoMiraTarjeta(abierto);
             RocolaOsParedCasillasAlDia();   // (BUSCAR y AYUDA fuera de las paredes del buscador: RocolaOs.ParedLetrero.cs)
@@ -128,7 +129,7 @@ namespace Rocola
             if (rocolaOsSpAdelantosBuscador >= RocolaOsSpTopeAdelantos) return;   // (revision: la cuota; quien baja despacio por la lista no gasta mas)
             Album a = it.AlbumRef;
             string unida = RocolaOsSpotifyUnidaId(it);   // (23-11-2026) tu artista que Spotify tambien tiene: la primera pagina de su pared unida
-            if ((!RocolaOsEsSpotify(a) && unida == null) || !RocolaOsSpotifyCatalogoVa || RocolaOsSpotifyCatalogoApi.Frena || !RocolaOsSpotifyCatalogoApi.HayLlave) return;
+            if ((!RocolaOsEsSpotify(a) && unida == null) || !RocolaOsSpotifyCatalogoVa || RocolaOsSpotifyCatalogoApi.Frena || RocolaOsSpotifyCatalogoApi.SinRed || !RocolaOsSpotifyCatalogoApi.HayLlave) return;
             if (rocolaOsSpTarjetasAdelantadas == null) rocolaOsSpTarjetasAdelantadas = new HashSet<Album>();
             if (rocolaOsSpTarjetasAdelantadas.Contains(a)) return;
             long ahora = Environment.TickCount64;
@@ -204,7 +205,7 @@ namespace Rocola
             // (23-11-2026, «saldra cargando... y un anillo de carga») con el buscador de portadas la espera NO ensena lo de antes: una lista vacia, el
             // anillo y «Buscando…» en la casilla (RocolaOs.BuscadorCargando.cs); con el otro buscador, lo de antes como siempre
             bool anillo = searchOverlay.Nuevo;
-            if (RocolaOsSpotifyCatalogoApi.Frena || (!anillo && (rocolaOsSpVisto == null || !object.ReferenceEquals(searchOverlay.Results, rocolaOsSpVisto))))
+            if (RocolaOsSpotifyCatalogoApi.Frena || RocolaOsSpotifyCatalogoApi.SinRed || (!anillo && (rocolaOsSpVisto == null || !object.ReferenceEquals(searchOverlay.Results, rocolaOsSpVisto))))
                 return RocolaOsSpotifyCatalogoVisto(res, consulta);   // (sin tope que esperar, o nada de antes que seguir ensenando: lo local ya)
             // lo local nuevo espera a Spotify: se sigue viendo lo de antes (y su cuenta, que XP ya cambio) hasta que llegue o pasen 2 s
             rocolaOsSpEspera = true;
@@ -265,7 +266,7 @@ namespace Rocola
             if (b == null)
             {
                 // (sin red, la API caida o frenando, esto saldria en cada cosa escrita: el mismo renglon, una vez cada 10 minutos)
-                if (error != null && error != "sin_llave") RocolaOsSpotifyCatalogoApi.ApuntaCallado("busqueda sin respuesta: " + error);
+                if (error != null && error != "sin_llave" && error != RocolaOsSpotifyCatalogoApi.ErrorSinRedEspera) RocolaOsSpotifyCatalogoApi.ApuntaCallado("busqueda sin respuesta: " + error);   // (A3: la espera de «sin red» ya se apunto con su primer fallo)
                 if (rocolaOsSpConsulta == q) RocolaOsSpotifyCatalogoSueltaLocal(rocolaOsSpGen);   // (23-11-2026) fallo: lo local ya, sin esperar los 2 s
                 return;
             }
@@ -383,7 +384,10 @@ namespace Rocola
         {
             if (!RocolaOsSpotifyCatalogoVa) return deXp;
             deXp = RocolaOsPgLetras(deXp);   // (pared-generos) las letras que trae el catalogo
-            if (!rocolaOsSpCuentaPedida && RocolaOsSpotifyCatalogoApi.HayCuenta)
+            // (revision de mejoras del 24-11-2026, A1) lo de la cuenta (/me/tracks, /me/albums, /me/playlists) solo alimenta la letra ♫ de la pared:
+            // sin ella (RocolaOsSpotifyLetraEnLaPared = false) nada se ve, asi que ni se pide (3 peticiones y un hilo de reintentos de menos).
+            // Los atajos de SP9 (/me/top, recently-played) son otra cosa y siguen. Con la letra de vuelta, vuelve esto solo.
+            if (RocolaOsSpotifyLetraEnLaPared && !rocolaOsSpCuentaPedida && RocolaOsSpotifyCatalogoApi.HayCuenta)
             {
                 rocolaOsSpCuentaPedida = true;
                 RocolaOsSpotifyCatalogoApi.PideCuenta(delegate (object r, string error)
@@ -663,6 +667,7 @@ namespace Rocola
                 RocolaOsSpotifyCatalogoPortada(a, d.Id, d.PortadaUrl);
             }
             else if (d.Canciones != null && rocolaOsSpDeDisco.TryGetValue(a, out RocolaOsSpotifyCatalogoDisco viejo) && viejo.Canciones == null) rocolaOsSpDeDisco[a] = d;
+            RocolaOsSpotifyCatalogoPortadaPerdida(a);
             RocolaOsSpotifyCatalogoDisco este = rocolaOsSpDeDisco[a];
             if (este.Canciones != null && a.Tracks.Count == 0) RocolaOsSpotifyCatalogoLlena(a, este);
             return a;
@@ -685,6 +690,7 @@ namespace Rocola
                 rocolaOsSpDeArtista[a] = ar;
                 RocolaOsSpotifyCatalogoPortada(a, "artista-" + ar.Id, ar.PortadaUrl);
             }
+            else RocolaOsSpotifyCatalogoPortadaPerdida(a);
             return a;
         }
         private Track RocolaOsSpotifyCatalogoPista(RocolaOsSpotifyCatalogoCancion c)
@@ -705,6 +711,56 @@ namespace Rocola
             }
         }
 
+        // ================================================================= el recorte de /run (A8) ===================================
+        // (revision de mejoras del 24-11-2026, A8) /run es memoria: las portadas de Spotify (portadas/) y sus miniaturas (miniaturas/) solo se
+        // limpiaban al arrancar (las de mas de un dia, y solo las de lo que suena). En una rocola que pasa semanas sin reiniciar, crecian sin tope.
+        // Ahora, al abrir el buscador (como mucho una vez por hora) un hilo de fondo (nice 19) suma las dos carpetas y, si pasan de ~150 MB,
+        // borra lo de acceso o modificacion mas viejo hasta quedar debajo. Nunca: lo que suena o esta en la cola, lo del disco y la pared abiertos,
+        // la pila de paredes del buscador, los resultados que se ven, ni nada tocado en los ultimos 30 min. Los discos cuya portada se borro la
+        // vuelven a pedir cuando reaparecen en una busqueda. Nada se guarda en disco.
+        private Dictionary<Album, KeyValuePair<string, string>> rocolaOsSpPortadaDe;   // de cada Album de Spotify: (id, url) de su portada
+        private HashSet<Album> rocolaOsSpPortadaBorrada;
+        private void RocolaOsSpotifyCatalogoRecorta()
+        {
+            if (!RocolaOsSpotifyCatalogoRecorte.Toca()) return;
+            HashSet<string> prot = new HashSet<string>(StringComparer.Ordinal);
+            try
+            {
+                if (nowPlaying != null && nowPlaying.Disc != null && nowPlaying.Disc.CoverPath != null) prot.Add(nowPlaying.Disc.CoverPath);
+                foreach (PlayItem it in queue) if (it != null && it.Disc != null && it.Disc.CoverPath != null) prot.Add(it.Disc.CoverPath);
+                if (currentAlbum != null && currentAlbum.CoverPath != null) prot.Add(currentAlbum.CoverPath);
+                for (RocolaOsSpotifyPared p = rocolaOsSpPared; p != null; p = p.Vuelta != null ? p.Vuelta.Pared : null)
+                {
+                    foreach (Album a in p.Lista) if (a != null && a.CoverPath != null) prot.Add(a.CoverPath);
+                    if (p.Canciones != null && p.Canciones.CoverPath != null) prot.Add(p.Canciones.CoverPath);
+                }
+                if (rocolaOsSpVueltaAlbum != null && rocolaOsSpVueltaAlbum.CoverPath != null) prot.Add(rocolaOsSpVueltaAlbum.CoverPath);
+                List<SearchItem> r = searchOverlay != null ? searchOverlay.Results : null;
+                if (r != null) foreach (SearchItem it in r) if (it != null && it.AlbumRef != null && it.AlbumRef.CoverPath != null) prot.Add(it.AlbumRef.CoverPath);
+            }
+            catch { }   // (una lista que cambia: lo que no se alcanzo a apuntar lo cubre la ventana de 30 min)
+            RocolaOsSpotifyCatalogoRecorte.Lanza(prot, delegate (HashSet<string> borradas)
+            {
+                RocolaOs.Encarga("spotify_catalogo:recorte", delegate
+                {
+                    if (rocolaOsSpPortadaDe == null || borradas.Count == 0) return;
+                    foreach (KeyValuePair<Album, KeyValuePair<string, string>> kv in rocolaOsSpPortadaDe)
+                        if (kv.Key.CoverPath != null && borradas.Contains(kv.Key.CoverPath))
+                        {
+                            kv.Key.CoverPath = null;
+                            (rocolaOsSpPortadaBorrada ?? (rocolaOsSpPortadaBorrada = new HashSet<Album>())).Add(kv.Key);
+                        }
+                });
+            });
+        }
+        // un disco que ya se conocia vuelve a aparecer y su portada se borro: otra vez (se baja de nuevo; los discos no cambian)
+        private void RocolaOsSpotifyCatalogoPortadaPerdida(Album a)
+        {
+            KeyValuePair<string, string> p;
+            if (rocolaOsSpPortadaBorrada == null || !rocolaOsSpPortadaBorrada.Remove(a) || rocolaOsSpPortadaDe == null || !rocolaOsSpPortadaDe.TryGetValue(a, out p)) return;
+            RocolaOsSpotifyCatalogoPortada(a, p.Key, p.Value);
+        }
+
         // ================================================================= las portadas ===============================================
         // Se bajan a /run/rocola-xp/spotify/portadas/<id>.jpg (en memoria; nunca al disco), varias a la vez y aparte de la API (no gastan su
         // cuota: vienen del servidor de imagenes de Spotify), y al llegar el disco toma su ruta y XP la lee como cualquier portada.
@@ -716,6 +772,7 @@ namespace Rocola
             string nombre = id;
             foreach (char ch in id) if (!(char.IsLetterOrDigit(ch) || ch == '-' || ch == '_')) { nombre = "x" + ((uint)id.GetHashCode()).ToString("x8", CultureInfo.InvariantCulture); break; }
             string ruta = Path.Combine(RocolaOs.Run("rocola-xp/spotify/portadas"), nombre + ".jpg");
+            (rocolaOsSpPortadaDe ?? (rocolaOsSpPortadaDe = new Dictionary<Album, KeyValuePair<string, string>>()))[a] = new KeyValuePair<string, string>(id, url);   // (A8: para volver a pedirla si el recorte la borra)
             if (File.Exists(ruta)) { a.CoverPath = ruta; return; }
             if (rocolaOsSpEsperanPortada == null) rocolaOsSpEsperanPortada = new Dictionary<string, List<Album>>(StringComparer.Ordinal);
             List<Album> esperan;
@@ -730,8 +787,38 @@ namespace Rocola
             rocolaOsSpEsperanPortada.Remove(ruta);
             foreach (Album a in l) a.CoverPath = ruta;
             foreach (Album a in l) RequestCover(a, false, true);   // (al decodificarla, XP la pone donde haga falta: ApplyArrivedCover)
-            if (searchOpen) { searchOverlay.DatosVer++; searchOverlay.Invalidate(); }
+            if (searchOpen) RocolaOsSpotifyCatalogoDatosJunta();
             if (albumView != null && albumView.Visible) albumView.Invalidate();
+        }
+        // (revision de mejoras del 24-11-2026, A6) DatosVer++ rehornea TODAS las tarjetas del buscador y se saltaba la junta de 120 ms de XP
+        // (JuntaPortadasMs, Codigo/BuscadorPortadasGpu.cs): con 17 portadas llegando, 17 rehornadas. Ahora, como mucho una cada 120 ms: la que
+        // llega tarde marca «sucio» y un reloj de una sola vez (el encargo vuelve al hilo de la pantalla) la sube al cumplirse el plazo. Cada
+        // tarjeta que aun no tenia su portada la vuelve a preguntar igual (el DatosVer sube); solo se juntan los avisos.
+        internal const int RocolaOsSpDatosJuntaMs = 120;
+        private long rocolaOsSpDatosUltimoMs = long.MinValue / 2;
+        private System.Threading.Timer rocolaOsSpDatosReloj;
+        private bool rocolaOsSpDatosSucio;
+        private void RocolaOsSpotifyCatalogoDatosJunta()
+        {
+            long ahora = Environment.TickCount64, falta = RocolaOsSpDatosJuntaMs - (ahora - rocolaOsSpDatosUltimoMs);
+            if (falta <= 0)
+            {
+                rocolaOsSpDatosUltimoMs = ahora; rocolaOsSpDatosSucio = false;
+                searchOverlay.DatosVer++; searchOverlay.Invalidate();
+                return;
+            }
+            if (rocolaOsSpDatosSucio) return;   // (ya hay un reloj en camino)
+            rocolaOsSpDatosSucio = true;
+            if (rocolaOsSpDatosReloj != null) { try { rocolaOsSpDatosReloj.Dispose(); } catch { } }
+            rocolaOsSpDatosReloj = new System.Threading.Timer(delegate
+            {
+                RocolaOs.Encarga("spotify_catalogo:portada_junta", delegate
+                {
+                    if (!rocolaOsSpDatosSucio) return;
+                    rocolaOsSpDatosSucio = false; rocolaOsSpDatosUltimoMs = Environment.TickCount64;
+                    if (searchOpen) { searchOverlay.DatosVer++; searchOverlay.Invalidate(); }
+                });
+            }, null, (int)Math.Max(1, falta), System.Threading.Timeout.Infinite);
         }
     }
 
@@ -862,6 +949,78 @@ namespace Rocola
                 string ruta = p.Ruta;
                 RocolaOs.Encarga("spotify_catalogo:portada", delegate { Form1 f = RocolaOs.LaRocola; if (f != null) f.RocolaOsSpotifyCatalogoLlegoPortada(ruta); });
             }
+        }
+    }
+
+    // EL RECORTE DE /run (A8): suma portadas y miniaturas de Spotify y borra lo mas viejo si pasan del tope
+    internal static class RocolaOsSpotifyCatalogoRecorte
+    {
+        internal const long TopeBytes = 150L * 1024 * 1024;
+        internal const long CadaMs = 3600000, RecienteMs = 30 * 60 * 1000;
+        private static long ultimo = long.MinValue / 2;
+        private static int corriendo;
+        // desde la pantalla: toca? (una vez por hora; la primera vez de la sesion, al abrir el buscador)
+        internal static bool Toca()
+        {
+            long ahora = Environment.TickCount64;
+            if (ahora - ultimo < CadaMs || Volatile.Read(ref corriendo) != 0) return false;
+            ultimo = ahora;
+            return true;
+        }
+        internal static void Lanza(HashSet<string> protegidas, Action<HashSet<string>> alTerminar)
+        {
+            if (Interlocked.Exchange(ref corriendo, 1) != 0) return;
+            RocolaOs.Hilo("spotify_recorte", delegate
+            {
+                try
+                {
+                    string portadas = RocolaOs.Run("rocola-xp/spotify/portadas"), mini = RocolaOs.Run("rocola-xp/spotify/miniaturas");
+                    long tope = TopeBytes;
+                    string env = Environment.GetEnvironmentVariable("ROCOLA_SPOTIFY_RECORTE_BYTES");   // (las pruebas)
+                    long t; if (!string.IsNullOrEmpty(env) && long.TryParse(env, NumberStyles.Integer, CultureInfo.InvariantCulture, out t) && t > 0) tope = t;
+                    HashSet<string> borradas = Recorta(portadas, mini, protegidas, tope, RecienteMs);
+                    if (borradas.Count > 0) alTerminar(borradas);
+                }
+                catch (Exception ex) { RocolaOs.Falla("spotify_recorte", "al recortar", ex); }
+                finally { Volatile.Write(ref corriendo, 0); }
+            });
+        }
+        // devuelve las rutas de PORTADAS borradas (las miniaturas no se nombran: XP las rehace si faltan)
+        internal static HashSet<string> Recorta(string portadas, string miniaturas, HashSet<string> protegidas, long tope, long recienteMs)
+        {
+            HashSet<string> borradas = new HashSet<string>(StringComparer.Ordinal);
+            List<KeyValuePair<DateTime, FileInfo>> l = new List<KeyValuePair<DateTime, FileInfo>>();
+            long total = 0;
+            foreach (string dir in new[] { portadas, miniaturas })
+            {
+                if (dir == null || !Directory.Exists(dir)) continue;
+                foreach (string ruta in Directory.EnumerateFiles(dir))
+                {
+                    string n = Path.GetFileName(ruta);
+                    if (n.IndexOf(".t", StringComparison.Ordinal) >= 0 || n.EndsWith(".n", StringComparison.Ordinal)) continue;   // (las que se estan bajando)
+                    try
+                    {
+                        FileInfo f = new FileInfo(ruta);
+                        DateTime cuando = f.LastWriteTimeUtc > f.LastAccessTimeUtc ? f.LastWriteTimeUtc : f.LastAccessTimeUtc;
+                        l.Add(new KeyValuePair<DateTime, FileInfo>(cuando, f));
+                        total += f.Length;
+                    }
+                    catch { }
+                }
+            }
+            if (total <= tope) return borradas;
+            l.Sort((a, b) => a.Key.CompareTo(b.Key));
+            DateTime limite = DateTime.UtcNow.AddMilliseconds(-recienteMs);
+            string dirPortadas = portadas == null ? null : Path.GetFullPath(portadas).TrimEnd('/');
+            foreach (KeyValuePair<DateTime, FileInfo> kv in l)
+            {
+                if (total <= tope || kv.Key > limite) break;   // (de ahi en adelante todo es reciente)
+                bool dePortada = dirPortadas != null && string.Equals(kv.Value.DirectoryName, dirPortadas, StringComparison.Ordinal);
+                if (dePortada && protegidas != null && (protegidas.Contains(kv.Value.FullName) || protegidas.Contains(Path.Combine(portadas, kv.Value.Name)))) continue;
+                try { long len = kv.Value.Length; kv.Value.Delete(); total -= len; if (dePortada) borradas.Add(Path.Combine(portadas, kv.Value.Name)); }
+                catch { }
+            }
+            return borradas;
         }
     }
 }

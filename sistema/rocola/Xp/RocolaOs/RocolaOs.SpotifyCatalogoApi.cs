@@ -110,6 +110,28 @@ namespace Rocola
         private static readonly Dictionary<string, RocolaOsSpotifyCatalogoDisco> discos = new Dictionary<string, RocolaOsSpotifyCatalogoDisco>(StringComparer.Ordinal);
         private static readonly Dictionary<string, RocolaOsSpotifyCatalogoPagina> paginas = new Dictionary<string, RocolaOsSpotifyCatalogoPagina>(StringComparer.Ordinal);
         private static readonly Dictionary<string, List<RocolaOsSpotifyCatalogoCancion>> atajos = new Dictionary<string, List<RocolaOsSpotifyCatalogoCancion>>(StringComparer.Ordinal);
+        // (revision de mejoras del 24-11-2026, A5) TOPE EN MEMORIA a lo contestado: una fiesta larga con mucha busqueda no crece sin fin. Al pasar
+        // el tope se borra lo mas viejo (por orden de entrada). Lo de la cuenta (tus listas y discos, pocos) no se borra. Nada va al disco.
+        internal const int TopeBusquedas = 300, TopeDiscos = 500, TopePaginas = 500;
+        private static readonly Queue<string> ordenBusquedas = new Queue<string>(), ordenDiscos = new Queue<string>(), ordenPaginas = new Queue<string>();
+        // (A5) la clave de la memoria de busquedas va sin acentos ni signos (MotorBusqueda.Normaliza): «Beyoncé» y «beyonce» son la misma; a Spotify
+        // se le sigue mandando lo escrito (la clave de RocolaOsSpotifyCatalogoClave). Si no queda nada (solo signos), lo escrito tal cual.
+        internal static string ClaveCache(string q) { string n = MotorBusqueda.Normaliza(q); return n.Length > 0 ? n : (q ?? ""); }
+        private static readonly HashSet<string> discosFijos = new HashSet<string>(StringComparer.Ordinal);
+        // (con cerrojo) mete o cambia una entrada; si es nueva y ya no cabe, se borra la mas vieja que no sea fija
+        private static void Pon<T>(Dictionary<string, T> d, Queue<string> orden, string clave, T v, int tope, bool fijo)
+        {
+            if (fijo && ReferenceEquals(d, discos)) discosFijos.Add(clave);
+            if (!d.ContainsKey(clave) && !fijo) orden.Enqueue(clave);   // (una fija nueva no entra en la cola de lo que se borra)
+            d[clave] = v;
+            int vueltas = orden.Count;
+            while (d.Count > tope && vueltas-- > 0 && orden.Count > 0)
+            {
+                string k = orden.Dequeue();
+                if (ReferenceEquals(d, discos) && discosFijos.Contains(k)) continue;
+                d.Remove(k);
+            }
+        }
 
         // ---------- lo que se sabe (para el estado y las pruebas: sin secretos) ----------
         private static long peticiones, peticionesBusqueda, peticionesDisco, peticionesArtista, peticionesCuenta, peticionesLlave, frenadas, fallos, peticionesPared, peticionesAtajos, dejadas;
@@ -119,6 +141,60 @@ namespace Rocola
         private static string api = "sin_llave";   // sin_llave, bien, frena, falla
         internal static long Peticiones { get { return Interlocked.Read(ref peticiones); } }
         internal static bool Frena { get { return Environment.TickCount64 < Volatile.Read(ref frenaHastaMs); } }
+        // (revision de mejoras del 24-11-2026, A3) SIN RED RECORDADO: tras una excepcion de red o un tiempo agotado (no un 4xx ni un 5xx: esos
+        // contestaron) no se vuelve a preguntar en 15 s, 30, 60... hasta 5 min (0 al primer exito). Mientras dura, Pide contesta «sin red» al
+        // instante; pasado el plazo deja pasar UNA peticion de prueba (la que lo reclama cierra otra vez el plazo hasta que acabe) y, si sale
+        // bien, todo vuelve. Antes un enlace que no contestaba dejaba el hilo de la API ocupado hasta unos 31 s por busqueda (8 s de conexion y
+        // 15 s de tiempo total, y un reintento tras dormir 1 s).
+        internal const int SinRedMinMs = 15000, SinRedMaxMs = 300000, TopeEsperaMs = 6000;
+        internal const string ErrorSinRedEspera = "sin red (se vuelve a probar en unos segundos)";   // (lo que contesta Pide mientras dura el plazo: no se apunta otra vez)
+        private static long sinRedHasta, sinRedPaso;
+        internal static bool SinRed { get { long h = Volatile.Read(ref sinRedHasta); return h != 0 && Environment.TickCount64 < h; } }
+        private static bool SinRedBloquea()
+        {
+            long h = Volatile.Read(ref sinRedHasta);
+            if (h == 0) return false;
+            long ahora = Environment.TickCount64;
+            if (ahora < h) return true;
+            // (pasado el plazo) una sola prueba por intervalo: quien cambia el plazo es ella; las demas ya lo ven corriendo
+            return Interlocked.CompareExchange(ref sinRedHasta, ahora + Math.Max(Volatile.Read(ref sinRedPaso), SinRedMinMs), h) != h;
+        }
+        private static void MarcaSinRed()
+        {
+            long paso = Volatile.Read(ref sinRedPaso);
+            paso = paso <= 0 ? SinRedMinMs : Math.Min(SinRedMaxMs, paso * 2);
+            Volatile.Write(ref sinRedPaso, paso);
+            Volatile.Write(ref sinRedHasta, Environment.TickCount64 + paso);
+            api = "sin_red";
+            ApuntaCallado("sin red: Spotify no contesta; no se le pregunta nada y se vuelve a probar con espera creciente (15 s a 5 min)");   // (el mismo renglon, a lo mas uno cada 10 min)
+        }
+        private static void SinRedOk()
+        {
+            if (Volatile.Read(ref sinRedHasta) == 0) return;
+            Volatile.Write(ref sinRedPaso, 0); Volatile.Write(ref sinRedHasta, 0);
+        }
+        // (A9) cuando pasaron las peticiones a /v1 (ultimos 60 min), el ultimo 429 y el ultimo exito (hora de reloj en milisegundos Unix; 0 = nunca)
+        private static readonly Queue<long> recientes = new Queue<long>();
+        private static long ultimo429Unix, ultimoExitoUnix;
+        private static void ApuntaPeticion()
+        {
+            long ahora = Environment.TickCount64;
+            lock (recientes)
+            {
+                recientes.Enqueue(ahora);
+                while (recientes.Count > 0 && ahora - recientes.Peek() > 3600000L) recientes.Dequeue();
+            }
+        }
+        private static int PeticionesUltimaHora()
+        {
+            long ahora = Environment.TickCount64;
+            lock (recientes)
+            {
+                while (recientes.Count > 0 && ahora - recientes.Peek() > 3600000L) recientes.Dequeue();
+                return recientes.Count;
+            }
+        }
+        private static string Hora(long unixMs) { return unixMs <= 0 ? "-" : DateTimeOffset.FromUnixTimeMilliseconds(unixMs).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture); }
         internal static bool HayLlave { get { Config c = LeeConfig(); return c != null && c.Listo; } }
         internal static bool HayCuenta { get { Config c = LeeConfig(); return c != null && c.Listo && !string.IsNullOrEmpty(c.Refresco); } }
 
@@ -126,7 +202,7 @@ namespace Rocola
         // BUSCAR: la contestada se da al momento (Listo en el hilo que llama); si no, se pide a los 300 ms (solo la ultima)
         internal static RocolaOsSpotifyCatalogoBusqueda BuscaYa(string consulta)
         {
-            lock (cerrojo) { RocolaOsSpotifyCatalogoBusqueda b; return busquedas.TryGetValue(consulta, out b) ? b : null; }
+            lock (cerrojo) { RocolaOsSpotifyCatalogoBusqueda b; return busquedas.TryGetValue(ClaveCache(consulta), out b) ? b : null; }
         }
         internal static void Busca(string consulta, Action<object, string> listo)
         {
@@ -322,7 +398,7 @@ namespace Rocola
                 if (d == null) return null;
                 RocolaOsSpotifyCatalogoBusqueda b;
                 using (d) b = LeeBusqueda(p.Clave, d.RootElement);
-                lock (cerrojo) { busquedas[p.Clave] = b; foreach (RocolaOsSpotifyCatalogoDisco x in b.Discos) if (!discos.ContainsKey(x.Id)) discos[x.Id] = x; }
+                lock (cerrojo) { Pon(busquedas, ordenBusquedas, ClaveCache(p.Clave), b, TopeBusquedas, false); foreach (RocolaOsSpotifyCatalogoDisco x in b.Discos) if (!discos.ContainsKey(x.Id)) Pon(discos, ordenDiscos, x.Id, x, TopeDiscos, false); }
                 return b;
             }
             if (p.Que == "disco")
@@ -357,7 +433,7 @@ namespace Rocola
                     JsonDocument d2 = Pide(c, false, "/albums/" + Uri.EscapeDataString(p.Clave) + "/tracks?limit=50&offset=" + leidas.ToString(CultureInfo.InvariantCulture) + "&market=" + m, ref peticionesDisco, true, out e2);
                     if (d2 != null) using (d2) LeeCancionesDeDisco(d2.RootElement, disco);
                 }
-                lock (cerrojo) { discos[disco.Id] = disco; }
+                lock (cerrojo) { Pon(discos, ordenDiscos, disco.Id, disco, TopeDiscos, false); }
                 return disco;
             }
             if (p.Que == "lista")
@@ -390,7 +466,7 @@ namespace Rocola
                 foreach (RocolaOsSpotifyCatalogoDisco x in b.Discos) if (MotorBusqueda.Normaliza(x.Nombre) == clave) { mejor = x; break; }
                 if (mejor == null && clave.Length > 0) foreach (RocolaOsSpotifyCatalogoDisco x in b.Discos) if (MotorBusqueda.Normaliza(x.Nombre).Contains(clave)) { mejor = x; break; }
                 if (mejor == null) { error = NoEsta; return null; }
-                lock (cerrojo) { if (!discos.ContainsKey(mejor.Id)) discos[mejor.Id] = mejor; }
+                lock (cerrojo) { if (!discos.ContainsKey(mejor.Id)) Pon(discos, ordenDiscos, mejor.Id, mejor, TopeDiscos, false); }
                 return mejor;
             }
             if (p.Que == ParedArtista || p.Que == ParedTodos || p.Que == ParedCanciones) return AtiendePagina(c, m, p, out error);
@@ -479,7 +555,7 @@ namespace Rocola
                         }
                     else if (e != null && error == null) error = e;
                 }
-                lock (cerrojo) { foreach (RocolaOsSpotifyCatalogoDisco x in l) { RocolaOsSpotifyCatalogoDisco y; if (!discos.TryGetValue(x.Id, out y) || (y.Canciones == null && x.Canciones != null)) discos[x.Id] = x; } }
+                lock (cerrojo) { foreach (RocolaOsSpotifyCatalogoDisco x in l) { RocolaOsSpotifyCatalogoDisco y; if (!discos.TryGetValue(x.Id, out y) || (y.Canciones == null && x.Canciones != null)) Pon(discos, ordenDiscos, x.Id, x, TopeDiscos, true); } }
                 if (l.Count == 0 && error != null) return null;
                 // (23-11-2026, revision) si una parte no llego por algo pasajero (sin red, 5xx, 429), todo se pide otra vez despues: antes lo que si
                 // llego se daba por bueno y tus discos o tus listas faltaban hasta reiniciar
@@ -491,7 +567,8 @@ namespace Rocola
             if (p.Que == Calentar)
             {   // (rapido-spotify) la llave de la app, si falta o vence en menos de 5 min (no es una peticion a la API: es la de cuentas)
                 if (Frena) { error = "Spotify frena"; return null; }
-                string ll = Llave(c, false, MargenCalentarMs, out error);
+                if (SinRedBloquea()) { error = ErrorSinRedEspera; return null; }
+                string ll = Llave(c, false, MargenCalentarMs, true, out error);
                 if (ll == null) return null;
                 if (!Frena) CalientaConexiones();
                 return Calentar;
@@ -536,8 +613,8 @@ namespace Rocola
             }
             lock (cerrojo)
             {
-                for (int i = 0; i < pg.Discos.Count; i++) { RocolaOsSpotifyCatalogoDisco y; if (discos.TryGetValue(pg.Discos[i].Id, out y)) pg.Discos[i] = y; else discos[pg.Discos[i].Id] = pg.Discos[i]; }
-                paginas[clave] = pg;
+                for (int i = 0; i < pg.Discos.Count; i++) { RocolaOsSpotifyCatalogoDisco y; if (discos.TryGetValue(pg.Discos[i].Id, out y)) pg.Discos[i] = y; else Pon(discos, ordenDiscos, pg.Discos[i].Id, pg.Discos[i], TopeDiscos, false); }
+                Pon(paginas, ordenPaginas, clave, pg, TopePaginas, false);
             }
             return pg;
         }
@@ -571,25 +648,27 @@ namespace Rocola
         private static JsonDocument Pide(Config c, bool deUsuario, string ruta, ref long contador, bool reintenta, out string error)
         {
             error = null;
+            if (SinRedBloquea()) { error = ErrorSinRedEspera; return null; }   // (A3: al instante, sin tocar la red)
             for (int intento = 0; intento < 2; intento++)
             {
                 if (Frena) { error = "Spotify frena"; return null; }
-                string llave = Llave(c, deUsuario, out error);
+                string llave = Llave(c, deUsuario, 60000, reintenta, out error);
                 if (llave == null) return null;
                 HttpResponseMessage r;
                 try
                 {
                     HttpRequestMessage q = new HttpRequestMessage(HttpMethod.Get, Base + ruta);
                     q.Headers.TryAddWithoutValidation("Authorization", "Bearer " + llave);
-                    Interlocked.Increment(ref peticiones); Interlocked.Increment(ref contador);
-                    r = Http.Send(q);
+                    Interlocked.Increment(ref peticiones); Interlocked.Increment(ref contador); ApuntaPeticion();
+                    // (A3) lo que alguien espera (busquedas, discos, paredes: reintenta) vale 6 s en total; lo de fondo, lo de siempre (15 s)
+                    using (CancellationTokenSource tope = reintenta ? new CancellationTokenSource(TopeEsperaMs) : null)
+                        r = tope != null ? Http.Send(q, tope.Token) : Http.Send(q);
                 }
                 catch (Exception ex)
                 {
-                    Interlocked.Increment(ref fallos); api = "falla";
+                    Interlocked.Increment(ref fallos); MarcaSinRed();
                     error = "sin red (" + ex.GetType().Name + ")";
-                    if (intento == 0 && reintenta) { Thread.Sleep(1000); continue; }
-                    ApuntaCallado("la API no contesto: " + error);
+                    ApuntaCallado("la API no contesto: " + error);   // (A3: sin dormir 1 s ni reintentar: el reintento a 1 s es para los 5xx)
                     return null;
                 }
                 using (r)
@@ -598,7 +677,7 @@ namespace Rocola
                     ultimoCodigo = cod;
                     if (cod == 200)
                     {
-                        api = "bien";
+                        api = "bien"; SinRedOk(); Interlocked.Exchange(ref ultimoExitoUnix, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                         try { using (Stream s = r.Content.ReadAsStream()) return JsonDocument.Parse(s); }
                         catch (Exception ex) { error = "respuesta rara (" + ex.GetType().Name + ")"; return null; }
                     }
@@ -654,6 +733,7 @@ namespace Rocola
             catch { }
             // (23-11-2026, revision) nunca acorta un plazo que ya corre (un 429 corto no deshace uno de una hora)
             long nuevo = Environment.TickCount64 + seg * 1000L;
+            Interlocked.Exchange(ref ultimo429Unix, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());   // (A9)
             if (nuevo < Volatile.Read(ref frenaHastaMs)) return;
             Volatile.Write(ref frenaHastaMs, nuevo);
             frenaRazon = razon;
@@ -704,9 +784,8 @@ namespace Rocola
         // peticiones de mas y la bitacora llena); al cambiar el archivo (otro client_secret, otra autorizacion) se intenta de nuevo
         private static Config rechazadaApp, rechazadaCuenta;
         private static void OlvidaLlave(bool deUsuario) { if (deUsuario) llaveCuenta = null; else llaveApp = null; }
-        private static string Llave(Config c, bool deUsuario, out string error) { return Llave(c, deUsuario, 60000, out error); }
-        // (rapido-spotify) margenMs: cuanto antes de vencer se pide otra (60 s al preguntar; 5 min al calentar: Calienta)
-        private static string Llave(Config c, bool deUsuario, long margenMs, out string error)
+                // (rapido-spotify) margenMs: cuanto antes de vencer se pide otra (60 s al preguntar; 5 min al calentar: Calienta)
+        private static string Llave(Config c, bool deUsuario, long margenMs, bool rapido, out string error)
         {
             error = null;
             long ahora = Environment.TickCount64;
@@ -734,9 +813,10 @@ namespace Rocola
                     if (modo == 1) q.Headers.TryAddWithoutValidation("Authorization", "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(c.Id + ":" + c.Secreto)));
                     q.Content = new StringContent(cuerpo, Encoding.ASCII, "application/x-www-form-urlencoded");
                     Interlocked.Increment(ref peticionesLlave);
-                    r = http.Send(q);
+                    using (CancellationTokenSource tope = rapido ? new CancellationTokenSource(TopeEsperaMs) : null)   // (A3: lo que alguien espera, 6 s)
+                        r = tope != null ? http.Send(q, tope.Token) : http.Send(q);
                 }
-                catch (Exception ex) { api = "falla"; error = "sin red al pedir la llave (" + ex.GetType().Name + ")"; return null; }
+                catch (Exception ex) { MarcaSinRed(); error = "sin red al pedir la llave (" + ex.GetType().Name + ")"; return null; }
                 cod = (int)r.StatusCode;
                 if (cod == 200 || modo == 1 || (cod != 400 && cod != 401)) break;
                 r.Dispose();
@@ -762,6 +842,7 @@ namespace Rocola
                         string t = Texto(d.RootElement, "access_token");
                         int exp = Entero(d.RootElement, "expires_in");
                         if (string.IsNullOrEmpty(t)) { error = "la llave vino vacia"; return null; }
+                        SinRedOk();
                         long vence = ahora + Math.Max(120, exp) * 1000L;
                         if (deUsuario)
                         {
@@ -980,7 +1061,7 @@ namespace Rocola
                 long ahora = Environment.TickCount64;
                 long hasta = Volatile.Read(ref frenaHastaMs);
                 StringBuilder sb = new StringBuilder();
-                sb.Append("api=").Append(Frena ? "frena" : api).Append('\n');
+                sb.Append("api=").Append(Frena ? "frena" : SinRed ? "sin_red" : api).Append('\n');
                 sb.Append("llave=").Append(HayLlave ? "si" : "no").Append('\n');
                 sb.Append("cuenta=").Append(HayCuenta ? "si" : "no").Append('\n');
                 sb.Append("peticiones=").Append(Peticiones.ToString(CultureInfo.InvariantCulture)).Append('\n');
@@ -996,6 +1077,10 @@ namespace Rocola
                 sb.Append("frena_s=").Append((hasta > ahora ? (hasta - ahora + 999) / 1000 : 0).ToString(CultureInfo.InvariantCulture)).Append(frenaRazon.Length > 0 && hasta > ahora ? " cuota" : "").Append('\n');
                 sb.Append("fallos=").Append(Interlocked.Read(ref fallos).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("ultimo_codigo=").Append(ultimoCodigo.ToString(CultureInfo.InvariantCulture)).Append('\n');
+                // (revision de mejoras del 24-11-2026, A9) para el buzon: cuantas peticiones a /v1 en la ultima hora, y la hora (UTC) del ultimo 429 y del ultimo exito
+                sb.Append("peticiones_60min=").Append(PeticionesUltimaHora().ToString(CultureInfo.InvariantCulture)).Append('\n');
+                sb.Append("ultimo_429=").Append(Hora(Interlocked.Read(ref ultimo429Unix))).Append('\n');
+                sb.Append("ultimo_exito=").Append(Hora(Interlocked.Read(ref ultimoExitoUnix))).Append('\n');
                 string d = RocolaOs.Run("rocola-xp/spotify");
                 Directory.CreateDirectory(d);
                 string ruta = Path.Combine(d, "catalogo"), t = ruta + ".t";
