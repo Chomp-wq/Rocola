@@ -2108,7 +2108,7 @@ namespace Rocola
             // para volver a abrir o cerrar hay que soltar y apretar otra vez.
             if (IsUp(kc) && BackHeld())
             {
-                if (disparoBuscador.Pide() && (searchOpen || TopeBuscadorDeja())) ToggleSearch();
+                if (disparoBuscador.Pide() && (searchOpen || (!RocolaOsSinBuscadorNuevo() && TopeBuscadorDeja()))) ToggleSearch();   // ROCOLA OS g279: (XP) if (disparoBuscador.Pide() && (searchOpen || TopeBuscadorDeja())) ToggleSearch(); — con Rocola OS no se abre OTRO buscador dentro de una pared del buscador ni de un disco abierto desde el (cerrar el abierto sigue igual; no gasta una apertura del tope)
                 return true;
             }
 

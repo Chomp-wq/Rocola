@@ -19,6 +19,7 @@
 #   ensena lo de antes: «Buscando…», el anillo de carga y «Cargando…», y todo junto al llegar) y siempre (23-11-2026: un disco o un artista tuyo elegido
 #   en el buscador abre siempre el disco dentro del buscador o una pared del buscador, nunca la pared de verdad); todas, de fabrica
 #   y colgada y recorte (24-11-2026, revision de mejoras: A3 la API que no contesta se recuerda «sin red» y no ocupa el hilo; A8 el recorte de /run); la escena
+#   y sinanidar (26-11-2026: ni otro buscador ni la estrella dentro de lo del buscador: g279, g280); la escena
 #   cuenta (A1) ya NO espera las peticiones de la cuenta (la letra ♫ no esta en la pared: ni se piden), y sinred prueba el «sin red» recordado
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
@@ -31,7 +32,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo cargando siempre colgada recorte}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo cargando siempre colgada recorte sinanidar}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -553,25 +554,22 @@ PY
       si "sinllave: la traza igual a la de sin ROCOLA_OS quitando lo de RocolaOs (compara_trazas.py --ignora, holgura 80)" test $r = 0
     fi ;;
   ayuda)
-    # (2a revision funcionamiento-y-reglas) LA AYUDA (EL ASISTENTE) EN MEDIO DE LA PILA. En la pared de Banda, ROJO+ABAJO: el rojo es REGRESAR
-    # (el buscador, como en XP desde un disco el rojo saca a la pared) y ABAJO con el rojo abre la ayuda encima; el rojo la cierra y queda el
-    # buscador con lo escrito (PONER abre la pared de Banda otra vez). En un disco de esa pared (2a pagina, casilla 19), ROJO+ABAJO: la pared
-    # (XP: BackToAlbums) y la ayuda encima; el rojo la cierra y la pared sigue en la misma pagina y casilla (PONER entra al mismo disco, PONER
-    # pide su 1a, can5181). REGRESAR, REGRESAR: la pared y el buscador con lo escrito (PONER: la pared por 3a vez). El rojo va PRIMERO y
-    # mantenido 1 s, y ABAJO 0,3 s despues (como la escena asistente de las ventanas): si los dos llegan en el mismo milisegundo, el rojo ya
-    # es el atajo de la ayuda (EsAtajoAyuda de XP: la ayuda se abre encima de la pared o del disco y ahi se queda, como XP en un disco)
+    # (2a revision funcionamiento-y-reglas; CAMBIADA el 26-11-2026: antes la ayuda se abria en medio de la pila, y el dueno pidio que NO se abra
+    # dentro del buscador ni de sus paredes y discos: g280, escena sinanidar) LA AYUDA (EL ASISTENTE) EN MEDIO DE LA PILA NO SE ABRE. En la pared de
+    # Banda, ROJO+ABAJO: el rojo es REGRESAR (el buscador) y ABAJO con el buscador abierto no abre la estrella; PONER abre la pared otra vez, PONER
+    # un disco de ella (casilla 1), ROJO+ABAJO: la pared y la estrella tampoco se abre; REGRESAR: el buscador con lo escrito. El rojo va PRIMERO y
+    # mantenido 1 s, y ABAJO 0,3 s despues (como la escena asistente de las ventanas)
     apifalsa $e; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,19.5:27~1000,19.8:40,22.5:27,24.5:13,26.5:38,28.5:13,30.5:27~1000,30.8:40,33.5:27,35.5:13,37:13,39:27,40.5:27,42:13" 45 ROCOLA_OS=1 \
-      ROCOLA_CAPTURA="$(cap 21.5 ayuda-sobre-el-buscador-desde-la-pared),$(cap 24 buscador-al-cerrar-la-ayuda),$(cap 32.5 ayuda-sobre-la-pared-desde-un-disco),$(cap 35 pared-al-cerrar-la-ayuda),$(cap 41.5 buscador-al-final-de-ayuda)"
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,19.5:27~1000,19.8:40,22.5:13,24.5:13,26.5:27~1000,26.8:40,29.5:27,31:13" 36 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 21.5 ayuda-sobre-el-buscador-desde-la-pared),$(cap 24 pared-otra-vez),$(cap 28.5 ayuda-sobre-la-pared-desde-un-disco),$(cap 30.5 buscador-al-final-de-ayuda)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
     si "ayuda: sale con 0" test "$(cat $o/salio)" = 0
-    # la ayuda abierta se ve en su captura: el circulo verde de «Poner una cancion» del globo (948,350: con el modo y la llave la pregunta
+    # la ayuda abierta se veria en su captura: el circulo verde de «Poner una cancion» del globo (948,350: con el modo y la llave la pregunta
     # lleva cuatro opciones, un poco mas juntas -asistente-spotify, g76-; con las tres de XP iria en 948,369); cerrada, no
     ca="${CAPTURAS:-$W}"; verde() { python3 -c "import sys;from PIL import Image;p=Image.open(sys.argv[1]).convert('RGB').getpixel((948,350));sys.exit(0 if (p[1]>=200 and p[0]<160)==(sys.argv[2]=='1') else 1)" "$ca/$1.png" "$2"; }
-    si "ayuda: la ayuda se abrio en la pared (encima del buscador) y en el disco de la pared (encima de la pared), y el rojo la cerro las dos veces (capturas)" bash -c "$(declare -f verde); ca='$ca'; verde ayuda-sobre-el-buscador-desde-la-pared 1 && verde ayuda-sobre-la-pared-desde-un-disco 1 && verde buscador-al-cerrar-la-ayuda 0 && verde pared-al-cerrar-la-ayuda 0"
-    si "ayuda: tras cerrar la ayuda, el buscador seguia con lo escrito y tras la pared, la misma pagina y casilla (la pared de Banda abierta 3 veces)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$d/rocola_os_bitacora.txt') = 3 ]"
-    si "ayuda: la 1a pedida es la 1a del disco de la casilla 19 (can5181) y es la unica ($(pedidos $o))" bash -c "[ '$(pedido $o 1)' = \"\$(printf 'pedida\tspotify:track:can5181')\" ] && [ $(pedidos $o) = 1 ]"
-    si "ayuda: de Orquesta nada, y la pared de Banda de memoria (4 peticiones de artista: off=0..30)" bash -c "! grep -q '/v1/.*art99' '$a' && [ \$(grep -c '/v1/artists/' '$a') = 4 ]" ;;
+    si "ayuda: la ayuda NO se abrio ni sobre el buscador (desde la pared) ni sobre la pared (desde un disco de ella) (capturas) ni hay rastro en la bitacora" bash -c "$(declare -f verde); ca='$ca'; verde ayuda-sobre-el-buscador-desde-la-pared 0 && verde ayuda-sobre-la-pared-desde-un-disco 0 && verde buscador-al-final-de-ayuda 0 && ! grep -q 'la ayuda con lo de Spotify' '$d/rocola_os_bitacora.txt'"
+    si "ayuda: el buscador seguia con lo escrito (REGRESAR de la pared, y otra vez al final) y la pared se abrio tres veces (PONER al final la abre otra vez)" bash -c "[ \$(grep -c 'pared del buscador: pared_artista (41 casillas)' '$d/rocola_os_bitacora.txt') = 3 ] && [ \$(grep -c 'REGRESAR: de vuelta al buscador con «interminable»' '$d/rocola_os_bitacora.txt') = 2 ]"
+    si "ayuda: nada pedido ($(pedidos $o)) y de Orquesta nada" bash -c "[ $(pedidos $o) = 0 ] && ! grep -q '/v1/.*art99' '$a'" ;;
   miente)
     # (revision cuota-hilos-y-fallos, 2a pasada) EL «TOTAL» DE SEARCH QUE DICE DE MAS: Spotify da en search un «total» estimado que puede
     # quedarse muy por encima (aqui 1000 para los 41 discos de «interminable»). Se abre «Todos los discos» y ARRIBA hasta la 3a pagina (la
@@ -661,6 +659,33 @@ PY
     si "recorte: queda por debajo del tope de 100 KB entre las dos carpetas ($mb bytes en $n archivos)" test "$mb" -le 102400
     si "recorte: se borraron las mas viejas (y quedan algunas: no se barrio todo)" bash -c "[ $n -gt 2 ] && [ \$(ls '$r/portadas' | grep -c vieja) -lt 20 ]"
     si "recorte: las recientes (5 min) siguen" bash -c "[ -f '$r/portadas/reciente1.jpg' ] && [ -f '$r/portadas/reciente2.jpg' ]" ;;
+  sinanidar)
+    # NI OTRO BUSCADOR NI LA ESTRELLA DENTRO DE LO DEL BUSCADOR (26-11-2026, el dueno: «se puede abrir otro buscador dentro de una pared de discos
+    # temporal, y dentro del buscador se puede abrir el asistente, tampoco se debe poder abrir el asistente dentro de una pared de discos
+    # temporal»; g279 en Form1.cs, g280 en AsistenteRocola.cs; RocolaOs.BuscadorSinAnidar.cs). OJO: en una pared o un disco del buscador el rojo
+    # (REGRESAR) actua AL BAJAR (g53, g54): el rojo solo ya vuelve (del disco a la pared, de la pared al buscador) y la 2a tecla del combo llega
+    # cuando ya se esta un paso mas atras. La pared de Banda se abre a los 17 s y su disco a los 19,5 s:
+    #  a) del disco, ROJO+ARRIBA (21,5 s): el rojo vuelve a la pared y ARRIBA no abre otro buscador encima de ella (antes si)
+    #  c) del disco otra vez (25 s), ROJO+ABAJO (26,5 s): vuelve a la pared y la estrella no se abre encima de ella (antes si)
+    #  b) ROJO+ABAJO en la pared (30,5 s): el rojo vuelve al buscador con lo escrito y la estrella no se abre encima de el (antes si)
+    #  d) en la pared de XP: ROJO+ARRIBA abre el buscador (38,5 s) y lo cierra (41,5 s), ROJO+ABAJO abre la estrella (45 s) y el rojo la cierra (49 s)
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 interminable),$(derechas 14 14),17:13,19.5:13,21.5:27~1000,21.8:38,25:13,26.5:27~1000,26.8:40,30.5:27~1000,30.8:40,34.5:27~1000,34.8:38,38.5:27~1000,38.8:38,41.5:27~1000,41.8:38,45:27~1000,45.3:40,49:27" 53 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 18.5 sinanidar-pared),$(cap 20.8 sinanidar-disco),$(cap 23.5 sinanidar-pared-tras-rojo-arriba),$(cap 28.5 sinanidar-pared-tras-rojo-abajo),$(cap 32.5 sinanidar-buscador-tras-rojo-abajo),$(cap 36.5 sinanidar-pared-de-xp),$(cap 40.5 sinanidar-buscador-abierto-en-xp),$(cap 43.5 sinanidar-pared-de-xp-otra-vez),$(cap 47.5 sinanidar-estrella-en-xp),$(cap 51 sinanidar-estrella-cerrada)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    ca="${CAPTURAS:-$W}"; b="$d/rocola_os_bitacora.txt"
+    verde() { python3 -c "import sys;from PIL import Image;p=Image.open(sys.argv[1]).convert('RGB').getpixel((948,350));sys.exit(0 if (p[1]>=200 and p[0]<160)==(sys.argv[2]=='1') else 1)" "$ca/$1.png" "$2"; }
+    dif() { distintos "$ca/sinanidar-$1.png" "$ca/sinanidar-$2.png" 0 0 1024 768 40; }
+    si "sinanidar: sale con 0" test "$(cat $o/salio)" = 0
+    si "sinanidar: la pared de Banda se abrio una vez (17 s) y ninguna mas" test "$(cuenta $b 'pared del buscador: pared_artista \(41 casillas\)')" = 1
+    si "sinanidar: el disco de la pared se abrio ($(dif pared disco) puntos distintos de la pared)" test "$(dif pared disco)" -gt 20000
+    si "sinanidar a: del disco, ROJO+ARRIBA volvio a la pared y no abrio otro buscador ($(dif pared pared-tras-rojo-arriba) puntos distintos de la pared)" test "$(dif pared pared-tras-rojo-arriba)" -lt 20000
+    si "sinanidar c: del disco, ROJO+ABAJO volvio a la pared y no abrio la estrella (sin el circulo verde; $(dif pared pared-tras-rojo-abajo) puntos distintos de la pared)" bash -c "$(declare -f verde); ca='$ca'; verde sinanidar-pared-tras-rojo-abajo 0 && [ $(dif pared pared-tras-rojo-abajo) -lt 20000 ]"
+    si "sinanidar b: de la pared, ROJO+ABAJO volvio al buscador con lo escrito (una vez) y no abrio la estrella (sin verde; $(dif pared buscador-tras-rojo-abajo) puntos distintos de la pared: es el buscador)" bash -c "$(declare -f verde); ca='$ca'; verde sinanidar-buscador-tras-rojo-abajo 0 && [ $(dif pared buscador-tras-rojo-abajo) -gt 20000 ] && [ $(cuenta $b 'REGRESAR: de vuelta al buscador con «interminable»') = 1 ]"
+    si "sinanidar: la estrella no se abrio hasta la pared de XP (una sola apertura en la bitacora)" test "$(cuenta $b 'la ayuda con lo de Spotify')" = 1
+    si "sinanidar d: en la pared de XP, ROJO+ARRIBA abrio el buscador ($(dif pared-de-xp buscador-abierto-en-xp) puntos distintos) y otro ROJO+ARRIBA lo cerro (vuelve la pared: $(dif pared-de-xp pared-de-xp-otra-vez))" bash -c "[ $(dif pared-de-xp buscador-abierto-en-xp) -gt 20000 ] && [ $(dif pared-de-xp pared-de-xp-otra-vez) -lt 20000 ]"
+    si "sinanidar d: en la pared de XP, ROJO+ABAJO abrio la estrella (circulo verde) y el rojo la cerro" bash -c "$(declare -f verde); ca='$ca'; verde sinanidar-estrella-en-xp 1 && verde sinanidar-estrella-cerrada 0"
+    si "sinanidar: nada pedido" test "$(pedidos $o)" = 0 ;;
   esac
 done
 

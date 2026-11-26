@@ -134,7 +134,7 @@ namespace Rocola
 
         private void AbreAsistente()
         {
-            if (asistenteVisible) return;
+            if (asistenteVisible || RocolaOsSinAsistente()) return;   // ROCOLA OS g280: (XP) if (asistenteVisible) return; — con Rocola OS la estrella no se abre con el buscador abierto ni dentro de una pared o disco del buscador (RocolaOs/RocolaOs.BuscadorSinAnidar.cs); cerrarla o seguir guiando no cambia
             asistenteVisible = true; asistenteRegresando = false;   // si aun regresaba, la tarjeta da media vuelta desde donde iba
             asistentePagina = asistenteLeccion = asistenteSeleccion = 0;
             asistenteMision = 0; asistenteLogroTick = 0; asistenteAdiosTick = 0;
