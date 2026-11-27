@@ -76,6 +76,8 @@ namespace Rocola
                 // repetir lo que ya tiene y con las portadas a la mano (RocolaOs.ParedExclusiones.cs, RocolaOs.ParedNombres.cs, RocolaOs.ParedPortadas.cs).
                 // pared=0 en rocola_os.txt la vuelve a apagar.
                 DeFabrica = true,
+                // (27-11-2026) la clave que la hoja Spotify de Ctrl+F4 cambia (RocolaOs.VentanaSpotify.cs; sin declararla PonAjuste la rechaza): la lectura es RocolaOsPgPaginasMax
+                Claves = new RocolaOsClave[] { RocolaOsClave.Entero("pared_paginas", 100, 10, 1000, true, "paginas por letra de la pared con el catalogo (10 a 1000)") },
                 Arranca = f => f.RocolaOsPgArranca(),
                 Latido = f => f.RocolaOsPgLatido(),
                 Vivo = (f, sb) => f.RocolaOsPgVivo(sb),

@@ -58,6 +58,12 @@ namespace Rocola
             }
             string ts, ars; int ds;
             RocolaOsDatosSpotify(sp, out ts, out ars, out ds);
+            return RocolaOsMismaPorDatos(local, ts, ars, ds, out porQue);
+        }
+        // (27-11-2026) lo de arriba, por los datos de la cancion de Spotify (titulo, artista y duracion): el buscador la usa con lo que dio la busqueda,
+        // antes de que la cancion sea una pista de la rocola (RocolaOsSpotifyYaEstaEnLocal, RocolaOs.SpotifyCatalogo.cs)
+        private bool RocolaOsMismaPorDatos(Track local, string ts, string ars, int ds, out string porQue)
+        {
             int dl = (int)Math.Round(SegundosDe(local.Path) * 1000.0);
             porQue = "mismo titulo, artista y duracion";
             if (ds <= 0 || dl <= 0 || Math.Abs(ds - dl) > RocolaOsSpotify.CopiaToleranciaMs) return false;
