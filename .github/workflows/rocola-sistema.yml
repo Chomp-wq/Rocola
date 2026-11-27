@@ -119,9 +119,12 @@ jobs:
       ROCOLA_TRABAJO: /home/runner/rocola-trabajo
       ROCOLA_SISTEMA_VERSION: ${{ github.run_number }}
     steps:
-      - name: Hacer sitio en el disco (Buildroot ocupa unos 16 GB)
+      # 27-11-2026: con radeonsi (A10-7870K) Buildroot compila LLVM dos veces (host-llvm y llvm, con X86 + AMDGPU): unos 10 GB mas de disco,
+      # y la PRIMERA vuelta con esa receta tarda mucho mas (calculo, no medido: +2,5 a 3,5 h sobre los 26 min de antes; con ccache
+      # caliente las siguientes vuelven a ~30-40 min). Si pasa de las 5 h 10 min se para sola y guarda el ccache: lanzar otra vez continua.
+      - name: Hacer sitio en el disco (Buildroot ocupa unos 16 GB, y unos 10 mas con el LLVM de radeonsi)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/.ghcup /usr/share/swift /opt/az
           mkdir -p /home/runner/rocola-trabajo
           df -h /
       - uses: actions/checkout@v4
