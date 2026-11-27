@@ -25,6 +25,11 @@ Los archivos:
   la curva, la noche en la misma curva, el bajo virtual homogeneo, la ganancia constante (escalones de +-10 dB), el disco continuo, la
   afinacion de varios puntos, `rocola_os.txt`, el costo y la hojita «Billar» de Ctrl+F4 con la rocola de verdad (casi todo con la orden
   `rocola-xp --prueba-billar2`).
+- `cadena-nueva/prueba.sh`: la cadena nueva normal (A) y el marco comun (`CADENA_NUEVA_A.md`): el MP3 en coma flotante, sin huecos con las tres
+  marcas (LAME, iTunSMPB, VBRI; `marcas.py` las arma), la medida nueva (BS.1770, pico real 4x, LRA; contra `MedidorBs1770` y el ebur128 de
+  ffmpeg), la ganancia, la ganancia constante (escalones de +-10 dB, tambien contra la de hoy), el disco continuo, los arreglos fijos y el costo
+  (la orden `rocola-xp --prueba-cadena-nueva`, con las senales de `senales.py`); y escenas con la rocola de verdad y la tarjeta con reloj
+  (`analiza.py`): la A, la B con el modo billar, la de hoy, sin `ROCOLA_OS` y Spotify con el Soloist falso de `spotify-xp`.
 
 ## Cómo se corre
 

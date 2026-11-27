@@ -26,7 +26,8 @@
 // -> [la medida en vivo, si no se midio antes] -> el ecualizador del dueno (memoria normal, sin preganancia) -> LA GANANCIA x la noche -> el
 // corte del grave de noche y los graves de noche de XP -> el fundido de XP -> la salida de siempre (o la nueva del otro agente).
 // LA B (§3): lo mismo hasta los arreglos; despues RocolaOsCadenaB.Arma (las piezas del billar; mientras no esten, de paso) -> el ecualizador
-// del dueno (memoria del billar) -> la ganancia (medida con la B) -> la noche -> el fundido -> la salida.
+// del dueno (memoria del billar) -> la ganancia (medida con la B) -> la noche (sus graves de 120 Hz y su volumen; su corte de 80 Hz no: va
+// dentro del paso alto de las piezas del billar) -> el fundido -> la salida.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -128,8 +129,9 @@ namespace Rocola
                 string como;
                 s = RocolaOsSinHuecos(path, s, out como);
                 Interlocked.Increment(ref RocolaOsCadenasNuevas.Flotantes);
-                rocolaOsComoSeAbrio[path] = RocolaOsDescompresorFlotante.Motor + ", sin huecos: " + como + (f.ConRelleno ? ", con el relleno de huecos" : "");
-                return SinSilencios(path, s);
+                s = SinSilencios(path, s);
+                rocolaOsComoSeAbrio.AddOrUpdate(s, RocolaOsDescompresorFlotante.Motor + ", sin huecos: " + como + (f.ConRelleno ? ", con el relleno de huecos" : ""));
+                return s;
             }
             catch (Exception ex)
             {
@@ -138,7 +140,8 @@ namespace Rocola
                 return null;
             }
         }
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> rocolaOsComoSeAbrio = new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // como se abrio cada lector de la cadena nueva (el mismo objeto que llega a ArmaCadena); uno que no este aqui lo abrio XP (16 bits)
+        private static readonly ConditionalWeakTable<IAudioSource, string> rocolaOsComoSeAbrio = new ConditionalWeakTable<IAudioSource, string>();
 
         // ---------------------------------------------------------------- g461: el disco continuo
         private static bool RocolaOsCadenaNuevaSigue(CadenaCancion nueva, CadenaCancion vieja)
@@ -149,13 +152,27 @@ namespace Rocola
             try
             {
                 List<IRocolaOsPieza> pn = an.Receta.Piezas, pv = av.Receta.Piezas;
-                for (int i = 0; i < pn.Count && i < pv.Count; i++) if (pn[i].GetType() == pv[i].GetType()) pn[i].Sigue(pv[i]);
+                RocolaOsSiguePiezas(pn, pv);
                 if (an.Zumbido != null && av.Zumbido != null) an.Zumbido.Sigue(av.Zumbido);
                 if (an.NocheCorte != null && av.NocheCorte != null) an.NocheCorte.Sigue(av.NocheCorte);
                 if (an.NocheGraves != null && av.NocheGraves != null) an.NocheGraves.Sigue(av.NocheGraves);
             }
             catch (Exception ex) { RocolaOs.Falla(RocolaOsCadenasNuevas.Nombre, "el disco continuo", ex); }
             return true;
+        }
+
+        // cada pieza de la nueva con la de la vieja del MISMO tipo y el mismo orden entre las de su tipo (una medida en vivo o un tono parejo de mas en
+        // una de las dos no descoloca a las demas). Al preparar el relevo (antes de que la vieja acabe): las piezas del billar lo usan para el
+        // disco continuo exacto (CADENA_NUEVA.md §8.2); las del marco lo toman en su primera lectura.
+        internal static void RocolaOsSiguePiezas(List<IRocolaOsPieza> nuevas, List<IRocolaOsPieza> viejas)
+        {
+            Dictionary<Type, int> usadas = new Dictionary<Type, int>();
+            foreach (IRocolaOsPieza p in nuevas)
+            {
+                Type t = p.GetType(); int k; usadas.TryGetValue(t, out k); usadas[t] = k + 1;
+                int vistos = 0;
+                foreach (IRocolaOsPieza v in viejas) if (v.GetType() == t && vistos++ == k) { p.Sigue(v); break; }
+            }
         }
 
         // ---------------------------------------------------------------- g460: la cadena de esta cancion
@@ -214,10 +231,13 @@ namespace Rocola
 
             RocolaOsArmada arm = new RocolaOsArmada { Receta = r };
             string ca;
-            if (rocolaOsComoSeAbrio.TryGetValue(t.Path, out ca)) arm.Fuente = ca;
-            else arm.Fuente = source is RocolaOsFuenteSpotify ? "Spotify (rocola-pulso, coma flotante)" : "el lector de XP";
+            bool flotante = rocolaOsComoSeAbrio.TryGetValue(source, out ca);
+            if (flotante) arm.Fuente = ca;
+            else arm.Fuente = source is RocolaOsFuenteSpotify ? "Spotify (rocola-pulso, coma flotante)" : source is RocolaOsFuenteCalidad ? "la version de Spotify (coma flotante)" : "el lector de XP (16 bits: se abrio antes de elegir la nueva)";
             ISampleProvider x = source;
-            bool medirEnVivo = r.Medida == null && saltadoSeg <= 0;
+            bool nocheEnB = false;
+            // (un MP3 que abrio el lector de XP, a 16 bits y recortado, no se mide en vivo: su pico real saldria corto; lo mide la cola o el repaso)
+            bool medirEnVivo = r.Medida == null && saltadoSeg <= 0 && (flotante || !t.Path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase));
             arm.Entrada = r.Anota(new RocolaOsPiezaEntrada(x, this, medirEnVivo)); x = arm.Entrada;
             if (r.ZumbidoHz > 0) { arm.Zumbido = new QuitaZumbido(x, r.ZumbidoHz, true); x = arm.Zumbido; }
             RocolaOsArreglosFijos af = r.Anota(new RocolaOsArreglosFijos(x, r)); x = af;
@@ -247,6 +267,7 @@ namespace Rocola
                     catch (Exception ex) { RocolaOs.Falla(RocolaOsCadenasNuevas.Nombre, "las piezas de la B (van de paso)", ex); b = null; }
                 }
                 x = b ?? r.Anota(new RocolaOsPiezaDePaso(x));
+                nocheEnB = b != null;   // (las piezas del billar llevan el corte de noche dentro de su paso alto: CADENA_NUEVA.md §8.2)
             }
             if (medirEnVivo)
             {
@@ -257,7 +278,7 @@ namespace Rocola
             arm.Ganancia = r.Anota(new RocolaOsGananciaPieza(x, this, r.GananciaDb)); x = arm.Ganancia;
             // LA NOCHE (§2: FactorNoche, en la ganancia, y sus filtros de graves de hoy): el corte del grave (NV2) y los graves de noche (N1)
             float corteNoche = corteNocheRelevo >= 0f ? corteNocheRelevo : NocheCorteHz();
-            if (corteNoche > 0f) { arm.NocheCorte = GraveMono.DeNoche(x, corteNoche); c.Noche = arm.NocheCorte; x = arm.NocheCorte; }
+            if (corteNoche > 0f && !nocheEnB) { arm.NocheCorte = GraveMono.DeNoche(x, corteNoche); c.Noche = arm.NocheCorte; x = arm.NocheCorte; }
             arm.NocheGraves = new SalaLocal(x, null, 0.26f, false, false, 0, 0, 0); x = arm.NocheGraves;
             // EL FUNDIDO DE XP (el fundido= del dueno; la entrada de 5 ms), con la misma cuenta de lo que dura
             c.Fundido = RocolaOsFundido(x, source, t, saltadoSeg);

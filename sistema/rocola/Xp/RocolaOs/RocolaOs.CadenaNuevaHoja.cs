@@ -47,9 +47,9 @@ namespace Rocola
             };
             // ================= CUAL SUENA =================
             BotonPlano bHoy = boton(40), bNueva = boton(84);
-            Rotulo lCual = rot(128, 52, 1);
-            Rotulo lAhoraT = rot(190, 20, 0); lAhoraT.Text = "Lo que suena ahora";
-            Rotulo lAhora = rot(214, 300, 1);
+            Rotulo lCual = rot(128, 72, 1);
+            Rotulo lAhoraT = rot(210, 20, 0); lAhoraT.Text = "Lo que suena ahora";
+            Rotulo lAhora = rot(234, 300, 1);
             tCual.Controls.Add(bHoy); tCual.Controls.Add(bNueva); tCual.Controls.Add(lCual); tCual.Controls.Add(lAhoraT); tCual.Controls.Add(lAhora);
             // ================= LA NUEVA =================
             Rotulo lNivel = rot(40, 20, 0);

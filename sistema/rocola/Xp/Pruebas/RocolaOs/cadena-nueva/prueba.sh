@@ -6,7 +6,7 @@
 # spotify-xp. Lo que sono se mide con el ebur128 de ffmpeg (otra implementacion de BS.1770) y analiza.py.
 #   bash prueba.sh PROGRAMA [partes...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   partes (de fabrica todas): decodifica sinhuecos medidor mide ganancia constante disco arreglos costo escena hoy sinros spotify
+#   partes (de fabrica todas): decodifica sinhuecos medidor mide ganancia constante disco arreglos costo escena billar hoy sinros spotify
 #   W (/root/rocola-trabajo/fase11/cadena-nueva/prueba; se rehace), DATOS0 (/root/rocola-trabajo/port/ventanas/datos0, se copia),
 #   FALSO (el Soloist falso compilado de spotify-xp, /root/rocola-trabajo/fase11/spotify-xp/falso; se compila si falta)
 # Cada comprobacion: BIEN o MAL en una linea; al final «TODO BIEN (N comprobaciones)» o cuantas MAL (y sale con 1).
@@ -15,7 +15,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SP="$G/../spotify-xp"
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-decodifica sinhuecos medidor mide ganancia constante disco arreglos costo escena hoy sinros spotify}"
+partes="${*:-decodifica sinhuecos medidor mide ganancia constante disco arreglos costo escena billar hoy sinros spotify}"
 W=${W:-/root/rocola-trabajo/fase11/cadena-nueva/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/spotify-xp/falso}
@@ -45,19 +45,20 @@ python3 -I "$G/marcas.py" "$M/fuerte.mp3" "$M/itunes.mp3" "$M/vbri.mp3" > "$W/ma
 python3 -I "$G/marcas.py" "$M/mpeg2.mp3" "$M/itunes2.mp3" "$M/vbri2.mp3" >> "$W/marcas.txt" || exit 1
 enc -i "$M/disco.wav" -t 15.3 -c:a libmp3lame -b:a 192k "$M/disco1.mp3"; enc -ss 15.3 -i "$M/disco.wav" -c:a libmp3lame -b:a 192k "$M/disco2.mp3"
 enc -i "$M/rango.wav" -c:a libmp3lame -b:a 192k "$M/rango.mp3"
-# ruido rosa MONO con escalones de +10 y -10 dB cada 2 s (la escena de la ganancia constante)
+# ruido rosa MONO: el MISMO trozo de 2 s repetido a 0, +10 y -10 dB (la escena de la ganancia constante: con una cadena que no depende del
+# nivel, cada escalon sale con la misma ganancia aunque la cadena no sea plana, como la del billar)
 python3 - "$M/ruido.wav" <<'EOP'
 import sys, wave, numpy as np
-fs=44100; n=14*fs; rng=np.random.default_rng(5)
-w=rng.standard_normal(n); f=np.fft.rfftfreq(n,1/fs); f[0]=1; X=np.fft.rfft(w)/np.sqrt(f); X[f<30]=0; w=np.fft.irfft(X,n); w=w/np.max(np.abs(w))*0.12
-g=np.ones(n)
-for i in range(n): k=(i//(2*fs))%3; g[i]=1.0 if k==0 else (3.162 if k==1 else 0.3162)
-y=np.clip(w*g,-1,1); s=np.round(y*32767).astype('<i2')
+fs=44100; m=2*fs; rng=np.random.default_rng(5)
+w=rng.standard_normal(m); f=np.fft.rfftfreq(m,1/fs); f[0]=1; X=np.fft.rfft(w)/np.sqrt(f); X[f<30]=0; w=np.fft.irfft(X,m); w=w/np.max(np.abs(w))*0.12
+y=np.concatenate([w*(1.0 if k%3==0 else (3.162 if k%3==1 else 0.3162)) for k in range(7)])
+y=np.clip(y,-1,1); s=np.round(y*32767).astype('<i2')
 with wave.open(sys.argv[1],'wb') as wf: wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(fs); wf.writeframes(s.tobytes())
 EOP
 enc -i "$M/ruido.wav" -c:a libmp3lame -b:a 192k "$M/ruido.mp3"
-enc -i "$M/ruido.mp3" -c:a pcm_f32le "$M/ruido.dec.wav"
-enc -i "$M/corto.wav" -c:a libmp3lame -b:a 192k "$M/corto.mp3"; enc -i "$M/corto2.wav" -c:a libmp3lame -b:a 192k "$M/corto2.mp3"
+enc -i "$M/ruido.mp3" -f f32le -ac 2 "$M/ruido.dec.f32"
+enc -i "$M/disco.wav" -t 12 -c:a libmp3lame -b:a 192k "$M/corto.mp3"; enc -ss 12 -t 12 -i "$M/disco.wav" -c:a libmp3lame -b:a 192k "$M/corto1b.mp3"
+enc -i "$M/corto2.wav" -c:a libmp3lame -b:a 192k "$M/corto2.mp3"
 
 # ---------------------------------------------------------------- decodifica
 if [[ " $partes " == *" decodifica "* ]]; then
@@ -163,70 +164,90 @@ fi
 # ---------------------------------------------------------------- las escenas con la rocola de verdad
 AL=$W/alsa; mkdir -p "$AL"
 gcc -shared -fPIC -DPIC -O2 -o "$AL/libasound_module_pcm_reloj.so" "$XP/Pruebas/Windows/alsa/reloj.c" -lasound || exit 1
-datos() {   # un disco con dos pistas (la media y la fuerte, 12 s cada una) y otro con el ruido de los escalones; sin el modo noche (el reloj)
-  local d="$W/datos-$1"; rm -rf "$d"; mkdir -p "$d/musica/Grupo Prueba/Disco Prueba" "$d/musica/Otro Grupo/Ruido"
+datos() {   # un disco con dos pistas seguidas (la media partida en dos, 12 s cada una), otro con la fuerte (12 s) y otro con el ruido de los
+            # escalones (14 s); sin el modo noche (el reloj)
+  local d="$W/datos-$1"; rm -rf "$d"; mkdir -p "$d/musica/Grupo Prueba/Disco Prueba" "$d/musica/Grupo Fuerte/Disco Fuerte" "$d/musica/Otro Grupo/Ruido"
   cp "$DATOS0/rocola_teclas.txt" "$d/"; printf 'noche=0\r\n' > "$d/rocola_config.txt"
-  cp "$M/corto.mp3" "$d/musica/Grupo Prueba/Disco Prueba/01 media.mp3"; cp "$M/corto2.mp3" "$d/musica/Grupo Prueba/Disco Prueba/02 fuerte.mp3"
+  cp "$M/corto.mp3" "$d/musica/Grupo Prueba/Disco Prueba/01 media.mp3"; cp "$M/corto1b.mp3" "$d/musica/Grupo Prueba/Disco Prueba/02 media.mp3"
+  cp "$M/corto2.mp3" "$d/musica/Grupo Fuerte/Disco Fuerte/01 fuerte.mp3"
   cp "$M/ruido.mp3" "$d/musica/Otro Grupo/Ruido/01 ruido.mp3"
   echo "$d"
 }
-# escena NOMBRE DATOS SEGUNDOS [VAR=valor...]: tres monedas, a los 16 s las tres canciones (el doble calidad-prueba), Ctrl+F4 a los 56 s con la
-# pestana Cadena (Tab x5, Intro) y su captura a los 59 s, la foto de vivo.txt a los 50 y a los SEGUNDOS el cierre (SIGTERM)
+# escena NOMBRE DATOS SEGUNDOS [VAR=valor...]: cuatro monedas, a los 16 s las cuatro canciones (el doble calidad-prueba), la foto de vivo.txt a
+# los 50, Ctrl+F4 a los 68 s con la pestana Cadena (Tab x4, Intro) y su captura a los 71,5 s, y a los SEGUNDOS el cierre (SIGTERM)
 escena() {
   local n="$1" d="$2" seg="$3"; shift 3
   local o="$W/$n"; mkdir -p "$o/run/rocola-xp/spotify"
   printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj  file "%s"  registro "%s" }\n' "$AL/libasound_module_pcm_reloj.so" "$o/sonado.raw" "$o/registro.txt" > "$o/alsa.conf"
   ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf \
-      ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="7:67,7.5:67,8:67,56:17+115,57:9,57.2:9,57.4:9,57.6:9,57.8:9,58.2:13,62:27" \
-      ROCOLA_CAPTURA="59.5:$o/cadena.png" ROCOLA_CAPTURA_SALE=0 ROCOLA_CATALOGO_URL=http://127.0.0.1:9/catalogo ROCOLA_PORTADAS_CATALOGO=http://127.0.0.1:9 \
+      ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="7:67,7.5:67,8:67,8.5:67,68:17+115,69:9,69.2:9,69.4:9,69.6:9,70.2:13,74:27" \
+      ROCOLA_CAPTURA="71.5:$o/cadena.png" ROCOLA_CAPTURA_SALE=0 ROCOLA_CATALOGO_URL=http://127.0.0.1:9/catalogo ROCOLA_PORTADAS_CATALOGO=http://127.0.0.1:9 \
       "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
   local p=$!
-  sleep 16; printf 'pon 01 media.mp3\npon 02 fuerte.mp3\npon 01 ruido.mp3\n' >> "$o/run/rocola-xp/spotify/prueba-xp"
+  sleep 16; printf 'pon Disco Prueba/01 media.mp3\npon Disco Prueba/02 media.mp3\npon 01 fuerte.mp3\npon 01 ruido.mp3\n' >> "$o/run/rocola-xp/spotify/prueba-xp"
   sleep 34; cp "$o/run/rocola-os-prueba-vivo.txt" "$o/vivo.txt" 2>/dev/null
   sleep $((seg - 50)); kill -TERM $p 2>/dev/null
   ( sleep 40; kill -KILL $p 2>/dev/null ) & local v=$!
   wait $p; echo $? > "$o/salio"; kill $v 2>/dev/null; wait $v 2>/dev/null
 }
-trozos() {   # trozos ESCENA: el ebur128 de ffmpeg de cada cancion de lo que sono (la primera desde el primer sonido; 12, 12 y 14 s)
+trozos() {   # trozos ESCENA: el ebur128 de ffmpeg de lo que sono (las dos del disco juntas y cada una, la fuerte) y la ganancia por bloque del ruido
   local o="$W/$1" i; i=$(python3 "$G/analiza.py" inicio "$o/sonado.raw" | sed -n 's/.* segundo=\([^ ]*\).*/\1/p')
+  t() { python3 -c "print('%.4f' % ($i + $1))"; }
   echo "inicio $i" > "$o/trozos.txt"
-  echo "media $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(echo "$i + 0.5" | bc)" -t 11)" >> "$o/trozos.txt"
-  echo "fuerte $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(echo "$i + 12.5" | bc)" -t 11)" >> "$o/trozos.txt"
-  python3 "$G/analiza.py" constante "$o/sonado.raw" "$M/ruido.dec.wav" 0.5 13 > "$o/constante.txt" 2>&1
+  echo "disco $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(t 0.5)" -t 23)" >> "$o/trozos.txt"
+  echo "media1 $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(t 0.5)" -t 11)" >> "$o/trozos.txt"
+  echo "media2 $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(t 12.5)" -t 11)" >> "$o/trozos.txt"
+  echo "fuerte $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(t 24.5)" -t 11)" >> "$o/trozos.txt"
+  python3 "$G/analiza.py" constante "$o/sonado.raw" "$M/ruido.dec.f32" 0.5 13 "$(t 36)" > "$o/constante.txt" 2>&1
   sed 's/^/   /' "$o/trozos.txt" "$o/constante.txt"
 }
 val() { awk -v k="$2" -v c="$3" '$1==k {print $c}' "$W/$1/trozos.txt"; }
 if [[ " $partes " == *" escena "* ]]; then
   echo "== escena (la rocola de verdad con la cadena nueva: medida antes de sonar, a -18 LUFS, ganancia constante, la hoja Cadena)"
-  d=$(datos nueva); escena nueva "$d" 66 ROCOLA_OS=cadena_nueva,medida_nueva,calidad-prueba,prueba-andamio
+  d=$(datos nueva); escena nueva "$d" 78 ROCOLA_OS=cadena_nueva,medida_nueva,calidad-prueba,prueba-andamio
   o=$W/nueva; b="$d/rocola_os_bitacora.txt"
   grep -F '[cadena_nueva]' "$b" 2>/dev/null | sed 's/^/   bitacora: /' | cut -c1-260; grep -F '[medida_nueva]' "$b" 2>/dev/null | sed 's/^/   bitacora: /' | cut -c1-200
   grep -E '^cadena_nueva|^medida_nueva' "$o/vivo.txt" 2>/dev/null | sed 's/^/   vivo: /'
   trozos nueva
   si "escena nueva: sale con 0" test "$(cat $o/salio)" = 0
-  si "escena nueva: el repaso de fondo midio las tres (rocola_medida_nueva.txt: cabecera y tres renglones de la A)" bash -c "[ \$(grep -c '^A	' '$d/rocola_medida_nueva.txt') = 3 ] && head -1 '$d/rocola_medida_nueva.txt' | grep -qx 'ROCOLA-MEDIDA-NUEVA v1'"
+  si "escena nueva: el repaso de fondo midio las cuatro (rocola_medida_nueva.txt: cabecera y cuatro renglones de la A)" bash -c "[ \$(grep -c '^A	' '$d/rocola_medida_nueva.txt') = 4 ] && head -1 '$d/rocola_medida_nueva.txt' | grep -qx 'ROCOLA-MEDIDA-NUEVA v1'"
   si "escena nueva: la tabla solo trae la ruta y numeros (19 campos)" bash -c "awk -F'\t' 'NR>1 && NF != 19 {bad=1} END {exit bad}' '$d/rocola_medida_nueva.txt'"
-  si "escena nueva: las tres sonaron por la cadena A con su medida (la bitacora)" bash -c "[ \$(grep -F '[cadena_nueva]' '$b' | grep -c ': ganancia .* (medida ') = 3 ]"
+  si "escena nueva: las cuatro sonaron por la cadena A con su medida (la bitacora), las dos del disco con una sola ganancia, la del disco" bash -c "[ \$(grep -F '[cadena_nueva]' '$b' | grep -c '] A .*: ganancia ') = 4 ] && ! grep -F '[cadena_nueva]' '$b' | grep -q 'sin medir' && [ \$(grep -F '[cadena_nueva]' '$b' | grep -c 'media.mp3: ganancia .* (el disco (2 de 2 pistas medidas)') = 2 ] && [ \$(grep -F '[cadena_nueva]' '$b' | grep -c 'medida ') = 2 ]"
   si "escena nueva: abiertas en coma flotante y sin huecos con LAME" bash -c "grep -F '[cadena_nueva]' '$b' | grep -q 'libmpg123 (coma flotante), sin huecos: LAME'"
   si "escena nueva: vivo.txt dice que suena la nueva" bash -c "grep -q '^cadena_nueva=suena armadas=[1-9]' '$o/vivo.txt'"
-  si "escena nueva: la media y la fuerte sonaron a -18 LUFS a 0,5 LU ($(val nueva media 2) y $(val nueva fuerte 2), ebur128 de ffmpeg)" py "abs($(val nueva media 2) + 18) <= 0.5 and abs($(val nueva fuerte 2) + 18) <= 0.5"
-  si "escena nueva: sin pasar el techo de -1 dBTP ($(val nueva media 3) y $(val nueva fuerte 3))" py "max($(val nueva media 3), $(val nueva fuerte 3)) <= -0.7"
-  si "escena nueva: el ruido de los escalones, ganancia constante por bloque de 10 ms ($(num "$o/constante.txt" vaiven_db) dB de vaiven)" py "$(num "$o/constante.txt" vaiven_db) <= 0.05 and $(num "$o/constante.txt" bloques) > 1000"
+  si "escena nueva: el disco entero y la fuerte sonaron a -18 LUFS a 0,5 LU ($(val nueva disco 2) y $(val nueva fuerte 2), ebur128 de ffmpeg)" py "abs($(val nueva disco 2) + 18) <= 0.5 and abs($(val nueva fuerte 2) + 18) <= 0.5"
+  si "escena nueva: sin pasar el techo de -1 dBTP ($(val nueva media1 3), $(val nueva media2 3) y $(val nueva fuerte 3))" py "max($(val nueva media1 3), $(val nueva media2 3), $(val nueva fuerte 3)) <= -0.7"
+  si "escena nueva: el ruido de los escalones, ganancia constante por bloque de 10 ms ($(num "$o/constante.txt" vaiven_db) dB de vaiven; escalones $(num "$o/constante.txt" escalones_db))" py "$(num "$o/constante.txt" vaiven_db) <= 0.05 and $(num "$o/constante.txt" bloques) > 1000 and $(num "$o/constante.txt" escalones_db) <= 0.05"
   si "escena nueva: la hoja Cadena de Ctrl+F4 se arma (captura) y ningun fallo de la cadena nueva en rocola_error.txt" bash -c "[ -s '$o/cadena.png' ] && ! grep -q 'Rocola OS: cadena_nueva\|Rocola OS: medida_nueva\|la hojita Cadena' '$d/rocola_error.txt' 2>/dev/null"
+fi
+if [[ " $partes " == *" billar "* ]]; then
+  echo "== billar (la misma escena con el modo billar guardado: la B entera, medida despues de sus piezas)"
+  d=$(datos billar); printf 'noche=0\r\nlocal_auto=1\r\n' > "$d/rocola_config.txt"
+  escena billar "$d" 78 ROCOLA_OS=cadena_nueva,medida_nueva,calidad-prueba,prueba-andamio
+  o=$W/billar; b="$d/rocola_os_bitacora.txt"
+  grep -F '[cadena_nueva]' "$b" 2>/dev/null | grep '] B ' | sed 's/^/   bitacora: /' | cut -c1-300
+  trozos billar
+  si "escena billar: sale con 0" test "$(cat $o/salio)" = 0
+  si "escena billar: medidas con la B y la huella de sus piezas (cuatro renglones B, ninguno A)" bash -c "[ \$(grep -c '^B	' '$d/rocola_medida_nueva.txt') = 4 ] && ! grep -q '^A	' '$d/rocola_medida_nueva.txt' && ! grep '^B	' '$d/rocola_medida_nueva.txt' | cut -f7 | grep -qx -- '-\|sin-piezas'"
+  si "escena billar: las cuatro por la B con su medida, las del disco con la del disco" bash -c "[ \$(grep -F '[cadena_nueva]' '$b' | grep -c '] B .*: ganancia ') = 4 ] && ! grep -F '[cadena_nueva]' '$b' | grep -q 'sin medir' && [ \$(grep -F '[cadena_nueva]' '$b' | grep -c 'media.mp3: ganancia .* (el disco (2 de 2') = 2 ]"
+  si "escena billar: el disco entero y la fuerte a -18 LUFS a 0,5 LU despues de las piezas del billar ($(val billar disco 2) y $(val billar fuerte 2))" py "abs($(val billar disco 2) + 18) <= 0.5 and abs($(val billar fuerte 2) + 18) <= 0.5"
+  si "escena billar: sin pasar el techo de -1 dBTP ($(val billar media1 3), $(val billar media2 3) y $(val billar fuerte 3))" py "max($(val billar media1 3), $(val billar media2 3), $(val billar fuerte 3)) <= -0.7"
+  si "escena billar: el ruido de los escalones de +-10 dB sale con la misma ganancia en cada escalon (las medianas a $(num "$o/constante.txt" escalones_db) dB; cada bloque varia lo que la curva del billar le hace a su tono)" py "$(num "$o/constante.txt" escalones_db) <= 0.05 and $(num "$o/constante.txt" escalones) >= 5"
+  si "escena billar: ningun fallo de la cadena nueva ni de las piezas del billar en rocola_error.txt" bash -c "! grep -q 'Rocola OS: cadena_nueva\|Rocola OS: medida_nueva\|Rocola OS: billar_nuevo\|la hojita' '$d/rocola_error.txt' 2>/dev/null"
 fi
 if [[ " $partes " == *" hoy "* ]]; then
   echo "== hoy (la misma escena con la cadena de hoy: ni se mide ni se arma la nueva; el ruido de los escalones con lo que mueve el nivel)"
-  d=$(datos hoy); escena hoy "$d" 66 ROCOLA_OS=medida_nueva,calidad-prueba,prueba-andamio
+  d=$(datos hoy); escena hoy "$d" 62 ROCOLA_OS=medida_nueva,calidad-prueba,prueba-andamio
   o=$W/hoy; b="$d/rocola_os_bitacora.txt"
   trozos hoy
   si "escena hoy: sale con 0" test "$(cat $o/salio)" = 0
   si "escena hoy: ni tabla nueva ni cadena A (la de hoy suena tal cual)" bash -c "[ ! -e '$d/rocola_medida_nueva.txt' ] && ! grep -F '[cadena_nueva]' '$b' 2>/dev/null | grep -q ': ganancia '"
   si "escena hoy: vivo.txt dice que no suena la nueva" bash -c "grep -q '^cadena_nueva=no armadas=0' '$o/vivo.txt'"
-  si "escena hoy: el ruido de los escalones, la de hoy mueve la ganancia ($(num "$o/constante.txt" vaiven_db) dB de vaiven)" py "$(num "$o/constante.txt" vaiven_db) > 0.5"
+  si "escena hoy: el ruido de los escalones, la de hoy mueve la ganancia ($(num "$o/constante.txt" vaiven_db) dB de vaiven; entre escalones $(num "$o/constante.txt" escalones_db) dB)" py "$(num "$o/constante.txt" vaiven_db) > 0.5 and $(num "$o/constante.txt" escalones_db) > 0.5"
 fi
 if [[ " $partes " == *" sinros "* ]]; then
   echo "== sinros (sin ROCOLA_OS: nada de la cadena nueva)"
-  d=$(datos sinros); escena sinros "$d" 30 env -u ROCOLA_OS
+  d=$(datos sinros); escena sinros "$d" 52 env -u ROCOLA_OS
   si "escena sin ROCOLA_OS: sale con 0, sin rocola_medida_nueva.txt ni bitacora de Rocola OS" bash -c "[ \$(cat $W/sinros/salio) = 0 ] && [ ! -e '$d/rocola_medida_nueva.txt' ] && [ ! -e '$d/rocola_os_bitacora.txt' ]"
 fi
 
@@ -274,11 +295,12 @@ EOP
   si "spotify 1.a vez: sin el nivelado en vivo: el nivel no sube ni da brincos ($r1)" py "abs($(echo "$r1" | sed 's/.*fin=\([^ ]*\).*/\1/') - ($(echo "$r1" | sed 's/ini=\([^ ]*\).*/\1/'))) <= 0.5 and $(echo "$r1" | sed 's/.*salto=//') <= 0.3"
   si "spotify 1.a vez: sono entera y se midio en vivo (rocola_medida_nueva.txt)" bash -c "grep -q '^A	spotify:track:f440d034q30	' '$d/rocola_medida_nueva.txt'"
   d2="$W/datos-sp2"; rm -rf "$d2"; cp -r "$d" "$d2"; rm -f "$d2/rocola_estado.txt"
-  sp sp2 "$d2" 30; o=$W/sp2; b="$d2/rocola_os_bitacora.txt"
+  sp sp2 "$d2" 56; o=$W/sp2; b="$d2/rocola_os_bitacora.txt"
   grep -F '[cadena_nueva]' "$b" 2>/dev/null | grep 'spotify:' | sed 's/^/   bitacora: /' | cut -c1-260
   r2=$(rangos "$o/niveles.txt"); echo "   segunda vez: $r2"
   si "spotify 2.a vez: con su medida (la bitacora)" bash -c "grep -F '[cadena_nueva]' '$b' | grep -q 'spotify:track:f440d034q30: ganancia .*(medida '"
-  si "spotify 2.a vez: sin brincos ($r2)" py "$(echo "$r2" | sed 's/.*salto=//') <= 0.3"
+  si "spotify 2.a vez: sin brincos y sin nivelado en vivo: el nivel no se mueve ($r2)" py "$(echo "$r2" | sed 's/.*salto=//') <= 0.3 and abs($(echo "$r2" | sed 's/.*fin=\([^ ]*\).*/\1/') - ($(echo "$r2" | sed 's/ini=\([^ ]*\).*/\1/'))) <= 0.5"
+  si "spotify 2.a vez: mas fuerte que la 1.a (la estimada de las medidas por XP era -10 LKFS; el tono del falso, mucho mas bajo)" py "$(echo "$r2" | sed 's/ini=\([^ ]*\).*/\1/') > $(echo "$r1" | sed 's/ini=\([^ ]*\).*/\1/') + 10"
 fi
 
 echo

@@ -19,6 +19,7 @@
 //   texto corto los parametros de sus piezas (el paso alto, la afinacion...): si cambia, lo medido con la B ya no vale y se mide otra vez.
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using NAudio.Wave;
 
 namespace Rocola
@@ -66,13 +67,21 @@ namespace Rocola
         internal static Func<RocolaOsReceta, ISampleProvider, ISampleProvider> Arma;
         // Los parametros de sus piezas en un texto corto (para saber si lo medido con la B sigue valiendo); null: «sin-piezas».
         internal static Func<string> Huella;
+        // (la ultima, un segundo: el repaso la pregunta por cada cancion de la biblioteca y sus ajustes no cambian a cada rato)
+        private static string huellaUltima; private static long huellaMs = long.MinValue;
         internal static string HuellaAhora
         {
             get
             {
                 if (Arma == null) return "sin-piezas";
-                try { Func<string> h = Huella; string s = h != null ? h() : null; return string.IsNullOrEmpty(s) ? "piezas" : s.Replace('\t', ' ').Replace('\n', ' '); }
-                catch { return "piezas"; }
+                long ahora = Environment.TickCount64;
+                string u = Volatile.Read(ref huellaUltima);
+                if (u != null && ahora - Interlocked.Read(ref huellaMs) < 1000) return u;
+                string s;
+                try { Func<string> h = Huella; s = h != null ? h() : null; s = string.IsNullOrEmpty(s) ? "piezas" : s.Replace('\t', ' ').Replace('\n', ' '); }
+                catch { s = "piezas"; }
+                Volatile.Write(ref huellaUltima, s); Interlocked.Exchange(ref huellaMs, ahora);
+                return s;
             }
         }
     }

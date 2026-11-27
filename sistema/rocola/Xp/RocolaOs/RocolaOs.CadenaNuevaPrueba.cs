@@ -296,7 +296,7 @@ namespace Rocola
                 {
                     ISampleProvider ca = CadenaA(sa, ra, g), cb = CadenaA(sb, rb, g);
                     ya = LeeTodo(ca);
-                    for (int i = 0; i < rb.Piezas.Count && i < ra.Piezas.Count; i++) if (rb.Piezas[i].GetType() == ra.Piezas[i].GetType()) rb.Piezas[i].Sigue(ra.Piezas[i]);
+                    RocolaOsSiguePiezas(rb.Piezas, ra.Piezas);
                     yb = LeeTodo(cb);
                 }
                 finally { sa.Dispose(); sb.Dispose(); }

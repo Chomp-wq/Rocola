@@ -132,4 +132,24 @@ el PROZOR primero · D13 botones de volumen a 1 dB por toque.
 - Pruebas: `Pruebas/RocolaOs/billar-nuevo/prueba.sh`, 86 de 86 en NativeAOT (respuesta, fase lineal, ganancia constante, bajo virtual
   homogeneo y sin aliasing, disco continuo, afinacion, guardar y leer, la hojita); 0,24-0,50 % de un nucleo aqui.
 
+### 8.3 El marco, la medida nueva y la cadena A (agente del marco; detalle, numeros y pruebas en CADENA_NUEVA_A.md) — HECHOS, sin oir
+
+- Funciones `cadena_nueva` (APAGADA; cual suena, en vivo desde la siguiente cancion: Ctrl+F4 -> Cadena; con el modo billar guardado, la B) y
+  `medida_nueva` (encendida: solo mide, y solo con la nueva puesta o `RocolaOsMedidaTrabajo.Pedida`). Claves `nivel_lufs=-18`, `techo_dbtp=-1`,
+  `agudos_mp3=0`, `tono_parejo=0`. Ganchos g460 (ArmaCadena), g461 (SigueA: el disco continuo, al PREPARAR el relevo, pieza con pieza del mismo
+  tipo y orden) y g462 (OpenAudio: el MP3 en coma flotante). `ganchos.py` TODO BIEN.
+- El MP3: libmpg123 `ENC_FLOAT_32` (NLayer en coma flotante sin ella), sin recorte; sin huecos con LAME, iTunSMPB y VBRI en MPEG-1/2/2.5.
+- La medida: la cancion entera por la cadena (A, o B por `RocolaOsCadenaB.Arma` con `Midiendo`) a ganancia 1 sin el EQ del dueno: BS.1770-4,
+  pico real 4x, LRA, pico de muestra, 30 tercios y los arreglos fijos (mudo, invertido, continua; el zumbido de XP). `rocola_medida_nueva.txt`
+  con el sello del archivo. Al entrar a la cola, de fondo (nice 19, las mas pedidas primero) y en vivo (Spotify; o la que entro sin tiempo).
+- La ganancia: `min(T - L', C - TP')` con el EQ del dueno y el tono parejo estimados por el espectro; los discos en racha, una del disco; sin
+  medida, la estimacion conservadora de XP; Spotify la 1.a vez fija estimada y sin el nivelado en vivo; la sustitucion con la de Spotify o la
+  de tu MP3. El modo noche: `FactorNoche` en la ganancia y los graves de noche (`SalaLocal`); el corte de 80 Hz (`GraveMono.DeNoche`) solo en la
+  A: en la B va dentro de su paso alto (§8.2).
+- Las piezas de la A y la B juntas en esta rama (la del billar, 9526e98, juntada): escena con la rocola de verdad y la tarjeta con reloj, A y B
+  a -18,0 LUFS (ebur128 de ffmpeg) sin pasar -1 dBTP; ganancia constante (escalones de +-10 dB: 0,002 dB de vaiven en la A; la de hoy, 2,5).
+  `Pruebas/RocolaOs/cadena-nueva/prueba.sh`.
+- Para la salida nueva: las cadenas nuevas entregan float estereo a la tasa de la cancion en `CadenaCancion.Salida` (con el fundido de XP al
+  final), sin limitador: la proteccion de 0 dBFS es de la salida.
+
 Estado: EN CURSO desde el 27-11-2026. Nada probado en el A4 ni oido.
