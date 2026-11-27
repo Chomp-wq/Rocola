@@ -34,6 +34,8 @@
 //       cola:URI      alguien anade URI a la cola de Spotify (queue_changed)
 //   - SOLOIST_FALSO_SORDO=1: vivo pero sordo (acepta el WebSocket y no manda ni contesta nada); SOLOIST_FALSO_CIERRA_AL_CONECTAR=1: cierra cada
 //     conexion al instante (revision de mejoras del 24-11-2026)
+//   - (27-11-2026) SOLOIST_FALSO_SILENCIO=MS: los primeros MS ms de cada cancion en ceros digitales; SOLOIST_FALSO_INTRO_SUAVE=MS: los primeros MS ms
+//     con el tono a -40 dBFS (la prueba del silencio del principio: RocolaOs.SpotifyArranque.cs)
 //   - lo que recibe y lo que pasa, en SOLOIST_FALSO_LOG (un renglon por cosa: «ms  quien  que»)
 // Variables: SOLOIST_FALSO_SESION (1 de fabrica: ya emparejado), SOLOIST_FALSO_ACTIVA (0 de fabrica: la rocola tiene que mandar activate),
 // SOLOIST_FALSO_LOG, SOLOIST_FALSO_GUION, SOLOIST_FALSO_FIN, SOLOIST_FALSO_CADUCADO, SOLOIST_FALSO_SEG (la duracion de las que no la dicen en su id; 30 s de fabrica), SOLOIST_FALSO_PULSO, ROCOLA_SPOTIFY_ANILLO (o /run/rocola-xp/spotify/sonido.anillo).
@@ -79,6 +81,10 @@ static unsafe class SoloistFalso
     // dice frecuencia 0). Revision «sonido-hilos-y-fallos»: para probar la conversion de frecuencia de la fuente.
     static readonly int Rate = int.TryParse(Environment.GetEnvironmentVariable("SOLOIST_FALSO_HZ"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int hzf) && hzf >= 8000 && hzf <= 192000 ? hzf : 44100;
     static readonly bool FlujoTarde = Environment.GetEnvironmentVariable("SOLOIST_FALSO_FLUJO_TARDE") == "1";
+    // (27-11-2026, spotify_arranque) SOLOIST_FALSO_SILENCIO=MS: los primeros MS ms de cada cancion en ceros digitales (el silencio del principio que
+    // Soloist a veces entrega); SOLOIST_FALSO_INTRO_SUAVE=MS: los primeros MS ms con el tono a -40 dBFS (un principio suave de verdad, que no se debe comer)
+    static readonly double SilencioInicial = double.TryParse(Environment.GetEnvironmentVariable("SOLOIST_FALSO_SILENCIO") ?? "", NumberStyles.Float, CultureInfo.InvariantCulture, out double sil) && sil > 0 ? sil / 1000.0 : 0.0;
+    static readonly double IntroSuave = double.TryParse(Environment.GetEnvironmentVariable("SOLOIST_FALSO_INTRO_SUAVE") ?? "", NumberStyles.Float, CultureInfo.InvariantCulture, out double intro) && intro > 0 ? intro / 1000.0 : 0.0;
     const string Autoplay = "spotify:track:f990d030autoplay";
 
     sealed class Cliente { internal WebSocket Ws; internal readonly object Envio = new object(); }
@@ -185,6 +191,8 @@ static unsafe class SoloistFalso
                     double t = (posCuadros + i) / (double)Rate;
                     double amp = envolvente == 0 ? ampBase : 0.125 * Math.Pow(10, (Envolvente(envolvente, t) + 12) / 20);
                     float s = (float)(amp * Math.Sin(2 * Math.PI * hz * t) + (ruido != null ? ruido.Siguiente() : 0.0));
+                    if (t < SilencioInicial) s = 0f;                  // (27-11-2026) SOLOIST_FALSO_SILENCIO: ceros digitales al principio
+                    else if (t < IntroSuave) s *= 0.04f;              // (27-11-2026) SOLOIST_FALSO_INTRO_SUAVE: un principio a -40 dBFS (musica, no silencio)
                     buf[i * 2] = s; buf[i * 2 + 1] = s;
                 }
                 posCuadros += n;

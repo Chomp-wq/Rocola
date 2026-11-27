@@ -36,6 +36,9 @@ namespace Rocola
             // va a la par (un poco mas, para que decida primero el hilo de Spotify, que sabe el motivo)
             internal const int SeguridadLargaMs = RocolaOsSpotify.ContinuaLargaMs + 5000;
             internal const double PocoSonidoSeg = 10.0;   // R4: un fallo con menos de 10 s de sonido devuelve el credito
+            // (27-11-2026, «devolver si se corta antes de la mitad») y un fallo que no se pudo seguir (o que no se intento: un corte con 10 s o mas
+            // se intenta seguir una vez) devuelve el credito si lo sonado no llego a la mitad de lo que dura; desde la mitad, no (como desde el 22-11)
+            internal const double MitadDeLaCancion = 0.5;
             // (revision «sonido-hilos-y-fallos») EL ARRANQUE SIN HUECO. Al abrirse la salida, el hilo de la musica de XP (BombaSonido) lee de
             // golpe su primer segundo y su colchon (ArranqueMs + ColchonMs) y despues va al paso de la tarjeta. El anillo solo guarda lo que
             // Soloist deja por delante (su tlength, unos 250 ms): si Soloist empieza DURANTE esa lectura de golpe, el anillo se seca y queda un
@@ -54,6 +57,10 @@ namespace Rocola
             // para que una primera lectura que se cruza con el cierre no pida nada a Soloist
             private int finDecidido; private volatile bool cerrada;
             private int desdeMs;                // (22-11-2026) retomada: la cancion empieza ahi (Salta, antes de la primera lectura)
+            // (27-11-2026, spotify_arranque: RocolaOs.SpotifyArranque.cs) EL SILENCIO DEL PRINCIPIO: lo primero que llega de Soloist, mientras es silencio
+            // digital o casi (<= UmbralSilencio), se consume del anillo sin entregarlo (hasta TopeSilencioMs); recortados: los cuadros quitados
+            private bool recortaSilencio;
+            private long recortados;
             private long sonidoAlAnclar;        // (22-11-2026) cuadrosSonido al re-anclar (un vaciado justo despues del seek no la acaba)
             private long inicioMs;
             private long cuadrosEntregados;     // lo que se le dio a XP (sonido y silencio): CurrentTime
@@ -108,7 +115,7 @@ namespace Rocola
                     RocolaOsSpotifyPeticion q = p;
                     int ms = q != null && Volatile.Read(ref q.DuracionMs) > 0 ? Volatile.Read(ref q.DuracionMs) : duracionCatalogoMs;
                     if (Interlocked.Read(ref cuadrosSonido) == 0 || ms <= 0) return TimeSpan.Zero;
-                    return TimeSpan.FromSeconds(ms / 1000.0 + Interlocked.Read(ref silencioAntes) / (double)hz);
+                    return TimeSpan.FromSeconds(ms / 1000.0 + (Interlocked.Read(ref silencioAntes) - Interlocked.Read(ref recortados)) / (double)hz);
                 }
             }
             // (22-11-2026) LA RETOMADA DE XP (volvio el aparato de sonido): sigue desde donde iba (play y seek de Soloist; RocolaOs.Spotify.cs) y,
@@ -138,6 +145,7 @@ namespace Rocola
                     p = ya ?? new RocolaOsSpotifyPeticion(uri, titulo, duracionCatalogoMs);
                     if (desdeMs > 0) { p.DesdeMs = desdeMs; p.SeekMs = desdeMs; Volatile.Write(ref p.PosicionMs, desdeMs); }
                     inicioMs = ultimoSonidoMs = ahora;
+                    recortaSilencio = desdeMs <= 0 && RocolaOsSpotifyArranque.Va;   // (27-11-2026: no una retomada)
                     if (a != null && ya == null) a.Tira();
                     if (cerrada) { acabada = true; return 0; }   // (23-11-2026: la cerraron mientras empezaba: no se pide)
                     if (Interlocked.Exchange(ref contado, 1) == 0) Interlocked.Increment(ref RocolaOsSpotify.LectoresAbiertos);
@@ -179,6 +187,7 @@ namespace Rocola
                     bool yaSuena = Interlocked.Read(ref cuadrosSonido) - sonidoAlAnclar > hz / 2;
                     n = TomaConvertida(a, d, pedidos, hasta, yaSuena, out leidoDespues, out vaciado);
                     if (vaciado && yaSuena) { RocolaOsSpotify.Apunta("vaciado a media cancion en " + uri + ": acaba ahi"); return Acaba(d, 0, RocolaOsSpotifyPeticion.OtraCancion); }
+                    if (recortaSilencio) { n = RecortaSilencioInicial(a, d, n, pedidos, hasta, yaSuena, ref leidoDespues); if (recortados > 0) ultimoSonidoMs = ahora; }
                     if (n > 0)
                     {
                         if (Interlocked.Read(ref cuadrosSonido) == 0)
@@ -211,6 +220,59 @@ namespace Rocola
                 Aplica(d.Slice(0, n * 2));
                 Interlocked.Add(ref cuadrosEntregados, pedidos);
                 return pedidos * 2;
+            }
+            // (27-11-2026, spotify_arranque) EL SILENCIO DEL PRINCIPIO. Lo que llega de Soloist al empezar una cancion trae a veces silencio digital
+            // (ceros: lo que el decodificador entrega antes de la musica) y el anillo lo da a la velocidad del lector: quitarlo es consumirlo sin
+            // entregarlo. Aqui, en el hilo del sonido y sin esperar: mientras lo recien llegado sea silencio (todo <= UmbralSilencio, -80 dBFS: ni
+            // la musica mas suave de un principio), se descarta y se vuelve a tomar del anillo (hasta 16 veces por lectura); en cuanto hay musica
+            // se quitan los ceros de delante y se sigue sin tocar nada (la musica pasa tal cual: solo un fundido de 1 ms en su primer cuadro, para
+            // que si empieza lejos de cero no haya chasquido). Tope: TopeSilencioMs en total (lo mas largo es de la grabacion: un silencio de
+            // verdad, una pista oculta). No se recorta una retomada ni lo que sigue a un corte. Devuelve los cuadros que quedan en d.
+            private int RecortaSilencioInicial(RocolaOsSpotifyAnillo a, Span<float> d, int n, int pedidos, long hasta, bool paraEnVaciado, ref long leidoDespues)
+            {
+                long tope = (long)hz * RocolaOsSpotifyArranque.TopeSilencioMs / 1000;
+                for (int vuelta = 0; vuelta < 16 && n > 0 && recortaSilencio; vuelta++)
+                {
+                    int k = 0;
+                    float u = RocolaOsSpotifyArranque.UmbralSilencio;
+                    while (k < n && Math.Abs(d[k * 2]) <= u && Math.Abs(d[k * 2 + 1]) <= u) k++;
+                    long cabe = Math.Max(0, tope - recortados);
+                    bool musica = k < n;
+                    if (k > cabe) { k = (int)cabe; musica = true; recortaSilencio = false; }   // (el tope: lo que queda es de la grabacion y pasa)
+                    recortados += k;
+                    if (k > 0 && k < n)
+                    {   // lo que quedaba de la musica, al principio de d, y su primer cuadro con un fundido de 1 ms
+                        d.Slice(k * 2, (n - k) * 2).CopyTo(d);
+                        n -= k;
+                    }
+                    else if (k > 0 && k == n) n = 0;
+                    if (musica)
+                    {
+                        recortaSilencio = false;
+                        if (recortados > 0)
+                        {
+                            int f = Math.Min(n, Math.Max(1, hz / 1000));
+                            for (int i = 0; i < f; i++) { float g = (i + 1) / (float)(f + 1); d[i * 2] *= g; d[i * 2 + 1] *= g; }
+                            if (recortados >= hz / 200) RocolaOsSpotifyArranque.Recortado(uri, recortados * 1000.0 / hz, tope == recortados, Environment.TickCount64 - inicioMs, Interlocked.Read(ref cuadrosEntregados) * 1000.0 / hz);   // (menos de 5 ms no se apunta: el primer cuadro de un seno)
+                        }
+                        // lo que falta para llenar la lectura (los ceros quitados dejaron el final de d vacio): del anillo, para que la musica no se
+                        // quede con un hueco de silencio justo detras de su primer cuadro
+                        int faltan = pedidos - n;
+                        while (faltan > 0)
+                        {
+                            bool vac2; long lr;
+                            int m = TomaConvertida(a, d.Slice(n * 2), faltan, hasta, paraEnVaciado, out lr, out vac2);
+                            if (m <= 0) break;
+                            leidoDespues = lr; n += m; faltan -= m;
+                        }
+                        return n;
+                    }
+                    if (recortados >= tope) { recortaSilencio = false; RocolaOsSpotifyArranque.Recortado(uri, recortados * 1000.0 / hz, true, Environment.TickCount64 - inicioMs, Interlocked.Read(ref cuadrosEntregados) * 1000.0 / hz); return 0; }
+                    // todo era silencio: lo siguiente que haya en el anillo
+                    bool vac;
+                    n = TomaConvertida(a, d, pedidos, hasta, paraEnVaciado, out leidoDespues, out vac);
+                }
+                return n;
             }
             private static int FrecuenciaAnillo(RocolaOsSpotifyAnillo a) { int f = a.Frecuencia; return f >= 8000 && f <= 192000 ? f : 44100; }
             // LO QUE HAY EN EL ANILLO, a la frecuencia que se declaro: igual (lo normal) o convertido con una interpolacion lineal (si el anillo
@@ -270,7 +332,11 @@ namespace Rocola
                     || ((motivo == RocolaOsSpotifyPeticion.OtraCancion || motivo == RocolaOsSpotifyPeticion.Parada) && durMs > 0 && enCancion * 1000 >= durMs - 5000);
                 p.TerminoReal = motivo == RocolaOsSpotifyPeticion.Termino;   // (23-11-2026: antes de cambiar el motivo; para la salvaguarda del adelanto)
                 if (motivo == RocolaOsSpotifyPeticion.SinMotivo) motivo = RocolaOsSpotifyPeticion.Termino;
-                bool devolver = !SinDevolver && (motivo == RocolaOsSpotifyPeticion.NoEmpezo || (!natural && motivo != RocolaOsSpotifyPeticion.Cierre && enCancion < PocoSonidoSeg));
+                int durRefMs = durMs > 0 ? durMs : duracionCatalogoMs;
+                bool antesDeLaMitad = durRefMs > 0 && enCancion * 1000 < durRefMs * MitadDeLaCancion;   // (27-11-2026)
+                bool devolver = !SinDevolver && (motivo == RocolaOsSpotifyPeticion.NoEmpezo || (!natural && motivo != RocolaOsSpotifyPeticion.Cierre && (enCancion < PocoSonidoSeg || antesDeLaMitad)));
+                p.DevueltaPorMitad = devolver && motivo != RocolaOsSpotifyPeticion.NoEmpezo && enCancion >= PocoSonidoSeg;
+                p.EnCancionMs = (int)Math.Min(int.MaxValue, enCancion * 1000);
                 p.FinMotivo = natural ? RocolaOsSpotifyPeticion.Termino : motivo;
                 p.Devolver = devolver;
                 p.SegundosSonados = seg;

@@ -77,6 +77,8 @@ namespace Rocola
         // lo que dice la fuente al acabar
         internal int FinMotivo;                    // el motivo con que acabo de verdad
         internal bool Devolver;                    // se devuelve el credito (R4)
+        internal bool DevueltaPorMitad;            // (27-11-2026) se devuelve porque se corto con 10 s o mas pero antes de la mitad de su duracion
+        internal int EnCancionMs;                  // (27-11-2026) donde iba en la cancion al acabar (para la bitacora)
         internal bool TerminoReal;                 // (23-11-2026) la fuente llego a su duracion (no un corte en los ultimos 5 s dado por bueno)
         internal double SegundosSonados;
         internal bool Rematada;                    // (el hilo de Spotify ya la remato: pausa, credito, bitacora)
@@ -99,7 +101,7 @@ namespace Rocola
         // (22-11-2026, la de la Sonora Santanera que se corto a media cancion y devolvio el credito) SEGUIR DESDE DONDE IBA. DesdeMs: una
         // retomada de XP (Salta: volvio el aparato de sonido) empieza ahi y ya sono (no devuelve). PosicionMs: donde va en la cancion (la fuente).
         // Un corte con 10 s o mas sonados (sin sonido, el WebSocket caido, otra bocina, una pausa que no fue de la rocola) se intenta seguir UNA
-        // vez (Continuada: activate, play y seek a PosicionMs); si no se puede, acaba SIN devolver. SeekMs: el seek que se manda tras el play; al
+        // vez (Continuada: activate, play y seek a PosicionMs); si no se puede, acaba y el credito vuelve solo si no llego a la mitad (27-11-2026; antes, nunca). SeekMs: el seek que se manda tras el play; al
         // pasar a «Suena» la fuente se re-ancla (Ancla, AnclaPosMs: el cuadro del anillo donde empieza lo de esa posicion).
         internal int DesdeMs;
         internal int SeekMs = -1;
@@ -135,6 +137,26 @@ namespace Rocola
         internal static RocolaOsSpotifyEstado Estado { get { return Volatile.Read(ref estado); } }
         // SOLOIST CON SESION: el WebSocket conectado y la cuenta dentro (I6: RocolaOsSpotifyListo)
         internal static bool Listo { get { RocolaOsSpotifyEstado e = Estado; return Encendido && e.Ws && e.Sesion; } }
+        // (27-11-2026, «no cobrar con Soloist sordo») ¿SE PUEDE PEDIR UNA DE SPOTIFY AHORA? Lo de Listo y ademas que Soloist responda: sin el WebSocket,
+        // sin la cuenta dentro, conectado 10 s sin contestar a get_auth_state, el vigilante reiniciandolo (esperando o arrancando) o el archivo
+        // «reinicia» puesto (Sordo: el reinicio que se pidio y aun no atendio). Si no, el motivo para la bitacora. Quien pide (el catalogo, I6) no
+        // cobra ni mete nada en la cola y dice el aviso de XP; antes cobraba y devolvia despues. Las tuyas sustituidas no pasan por aqui (suenan
+        // de tu MP3 si Spotify no puede).
+        internal static bool PuedePedir(out string motivo)
+        {
+            motivo = null;
+            RocolaOsSpotifyEstado e = Estado;
+            if (!Encendido) motivo = "el modo Spotify apagado";
+            else if (!e.Ws) motivo = "Soloist sin WebSocket";
+            else if (!e.Sesion) motivo = "Soloist sin sesion";
+            else if (authRespondidoGen != wsGen && Environment.TickCount64 - e.WsCambioMs > 10000) motivo = "Soloist conectado pero sin contestar (sordo)";
+            else if (SoloistReiniciandose) motivo = "Soloist reiniciandose (vigilante " + FaseVigilante + ")";
+            else
+            {
+                try { if (File.Exists(ArchivoReinicia)) motivo = "Soloist sordo, con el reinicio pedido"; } catch { }
+            }
+            return motivo == null;
+        }
         internal static bool Encendido { get { return Volatile.Read(ref encendido) != 0; } }
         private static int encendido;
         internal static RocolaOsSpotifyAnillo Anillo;   // (se crea al arrancar)
@@ -952,7 +974,7 @@ namespace Rocola
             }
         }
         // (22-11-2026) UN CORTE A MEDIA CANCION: con 10 s o mas sonados se intenta seguir una vez desde donde iba (la fuente espera en silencio,
-        // Fase «Mandada»); con menos, o la segunda vez, se acaba como antes (Termina). El credito: con 10 s o mas nunca se devuelve.
+        // Fase «Mandada»); con menos, o la segunda vez, se acaba como antes (Termina). El credito (27-11-2026): con 10 s o mas se devuelve solo si no llego a la mitad.
         internal const int ContinuaMaxMs = 15000, ContinuaGraciaMs = 3000;
         // (24-11-2026, revision de mejoras) con Soloist reiniciandose (fase del vigilante «esperando» o «arrancando») seguir una cortada tiene
         // 60 s en vez de 15, y la seguridad de la fuente va a la par; el credito se devuelve por las mismas reglas de siempre
@@ -1072,7 +1094,7 @@ namespace Rocola
                     int maxMs = p.ContinuaLarga ? ContinuaLargaMs : ContinuaMaxMs;
                     if (ahora - p.ContinuaDesdeMs > maxMs)
                     {
-                        Apunta("no se pudo seguir " + p.Uri + " en " + (maxMs / 1000).ToString(CultureInfo.InvariantCulture) + " s: acaba (" + RocolaOsSpotifyPeticion.Motivos[p.ContinuaMotivo] + "), sin devolver el credito: ya habia sonado " + Seg(Volatile.Read(ref p.PosicionMs)) + " s");
+                        Apunta("no se pudo seguir " + p.Uri + " en " + (maxMs / 1000).ToString(CultureInfo.InvariantCulture) + " s: acaba (" + RocolaOsSpotifyPeticion.Motivos[p.ContinuaMotivo] + "), ya habia sonado " + Seg(Volatile.Read(ref p.PosicionMs)) + " s de " + Seg(Volatile.Read(ref p.DuracionMs)) + " (el credito vuelve si no llego a la mitad)");
                         Termina(p, p.ContinuaMotivo);
                     }
                     else MandaSeguir(p, ahora);
@@ -1171,7 +1193,8 @@ namespace Rocola
             if (p.Devolver)
             {
                 Interlocked.Increment(ref Devueltas);
-                Apunta("DEVUELTA " + p.Uri + " (" + p.Titulo + "): " + RocolaOsSpotifyPeticion.Motivos[p.FinMotivo] + ", sono " + seg + " s" + extra + ": se devuelve el credito");
+                Apunta("DEVUELTA " + p.Uri + " (" + p.Titulo + "): " + RocolaOsSpotifyPeticion.Motivos[p.FinMotivo] + ", sono " + seg + " s" + extra
+                    + (p.DevueltaPorMitad ? ": NO LLEGO A LA MITAD (iba en el s " + Seg(p.EnCancionMs) + " de " + Seg(Volatile.Read(ref p.DuracionMs)) + ")" : "") + ": se devuelve el credito");
                 RocolaOs.Encarga("spotify-devuelve", delegate { Form1 r = RocolaOs.LaRocola; if (r != null) r.RocolaOsSpotifyDevuelve(); });
             }
             else

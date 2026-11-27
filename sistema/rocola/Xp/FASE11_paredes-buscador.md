@@ -595,3 +595,60 @@ Solo Rocola OS con el modo Spotify (sin él, XP tal cual). Sin ganchos nuevos en
 
 Pruebas (`Pruebas/RocolaOs/catalogo`, con `/control/nuevas` de la API falsa, datos aparte): escenas `repetidas`, `ediciones`, `teclea`, `memoria` y
 `hoja` (ver `FASE11_hoja-spotify.md`). Nada con Spotify real ni en el A4.
+## «LAS MEJORES CANCIONES DE...» en el buscador (22-11-2026, rehecho el 27-11-2026)
+
+Petición del dueño del 22-11-2026 («Ahora en el buscador estará la de buscar las mejores canciones de cualquier artista, hazlo intuitivo con
+un botón que ponga en la barra de búsqueda LAS MEJORES CANCIONES DE - El cliente escribe el nombre del artista»), que quedó a medias y se
+perdió; se rehace entera. Solo Rocola OS, con el modo Spotify y la llave de la API (sin ellas, el buscador de XP tal cual: ni atajo, ni
+prefijo, ni tarjeta). Archivos: `RocolaOs/RocolaOs.Mejores.cs` (la lógica, en Form1) y `RocolaOs/RocolaOs.MejoresCaja.cs` (la casilla, el
+color del atajo y la etiqueta, en el SearchOverlay del buscador con portadas).
+
+- **El atajo.** «LAS MEJORES CANCIONES DE…» es el PRIMERO de la fila de atajos (los de XP y los del catálogo, detrás) y va en ámbar (el
+  de «LO MEJOR» y SONANDO), no en el azul apagado de los demás, para que se vea. Se llega con ARRIBA desde la fila de teclas (como a
+  «Lo más pedido hoy») y se pulsa con PONER (VERDE) o con un clic. Como es el primero, con los atajos de la cuenta hace falta una flecha
+  derecha más para llegar a los de siempre (la escena `atajos` lo cuenta).
+- **El prefijo fijo.** Al pulsarlo, la casilla muestra una pastilla «LAS MEJORES CANCIONES DE» (con la letra de las teclas con palabra,
+  20 pt a escala 1) delante de lo escrito, la casilla vacía pide «Escribe el nombre del artista» y la selección pasa al teclado (la fila
+  de las letras). El cliente escribe solo el artista. La pastilla NO se borra con la tecla BORRAR del teclado en pantalla (con nada
+  escrito no hace nada; con letras, las borra); se quita con REGRESAR con nada escrito, o pulsando otra vez el mismo atajo, que mientras
+  está puesto dice «× Quitar «LAS MEJORES»». El prefijo no es parte de lo que se busca: la consulta es solo el artista. Vale mientras haya
+  algo del buscador a la vista (el buscador, una pared o un disco abierto desde él): al ir y volver con REGRESAR sigue puesto; cerrado todo
+  (el buscador a los 60 s, un disco del buscador a los 30 s o ROJO+ARRIBA), el latido del catálogo (cada segundo) lo quita.
+- **La tarjeta.** Con el prefijo puesto y el artista escrito (2 letras o más), los resultados llevan DE PRIMERA una tarjeta de las grandes
+  de siempre (la misma de los álbumes, con su portada y su cinta que se desliza al elegirla), «LAS MEJORES CANCIONES DE ARTISTA», con la
+  etiqueta «LO MEJOR» (g408) y el artista en el renglón de abajo. El nombre del artista es el de la primera tarjeta de artista de los
+  resultados (la tuya si lo tienes, si no la de Spotify) o, si no hay, lo escrito. La portada es la del artista en Spotify (si se conoce) o la
+  de tu disco. Es una tarjeta más de la lista (`RocolaOsMejoresPrimera`, desde `RocolaOsSpotifyCatalogoVisto` y
+  `RocolaOsSpotifyCatalogoPoneResultados`): la misma tarjeta (el mismo objeto) mientras el artista no cambie. Sin elegirla, el título de la
+  tarjeta se corta («LAS MEJORES C…»: las tarjetas miden lo mismo, dos por fila); elegida, la cinta lo recorre entero y el artista queda
+  siempre en el renglón de abajo.
+- **Elegirla.** Pide a Spotify las canciones del artista en el orden de su búsqueda `artist:"NOMBRE"` (la misma fuente y la misma memoria de
+  la sesión que «Canciones de ARTISTA» de las paredes del buscador: `ParedCanciones`), hasta 30 en 3 peticiones (de 10 en 10, una tras
+  otra), sin repetir la misma canción en otra edición del disco (título base y marcas de versión, las reglas de la sustitución), y
+  abre un disco de XP dentro del buscador cuando llega todo (REGRESAR vuelve al buscador con lo escrito y el prefijo; 30 s sin tocar
+  cierra todo, como cualquier disco abierto desde el buscador: `rocolaOsSpVueltaDisco`). **Tus canciones de ese artista que estén entre las
+  de Spotify van primero** (en el orden de Spotify; por el artista de tus discos y el título base —un MP3 sin etiquetas se llama como su
+  archivo, «04 Título»: el número de pista no cuenta—, con las mismas marcas de versión y, si se sabe de las dos, la misma duración con
+  10 s de holgura); la tuya se pide con su MP3 (no hay pedida de Spotify) y con su disco de verdad (g407). Después, las de Spotify, con su
+  lugar en la lista («NN Título»). Se piden con créditos como todo (1 por canción).
+- **Si falla.** Sin nada de Spotify (sin red, 429, error): el aviso de siempre («Espera un momento y vuelve a intentarlo») y el buscador se
+  queda como estaba; si Spotify no tiene canciones de ese artista: «Spotify no tiene canciones de ARTISTA». Con Spotify frenando (429) o
+  sin red recordada, la tarjeta no sale.
+- **Cuota.** 3 peticiones por artista y una vez por sesión (la memoria del cliente: abrirla otra vez, 0 peticiones); si la tarjeta se queda
+  elegida de 1 a 2 s, la primera página ya se pide (`RocolaOsMejoresLatido`, una vez por tarjeta).
+- **Asistente** (RocolaOs.Asistente.cs): el paso «Escribe el artista» de la guía de los discos de un artista dice «Sale su tarjeta. Arriba,
+  «LAS MEJORES CANCIONES DE…» trae sus más escuchadas.», y la tarjeta elegida tiene su paso, «Sus mejores canciones» («Pulsa VERDE: salen
+  sus más escuchadas, y las que tienes tú, primero.»), con el mismo dibujo del globo (sin cara).
+- **Ganchos.** g400 (ArmaAtajos: el atajo primero), g401 (UsaAtajo), g402 (la pastilla delante de lo escrito), g403 (la invitación de la
+  casilla), g404 (la firma de la imagen de la casilla), g405 (REGRESAR con nada escrito quita el prefijo), g406 (BORRAR del teclado no lo
+  quita), g407 (AddSong: el disco de verdad de tu canción), g408 (la etiqueta «LO MEJOR»), g409 y g410 (el color del atajo). En
+  `RocolaOs.SpotifyCatalogo.cs` (el grupo del catálogo de Spotify, que trabaja otro agente) solo cuatro líneas: `RocolaOsMejoresPrimera` en
+  `RocolaOsSpotifyCatalogoVisto` y en `RocolaOsSpotifyCatalogoPoneResultados`, `RocolaOsMejoresElige` al principio de
+  `RocolaOsSpotifyCatalogoElige` y `RocolaOsMejoresLatido` en el latido del catálogo.
+- **Pruebas** (`Pruebas/RocolaOs/catalogo/prueba.sh`, con la API de Spotify falsa; el artista «Otra Banda» ya trae 9 canciones de 3 títulos y
+  «Banda Interminable» 120; tu canción de 150 s se crea con ffmpeg): `mejores` (el atajo ámbar, la pastilla, la tarjeta de primera con su
+  etiqueta, UNA página de canciones, el disco con tu «Cancion Lejana 2» primero, la tuya y una de Spotify pedidas con 1 crédito cada una,
+  REGRESAR con el prefijo puesto), `mejoresn` (un artista solo de Spotify: 3 páginas, una vez cada una; la primera de la lista es la
+  primera de la búsqueda; abrir otra vez, 0 peticiones), `mejoresteclas` (REGRESAR borra letras y deja el prefijo, BORRAR del teclado no lo
+  quita, REGRESAR con nada escrito lo quita, el atajo lo pone y lo quita) y `sinmejores` (sin ROCOLA_OS y con spotify=0: nada). No probado
+  con Spotify real ni en el A4.

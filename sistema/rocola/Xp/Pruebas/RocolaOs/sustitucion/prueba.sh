@@ -7,7 +7,7 @@
 # volumen (la 1 o la 2 de RocolaOsCalidad.Envolvente, para la forma). Las canciones se piden con el doble «calidad-prueba» (AddSong de XP).
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde
+#   escenas (de fabrica todas): reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde nivelmp3
 #   W (/root/rocola-trabajo/fase11/sustitucion/prueba; se rehace), API y FALSO (la API falsa y el Soloist falso compilados; se compilan si
 #   faltan o cambiaron, con el candado de lo pesado)
 # Cada comprobacion: BIEN o MAL en una linea; al final «TODO BIEN (N comprobaciones)» o cuantas MAL (y sale con 1).
@@ -19,7 +19,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SX="$G/../spotify-xp"; CA="$G/../catalogo"
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde}"
+partes="${*:-reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde nivelmp3}"
 W=${W:-/root/rocola-trabajo/fase11/sustitucion/prueba}
 API=${API:-/root/rocola-trabajo/fase11/sustitucion/api-falsa}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/sustitucion/falso}
@@ -416,6 +416,48 @@ if [[ " $partes " == *" tarde "* ]]; then
   si "tarde: lo abierto por delante como MP3 se suelta en cuanto Soloist tiene sesion" contiene "$b" "03 cumbia.mp3: lo que XP habia abierto por delante como MP3 se suelta (ya va desde Spotify)"
   si "tarde: y la de la cola suena desde Spotify (660 Hz: $(oye "$f" 660) s) y nada de su MP3 (390: $(oye "$f" 390) s)" bash -c "grep -q '^mira .*03 cumbia.mp3 .* lector=spotify creditos=2 cola=0' '$(log tarde)' && python3 -c 'import sys; sys.exit(0 if $(oye "$f" 660) >= 10 and $(oye "$f" 390) <= 0.1 else 1)'"
   si "tarde: ni COBRADA ni DEVUELTA" bash -c "! grep -qE 'COBRADA|DEVUELTA' '$d/rocola_spotify.txt'"
+fi
+
+
+# ---------------------------------------------------------------- nivelmp3 (27-11-2026): la sustituida suena con el EQ, el nivel y lo demas de TU MP3
+# La sombra de una tuya (g61) usaba solo lo de Spotify: sin EQ automatico, sin el bajo ni el margen del ecualizador del dueno, y nivelada sola. Ahora
+# la bitacora de la sustitucion dice, al armar la cadena, lo que le toca de tu MP3 (la huella de rocola_eq.txt, la sonoridad de rocola_sonoridad.txt,
+# el disco en racha): EQ automatico, realce, bajo, des-recorte, margen E3 y, con el modo billar, la duracion y el volumen parejo.
+if [[ " $partes " == *" nivelmp3 "* ]]; then
+  sec "nivelmp3 (la sustituida suena con el EQ, el nivel y lo demas de tu MP3; en el billar, la duracion y el parejo)"
+  mp3 larga 420 50 96 1 "Larga de Prueba" "Trio Calidad" "Joyas de Prueba" MXA112600020
+  T=$'\t'
+  for modo in normal billar; do
+    n=nivelmp3-$modo; d=$(datos $n); apifalsa $n
+    cp "$M/larga.mp3" "$d/musica/Trio Calidad/Joyas de Prueba/07 larga.mp3"
+    D="$d/musica/Trio Calidad/Joyas de Prueba"
+    { for k in $(seq 1 60); do printf -- '-8;0.5;0;-1.5;-2;-1;-3.5;-6;20000;0;30;2|/musica/inventada/huella%s.mp3\r\n' $k; done
+      for x in "01 bolero" "02 vals" "03 cumbia" "07 larga"; do printf -- '-6;1.5;0.5;-1;-2;-2;-4;-9;15000;0;30;2|%s/%s.mp3\r\n' "$D" "$x"; done; } >> "$d/rocola_eq.txt"
+    { printf 'ROCOLA-SONORIDAD v1\r\n'
+      printf '5|-14.0|2|320|-2.0|-4.0|-|-|-|-|32|8.0|-9.0|%s/01 bolero.mp3\r\n' "$D"
+      printf '5|-15.0|2|320|-3.0|-5.0|-|-|-|-|32|8.0|-10.0|%s/02 vals.mp3\r\n' "$D"
+      printf '5|-14.5|2|320|-2.5|-4.5|-|-|-|-|32|8.0|-9.5|%s/03 cumbia.mp3\r\n' "$D"
+      printf '5|-14.0|2|500|-2.0|-4.0|-|-|-|-|50|8.0|-9.0|%s/07 larga.mp3\r\n' "$D"; } > "$d/rocola_sonoridad.txt"
+    [ $modo = billar ] && printf 'local_auto=1\r\n' > "$d/rocola_config.txt"
+    now=$(date +%s)
+    siembra "$d" "MP3:01 bolero.mp3${T}0${T}0${T}f440d032${T}-${T}32000${T}32000${T}1${T}$now${T}-3.0${T}-5.0${T}-12.0${T}0.95${T}isrc" \
+                 "MP3:02 vals.mp3${T}0${T}0${T}f550d032${T}-${T}32000${T}32000${T}1${T}$now${T}-${T}-${T}-${T}-${T}isrc" \
+                 "MP3:07 larga.mp3${T}0${T}0${T}f640d050${T}-${T}50000${T}50000${T}1${T}$now${T}-${T}-${T}-${T}-${T}isrc"
+    if [ $modo = normal ]; then ord="9:pon relleno.mp3;9.4:pon 01 bolero.mp3;9.8:pon 02 vals.mp3"; else ord="9:pon relleno.mp3;9.4:pon 07 larga.mp3;9.8:pon 01 bolero.mp3"; fi
+    abre $n "$d" "7:67" "$ord;100:copia" 101 TERM $ROS
+    fin
+  done
+  b=$(bit "$W/datos-nivelmp3-normal"); bb=$(bit "$W/datos-nivelmp3-billar")
+  grep -F 'con lo de tu MP3' "$b" "$bb" | sed 's/^[^ ]* [0-9-]* [0-9:]*  /   /'; grep -F 'nivelado' "$b" "$bb" | sed 's/^[^ ]* [0-9-]* [0-9:]*  /   /'
+  si "nivelmp3: salen con 0" test "$(cat $W/nivelmp3-normal/salio)$(cat $W/nivelmp3-billar/salio)" = 00
+  si "nivelmp3: la 1.a (bolero): EQ automatico CON correccion, con su huella (no «sin correccion»)" bash -c "grep -F 'la cadena de 01 bolero.mp3 con spotify:track:f440d032: con lo de tu MP3: EQ automatico [' '$b' | grep -q 'margen E3 con su huella'"
+  si "nivelmp3: el realce y el bajo de la cadena son los de tu MP3 (con su huella)" bash -c "grep -F 'la cadena de 01 bolero.mp3 con spotify:track:f440d032: con lo de tu MP3' '$b' | grep -qE 'realce 0\.[0-9]+; bajo x[0-9.]+ de [0-9.]+; (con|sin) des-recorte'"
+  si "nivelmp3: el nivel: el de tu MP3 con su medida de Spotify (bolero, la unica medida)" contiene "$b" "la cadena de 01 bolero.mp3 con spotify:track:f440d032: nivelado "
+  si "nivelmp3: y el nivel de bolero tambien es el de tu MP3 (el nivel de tu MP3 ... y lo de Spotify: su medida)" bash -c "grep -F 'la cadena de 01 bolero.mp3 con spotify:track:f440d032: nivelado' '$b' | grep -q 'el nivel de tu MP3 .* y lo de Spotify: su medida'"
+  si "nivelmp3: nada de Spotify en las tablas de XP (la huella y la sonoridad de tu MP3 no se tocan: sus 60+4 renglones, sin «spotify:»)" bash -c "! grep -qF 'spotify:' '$W/datos-nivelmp3-normal/rocola_eq.txt' '$W/datos-nivelmp3-normal/rocola_sonoridad.txt'"
+  # el billar: la duracion (la de tu MP3: 50 s deja el EQ del billar; 32 s no: menos de 45 s) y el volumen parejo
+  si "nivelmp3 billar: la de 50 s (larga): con su duracion y EQ automatico con correccion" bash -c "grep -F 'la cadena de 07 larga.mp3 con spotify:track:f640d050: con lo de tu MP3: EQ automatico [' '$bb' | grep -q 'duracion 50 s; parejo'"
+  si "nivelmp3 billar: la de 32 s (bolero): con su duracion y, como una tuya de menos de 45 s, sin EQ del billar" bash -c "grep -F 'la cadena de 01 bolero.mp3 con spotify:track:f440d032: con lo de tu MP3: EQ automatico sin correccion' '$bb' | grep -q 'duracion 32 s; parejo'"
 fi
 
 echo

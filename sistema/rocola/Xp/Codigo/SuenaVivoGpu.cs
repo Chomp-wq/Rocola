@@ -229,7 +229,7 @@ namespace Rocola
                 RectangleF caja = new RectangleF(AvisoAire, AvisoAire, w - 2 * AvisoAire - .5f, h - 2 * AvisoAire - .5f);
                 using (SKPath p = RutaRedonda(caja, RadioAviso(h)))   // EN LINUX: GraphicsPath p = Redondo(...): RutaRedonda (PantallaVivaGpu.cs, ya traducido) da el mismo trazo que Redondo como SKPath (el mismo relleno par-impar y la figura cerrada), que se suelta como en XP
                 {
-                    using (SKPaint b = new SKPaint { Color = FondoAviso(tipo).Sk() }) Pixel.Rellena(g, p, b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
+                    using (SKPaint b = new SKPaint { Color = RocolaOsVidrio.Con(RocolaOsVidrio.Buscador, FondoAviso(tipo)).Sk() }) Pixel.Rellena(g, p, b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)   // ROCOLA OS g366: (XP) using (SKPaint b = new SKPaint { Color = FondoAviso(tipo).Sk() }) Pixel.Rellena(g, p, b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs) — VI6: el relleno del aviso claro baja a 0,82 de su alfa para dejar ver lo de detras desenfocado (RocolaOs/RocolaOs.CieloVidrio.cs); apagado o sin ROCOLA_OS, el color tal cual
                     using (SKPaint pe = new SKPaint { Color = col.Sk(), StrokeWidth = 1.5f }) Pixel.Traza(g, p, pe, suave);   // EN LINUX: Pen(col, 1.5) y g.DrawPath
                 }
                 float alto = caja.Height;

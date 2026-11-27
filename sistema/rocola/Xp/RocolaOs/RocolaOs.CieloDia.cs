@@ -321,6 +321,9 @@ namespace Rocola
         // a y=525 y el panel AHORA SUENA va debajo) la luz baja a 1,4 veces por la regla 3: con 2,2 el resplandor pasaba de 0,17 de luminancia justo
         // encima de la raya (0,18-0,19 medido de dia, el blanco a 4,4:1); con 1,4, 0,15-0,16 (el blanco a 5,0-5,3:1). Fuera del reposo, 2,2 exacto.
         internal const float RayaLuz = 2.2f, RayaLuzReposo = 1.4f;
+        // (para quien tina la raya del dia: FI1) cambia el color de la raya de esta columna, de 0 a 1 a lo ancho, antes de usarlo
+        internal delegate void RayaTineDelegado(float fx, ref float r, ref float g, ref float b);
+        internal static RayaTineDelegado RayaTinte;
         internal static void Raya(uint[] colores, float[] brillos, int i, float fx)
         {
             float noche = RocolaOsCielo.NocheCuadro;
@@ -329,6 +332,7 @@ namespace Rocola
             float li = brillos[i];
             float pr = (p >> 16) & 255, pg = (p >> 8) & 255, pb = p & 255;
             float rr = RocolaOsCielo.RayaR, rg = RocolaOsCielo.RayaG, rb = RocolaOsCielo.RayaB;
+            if (RayaTinte != null) RayaTinte(fx, ref rr, ref rg, ref rb);   // (FI1: la fecha tine la raya de dia sin cambiar su luminancia; RocolaOs.CieloFiesta.cs)
             float mx = Math.Max(rr, Math.Max(rg, rb));
             if (mx < 1f) return;
             float media = (pr + pg + pb) / (3f * 255f);

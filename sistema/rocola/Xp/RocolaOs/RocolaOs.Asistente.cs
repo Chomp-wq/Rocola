@@ -6,6 +6,8 @@
 //   1. «Pedir una cancion de Spotify»: el buscador, lo escrito, las canciones de Spotify entre los resultados (y lo que hace cada tarjeta:
 //      un disco, un artista que solo esta en Spotify, uno tuyo con su pared unida, «Todos los discos de»), la moneda (sin creditos no se pide) y PONER.
 //   2. «La letra ♫ de Spotify»: ir a la letra ♫ de la pared con ROJO + IZQ/DER, entrar a un disco o lista, la moneda y PONER.
+//      (27-11-2026) Y la tarjeta «LAS MEJORES CANCIONES DE ARTISTA» (el atajo del buscador con ese nombre, RocolaOs.Mejores.cs): su paso, y el del
+//      artista (guia 3) dice donde esta el atajo.
 //   3. «Los discos de un artista»: el buscador, la tarjeta del artista (la tuya abre la pared unida, 23-11-2026; o «Todos los discos de»), su pared de discos
 //      («Canciones de» en la primera casilla), entrar a un disco y volver con REGRESAR: a la pared, y otra vez, al buscador.
 // Cada guia es como las de XP: mira lo que pasa DE VERDAD en la rocola cada latido y decide el paso que toca, la estrella senala con la
@@ -31,7 +33,8 @@ namespace Rocola
             RocolaOsPasoDiscoSpotify = 44, RocolaOsPasoArtistaSpotify = 45, RocolaOsPasoMasSpotify = 46, RocolaOsPasoTodos = 47,
             RocolaOsPasoMoneda = 48, RocolaOsPasoCancionDisco = 49, RocolaOsPasoLetra = 50, RocolaOsPasoEntraDisco = 51,
             RocolaOsPasoParedCanciones = 52, RocolaOsPasoParedDisco = 53, RocolaOsPasoVuelveDisco = 54, RocolaOsPasoVuelveBuscador = 55,
-            RocolaOsPasoSinLetra = 56, RocolaOsPasoAbreArtista = 57, RocolaOsPasoEscribeArtista = 58, RocolaOsPasoBuscaTarjeta = 59;
+            RocolaOsPasoSinLetra = 56, RocolaOsPasoAbreArtista = 57, RocolaOsPasoEscribeArtista = 58, RocolaOsPasoBuscaTarjeta = 59,
+            RocolaOsPasoMejores = 60;   // (27-11-2026) la tarjeta «LAS MEJORES CANCIONES DE ARTISTA» (RocolaOs.Mejores.cs)
 
         // LA PREGUNTA: estaticos porque los usan funciones estaticas de XP (AsistenteOpcionRect, AsistenteVerdeEn de la tarjeta). Solo los
         // escribe la pantalla (el gancho g79, al hornear el globo, y elegir o volver en la pregunta); la tarjeta dibuja en el mismo hilo.
@@ -146,6 +149,7 @@ namespace Rocola
             int s = searchOverlay.SelResult;
             if (s < 0 || s >= searchOverlay.Results.Count) return 0;
             SearchItem it = searchOverlay.Results[s];
+            if (it != null && it.AlbumRef != null && RocolaOsMejoresAlbumes.Contains(it.AlbumRef)) return 6;   // («LAS MEJORES CANCIONES DE ARTISTA», 27-11-2026)
             if (RocolaOsSpotifyUnidaDe(it) != null) return 4;
             // (23-11-2026) un artista tuyo que Spotify no conoce: tambien una pared del buscador (solo tus discos); su paso dice lo mismo que la unida
             if (it != null && it.Kind == 0 && it.AlbumRef != null && !RocolaOsEsSpotify(it.AlbumRef) && RocolaOsSpotifyCatalogoVa && RocolaOsSpotifyTuyos().Contains(MotorBusqueda.Normaliza(it.Display ?? ""))) return 4;
@@ -157,7 +161,7 @@ namespace Rocola
             if (it.Kind == 1) return 2;
             return 0;
         }
-        private static readonly int[] RocolaOsPasoDeTarjeta = { 0, RocolaOsPasoCancionSpotify, RocolaOsPasoDiscoSpotify, RocolaOsPasoArtistaSpotify, RocolaOsPasoMasSpotify, RocolaOsPasoTodos };
+        private static readonly int[] RocolaOsPasoDeTarjeta = { 0, RocolaOsPasoCancionSpotify, RocolaOsPasoDiscoSpotify, RocolaOsPasoArtistaSpotify, RocolaOsPasoMasSpotify, RocolaOsPasoTodos, RocolaOsPasoMejores };
 
         // EL PASO QUE TOCA en una guia de Spotify, mirando solo el estado real
         private int RocolaOsAsistentePaso()
@@ -253,7 +257,7 @@ namespace Rocola
                 if (paso == RocolaOsPasoMoneda) return 2;
                 if (paso == RocolaOsPasoBuscaSpotify || paso == RocolaOsPasoCancionSpotify || paso == RocolaOsPasoDiscoSpotify || paso == RocolaOsPasoArtistaSpotify
                     || paso == RocolaOsPasoMasSpotify || paso == RocolaOsPasoTodos || paso == RocolaOsPasoCancionDisco || paso == RocolaOsPasoParedCanciones
-                    || paso == RocolaOsPasoParedDisco) return 3;
+                    || paso == RocolaOsPasoParedDisco || paso == RocolaOsPasoMejores) return 3;
                 return -1;
             }
             if (mision == RocolaOsMisionLetra)
@@ -265,14 +269,14 @@ namespace Rocola
                 // (revision: sin la letra ♫ la guia manda al buscador, «y sigue como la guia 1»: sus pasos cuentan en el lugar de «elegir un
                 // disco», en vez de salir «SIGAMOS» en cada uno)
                 if (paso == RocolaOsPasoEscribe || paso == RocolaOsPasoBuscaSpotify || paso == RocolaOsPasoDiscoSpotify || paso == RocolaOsPasoArtistaSpotify
-                    || paso == RocolaOsPasoMasSpotify || paso == RocolaOsPasoTodos || paso == RocolaOsPasoParedCanciones || paso == RocolaOsPasoParedDisco) return 1;
+                    || paso == RocolaOsPasoMasSpotify || paso == RocolaOsPasoTodos || paso == RocolaOsPasoParedCanciones || paso == RocolaOsPasoParedDisco || paso == RocolaOsPasoMejores) return 1;
                 return -1;
             }
             if (mision == RocolaOsMisionArtista)
             {
                 if (paso == RocolaOsPasoAbreArtista) return 0;
                 if (paso == RocolaOsPasoEscribeArtista) return 1;
-                if (paso == RocolaOsPasoBuscaTarjeta || paso == RocolaOsPasoArtistaSpotify || paso == RocolaOsPasoMasSpotify || paso == RocolaOsPasoTodos) return 2;
+                if (paso == RocolaOsPasoBuscaTarjeta || paso == RocolaOsPasoArtistaSpotify || paso == RocolaOsPasoMasSpotify || paso == RocolaOsPasoTodos || paso == RocolaOsPasoMejores) return 2;
                 if (paso == RocolaOsPasoParedCanciones || paso == RocolaOsPasoParedDisco) return 3;
                 if (paso == RocolaOsPasoVuelveDisco || paso == RocolaOsPasoVuelveBuscador) return 4;
                 return -1;
@@ -301,7 +305,7 @@ namespace Rocola
                 case RocolaOsPasoAbre: case RocolaOsPasoAbreArtista: case RocolaOsPasoSinLetra: return PasoAbreBuscador;
                 case RocolaOsPasoEscribe: case RocolaOsPasoEscribeArtista: return PasoEscribe;
                 case RocolaOsPasoBuscaSpotify: case RocolaOsPasoCancionSpotify: case RocolaOsPasoDiscoSpotify: case RocolaOsPasoArtistaSpotify:
-                case RocolaOsPasoMasSpotify: case RocolaOsPasoTodos: case RocolaOsPasoBuscaTarjeta: return PasoResultado;
+                case RocolaOsPasoMasSpotify: case RocolaOsPasoTodos: case RocolaOsPasoBuscaTarjeta: case RocolaOsPasoMejores: return PasoResultado;
                 case RocolaOsPasoMoneda: return PasoMoneda;
                 case RocolaOsPasoCancionDisco: return PasoCancion;
                 case RocolaOsPasoVuelveDisco: return PasoVolver;
@@ -323,13 +327,14 @@ namespace Rocola
                 case RocolaOsPasoAbreArtista: titulo = "Abre el buscador"; texto = "Mantén el botón ROJO y pulsa la flecha de ARRIBA para buscar al artista."; teclas = "B+U"; break;
                 case RocolaOsPasoSinLetra: titulo = RocolaOsSpotifyLetraEnLaPared ? "Aún no hay letra ♫" : "Spotify, en el buscador"; texto = RocolaOsSpotifyLetraEnLaPared ? "Sale con tu cuenta o al abrir un disco de Spotify. Mientras, búscalas: ROJO + ARRIBA." : "Los discos y listas de Spotify se buscan: ROJO + ARRIBA."; teclas = "B+U"; break;
                 case RocolaOsPasoEscribe: titulo = "Escribe el nombre"; texto = "Elige las letras con las flechas y VERDE. Luego ve con las flechas a las de Spotify."; teclas = "L/R U/D V"; break;
-                case RocolaOsPasoEscribeArtista: titulo = "Escribe el artista"; texto = "Sale su tarjeta, esté en la rocola o solo en Spotify."; teclas = "L/R U/D V"; break;
+                case RocolaOsPasoEscribeArtista: titulo = "Escribe el artista"; texto = "Sale su tarjeta. Arriba, «LAS MEJORES CANCIONES DE…» trae sus más escuchadas."; teclas = "L/R U/D V"; break;
                 case RocolaOsPasoBuscaSpotify: titulo = "Busca las de Spotify"; texto = "Esa es de la rocola. Muévete con las flechas hasta una canción de Spotify."; teclas = "L/R U/D"; break;
                 case RocolaOsPasoBuscaTarjeta: titulo = "Busca su tarjeta"; texto = "Muévete hasta el artista o «Todos los discos de...»."; teclas = "L/R U/D"; break;
                 case RocolaOsPasoCancionSpotify: titulo = "Pídela con VERDE"; texto = "Esta canción es de Spotify. Se pide como las tuyas y cuesta 1 crédito."; teclas = "V"; break;
                 case RocolaOsPasoDiscoSpotify: titulo = "Un disco de Spotify"; texto = "Pulsa VERDE para abrirlo y elige tu canción con las flechas."; teclas = "V"; break;
                 case RocolaOsPasoArtistaSpotify: titulo = "Un artista de Spotify"; texto = "No está en la rocola. Pulsa VERDE y verás sus discos en su propia pared."; teclas = "V"; break;
                 case RocolaOsPasoMasSpotify: titulo = "Sus discos"; texto = "Pulsa VERDE y verás sus discos juntos en su propia pared."; teclas = "V"; break;
+                case RocolaOsPasoMejores: titulo = "Sus mejores canciones"; texto = "Pulsa VERDE: salen sus más escuchadas, y las que tienes tú, primero."; teclas = "V"; break;
                 case RocolaOsPasoTodos: titulo = "Todos los discos"; texto = "Pulsa VERDE y verás todos los discos que salen con lo que escribiste."; teclas = "V"; break;
                 case RocolaOsPasoMoneda: titulo = "Mete una moneda"; texto = "Sin créditos no se pide: cada canción, también las de Spotify, cuesta 1 crédito."; teclas = "M"; break;
                 case RocolaOsPasoCancionDisco: titulo = "Elige tu canción"; texto = "Sube o baja con las flechas y pulsa VERDE para pedirla. El ROJO te regresa."; teclas = "U/D V"; break;
