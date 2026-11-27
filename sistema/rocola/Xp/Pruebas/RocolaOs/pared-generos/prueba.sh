@@ -17,10 +17,13 @@
 # que ponga su propio falso lo pone delante y manda
 export ROCOLA_CLIMA_API="${ROCOLA_CLIMA_API:-http://127.0.0.1:7}" ROCOLA_LUGAR_API="${ROCOLA_LUGAR_API:-http://127.0.0.1:7/lugar}"
 export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_API="${ROCOLA_GENIUS_API:-http://127.0.0.1:7}"
+# (revision 27-11-2026) la bajada del paquete de portadas va a 1 MB/s de fabrica (para no competir con Soloist por la red del bar): las escenas, a toda
+# velocidad (ROCOLA_PAQUETE_KBS=0); la escena «ritmo» pone el suyo
+export ROCOLA_PAQUETE_KBS="${ROCOLA_PAQUETE_KBS:-0}"
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-orden pastilla hojea hojeaxp abre portadas tope descarga contrato real sincatalogo quitallave apagado cero sinllave exclusiones nombres mano paquete letra}"
+escenas="${*:-orden pastilla hojea hojeaxp abre portadas tope descarga contrato real sincatalogo quitallave apagado cero sinllave exclusiones nombres mano paquete letra paginascaliente relleno404 cuelga ritmo}"
 T=${T:-/root/rocola-trabajo/fase11/pared-generos}
 API=${API:-$T/api-falsa}
 REAL=${REAL:-$T/catalogo-real}   # el catalogo de verdad (escena real), bajado aparte de la version «catalogo»
@@ -128,7 +131,7 @@ siembra() {   # DESTINO
 # lo que se hace en todas: moneda a los 7 s
 BASE="7:67"
 # el paquete de portadas del catalogo de prueba, una vez (lo siembran las escenas; solo si alguna lo necesita: son 30 s)
-for e in $escenas; do case $e in orden|pastilla|hojea|hojeaxp|abre|portadas|tope|quitallave|paquete) empaca "$CAT"; break ;; esac; done
+for e in $escenas; do case $e in orden|pastilla|hojea|hojeaxp|abre|portadas|tope|quitallave|paquete|paginascaliente|cuelga|ritmo) empaca "$CAT"; break ;; esac; done
 
 for e in $escenas; do
   echo "== $e"
@@ -459,6 +462,60 @@ PY
     apifalsa $e "$CAT"; d=$(datos $e encendido); printf 'spotify=1\n' > "$d/rocola_os.txt"
     abre $e "$d" "$BASE" 20 ROCOLA_OS=1; espera $e; o="$W/$e"
     si "paginas: de fabrica, 100 paginas en la A ($(est $o paginas))" test "$(est $o paginas)" = 100 ;;
+  paginascaliente)
+    # (revision 27-11-2026) pared_paginas CAMBIADA EN CALIENTE (como la hoja Spotify de Ctrl+F4: PonAjuste; ROCOLA_PARED_PAGINAS_PRUEBA=SEG:N): con 100 paginas por
+    # letra, ARRIBA 60 veces desde los 30 s (cuando la A ya esta armada: va hacia atras de pagina en pagina, a la pagina ~40) y a los 50 s pared_paginas=10: la A en memoria se rearma de inmediato (antes no: la firma
+    # no incluia las paginas y la lista de 100 paginas se quedaba hasta reabrir la letra), con 10 paginas, y la eleccion se queda en el ultimo disco que queda
+    # (la ultima pagina, no la pagina 0)
+    apifalsa $e "$CAT"; d=$(PAGINAS=100 datos $e encendido)
+    abre $e "$d" "$BASE,$(veces 30 60 38 0.1)" 75 ROCOLA_OS=1 ROCOLA_PARED_RELLENO=0 ROCOLA_PARED_PAGINAS_PRUEBA=50:10
+    espera $e; o="$W/$e"; b="$d/rocola_os_bitacora.txt"
+    grep -E 'pared_generos\] letra A:' "$b" | sed 's/^.*\] /   /' | cut -c1-120
+    echo "   estado: paginas=$(est $o paginas) pagina=$(est $o pagina) elegido=$(est $o elegido)"
+    si "paginascaliente: sale con 0" test "$(cat $o/salio)" = 0
+    si "paginascaliente: la A se armo de nuevo con las 10 paginas (la bitacora lo dice)" bash -c "grep -E 'pared_generos\] letra A:' '$b' | tail -1 | grep -qE ' 10 paginas,'"
+    si "paginascaliente: el estado dice 10 paginas" test "$(est $o paginas)" = 10
+    si "paginascaliente: la eleccion se quedo en el ultimo disco que queda (pagina $(est $o pagina), disco $(est $o elegido) de $(( $(est $o paginas) * 18 )))" bash -c "[ '$(est $o pagina)' = 9 ] && [ '$(est $o elegido)' -ge 162 ]" ;;
+  relleno404)
+    # (revision 27-11-2026) EL RELLENO NO SE ATASCA CON LOS 404: ROCOLA_PARED_FALTAN=20 y las primeras 20 portadas del Cover Art Archive dan 404
+    # (/control/caa404): el relleno aprende que no tienen, no las cuenta para su tope, y al vaciarse la cola la pared se rearma y le da las 20 siguientes
+    # del archivo (sin las 404 de antes), que si bajan. Antes los 20 primeros se volvian a dar siempre y el relleno no avanzaba nunca
+    MS="$W/catalogo-sinpaquete"; mkdir -p "$MS"; cp "$CAT"/rocola_catalogo.tsv.gz "$CAT"/rocola_catalogo.txt "$MS/"
+    apifalsa $e "$MS"; control "caa404?n=20"; d=$(datos $e encendido)
+    SIN_PAQUETE=1 abre $e "$d" "$BASE" 70 ROCOLA_OS=1 ROCOLA_PARED_RELLENO=200 ROCOLA_PARED_FALTAN=20
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
+    echo "   relleno: encargadas $(est $o relleno_encargadas), bajadas $(est $o relleno_bajadas), sin portada $(est $o relleno_sin_portada); pedidas al CAA $(grep -c 'GET /release-group/' $a)"
+    si "relleno404: sale con 0" test "$(cat $o/salio)" = 0
+    si "relleno404: aprendio los 404 (20 sin portada)" test "$(est $o relleno_sin_portada)" -ge 20
+    si "relleno404: despues bajo portadas de las siguientes ($(est $o relleno_bajadas) bajadas)" test "$(est $o relleno_bajadas)" -ge 20
+    # lo que de verdad atascaba: la A seguia pidiendo siempre las mismas 20 primeras (404); ahora su siguiente tanda entra y la A trae discos del catalogo
+    dA=$(grep -E 'pared_generos\] letra A:' "$d/rocola_os_bitacora.txt" | tail -1 | sed -E 's/.* ([0-9]+) del catalogo.*/\1/')
+    si "relleno404: la letra A siguio avanzando mas alla de las 20 primeras (404; antes 0, ahora unas 11): $dA discos del catalogo en la ultima vez que se armo" test "${dA:-0}" -ge 5
+    si "relleno404: ninguna se pidio dos veces" bash -c "[ \$(grep 'GET /release-group/' '$a' | awk '{print \$2}' | sort | uniq -d | wc -l) = 0 ]" ;;
+  cuelga)
+    # (revision 27-11-2026) UNA PARTE QUE SE CUELGA A MEDIAS: un servidor (cuelga.py) que manda la mitad de la 1.a parte y se queda callado; con
+    # ROCOLA_PAQUETE_TOPE_S=6 la rocola corta esa parte a los 6 s (antes el hilo se quedaba colgado para siempre), borra lo bajado a medias y sigue con las
+    # demas partes (si hay)
+    NP=$(sed -n 's/^partes=//p' "$CAT/rocola_portadas.txt")
+    apifalsa $e "$CAT"; d=$(datos $e encendido); P=$((P + 1)); python3 "$G/cuelga.py" $P "$CAT" & CUELGA=$!; sleep 1
+    SIN_PAQUETE=1 abre $e "$d" "$BASE" 40 ROCOLA_OS=1 ROCOLA_CATALOGO_URL="http://127.0.0.1:$P/catalogo" ROCOLA_IA_DATOS="$W/disco-cuelga/ia-xp" ROCOLA_PAQUETE_TOPE_S=6 ROCOLA_PAQUETE_KBS=0
+    espera $e; kill $CUELGA 2>/dev/null; wait $CUELGA 2>/dev/null; o="$W/$e"; b="$d/rocola_os_bitacora.txt"; pk="$W/disco-cuelga/catalogo/portadas-pack"
+    grep -E 'rocola_portadas_01.pak' "$b" | sed 's/^.*\] /   /' | cut -c1-160
+    si "cuelga: sale con 0" test "$(cat $o/salio)" = 0
+    si "cuelga: la parte colgada se corto por el tope de tiempo (la bitacora lo dice) y se volvera a intentar" bash -c "grep -q 'rocola_portadas_01.pak no se bajo.*tope de tiempo' '$b'"
+    si "cuelga: no quedo la parte a medias (sin «.t» ni «.ok» de la 1.a)" bash -c "[ ! -e '$pk/rocola_portadas_01.pak.t' ] && [ ! -e '$pk/rocola_portadas_01.pak.ok' ]"
+    si "cuelga: las demas partes si se bajaron ($(est $o paquete_partes) de $NP)" test "$(est $o paquete_partes)" = $((NP - 1)) ;;
+  ritmo)
+    # (revision 27-11-2026) EL RITMO DE LA BAJADA: con ROCOLA_PAQUETE_KBS=2048 (2 MB/s) la 1.a parte (63 MB) lleva a los 22 s solo unos MB (a toda velocidad
+    # las 3 partes ya estaban a los 10 s): la rocola no se come la red del bar
+    apifalsa $e "$CAT"; d=$(datos $e encendido)
+    SIN_PAQUETE=1 abre $e "$d" "$BASE" 24 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/disco-ritmo/ia-xp" ROCOLA_PAQUETE_KBS=2048
+    espera $e; o="$W/$e"; pk="$W/disco-ritmo/catalogo/portadas-pack"
+    t=$(stat -c %s "$pk"/rocola_portadas_01.pak.t 2>/dev/null || echo 0)
+    echo "   la 1.a parte lleva $((t / 1048576)) MB de $((63172183 / 1048576)) y el estado dice: $(est $o paquete), $(est $o paquete_bajadas) partes bajadas"
+    si "ritmo: sale con 0" test "$(cat $o/salio)" = 0
+    si "ritmo: la 1.a parte va a medias, a unos 2 MB/s (entre 2 y 40 MB)" bash -c "[ $t -gt 2097152 ] && [ $t -lt 41943040 ]"
+    si "ritmo: ninguna parte entera todavia" test "$(est $o paquete_bajadas)" = 0 ;;
   letra)
     # LA LETRA ♫ CON EL ICONO DE SPOTIFY (27-11-2026) a 1024x768: la casilla del final del abecedario lleva el circulo verde de Spotify con sus tres ondas
     # (no el texto), tambien elegida (en su capsula). Con la cuenta (la letra sale con «Tus favoritas»); REGRESAR+IZQUIERDA dos veces desde la A (#, y la vuelta a la ♫)

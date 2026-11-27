@@ -127,6 +127,15 @@ cp "$T/s/rocola_portadas_01.pak" "$T/t1/rocola_portadas_09.pak"
 "$PY" "$AQUI/../arma_portadas.py" arma --catalogo "$CAT" --salida "$T/t1" --cache "$T/cache" --base "$BASE" --max-discos 40 2> /dev/null
 test ! -e "$T/t1/rocola_portadas_09.pak"
 
+paso "el tope de tiempo (--max-minutos): para con gracia y deja un paquete parcial valido (de la cache: ya bajado; el tope ya vencido tras el primer bloque)"
+"$PY" "$AQUI/../arma_portadas.py" arma --catalogo "$CAT" --salida "$T/tt" --cache "$T/cache" --base "$BASE" --max-discos 100000 --parte-mb 1 \
+  --hilos 8 --max-minutos 0.000001 2> "$T/tt.txt" || { cat "$T/tt.txt"; exit 1; }
+grep -q 'TOPE DE TIEMPO' "$T/tt.txt"
+grep -q 'PARCIAL' "$T/tt.txt"
+"$PY" "$AQUI/../arma_portadas.py" valida --salida "$T/tt"
+test "$(sed -n 's/^discos=//p' "$T/tt/rocola_portadas.txt")" -lt "$(sed -n 's/^discos=//p' "$T/s/rocola_portadas.txt")"
+echo "  parcial: $(sed -n 's/^discos=//p' "$T/tt/rocola_portadas.txt") de $(sed -n 's/^discos=//p' "$T/s/rocola_portadas.txt") discos"
+
 paso "sin portadas no se publica"
 printf '#rocola-catalogo\t1\t2026-11-14\t0\t0\n' | gzip -n > "$T/vacio.tsv.gz"
 if "$PY" "$AQUI/../arma_portadas.py" arma --catalogo "$T/vacio.tsv.gz" --salida "$T/v" --base "$BASE" 2> "$T/v.txt"; then echo "armo un paquete vacio"; exit 1; fi

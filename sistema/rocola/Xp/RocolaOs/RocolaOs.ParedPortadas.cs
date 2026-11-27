@@ -23,6 +23,7 @@
 //   parteN=NOMBRE,SHA256,BYTES (N desde 1).
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -199,12 +200,37 @@ namespace Rocola
                 }
                 catch { return false; }
             }
+            // (revision 27-11-2026) EL TOPE DE UNA PARTE: el Timeout del cliente (5 min) con ResponseHeadersRead solo cubre hasta las cabeceras, no la lectura:
+            // una conexion colgada a media parte dejaria el hilo para siempre. Aqui, 20 minutos para cada parte (ROCOLA_PAQUETE_TOPE_S en las pruebas);
+            // pasado el tope se corta la conexion, se borra lo bajado a medias y se vuelve a intentar a la hora, como los demas fallos
+            internal static int TopeParteMs
+            {
+                get
+                {
+                    string s = null; int v;
+                    try { s = Environment.GetEnvironmentVariable("ROCOLA_PAQUETE_TOPE_S"); } catch { }
+                    return !string.IsNullOrEmpty(s) && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out v) && v > 0 ? v * 1000 : 20 * 60 * 1000;
+                }
+            }
+            // (revision 27-11-2026) EL RITMO: unos 1 MB/s (1024 KB/s; los ~900 MB del paquete tardan unos 15 minutos), para no competir con el streaming de
+            // Soloist por la red del bar (ROCOLA_PAQUETE_KBS en las pruebas; 0 = sin limite)
+            internal static int LimiteKbs
+            {
+                get
+                {
+                    string s = null; int v;
+                    try { s = Environment.GetEnvironmentVariable("ROCOLA_PAQUETE_KBS"); } catch { }
+                    return !string.IsNullOrEmpty(s) && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out v) && v >= 0 ? v : 1024;
+                }
+            }
             private static bool BajaParte(string dir, Parte p, string ruta, string ok)
             {
                 string t = ruta + ".t";
+                CancellationTokenSource cts = new CancellationTokenSource(TopeParteMs);
                 try
                 {
-                    using (HttpResponseMessage r = RocolaOsPgDescarga.Http.Send(new HttpRequestMessage(HttpMethod.Get, RocolaOsPgDescarga.Url + "/" + p.Nombre), HttpCompletionOption.ResponseHeadersRead))
+                    using (HttpResponseMessage r = RocolaOsPgDescarga.Http.Send(new HttpRequestMessage(HttpMethod.Get, RocolaOsPgDescarga.Url + "/" + p.Nombre), HttpCompletionOption.ResponseHeadersRead, cts.Token))
+                    using (cts.Token.Register(delegate { try { r.Dispose(); } catch { } }))   // (al llegar el tope, la lectura que esta colgada se rompe)
                     {
                         if (r.StatusCode != HttpStatusCode.OK) { RocolaOsSpotifyCatalogoApi.ApuntaCallado("una parte del paquete de portadas no se bajo (" + ((int)r.StatusCode).ToString(CultureInfo.InvariantCulture) + ")"); return false; }
                         using (SHA256 sha = SHA256.Create())
@@ -212,9 +238,17 @@ namespace Rocola
                         using (FileStream f = new FileStream(t, FileMode.Create, FileAccess.Write, FileShare.None))
                         {
                             byte[] buf = new byte[65536]; int n; long suma = 0;
+                            int kbs = LimiteKbs; Stopwatch reloj = Stopwatch.StartNew();
                             while ((n = s.Read(buf, 0, buf.Length)) > 0)
                             {
                                 suma += n;
+                                if (cts.IsCancellationRequested) throw new OperationCanceledException();
+                                // el ritmo: lo bajado hasta ahora no puede ir mas deprisa que kbs KB por segundo
+                                if (kbs > 0)
+                                {
+                                    long debeTardar = suma * 1000 / (kbs * 1024L), tarda = reloj.ElapsedMilliseconds;
+                                    if (debeTardar > tarda) Thread.Sleep((int)Math.Min(debeTardar - tarda, 2000));
+                                }
                                 if (suma > p.Bytes) { RocolaOs.Apunta("pared_generos", "la parte " + p.Nombre + " mide de mas: no se usa"); f.Dispose(); try { File.Delete(t); } catch { } return false; }
                                 f.Write(buf, 0, n); sha.TransformBlock(buf, 0, n, null, 0);
                             }
@@ -234,8 +268,10 @@ namespace Rocola
                 {
                     try { File.Delete(t); } catch { }
                     RocolaOsSpotifyCatalogoApi.ApuntaCallado("una parte del paquete de portadas no se bajo (" + ex.GetType().Name + ")");
+                    RocolaOs.Apunta("pared_generos", "la parte " + p.Nombre + " no se bajo (" + ex.GetType().Name + (cts.IsCancellationRequested ? ", tope de tiempo" : "") + "): se vuelve a intentar a la hora");
                     return false;
                 }
+                finally { cts.Dispose(); }
             }
 
             // EL INDICE de las partes que hay y valen (su «.ok»): lee solo la cabecera de cada una
@@ -325,8 +361,8 @@ namespace Rocola
             private static readonly Queue<string> cola = new Queue<string>();
             private static readonly HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             private static bool arrancado;
-            internal static long Bajadas, Encargadas;
-            private static int desdeElAviso;
+            internal static long Bajadas, Encargadas, Sin404;
+            private static int desdeElAviso, nuevos404;
             internal static int Tope
             {
                 get
@@ -346,8 +382,10 @@ namespace Rocola
                 {
                     foreach (string m in mbids)
                     {
-                        if (Encargadas >= Tope) break;
-                        if (!vistos.Add(m)) continue;
+                        if (Encargadas >= Tope || Interlocked.Read(ref Sin404) >= Tope) break;
+                        // (revision 27-11-2026) lo que ya se sabe que no tiene portada (404) o fallo hace poco no entra ni gasta el tope; y lo que no se pudo
+                        // bajar se descuenta al terminar (Corre): el tope cuenta lo que SI avanza
+                        if (RocolaOsPgPortadas.NoVale(m) || !vistos.Add(m)) continue;
                         cola.Enqueue(m); Encargadas++;
                     }
                     if (!arrancado && cola.Count > 0)
@@ -365,8 +403,16 @@ namespace Rocola
                     string m;
                     while (RocolaOsPgPortadas.Hojeando) Thread.Sleep(500);   // (no mientras alguien hojea: la pagina que se mira va primero)
                     lock (cerrojo) { while (cola.Count == 0) Monitor.Wait(cerrojo); m = cola.Dequeue(); }
-                    bool bien = false;
-                    try { bien = RocolaOsPgPortadas.BajaRelleno(m); } catch (Exception ex) { RocolaOs.Falla("pared_generos", "en el relleno de portadas", ex); }
+                    bool bien = false, fueALaRed = false;
+                    try { bien = RocolaOsPgPortadas.BajaRelleno(m, out fueALaRed); } catch (Exception ex) { RocolaOs.Falla("pared_generos", "en el relleno de portadas", ex); }
+                    if (!bien)
+                    {
+                        // (revision 27-11-2026) un 404 o un fallo no cuentan para el tope de la sesion; si fue un fallo pasajero (no un 404), podra volver a
+                        // encargarse cuando se arme otra letra
+                        bool es404 = RocolaOsPgPortadas.SinPortada(m);
+                        lock (cerrojo) { if (Encargadas > 0) Encargadas--; if (!es404) vistos.Remove(m); }
+                        if (es404) { Interlocked.Increment(ref Sin404); Interlocked.Increment(ref nuevos404); }   // (tienen su propio tope: Tope de 404 por sesion)
+                    }
                     if (bien)
                     {
                         Interlocked.Increment(ref Bajadas);
@@ -374,8 +420,14 @@ namespace Rocola
                         if (Interlocked.Increment(ref desdeElAviso) >= CadaCuantas) { Interlocked.Exchange(ref desdeElAviso, 0); Interlocked.Increment(ref RocolaOsPgPortadas.ManoSigValor); }
                     }
                     bool vacia; lock (cerrojo) vacia = cola.Count == 0;
-                    if (vacia && Interlocked.Exchange(ref desdeElAviso, 0) > 0) Interlocked.Increment(ref RocolaOsPgPortadas.ManoSigValor);
-                    Thread.Sleep(500);   // (sin prisa: 2 hilos, como mucho 4 por segundo; la red y la maquina son de la musica y de la pantalla primero)
+                    // al vaciarse la cola, la pared se rearma si llego alguna portada o si se supo de unos 404: asi su siguiente tanda del archivo
+                    // (los que estaban despues de esos 404) entra al relleno y no se queda atascado
+                    if (vacia)
+                    {
+                        int nb = Interlocked.Exchange(ref desdeElAviso, 0), n4 = Interlocked.Exchange(ref nuevos404, 0);
+                        if (nb > 0 || n4 > 0) Interlocked.Increment(ref RocolaOsPgPortadas.ManoSigValor);
+                    }
+                    if (fueALaRed || bien) Thread.Sleep(500);   // (sin prisa: 2 hilos, como mucho 4 por segundo; la red y la maquina son de la musica y de la pantalla primero)
                 }
             }
         }

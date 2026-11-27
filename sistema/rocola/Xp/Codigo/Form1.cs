@@ -1987,12 +1987,12 @@ namespace Rocola
                 return true;
             }
 
-            lastInput = DateTime.Now;   // cualquier tecla reinicia la inactividad
+            if (RocolaOsTeclaVolumen(keyData, msg)) return true; lastInput = DateTime.Now;   // ROCOLA OS g424: (XP) lastInput = DateTime.Now;   // cualquier tecla reinicia la inactividad — un boton de volumen (el del asistente o las teclas multimedia) solo sube o baja el volumen: ni despierta la atraccion, ni reinicia la inactividad (un disco abierto se cierra igual a los 30 s), ni hace otra cosa (RocolaOs.TeclasVolumen.cs)
             lastInputTick = Environment.TickCount;   // el precalentador de miniaturas pausa si hay actividad
 #if ROCOLA_GPU
             if (gpuEnabled && gpuPanel != null) gpuPanel.TouchUi();
 #endif
-            if (RocolaOsTeclaVolumen(keyData, msg)) return true; if (attractOn)   // ROCOLA OS g424: (XP) if (attractOn) — un boton de volumen (el del asistente o las teclas multimedia) solo sube o baja el volumen, sin despertar ni hacer otra cosa (RocolaOs.TeclasVolumen.cs)
+            if (attractOn)
             {
                 // Cualquier boton despierta la rocola... pero la MONEDA ademas ACREDITA. Antes este return se
                 // tragaba el pulso del monedero: el cliente metia su moneda durante la atraccion (el estado MAS

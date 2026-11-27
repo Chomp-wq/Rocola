@@ -30,3 +30,7 @@ Las pestañas van pegadas a la derecha: Pantalla (606,54), Sonido (712,54), **Sp
 nueva, hasta la barra de la resolución de la hoja Pantalla hay un Tab más: `Pruebas/RocolaOs/pantalla/prueba.sh` (5 Tab) y
 `Pruebas/Qemu/pantalla.py` (5 Tab); `salida-audio` hace clic en Sonido en x=712. Escena `hoja` de `Pruebas/RocolaOs/catalogo/prueba.sh` (vigilante y
 bitácora sembrados; captura a 1024x768; Tab x3 hasta el deslizador y dos flechas: `pared_paginas=200`). No probado con Soloist real ni en el A4.
+
+**Revisión del 27-11-2026 (páginas por letra)**: el texto de la hoja decía «vale en un minuto o al reabrir la letra» y no era cierto (las letras armadas
+no se rearmaban). Ahora `pared_paginas` se lee cada 2 s, entra en la firma de las letras de la pared (`RocolaOsPgGenSig`) y la letra que se mira se
+rearma de inmediato (las demás en memoria, al visitarlas); si el disco elegido deja de caber, la elección se queda en el último que queda.

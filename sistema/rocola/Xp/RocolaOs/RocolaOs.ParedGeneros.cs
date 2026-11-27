@@ -53,13 +53,21 @@ namespace Rocola
             get
             {
                 int ahora = Environment.TickCount;
-                if (rocolaOsPgPaginas > 0 && unchecked(ahora - rocolaOsPgPaginasLeidoMs) < 60000) return rocolaOsPgPaginas;
+                if (rocolaOsPgPaginas > 0 && unchecked(ahora - rocolaOsPgPaginasLeidoMs) < 2000) return rocolaOsPgPaginas;   // (revision 27-11: antes 60 s; leer un ajuste es una busqueda en un diccionario)
                 int v = RocolaOsPgPaginasFabrica;
                 try { string a = RocolaOs.Ajuste("pared_paginas"); int x; if (a != null && int.TryParse(a.Trim(), out x)) v = Math.Max(RocolaOsPgPaginasMin, Math.Min(RocolaOsPgPaginasTope, x)); } catch { }
                 rocolaOsPgPaginas = v; rocolaOsPgPaginasLeidoMs = ahora; return v;
             }
         }
         private const int RocolaOsPgListasEnMemoria = 4;
+        // (revision 27-11-2026) cuantas portadas que faltan se le dan al relleno por cada vez que se arma una letra (en el orden del archivo); ROCOLA_PARED_FALTAN en las pruebas
+        private static readonly int RocolaOsPgFaltanMax = RocolaOsPgFaltanLee();
+        private static int RocolaOsPgFaltanLee()
+        {
+            string s = null; int v;
+            try { s = Environment.GetEnvironmentVariable("ROCOLA_PARED_FALTAN"); } catch { }
+            return !string.IsNullOrEmpty(s) && int.TryParse(s, System.Globalization.NumberStyles.Integer, CultureInfo.InvariantCulture, out v) && v > 0 ? v : 400;
+        }
         private const string RocolaOsPgCarpeta = RocolaOsSpotifyCarpeta + "catalogo:";
 
 #pragma warning disable CA2255
@@ -100,6 +108,7 @@ namespace Rocola
             internal RocolaOsPgCatalogo De;
             internal List<Album> AlbumsDeXp;
             internal int GenSig;                                        // lo que XP sabia de los generos al armarla (RocolaOsPgGenSig)
+            internal int Paginas;                                       // (revision 27-11-2026) pared_paginas con que se armo: si cambia, se rearma sin esperar
         }
         // lo que la pantalla le da al hilo que arma (una copia: el hilo no toca nada de XP)
         private sealed class RocolaOsPgEncargo
@@ -111,7 +120,7 @@ namespace Rocola
             internal HashSet<string> Ocultos;
             internal List<Album> AlbumsDeXp;
             internal string Volcado;
-            internal int Numero, GenSig;
+            internal int Numero, GenSig, Paginas;
             internal RocolaOsPgLetra Previa;                            // (revision) la de antes de esta letra: sus discos del catalogo se reusan
         }
 
@@ -164,6 +173,8 @@ namespace Rocola
                 return;
             }
             rocolaOsPgArrancada = true;
+            rocolaOsPgInicioMs = Environment.TickCount64;
+            try { string pp = Environment.GetEnvironmentVariable("ROCOLA_PARED_PAGINAS_PRUEBA"); if (!string.IsNullOrEmpty(pp)) rocolaOsPgPruebaPaginas = pp; } catch { }
             rocolaOsPgListas = new List<RocolaOsPgLetra>();
             rocolaOsPgPedidas = new Dictionary<char, int>();
             rocolaOsPgOcultos = new HashSet<string>(StringComparer.Ordinal);
@@ -177,6 +188,7 @@ namespace Rocola
 
         // EL LATIDO (1 s, en la pantalla): el catalogo nuevo, lo armado que no pudo encargarse, las casillas y el estado
         private int rocolaOsPgLatidos;
+        private string rocolaOsPgPruebaPaginas; private long rocolaOsPgInicioMs;
         private void RocolaOsPgLatido()
         {
             if (!rocolaOsPgArrancada && !rocolaOsPgSoloMide) return;
@@ -184,6 +196,12 @@ namespace Rocola
             if (mem > rocolaOsPgMemMax) rocolaOsPgMemMax = mem;
             if (gc > rocolaOsPgGcMax) rocolaOsPgGcMax = gc;
             if (rocolaOsPgSoloMide) { if (++rocolaOsPgLatidos % 2 == 0) RocolaOsPgEscribeEstado(); return; }
+            // (pruebas) ROCOLA_PARED_PAGINAS_PRUEBA=SEGUNDOS:N: a esos segundos de abrir, pared_paginas=N como lo cambiaria la hoja Spotify (PonAjuste)
+            if (rocolaOsPgPruebaPaginas != null)
+            {
+                string[] pp = rocolaOsPgPruebaPaginas.Split(':'); int seg;
+                if (pp.Length == 2 && int.TryParse(pp[0], out seg) && Environment.TickCount64 - rocolaOsPgInicioMs >= seg * 1000L) { rocolaOsPgPruebaPaginas = null; RocolaOs.PonAjuste("pared_paginas", pp[1]); }
+            }
             // LA LLAVE DE LA API (el archivo se lee como mucho cada 5 s): sin ella, ni se baja el catalogo ni hay pared con el catalogo
             bool llave = RocolaOsSpotifyCatalogoApi.HayLlave;
             if (llave && !rocolaOsPgDescargando)
@@ -207,7 +225,15 @@ namespace Rocola
             RocolaOsPgCatalogo c = RocolaOsPgDescarga.Actual;
             if (c != null && !ReferenceEquals(c, rocolaOsPgCat)) RocolaOsPgLlegoCatalogo(c);
             RocolaOsPgPublica();   // («spotify apagar», la llave quitada...: las casillas sin pastilla al momento)
+            if (RocolaOsPgVa && RocolaOsPgLetraSuya(currentLetter)) RocolaOsPgRearmaSiCambioPaginas();   // (revision 27-11-2026)
             if (++rocolaOsPgLatidos % 2 == 0) RocolaOsPgEscribeEstado();
+        }
+        // (revision 27-11-2026) pared_paginas cambiada (la hoja Spotify de Ctrl+F4) mientras se mira una letra quieta: nadie pide la lista (g90), asi que el latido
+        // rearma la que se mira con las paginas nuevas; las demas en memoria, cuando se visiten
+        private void RocolaOsPgRearmaSiCambioPaginas()
+        {
+            RocolaOsPgLetra m = RocolaOsPgMirada();
+            if (m != null && m.Paginas != RocolaOsPgPaginasMax && !rocolaOsPgPedidas.ContainsKey(currentLetter)) RocolaOsPgPide(currentLetter, true);
         }
 
         private void RocolaOsPgLlegoCatalogo(RocolaOsPgCatalogo c)
@@ -242,10 +268,11 @@ namespace Rocola
             if (e != null)
             {
                 if (!ReferenceEquals(e.De, rocolaOsPgCat)) RocolaOsPgPide(l);   // (de un catalogo de antes: se ve hasta que llegue la nueva)
-                else if (e.GenSig != RocolaOsPgGenSig() && Environment.TickCount64 - rocolaOsPgRearmada >= 30000)
+                else if (e.GenSig != RocolaOsPgGenSig() && (e.Paginas != RocolaOsPgPaginasMax || Environment.TickCount64 - rocolaOsPgRearmada >= 30000))
                 {
                     // (revision) XP aprendio generos despues de armarla (el paseo de fondo): otra vez, para que las pastillas digan lo de ahora;
-                    // como mucho cada 30 s. El orden no cambia (no depende del genero) y los discos del catalogo se reusan: la eleccion no salta
+                    // como mucho cada 30 s. El orden no cambia (no depende del genero) y los discos del catalogo se reusan: la eleccion no salta.
+                    // (revision 27-11-2026) un cambio de pared_paginas (la hoja Spotify de Ctrl+F4) no espera esos 30 s
                     rocolaOsPgRearmada = Environment.TickCount64;
                     RocolaOsPgPide(l, true);
                 }
@@ -291,14 +318,15 @@ namespace Rocola
         // (revision) lo que XP sabe de los generos de tus discos: crece cuando el paseo de fondo aprende (GeneroDeCancion: discTag y artistTag)
         private long rocolaOsPgRearmada;
         // (27-11-2026) y lo que hay a la mano de portadas (llego una parte del paquete, el relleno bajo otras): entran discos nuevos
-        private int RocolaOsPgGenSig() { return unchecked(discTag.Count * 65599 + artistTag.Count + (int)(RocolaOsPgPortadas.ManoSig * 7919)); }
+        // (revision 27-11-2026) y las paginas por letra (pared_paginas=): al cambiarlas, las letras en memoria se arman otra vez
+        private int RocolaOsPgGenSig() { return unchecked(discTag.Count * 65599 + artistTag.Count + (int)(RocolaOsPgPortadas.ManoSig * 7919) + RocolaOsPgPaginasMax * 104729); }
         private void RocolaOsPgPide(char l) { RocolaOsPgPide(l, false); }
         private void RocolaOsPgPide(char l, bool generos)
         {
             if (rocolaOsPgCat == null || libBuilding || albums == null || rocolaOsPgPedidas.ContainsKey(l)) return;
             RocolaOsPgLetra ya = RocolaOsPgEnMemoria(l);
             if (ya != null && ReferenceEquals(ya.De, rocolaOsPgCat) && !generos) return;
-            int sig = RocolaOsPgGenSig();
+            int sig = RocolaOsPgGenSig(), paginas = RocolaOsPgPaginasMax;
             List<Album> loc;
             if (!byLetter.TryGetValue(l, out loc) || loc == null) loc = new List<Album>();
             loc = new List<Album>(loc);
@@ -308,7 +336,7 @@ namespace Rocola
             try { vol = Environment.GetEnvironmentVariable("ROCOLA_PARED_VOLCADO"); } catch { }
             RocolaOsPgEncargo e = new RocolaOsPgEncargo
             {
-                Letra = l, Cat = rocolaOsPgCat, Locales = loc, GenerosLocales = gen, GenSig = sig, Previa = ya,
+                Letra = l, Cat = rocolaOsPgCat, Locales = loc, GenerosLocales = gen, GenSig = sig, Paginas = paginas, Previa = ya,
                 Ocultos = new HashSet<string>(rocolaOsPgOcultos, StringComparer.Ordinal), AlbumsDeXp = albums, Volcado = string.IsNullOrEmpty(vol) ? null : vol,
             };
             e.Numero = ++rocolaOsPgPedidoN;
@@ -393,7 +421,7 @@ namespace Rocola
                 generoTuyo[kv.Key] = mejor;
             }
             // LO QUE ENTRA DEL CATALOGO: los primeros del archivo (del artista mas famoso al menos) hasta llenar las paginas de la letra (pared_paginas=) con los tuyos
-            int tope = RocolaOsPgPaginasMax * PageSize;
+            int tope = e.Paginas * PageSize;
             int quedan = Math.Max(0, tope - e.Locales.Count);
             List<RocolaOsPgEntrada> entran = new List<RocolaOsPgEntrada>(Math.Min(quedan, e.Cat.Discos));
             // (27-11-2026) lo que NO va: bandas sonoras, videojuegos... (el suyo o el de su artista) y los discos sin portada; y lo que todavia no tiene su
@@ -413,7 +441,9 @@ namespace Rocola
                     if (quedan <= 0) break;
                     if (d.Excluido) { excluidos++; continue; }
                     if (e.Ocultos.Contains(d.Clave) || tuyos.Contains(k + "\n" + RocolaOsPgNombres.ClaveDisco(d.Nombre))) continue;
-                    if (!RocolaOsPgPortadas.ALaMano(d.Mbid)) { sinMano++; if (faltan.Count < 400) faltan.Add(d.Mbid); continue; }
+                    // (revision 27-11-2026) los que ya se sabe que no tienen portada (404) o fallaron hace poco no van al relleno: antes los primeros 400
+                    // del archivo, si eran 404, atascaban el relleno para siempre
+                    if (!RocolaOsPgPortadas.ALaMano(d.Mbid)) { sinMano++; if (faltan.Count < RocolaOsPgFaltanMax && !RocolaOsPgPortadas.NoVale(d.Mbid)) faltan.Add(d.Mbid); continue; }
                     entran.Add(new RocolaOsPgEntrada { D = d, Artista = suyo, Pastilla = gen, N = entran.Count });
                     quedan--;
                 }
@@ -425,7 +455,7 @@ namespace Rocola
                 return c != 0 ? c : x.N.CompareTo(y.N);
             });
             // INTERCALADOS con los tuyos (que ya vienen en el orden de XP): a igualdad, lo tuyo antes
-            RocolaOsPgLetra r = new RocolaOsPgLetra { Letra = e.Letra, De = e.Cat, AlbumsDeXp = e.AlbumsDeXp, GenSig = e.GenSig, Catalogo = new Dictionary<Album, RocolaOsPgDisco>(entran.Count) };
+            RocolaOsPgLetra r = new RocolaOsPgLetra { Letra = e.Letra, De = e.Cat, AlbumsDeXp = e.AlbumsDeXp, GenSig = e.GenSig, Paginas = e.Paginas, Catalogo = new Dictionary<Album, RocolaOsPgDisco>(entran.Count) };
             // (revision) los discos del catalogo de la de antes, por su clave: el mismo objeto (sus canciones ya pedidas, su portada, la eleccion)
             Dictionary<string, Album> previos = null;
             if (e.Previa != null && e.Previa.Catalogo != null)
@@ -536,6 +566,8 @@ namespace Rocola
             int nuevo = elegido != null ? r.Lista.IndexOf(elegido) : 0;
             if (nuevo < 0 && elegido != null && elegido.Folder != null)   // (uno del catalogo de antes: el mismo disco del nuevo, por su clave)
                 for (int i = 0; i < r.Lista.Count; i++) if (string.Equals(r.Lista[i].Folder, elegido.Folder, StringComparison.Ordinal)) { nuevo = i; break; }
+            // (revision 27-11-2026) si el disco ya no esta (menos paginas por letra), la eleccion se queda en el mismo sitio o en el ultimo que queda
+            if (nuevo < 0 && elegido != null) nuevo = Math.Max(0, Math.Min(selAlbumIndex, r.Lista.Count - 1));
             if (nuevo < 0) nuevo = 0;
             selAlbumIndex = nuevo; page = nuevo / PageSize;
             if (panelSongs != null && panelSongs.Visible) return;   // (dentro de un disco: al volver, XP pone la pared en su sitio)
@@ -1050,7 +1082,8 @@ namespace Rocola
                   .Append("\npaquete_partes=").Append(RocolaOsPgPaquete.Partes.ToString(CultureInfo.InvariantCulture)).Append("\npaquete_bajadas=").Append(Interlocked.Read(ref RocolaOsPgPaquete.Bajados).ToString(CultureInfo.InvariantCulture))
                   .Append("\npaquete_extraidas=").Append(Interlocked.Read(ref RocolaOsPgPaquete.Extraidas).ToString(CultureInfo.InvariantCulture))
                   .Append("\nrelleno_encargadas=").Append(Interlocked.Read(ref RocolaOsPgRelleno.Encargadas).ToString(CultureInfo.InvariantCulture))
-                  .Append("\nrelleno_bajadas=").Append(Interlocked.Read(ref RocolaOsPgRelleno.Bajadas).ToString(CultureInfo.InvariantCulture)).Append('\n');
+                  .Append("\nrelleno_bajadas=").Append(Interlocked.Read(ref RocolaOsPgRelleno.Bajadas).ToString(CultureInfo.InvariantCulture))
+                  .Append("\nrelleno_sin_portada=").Append(Interlocked.Read(ref RocolaOsPgRelleno.Sin404).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 long api = RocolaOsSpotifyCatalogoApi.Peticiones;
                 sb.Append("api_peticiones=").Append(api.ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("memoria_mb=").Append((Environment.WorkingSet / 1048576).ToString(CultureInfo.InvariantCulture)).Append("\nmemoria_mb_max=").Append((rocolaOsPgMemMax / 1048576).ToString(CultureInfo.InvariantCulture))

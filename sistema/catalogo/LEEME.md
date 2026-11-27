@@ -48,9 +48,9 @@ L	...
 - **Marcas** (columna 7 de `D`, desde el 27-11-2026; **solo si hay alguna**, así que un `D` sin marcas es de 6 campos como siempre y un
   rocola-xp que no conoce la columna la ignora): letras de `sjmkidh` sin repetir y en ese orden, que dicen por qué el disco **no va en la pared
   de discos** (solo el buscador lo encuentra): `s` cine y series (tipo secundario *Soundtrack* de MusicBrainz o las palabras del nombre:
-  «soundtrack», «OST», «banda sonora», «original motion picture»...), `j` videojuegos, `m` musicales y teatro, `k` karaoke, `i` infantil,
+  «original soundtrack», «OST» solo o entre paréntesis, «banda sonora», «original motion picture»...; revisión del 27-11-2026: una palabra suelta ambigua como «soundtrack», «lullaby» o «yoga» no marca un disco normal), `j` videojuegos, `m` musicales y teatro, `k` karaoke, `i` infantil,
   `d` para dormir, meditar o relajarse, `h` hablado. El género del artista (`Soundtrack`, `Karaoke`, `Infantil`, `Hablado`) marca todos sus
-  discos y también el nombre del artista («Karaoke Stars»). **El catálogo no los quita: los marca** y los pone después de los demás
+  discos y también el nombre del artista cuando es entero o casi entero el de un canal de pistas, infantil o de relajación («Karaoke Hits», «Kidz Bop Kids»; nunca una palabra suelta dentro de un nombre: «The Soundtrack of Our Lives» no se marca). **El catálogo no los quita: los marca** y los pone después de los demás
   discos de su artista (no gastan el sitio de uno de la pared); la rocola decide (`RocolaOs.ParedExclusiones.cs`) y, con el catálogo ya
   publicado, que no trae la columna, usa las mismas palabras por su cuenta. Las frases (`MARCAS_PALABRAS_DISCO` y `MARCAS_PALABRAS_ARTISTA` en
   `arma_catalogo.py`) son las mismas de la rocola: `prueba/exclusiones.tsv` las comprueba a las dos. Un disco sin portada (columna 6 = 0) tampoco
@@ -268,5 +268,11 @@ lo baja **una vez** (sin llave, comprobado por bytes y sha256 como el catálogo)
   cuerpo que no es JPEG): entran solo los discos que van a la pared y en el orden de fama, los topes de discos y de MB, las partes, `valida`
   atrapa una parte tocada o que falta, la caché evita todas las peticiones de una segunda corrida y una corrida nueva borra las partes que
   sobran. Corre también en GitHub al cambiar el flujo.
+- **Revisión del 27-11-2026**: `arma --max-minutos N` para con gracia al acabar el bloque en que se pasa el tope, cierra la parte en curso y deja un
+  paquete **parcial** válido (los de los artistas más famosos primero; el resto, en otra corrida con la caché). El flujo la usa con 270 minutos (el
+  trabajo corta a los 330) y guarda la caché de portadas con `actions/cache/save` y `if: always()` (clave única por corrida; `restore-keys` toma la
+  última): antes `actions/cache@v4` solo guardaba si todo salía bien y un corte perdía horas de descargas. La entrada `solo_portadas` de Run
+  workflow salta «armar» y hace solo el trabajo de portadas con el último catálogo publicado. En la rocola, la descarga del paquete va a ~1 MB/s y
+  cada parte tiene un tope de 20 minutos que cubre la lectura (`RocolaOs.ParedPortadas.cs`).
 - **Sin comprobar aquí**: el Cover Art Archive de verdad (el tamaño real del paquete: ~60 000 × 10-25 KB; el tiempo de la corrida; si las dos
   redirecciones de `coverartarchive.org` aguantan 16 hilos).

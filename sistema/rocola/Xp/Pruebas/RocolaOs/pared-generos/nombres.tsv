@@ -41,3 +41,28 @@ artista	Queen	Queen + Adam Lambert	0
 artista	Alma Nortena	Alma Norteña feat. Invitado	1
 artista	Ángeles Ficticios	Angeles Ficticios	1
 artista	Los Ángeles Azules	Los Angeles Negros	0
+# (27-11-2026, revision) discos distintos que la clave colapsaba: sin una palabra fuerte de edicion la cola se queda
+disco	Live	Live Sessions	0
+disco	Ten	Ten Years	0
+disco	Greatest Hits	Greatest Hits Gold	0
+disco	Greatest Hits	Greatest Hits Gold Edition	1
+disco	Live	Live Sessions (Deluxe Edition)	0
+disco	Live Sessions	Live Sessions Deluxe	1
+disco	Ten	Ten (Remastered)	1
+disco	Abbey Road	Abbey Road Tour	0
+disco	Abbey Road	Abbey Road Original Mix	0
+disco	Nevermind	Nevermind Sessions	0
+disco	Mi Gran Noche	Mi Gran Noche Remasterizado 2012	1
+# (27-11-2026, revision) artistas que la clave cortaba de mas (coma y barra)
+artista	Earth	Earth, Wind & Fire	0
+artista	Crosby	Crosby, Stills & Nash	0
+artista	Tyler	Tyler, The Creator	0
+artista	AC	AC/DC	0
+artista	Earth, Wind & Fire	EARTH, WIND & FIRE	1
+artista	AC/DC	ac dc	1
+artista	Tyler, The Creator	The Tyler, The Creator	1
+artista	Michael Jackson	Michael Jackson, Siedah Garrett	0
+artista	Michael Jackson	Michael Jackson; Siedah Garrett	1
+disco	Ten	Ten Years Deluxe	0
+disco	Ten	Ten 25 Years Deluxe Edition	1
+disco	Mi Gran Noche	Mi Gran Noche 20 Anos Edicion Aniversario	1

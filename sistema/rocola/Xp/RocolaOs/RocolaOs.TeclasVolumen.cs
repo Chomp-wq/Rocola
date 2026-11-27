@@ -5,7 +5,7 @@
 // rocola_teclas.txt; el de XP no cambia y la rocola de XP lo lee igual). Al apretar uno, el volumen general de la tarjeta de la rocola
 // sube o baja un 2 % (Plataforma/VolumenTeclas.cs, por amixer) y apretado se repite unas 10 veces por segundo (con la repeticion de
 // siempre de las teclas). Las teclas multimedia de volumen (VK_VOLUME_UP/DOWN/MUTE, KEY_VOLUMEUP/DOWN/MUTE de Linux) valen siempre,
-// aunque no se hayan configurado. Ganchos g420-g424 (Codigo/Form1.Ajustes.cs, el asistente; Codigo/Form1.cs, la tecla). Sin Rocola OS,
+// aunque no se hayan configurado; si un boton de volumen guardado es uno de los 8 de XP, manda el de XP. Ganchos g420-g424 (Codigo/Form1.Ajustes.cs, el asistente; Codigo/Form1.cs, la tecla). Sin Rocola OS,
 // XP tal cual (8 pasos).
 using System;
 using System.Globalization;
@@ -97,17 +97,20 @@ namespace Rocola
             catch { }
         }
 
-        // g424 (la tecla, antes de todo lo demas de XP salvo el asistente): un boton de volumen sube o baja el volumen y no hace nada mas
-        // (no despierta la atraccion ni cuenta como otro boton). true = lo atendio.
+        // g424 (la tecla, ANTES de reiniciar la inactividad: despues del arranque en espera y de Ctrl+Alt+Q, y antes de lastInput): un boton de volumen
+        // sube o baja el volumen y no hace nada mas (no despierta la atraccion, no reinicia la inactividad ni cuenta como otro boton). true = lo atendio.
         private bool RocolaOsTeclaVolumen(Tecla keyData, PulsoTecla msg)
         {
             if (!RocolaOs.Activo || configMode) return false;
             if (!rocolaOsVolLeido) RocolaOsLeeVolumen();
             Tecla k = keyData & Tecla.KeyCode;
             if (k == Tecla.None) return false;
+            // (revision 27-11-2026) si un boton de volumen guardado coincide con uno de los 8 de XP (pasa si se vuelve a traer rocola_teclas.txt de XP:
+            // el de volumen se guardo antes), gana el de XP; las teclas multimedia (0xAD-0xAF) valen siempre
+            bool deXp = k == keyUp || k == keyDown || k == keyLeft || k == keyRight || k == keyOK || k == keyBack || k == keyCoin || k == keySkip;
             int dir = 0; bool mudo = false;
-            if (k == rocolaOsVolSube || (int)k == VkVolumenSube) dir = 1;
-            else if (k == rocolaOsVolBaja || (int)k == VkVolumenBaja) dir = -1;
+            if ((!deXp && k == rocolaOsVolSube) || (int)k == VkVolumenSube) dir = 1;
+            else if ((!deXp && k == rocolaOsVolBaja) || (int)k == VkVolumenBaja) dir = -1;
             else if ((int)k == VkVolumenMudo) mudo = true;
             else return false;
             int ahora = Environment.TickCount;

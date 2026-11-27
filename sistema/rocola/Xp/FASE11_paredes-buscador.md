@@ -652,3 +652,8 @@ color del atajo y la etiqueta, en el SearchOverlay del buscador con portadas).
   primera de la búsqueda; abrir otra vez, 0 peticiones), `mejoresteclas` (REGRESAR borra letras y deja el prefijo, BORRAR del teclado no lo
   quita, REGRESAR con nada escrito lo quita, el atajo lo pone y lo quita) y `sinmejores` (sin ROCOLA_OS y con spotify=0: nada). No probado
   con Spotify real ni en el A4.
+
+**Revisión del 27-11-2026 («LAS MEJORES CANCIONES DE»)**: la consulta `artist:"..."` de «Canciones de ARTISTA» ya quita las comillas del nombre (como las
+demás consultas, `RocolaOs.SpotifyCatalogoApi.cs`), y un artista de solo símbolos («!!!») ya no comparte clave de tarjeta con los demás que
+normalizan a nada: su clave es su nombre en minúsculas con «!» delante (`RocolaOs.Mejores.cs`, `rocolaOsMejoresTarjetas` y la búsqueda de tus
+canciones de ese artista). No probado con Spotify real.

@@ -26,6 +26,14 @@ on:
         description: 'Portadas del paquete: cuantos discos como mucho (los de los artistas mas famosos primero)'
         type: string
         default: '60000'
+      solo_portadas:
+        description: 'SOLO el paquete de portadas, sobre el ultimo catalogo ya publicado (no arma el catalogo; baja el de la version «catalogo»)'
+        type: boolean
+        default: false
+      max_minutos:
+        description: 'Portadas: a los cuantos minutos parar con gracia y publicar lo que hay (un paquete parcial valido; el trabajo corta a los 330)'
+        type: string
+        default: '270'
   push:
     branches: [claude/modest-carson-fa2v2n]
     paths: ['.github/workflows/rocola-catalogo.yml']
@@ -50,7 +58,8 @@ jobs:
 
   armar:
     needs: prueba
-    if: github.event_name == 'workflow_dispatch'
+    # (27-11-2026) con «solo_portadas» no se arma el catalogo: el trabajo de portadas toma el ultimo publicado
+    if: github.event_name == 'workflow_dispatch' && !inputs.solo_portadas
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     env:
@@ -157,22 +166,27 @@ jobs:
   # Cover Art Archive con 16 hilos y una cache entre corridas (si se corta o se repite, sigue donde iba), las valida y las publica en la misma version:
   # primero las partes y al final el manifiesto (la rocola solo mira las partes cuando el manifiesto trae otras). Las partes de una corrida de antes que
   # ya no estan en el manifiesto se quitan de la version.
+  # (27-11-2026, revision) LA CACHE SE GUARDA AUNQUE EL TRABAJO FALLE O SE CORTE: «actions/cache@v4» solo guarda en su paso final y solo si todo
+  # salio bien, y horas de descargas se perdian; ahora restore al empezar y save con «if: always()» (clave unica por corrida; restore-keys toma la
+  # ultima). Y arma_portadas.py para con gracia a los «max_minutos» (270 de fabrica) y publica lo que tiene (paquete parcial valido) antes del limite
+  # de 330 minutos del trabajo, que dejaria sin publicar ni guardar nada. «solo_portadas» salta «armar» y usa el catalogo ya publicado.
   portadas:
-    needs: armar
-    if: github.event_name == 'workflow_dispatch' && inputs.portadas
+    needs: [prueba, armar]
+    # armar puede estar saltado a proposito (solo_portadas); si fallo o se cancelo, no se corre
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.portadas || inputs.solo_portadas) && needs.prueba.result == 'success' && (needs.armar.result == 'success' || (inputs.solo_portadas && needs.armar.result == 'skipped')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: El catalogo recien publicado
+      - name: El catalogo recien publicado (o, con solo_portadas, el ultimo que haya)
         run: gh release download catalogo -p 'rocola_catalogo.tsv.gz' -p 'rocola_catalogo.txt' --dir catalogo
-      - name: Cache de portadas (entre corridas)
-        uses: actions/cache@v4
+      - name: Cache de portadas (restaurar la ultima de otras corridas)
+        uses: actions/cache/restore@v4
         with:
           path: portadas-cache
-          key: portadas-${{ github.run_number }}
+          key: portadas-${{ github.run_number }}-${{ github.run_attempt }}
           restore-keys: portadas-
       - name: Cuantos discos entran
         run: python3 sistema/catalogo/arma_portadas.py lista --catalogo catalogo/rocola_catalogo.tsv.gz --max-discos "${{ inputs.max_discos }}"
@@ -180,10 +194,18 @@ jobs:
         run: |
           t=$(date +%s)
           python3 sistema/catalogo/arma_portadas.py arma --catalogo catalogo/rocola_catalogo.tsv.gz --txt catalogo/rocola_catalogo.txt \
-            --salida paquete --cache portadas-cache --max-discos "${{ inputs.max_discos }}" --max-mb 900 --parte-mb 150 --hilos 16
+            --salida paquete --cache portadas-cache --max-discos "${{ inputs.max_discos }}" --max-mb 900 --parte-mb 150 --hilos 16 \
+            --max-minutos "${{ inputs.max_minutos }}"
           echo "portadas: $(( $(date +%s) - t )) s"
           cat paquete/rocola_portadas.txt
           du -sh paquete portadas-cache
+      # (27-11-2026) guardar la cache pase lo que pase (si el paso de arriba fallo, o el trabajo se cancelo): lo bajado no se pierde
+      - name: Cache de portadas (guardar, aunque algo falle)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: portadas-cache
+          key: portadas-${{ github.run_number }}-${{ github.run_attempt }}
       - name: Validar el paquete
         run: python3 sistema/catalogo/arma_portadas.py valida --salida paquete
       - name: Guardar el manifiesto (por si hay que revisar)

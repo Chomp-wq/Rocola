@@ -65,31 +65,47 @@ TIPO_PRINCIPAL = 'Album'
 # las usa por su cuenta): si cambia una tabla, cambia la otra (prueba/exclusiones.tsv las comprueba a las dos). Van normalizadas: minusculas, sin
 # acentos y sin signos (lo que no es letra o cifra, un espacio), y valen como palabras enteras («ost» no marca «lost»).
 LETRAS_MARCA = 'sjmkidh'
+# (27-11-2026, revision) Solo frases que dicen la cosa por si solas: las palabras sueltas ambiguas («soundtrack», «ost», «lullaby», «yoga»,
+# «meditation», «binaural»...) NO valen en cualquier parte (el disco «Binaural» de Pearl Jam, «Lullaby for the Working Class» o «Songs from the
+# Game» son discos normales): las de cine (MARCAS_AMBIGUAS_S) valen si son TODO el nombre o van entre parentesis o corchetes o solas tras un guion
+# o dos puntos; y un ARTISTA solo se marca por su nombre entero o casi (MARCAS_PALABRAS_ARTISTA: «The Soundtrack of Our Lives» es un grupo de rock).
 MARCAS_PALABRAS_DISCO = [
-    ('s', ['soundtrack', 'soundtracks', 'ost', 'o s t', 'banda sonora', 'bandas sonoras', 'bso', 'original score', 'film score',
-           'motion picture', 'music from the film', 'music from the movie', 'music from the original', 'inspired by the film',
-           'inspired by the motion picture', 'from the netflix', 'television soundtrack', 'original television', 'music from the tv',
-           'music from the series', 'original series', 'musica de la pelicula', 'musica original de la pelicula',
+    ('s', ['original soundtrack', 'official soundtrack', 'soundtrack album', 'soundtrack from', 'soundtrack to', 'film soundtrack',
+           'movie soundtrack', 'tv soundtrack', 'television soundtrack', 'series soundtrack', 'game soundtrack', 'game ost', 'banda sonora',
+           'bandas sonoras', 'original score', 'film score', 'game score', 'motion picture soundtrack', 'music from the motion picture',
+           'original motion picture', 'motion picture score', 'from the motion picture', 'music from the film', 'music from the movie',
+           'music from the original', 'inspired by the film', 'inspired by the motion picture', 'from the netflix', 'original television',
+           'music from the tv', 'music from the series', 'original series', 'musica de la pelicula', 'musica original de la pelicula',
            'banda sonora original']),
     ('j', ['video game', 'video games', 'videogame', 'videogames', 'videojuego', 'videojuegos', 'game soundtrack', 'game ost',
-           'game score', 'original game', 'from the game', 'music from the game', 'game music']),
+           'game score', 'music from the game', 'game music']),
     ('m', ['original cast', 'cast recording', 'cast album', 'broadway cast', 'original broadway', 'original london cast',
            'studio cast', 'musical soundtrack', 'the musical', 'a new musical', 'original off broadway', 'highlights from the musical']),
     ('k', ['karaoke', 'backing track', 'backing tracks', 'sing along', 'singalong']),
     ('i', ['nursery rhymes', 'nursery rhyme', 'canciones infantiles', 'cancion infantil', 'para ninos', 'for kids', 'kids songs',
            'children s songs', 'children s music', 'songs for children', 'baby songs', 'musica infantil', 'cantos infantiles', 'kidz bop']),
     ('d', ['sleep music', 'music for sleep', 'music for sleeping', 'deep sleep', 'sleep sounds', 'sleep aid', 'sleeping music',
-           'sleep meditation', 'meditation', 'meditacion', 'para dormir', 'relaxing music', 'relaxation', 'relajante', 'relajacion',
-           'white noise', 'ruido blanco', 'rain sounds', 'nature sounds', 'sounds of nature', 'sonidos de la naturaleza',
-           'ocean waves', 'binaural', 'mindfulness', 'yoga', 'lullaby', 'lullabies', 'canciones de cuna', 'baby sleep', 'spa music',
-           'healing music', 'asmr']),
+           'sleep meditation', 'meditation music', 'music for meditation', 'guided meditation', 'meditacion guiada', 'musica para meditar',
+           'para meditar', 'para dormir', 'relaxing music', 'relaxation music', 'music for relaxation', 'musica relajante',
+           'sonidos relajantes', 'relajacion y meditacion', 'white noise', 'ruido blanco', 'rain sounds', 'nature sounds',
+           'sounds of nature', 'sonidos de la naturaleza', 'ocean waves', 'binaural beats', 'binaural sleep', 'mindfulness meditation',
+           'mindfulness music', 'yoga music', 'music for yoga', 'musica para yoga', 'yoga and meditation', 'lullaby music',
+           'baby lullabies', 'lullabies for babies', 'lullabies for kids', 'lullaby renditions', 'canciones de cuna', 'baby sleep',
+           'spa music', 'healing music', 'asmr sounds']),
 ]
+MARCAS_AMBIGUAS_S = ['soundtrack', 'soundtracks', 'ost', 'o s t', 'bso']
+# NOMBRES DE ARTISTA: el nombre entero (sin «the» delante) es una de estas frases, o una de ellas seguida solo de palabras de relleno
+# (MARCAS_RELLENO_ARTISTA: «Karaoke Band»); los canales infantiles de marca (MARCAS_INFANTILES) valen con lo que sigan («Kidz Bop Kids»)
 MARCAS_PALABRAS_ARTISTA = [
-    ('s', ['soundtrack', 'ost', 'original cast', 'film score']),
-    ('k', ['karaoke', 'backing tracks', 'sing along']),
-    ('i', ['cocomelon', 'pinkfong', 'baby shark', 'super simple songs', 'little baby bum', 'baby einstein', 'kidz bop', 'nursery rhymes']),
-    ('d', ['sleep music', 'white noise', 'rain sounds', 'nature sounds', 'meditation music', 'relaxing music', 'lullaby']),
+    ('s', ['soundtrack', 'soundtracks', 'ost', 'original cast', 'film score', 'original soundtrack', 'movie soundtrack', 'tv soundtrack']),
+    ('k', ['karaoke', 'backing tracks', 'sing along', 'karaoke version', 'karaoke hits']),
+    ('i', ['nursery rhymes', 'kids songs', 'children s songs']),
+    ('d', ['sleep music', 'white noise', 'rain sounds', 'nature sounds', 'meditation music', 'relaxing music', 'relaxation music',
+           'yoga music', 'lullaby', 'lullabies']),
 ]
+MARCAS_INFANTILES = ['cocomelon', 'pinkfong', 'baby shark', 'super simple songs', 'little baby bum', 'baby einstein', 'kidz bop']
+MARCAS_RELLENO_ARTISTA = frozenset(['band', 'kids', 'hits', 'version', 'tracks', 'studio', 'channel', 'academy', 'music', 'collective',
+                                    'club', 'group', 'orchestra', 'zone', 'therapy', 'kingdom', 'baby', 'babies', 'sounds'])
 MARCA_POR_GENERO = {'Soundtrack': 's', 'Karaoke': 'k', 'Infantil': 'i', 'Hablado': 'h'}   # el genero del artista saca a todos sus discos
 
 # Red
@@ -404,16 +420,60 @@ def _pad_marca(s):
     return ' ' + n + ' ' if n else ''
 
 
+def _norm_marca(s):
+    """El texto como lo ve la rocola (Normaliza de XP), sin espacios a los lados."""
+    return _pad_marca(s).strip()
+
+
+_ENTRE = re.compile(r'[\(\[\{]([^\)\]\}]*)[\)\]\}]')
+
+
+def _cine_suelta(disco):
+    """«soundtrack», «ost», «bso» en un disco: solo si es TODO el nombre, va entre parentesis o corchetes, o es lo unico tras « - » o «: »."""
+    if not disco:
+        return False
+    if _norm_marca(disco) in MARCAS_AMBIGUAS_S:
+        return True
+    for m in _ENTRE.finditer(disco):
+        t = _pad_marca(m.group(1))
+        if any(' %s ' % w in t for w in MARCAS_AMBIGUAS_S):
+            return True
+    for sep in (' - ', ' \u2013 ', ' \u2014 ', ': '):
+        p = disco.rfind(sep)
+        if p >= 0 and _norm_marca(disco[p + len(sep):]) in MARCAS_AMBIGUAS_S:
+            return True
+    return False
+
+
+def _marcas_artista(artista):
+    """Las marcas de un NOMBRE DE ARTISTA entero (nunca una palabra suelta dentro de un nombre)."""
+    n = _norm_marca(artista)
+    if n.startswith('the '):
+        n = n[4:]
+    hay = set()
+    if not n:
+        return hay
+    for m, frases in MARCAS_PALABRAS_ARTISTA:
+        for f in frases:
+            if n == f or (n.startswith(f + ' ') and all(w in MARCAS_RELLENO_ARTISTA for w in n[len(f) + 1:].split(' '))):
+                hay.add(m)
+                break
+    if any(n == b or n.startswith(b + ' ') for b in MARCAS_INFANTILES):
+        hay.add('i')
+    return hay
+
+
 def marcas_de(disco, artista, genero, tipo_secundario=''):
     """Las marcas (letras de LETRAS_MARCA, en su orden, sin repetir) de un disco: ver arriba. tipo_secundario: las que ya dio MusicBrainz."""
     hay = set(c for c in tipo_secundario if c in LETRAS_MARCA)
-    pd, pa = _pad_marca(disco), _pad_marca(artista)
-    for tabla, texto in ((MARCAS_PALABRAS_DISCO, pd), (MARCAS_PALABRAS_ARTISTA, pa)):
-        if not texto:
-            continue
-        for m, frases in tabla:
-            if m not in hay and any(' %s ' % f in texto for f in frases):
+    pd = _pad_marca(disco)
+    if pd:
+        for m, frases in MARCAS_PALABRAS_DISCO:
+            if m not in hay and any(' %s ' % f in pd for f in frases):
                 hay.add(m)
+    if 's' not in hay and _cine_suelta(disco):
+        hay.add('s')
+    hay |= _marcas_artista(artista)
     g = MARCA_POR_GENERO.get(genero)
     if g:
         hay.add(g)

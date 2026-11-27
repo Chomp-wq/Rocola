@@ -8,8 +8,9 @@
 //     2019»). Lo que no habla de la edicion se queda («Greatest Hits (Vol. 2)» no es «Greatest Hits»; «1989» o «Songs of 2020» no pierden su
 //     numero: un ano solo se quita junto a una palabra de edicion); nunca se queda sin nada.
 //   - artista: el PRINCIPAL: sin acentos ni mayusculas, sin «the» delante y cortado en el primer «feat.», «ft.», «featuring», «con», «with»,
-//     «vs», coma, punto y coma o barra («Michael Jackson feat. Siedah Garrett» es «Michael Jackson»; «Simon & Garfunkel» y «Los Tigres del Norte» siguen
-//     enteros: un duo no es su primer nombre).
+//     «vs» o punto y coma («Michael Jackson feat. Siedah Garrett» es «Michael Jackson»; «Simon & Garfunkel», «Los Tigres del Norte», «Earth, Wind & Fire»,
+//     «Crosby, Stills & Nash», «Tyler, The Creator» y «AC/DC» siguen enteros: un duo o un grupo no es su primer nombre; 27-11-2026, revision: antes
+//     cortaba tambien en coma y barra). El corte es solo para COMPARAR: el nombre que se muestra y el que ordena es el de verdad.
 // Es una funcion pura de cadenas (se prueba sola: escena «nombres» de Pruebas/RocolaOs/pared-generos).
 using System;
 using System.Collections.Generic;
@@ -27,7 +28,7 @@ namespace Rocola
             "bonus", "tracks", "track", "version", "reissue", "reissued", "collectors", "collector", "collector's", "legacy", "platinum", "mono", "stereo",
             "super", "digital", "explicit", "clean", "extended", "limited", "anos", "years", "year", "original", "mix", "mixes", "disc", "cd",
             "japan", "japanese", "us", "uk", "international", "internacional", "standard", "estandar", "complete", "completa", "definitive",
-            "ultimate", "gold", "silver", "diamond", "tour", "bonustracks", "sessions", "session", "restored", "restaurado", "remix",
+            "ultimate", "gold", "silver", "diamond", "tour", "bonustracks", "restored", "restaurado", "remix",   // (revision 27-11-2026: sin «sessions»: «Live Sessions» no es «Live»)
         };
         // las que SOLAS bastan para decir «edicion» dentro de un parentesis o tras « - » (las demas, de la lista de arriba, solo ayudan: «Original»,
         // «Mix», «Tour», «US», «Complete»... no son una edicion por si solas: «Original Masters» o «The Tour»)
@@ -55,6 +56,7 @@ namespace Rocola
             string r = t.Substring(i);
             return r == "th" || r == "st" || r == "nd" || r == "rd" || r == "o" || r == "a" || r == "ro" || r == "do";
         }
+        private static bool EsAnos(string t) { return t == "years" || t == "year" || t == "anos"; }
         private static bool EsPalabraDeEdicion(string t) { return Edicion.Contains(t) || EsOrdinal(t) || EsAno(t) || IsDigits(t) && t.Length <= 2; }
         private static bool HablaDeEdicion(string[] t)
         {
@@ -104,11 +106,14 @@ namespace Rocola
             //    y deja algo
             List<string> tk = new List<string>(Tokens(t));
             int fin = tk.Count;
-            while (fin > 1 && (EsPalabraDeEdicion(tk[fin - 1]) || (fin > 2 && (tk[fin - 1] == "the" || tk[fin - 1] == "of" || tk[fin - 1] == "de")))) fin--;
+            // («years», «year» y «anos» solo son de edicion tras un numero: «25 Years Deluxe»; «Ten Years» no es «Ten»)
+            while (fin > 1 && ((EsPalabraDeEdicion(tk[fin - 1]) && !(EsAnos(tk[fin - 1]) && !(fin > 2 && (IsDigits(tk[fin - 2]) || EsOrdinal(tk[fin - 2]))))) || (fin > 2 && (tk[fin - 1] == "the" || tk[fin - 1] == "of" || tk[fin - 1] == "de")))) fin--;
             if (fin < tk.Count)
             {
                 bool hay = false;
-                for (int k = fin; k < tk.Count; k++) if (Fuertes.Contains(tk[k]) || Edicion.Contains(tk[k]) && tk[k] != "original" && tk[k] != "mix" && tk[k] != "tour" && tk[k] != "us" && tk[k] != "uk") { hay = true; break; }
+                // (27-11-2026, revision) solo una palabra FUERTE (deluxe, remaster, edicion de aniversario...) quita la cola; las demas solo extienden la
+                // corrida («Live Sessions» no es «Live», «Ten Years» no es «Ten», «Greatest Hits Gold» no es «Greatest Hits»)
+                for (int k = fin; k < tk.Count; k++) if (Fuertes.Contains(tk[k])) { hay = true; break; }
                 if (hay) tk.RemoveRange(fin, tk.Count - fin);
             }
             // 4) sin «the» al principio
@@ -150,7 +155,7 @@ namespace Rocola
             if (string.IsNullOrEmpty(nombre)) return "";
             string n = nombre;
             int corte = n.Length;
-            foreach (string sep in new[] { " feat.", " feat ", " ft.", " ft ", " featuring ", " con ", " with ", " vs. ", " vs ", ",", "/", ";" })
+            foreach (string sep in new[] { " feat.", " feat ", " ft.", " ft ", " featuring ", " con ", " with ", " vs. ", " vs ", ";" })
             {
                 int p = n.IndexOf(sep, StringComparison.OrdinalIgnoreCase);
                 if (p > 0 && p < corte) corte = p;
