@@ -81,6 +81,7 @@ namespace Rocola
         internal int EnCancionMs;                  // (27-11-2026) donde iba en la cancion al acabar (para la bitacora)
         internal bool TerminoReal;                 // (23-11-2026) la fuente llego a su duracion (no un corte en los ultimos 5 s dado por bueno)
         internal double SegundosSonados;
+        internal double RecortadoSeg;              // (27-11-2026) el silencio digital del principio que spotify_arranque quito: no es sonido que Soloist se comiera
         internal bool Rematada;                    // (el hilo de Spotify ya la remato: pausa, credito, bitacora)
         internal bool Reintentada;                 // (play se mando otra vez a los 4 s)
         // (22-11-2026, la cola que perdia canciones en el A4) LA «COPIA»: Soloist puede tocar la misma cancion con otra uri (Spotify la enlaza a
@@ -1176,7 +1177,7 @@ namespace Rocola
             int durAd = Volatile.Read(ref p.DuracionMs);
             // (23-11-2026, revision) solo con un final de verdad, sin retomada ni corte seguido: antes una cortada en sus ultimos 5 s (normal) lo
             // apagaba para siempre
-            if (p.Adelantada && p.Adoptada && !p.Devolver && p.TerminoReal && !p.Continuada && p.DesdeMs == 0 && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && durAd > 0 && p.SegundosSonados * 1000 < durAd - AdelantoFaltaMaxMs)
+            if (p.Adelantada && p.Adoptada && !p.Devolver && p.TerminoReal && !p.Continuada && p.DesdeMs == 0 && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && durAd > 0 && (p.SegundosSonados + p.RecortadoSeg) * 1000 < durAd - AdelantoFaltaMaxMs)   // (27-11-2026) con el silencio recortado: antes 3 con silencio apagaban el adelanto 7 dias
                 ApagaAdelanto("la adelantada " + p.Uri + " sono " + p.SegundosSonados.ToString("0.0", CultureInfo.InvariantCulture) + " s de " + (durAd / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s");
             else if (p.Adelantada && p.Adoptada && !p.Devolver && p.TerminoReal && !p.Continuada && p.DesdeMs == 0 && p.FinMotivo == RocolaOsSpotifyPeticion.Termino && durAd > 0 && adelantoCortos > 0)
             {   // un uso bueno: la cuenta de fallos seguidos vuelve a 0

@@ -173,9 +173,12 @@ if [[ " $partes " == *" isrc "* ]]; then
   t440=$(oye "$f" 440); t330=$(oye "$f" 330)
   si "isrc: se oyo la de Spotify (440 Hz: $t440 s = 32 s la primera + la segunda hasta el cierre) y nada del MP3 (330 Hz: $t330 s)" bash -c "python3 -c 'import sys; sys.exit(0 if 34 <= $t440 <= 40 and $t330 <= 0.1 else 1)'"
   si "isrc: la pantalla es la de tu cancion: lo que suena es el MP3 con su titulo, su artista y su disco (y el lector, el de Spotify)" bash -c "grep -q '^mira .*01 bolero.mp3 | Bolero de Prueba | Trio Calidad | Joyas de Prueba | .* | lector=spotify creditos=2 cola=0' '$(log isrc)'"
-  si "isrc: la primera vez, con la mediana de las 5 medidas (V2)" contiene "$b" "(la mediana de 5 de Spotify medidas)"
+  # (27-11-2026, la sustituida suena con el nivel de tu MP3) con la medida de tu MP3, la primera vez se nivela con tu MP3 mas la mediana de lo que las
+  # de Spotify se apartan de las suyas, y solo con 3 o mas parejas con las DOS medidas; las 5 sembradas son de otras rutas, sin medida de tu MP3 (la
+  # mediana de las de Spotify, V2, solo vale para un MP3 aun sin medir): la primera vez queda «igual que tu MP3»
+  si "isrc: la primera vez, con el nivel de tu MP3 y sin medir lo de Spotify (las 5 sembradas no tienen medida de tu MP3)" contiene "$b" "(el nivel de tu MP3 +12.2 dB y lo de Spotify: sin medir: igual que tu MP3)"
   si "isrc: se midio al limite (V1) y la forma salio la misma (C)" bash -c "grep -q '01 bolero.mp3: la de Spotify medida al limite' '$b' && grep -q '01 bolero.mp3: la forma -> misma' '$b'"
-  si "isrc: la segunda vez, con su medida y sin preguntar" bash -c "[ \$(grep -c 'la cadena de 01 bolero.mp3 con spotify:track:f440d032m1bo: nivelado .* (su medida)' '$b') = 1 ]"
+  si "isrc: la segunda vez, con su medida y sin preguntar" bash -c "[ \$(grep -c 'la cadena de 01 bolero.mp3 con spotify:track:f440d032m1bo: nivelado .*Spotify: su medida)' '$b') = 1 ]"
   si "isrc: la tabla: su renglon con el id, el ISRC, confirmada (1) y su medida" bash -c "par '$d' '01 bolero.mp3' | awk -F'\t' '\$4==\"f440d032m1bo\" && \$5==\"MXA112600001\" && \$8==1 && \$10!=\"-\" && \$12!=\"-\" {ok=1} END {exit !ok}'"
   si "isrc: la tabla solo lleva rutas, ids y numeros" solo_numeros "$d"
   si "isrc: lo mas sonado y las estadisticas son las de tu cancion (rocola_stats.txt la cuenta; nada de spotify:)" bash -c "grep -q '01 bolero.mp3' '$d/rocola_stats.txt' && ! grep -q 'spotify:' '$d/rocola_stats.txt'"
@@ -188,7 +191,7 @@ fi
 if [[ " $partes " == *" titulo "* ]]; then
   sec "titulo (sin ISRC: regla 2 entre el recopilatorio, la en vivo y la de otro artista; la buena, ni una peticion)"
   d=$(datos titulo); apifalsa titulo
-  abre titulo "$d" "7:67" "9:pon relleno.mp3;9.5:pon 02 vals.mp3;10:pon 01 buena.mp3;45:mira;73:copia" 74 TERM $ROS
+  abre titulo "$d" "7:67" "9:pon relleno.mp3;9.5:pon 02 vals.mp3;10:pon 01 buena.mp3;45:mira;82:copia" 83 TERM $ROS
   fin; o="$W/titulo"; f="$o/frec.txt"; b=$(bit "$d")
   grep -F '[calidad_spotify]' "$b" | sed 's/^[0-9-]* [0-9:]*  /   /'; cuota titulo
   si "titulo: sale con 0" test "$(cat $o/salio)" = 0
@@ -196,7 +199,7 @@ if [[ " $partes " == *" titulo "* ]]; then
   si "titulo: la de su disco (con acento en Spotify), ni la del recopilatorio, ni la en vivo, ni la de otro artista" contiene "$b" "02 vals.mp3: pareja por titulo y artista -> spotify:track:f550d032m1va"
   si "titulo: se oyo la de su disco (550 Hz: $(oye "$f" 550) s) y nada de las otras (560/570/580: $(oye "$f" 560) $(oye "$f" 570) $(oye "$f" 580)) ni del MP3 (360: $(oye "$f" 360))" bash -c "python3 -c 'import sys; sys.exit(0 if 31.5 <= $(oye "$f" 550) <= 32.5 and $(oye "$f" 360) + $(oye "$f" 570) + $(oye "$f" 580) <= 0.1 else 1)'"
   si "titulo: la buena (320 kbps) suena como siempre (210 Hz: $(oye "$f" 210) s) y ni se busca (ni la de relleno: buenas=2)" bash -c "python3 -c 'import sys; sys.exit(0 if 9.5 <= $(oye "$f" 210) <= 10.5 else 1)' && ! grep -q '01 buena.mp3' '$b' && [ '$(cal titulo buenas)' = 2 ]"
-  si "titulo: la primera vez sin medidas de Spotify: como una de XP sin medir" contiene "$b" "(sin medir: como una de XP sin medir)"
+  si "titulo: la primera vez sin medidas de Spotify: igual que tu MP3 (27-11-2026: con el nivel de tu MP3)" contiene "$b" "lo de Spotify: sin medir: igual que tu MP3)"
 fi
 
 # ---------------------------------------------------------------- sinpareja: suena el MP3 y no se vuelve a preguntar (en la sesion ni en la siguiente)

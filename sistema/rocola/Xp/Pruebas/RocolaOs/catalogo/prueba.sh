@@ -452,8 +452,12 @@ PY
     # sus canciones; PONER pide la 1a. REGRESAR sale del atajo; otra vez a los atajos y «Escuchado hace poco» (sin repetidas): PONER pide la 1a.
     # Se cierra y se abre el buscador: no se pide nada mas
     apifalsa $e; d=$(datos $e cuenta)
-    abre $e "$d" "7:67,8:27+38,10:38,10.5:38,11.7:39,12:39,12.5:13,14.5:13,16:27,16.8:38,17.1:39,17.4:39,17.9:39,18.5:13,20.5:13,22:27+38,23.5:27+38" 27 ROCOLA_OS=1 \
-      ROCOLA_CAPTURA="$(cap 11.5 buscador-atajos-spotify),$(cap 14 buscador-tus-mas-escuchadas),$(cap 20 buscador-escuchado-hace-poco)"
+    # (27-11-2026) La fila de atajos es «LAS MEJORES CANCIONES DE...», «Tus mas escuchadas», «Escuchado hace poco» (los dos ultimos llegan de la API
+      # al abrir el buscador y se arman cuando contestan): desde la primera, UNA flecha derecha lleva a «Tus mas escuchadas» (antes eran dos: solo
+      # llegaba a «Tus mas» si la primera flecha se apretaba antes de que llegaran los atajos, y fallaba 1 de cada 3 vueltas segun la carga de la
+      # maquina). 3 s de holgura tras abrir el buscador para que lleguen; la 2.a vuelta aprieta 3 derechas y se queda en la ultima (no pasa de ella)
+    abre $e "$d" "7:67,8:27+38,13:38,13.5:38,14.7:39,15.5:13,17.5:13,19:27,19.8:38,20.1:39,20.4:39,20.9:39,21.5:13,23.5:13,25:27+38,26.5:27+38" 30 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 14.5 buscador-atajos-spotify),$(cap 17 buscador-tus-mas-escuchadas),$(cap 23 buscador-escuchado-hace-poco)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
     si "atajos: sale con 0" test "$(cat $o/salio)" = 0
     si "atajos: UNA peticion de tus mas escuchadas y UNA de lo escuchado hace poco, con la llave de la cuenta (aunque se abrio el buscador dos veces)" bash -c "[ \$(grep -c 'GET /v1/me/top/tracks cuenta 200' '$a') = 1 ] && [ \$(grep -c 'GET /v1/me/player/recently-played cuenta 200' '$a') = 1 ]"

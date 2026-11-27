@@ -57,9 +57,22 @@ namespace Rocola
         }
 
         // una lectura entera por Mp3FileReader con el descompresor que de «arma»
+        // (27-11-2026) EL COSTO SE MIDE EN TIEMPO DE PROCESADOR DEL HILO (CLOCK_THREAD_CPUTIME_ID, resolucion de ns; la decodificacion corre en el hilo que
+        // llama), no de reloj: con la maquina cargada (otras pruebas, otros procesos) el tiempo de reloj de una decodificacion se infla y la resta
+        // «con menos sin» salia 15-17 ms por segundo de cancion contra 3-4 sin carga
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct Timespec { public long Seg; public long Nseg; }
+        [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "clock_gettime")]
+        private static extern int ClockGettime(int reloj, out Timespec t);
+        private static double CpuMs()
+        {
+            Timespec t;
+            if (ClockGettime(3, out t) == 0) return t.Seg * 1000.0 + t.Nseg / 1e6;   // 3 = CLOCK_THREAD_CPUTIME_ID (Linux)
+            return Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
+        }
         private static float[] Lee(string ruta, Mp3FileReader.FrameDecompressorBuilder arma, out int canales, out int tasa, out double ms)
         {
-            Stopwatch sw = Stopwatch.StartNew();
+            double c0 = CpuMs();
             using (Mp3FileReader r = new Mp3FileReader(ruta, arma))
             {
                 canales = r.WaveFormat.Channels; tasa = r.WaveFormat.SampleRate;
@@ -67,7 +80,7 @@ namespace Rocola
                 MemoryStream ms0 = new MemoryStream();
                 byte[] b = new byte[65536]; int n;
                 while ((n = r.Read(b, 0, b.Length)) > 0) ms0.Write(b, 0, n);
-                ms = sw.Elapsed.TotalMilliseconds;
+                ms = CpuMs() - c0;
                 byte[] t = ms0.ToArray();
                 float[] s = new float[t.Length / (flt ? 4 : 2)];
                 for (int i = 0; i < s.Length; i++) s[i] = flt ? BitConverter.ToSingle(t, 4 * i) : (short)(t[2 * i] | t[2 * i + 1] << 8) / 32768f;
@@ -158,10 +171,10 @@ namespace Rocola
                 double ms;
                 s0 = Lee(ruta, wf => DescompresorMp3.Crea(wf), out ch, out tasa, out ms); mejorSin = Math.Min(mejorSin, ms);
                 Lee(ruta, wf => new RocolaOsRellenoHuecos(DescompresorMp3.Crea(wf), 3), out ch, out tasa, out ms); mejorCon = Math.Min(mejorCon, ms);
-                Stopwatch sw = Stopwatch.StartNew();
+                double c1 = CpuMs();
                 RocolaOsHuecosMp3 e = new RocolaOsHuecosMp3(1);
                 using (Mp3FileReader r = new Mp3FileReader(ruta)) { Mp3Frame f; while ((f = r.ReadNextFrame()) != null) e.Cuadro(f.RawData, f.FrameLength, null, false); }
-                mejorLee = Math.Min(mejorLee, sw.Elapsed.TotalMilliseconds);
+                mejorLee = Math.Min(mejorLee, CpuMs() - c1);
             }
             double seg = s0.Length / (double)ch / tasa;
             Console.WriteLine("COSTO " + Path.GetFileName(ruta) + " seg=" + N(seg, "0.00") + " ms_por_s_sin=" + N(mejorSin / seg) + " ms_por_s_con=" + N(mejorCon / seg)

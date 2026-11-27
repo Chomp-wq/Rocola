@@ -304,9 +304,50 @@ namespace Rocola
                 v[i] = a; v[i + 1] = bb; v[i + 2] = x; v[i + 3] = y; i += 4;
             }
         }
-        // un simbolo con el arbol de la norma (la forma de dist10)
+        // un simbolo con el arbol de la norma (la forma de dist10). (27-11-2026) Primero una tabla por los 8 bits de delante: los codigos de hasta 8 bits
+        // (casi todos) salen de una vez, con el mismo simbolo y los mismos bits gastados que andar el arbol; los largos, y el final de la region (donde
+        // Bit() da 0 pasado bitFin), andan el arbol como siempre. El costo de este lector con un MP3 de 320 kbps pasaba de 15 ms por segundo de cancion.
+        private const int RapidaBits = 8;
+        private static readonly ushort[][] Rapida = ArmaRapida();
+        private static ushort[][] ArmaRapida()
+        {
+            ushort[][] t = new ushort[RocolaOsHuecosTablas.Arboles.Length][];
+            for (int a = 0; a < t.Length; a++)
+            {
+                t[a] = new ushort[1 << RapidaBits];
+                for (int w = 0; w < (1 << RapidaBits); w++)
+                {
+                    int usados, sim;
+                    if (Anda(RocolaOsHuecosTablas.Arboles[a], w, out usados, out sim)) t[a][w] = (ushort)((usados << 8) | sim);   // (usados de 1 a 8: nunca 0)
+                }
+            }
+            return t;
+        }
+        // anda el arbol con los 8 bits de «w» (el primero, el de mas peso): true si llega a una hoja dentro de ellos
+        private static bool Anda(byte[] h, int w, out int usados, out int sim)
+        {
+            int nodos = h.Length / 2, p = 0; usados = 0; sim = 0;
+            for (int vueltas = 0; vueltas < 64; vueltas++)
+            {
+                if (p < 0 || p >= nodos) return false;
+                if (h[2 * p] == 0) { sim = h[2 * p + 1]; return usados > 0; }
+                if (usados >= RapidaBits) return false;
+                int bit = (w >> (RapidaBits - 1 - usados)) & 1; usados++;
+                if (bit == 1) { while (p < nodos && h[2 * p + 1] >= 250) p += h[2 * p + 1]; if (p >= nodos) return false; p += h[2 * p + 1]; }
+                else { while (p < nodos && h[2 * p] >= 250) p += h[2 * p]; if (p >= nodos) return false; p += h[2 * p]; }
+            }
+            return false;
+        }
         private int Simbolo(int arbol)
         {
+            int pos = bitPos;
+            if (pos + RapidaBits <= bitFin)
+            {
+                int i = pos >> 3, o = pos & 7;
+                int w = (fuente[i] << 8) | (i + 1 < fuente.Length ? fuente[i + 1] : 0);
+                ushort e = Rapida[arbol][(w >> (8 - o)) & 0xFF];
+                if (e != 0) { bitPos = pos + (e >> 8); return e & 0xFF; }
+            }
             byte[] h = RocolaOsHuecosTablas.Arboles[arbol];
             int nodos = h.Length / 2, p = 0;
             for (int vueltas = 0; vueltas < 64; vueltas++)

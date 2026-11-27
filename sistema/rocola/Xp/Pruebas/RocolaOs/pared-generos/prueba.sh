@@ -203,10 +203,10 @@ PY
     # paginas sin tirones (lo que tarda cada cuadro), la memoria con tope, cero peticiones a la API y casi ninguna portada (solo las de la
     # pagina en que se para). hojeaxp: lo mismo con el modo apagado (la pared de XP, que da la vuelta a sus letras de 1 pagina), para comparar
     apifalsa $e "$CAT"
-    if [ $e = hojea ]; then d=$(datos $e encendido); M=""; else d=$(datos $e apagado); M="ROCOLA_PARED_MIDE=1"; fi
+    if [ $e = hojea ]; then d=$(datos $e encendido); M="ROCOLA_PARED_VIVO=1"; else d=$(datos $e apagado); M="ROCOLA_PARED_MIDE=1"; fi
     abre $e "$d" "$BASE,12:38~40000" 60 ROCOLA_OS=1 ROCOLA_PARED_RELLENO=0 $M ROCOLA_CAPTURA="$(cap 30 pared-generos-hojeando-$e),$(cap 56 pared-generos-tras-hojear-$e)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
-    echo "   $(grep -E '^(paginas_vistas|letra|pagina|hojeo_cuadros|hojeo_p50_ms|hojeo_p95_ms|hojeo_p99_ms|hojeo_max_ms|hojeo_de_mas_de_50ms|hojeo_de_mas_de_100ms|todos_p50_ms|todos_p95_ms|todos_p99_ms|todos_max_ms|memoria_mb_max|gc_mb_max|portadas_pedidas|portadas_dejadas|armadas|armada_ms_max)=' $o/run/rocola-xp/pared/estado | tr '\n' ' ')"
+    echo "   $(grep -E '^(paginas_vistas|letra|pagina|hojeo_cuadros|hojeo_p50_ms|hojeo_p95_ms|hojeo_p99_ms|hojeo_max_ms|hojeo_de_mas_de_50ms|hojeo_de_mas_de_100ms|todos_p50_ms|todos_p95_ms|todos_p99_ms|todos_max_ms|memoria_mb_max|gc_mb_max|vivo_mb_max|portadas_pedidas|portadas_dejadas|armadas|armada_ms_max)=' $o/run/rocola-xp/pared/estado | tr '\n' ' ')"
     si "$e: sale con 0" test "$(cat $o/salio)" = 0
     si "$e: ninguna peticion a la API de Spotify (/v1: $(v1 $a))" test "$(v1 $a)" = 0
     if [ $e = hojea ]; then
@@ -220,7 +220,11 @@ PY
       ht=$(grep -c 'GET /release-group/' $a)
       si "hojea: portadas pedidas al Cover Art Archive mientras se hojea: $hj de 30 como mucho ($(est $o portadas_dejadas) dejadas sin pedir)" test "$hj" -le 30
       si "hojea: portadas pedidas en total: $ht de 200 como mucho (las de la 1a pagina, las de donde se paro y las de al lado de las dos)" test "$ht" -le 200
-      si "hojea: la memoria con tope (el mayor tamano en la memoria: $(est $o memoria_mb_max) MB; los objetos de .NET: $(est $o gc_mb_max) MB)" test "$(est $o gc_mb_max)" -le 250
+      # (27-11-2026) lo que se mide es lo que SE QUEDA en la memoria tras recoger la basura (vivo_mb_max, ROCOLA_PARED_VIVO=1: un GC completo cada
+      # segundo, solo en esta prueba), no el monton tal cual (gc_mb_max, que lleva la basura que aun no se recogio: con la misma pared oscilaba entre
+      # 116 y 266 MB segun cuando corriera el recolector y la carga de la maquina, y fallaba el tope sin que nada se hubiera quedado de mas). Una
+      # fuga aparece aqui como un vivo que sigue subiendo con las paginas; con las 4 letras en memoria medi 34 MB
+      si "hojea: la memoria con tope (lo que se queda tras recoger la basura: $(est $o vivo_mb_max) MB de 100 como mucho; el monton con basura: $(est $o gc_mb_max) MB; el tamano en la memoria: $(est $o memoria_mb_max) MB)" test "$(est $o vivo_mb_max)" -le 100
       si "hojea: en la memoria como mucho 4 letras ($(est $o en_memoria))" test "$(est $o en_memoria | wc -c)" -le 5
     else
       si "hojeaxp: nada del catalogo (ni el .txt ni portadas)" bash -c "! grep -q 'catalogo\|release-group' '$a'"
@@ -517,16 +521,17 @@ PY
     si "ritmo: la 1.a parte va a medias, a unos 2 MB/s (entre 2 y 40 MB)" bash -c "[ $t -gt 2097152 ] && [ $t -lt 41943040 ]"
     si "ritmo: ninguna parte entera todavia" test "$(est $o paquete_bajadas)" = 0 ;;
   letra)
-    # LA LETRA ♫ CON EL ICONO DE SPOTIFY (27-11-2026) a 1024x768: la casilla del final del abecedario lleva el circulo verde de Spotify con sus tres ondas
-    # (no el texto), tambien elegida (en su capsula). Con la cuenta (la letra sale con «Tus favoritas»); REGRESAR+IZQUIERDA dos veces desde la A (#, y la vuelta a la ♫)
+    # SIN LA LETRA ♫ (27-11-2026, el dueno: «Lo de la casilla final con icono de Spotify quitala, esa casilla no tiene utilidad realmente»; antes esta
+    # escena comprobaba que la ♫ llevaba el icono de Spotify, 22-11-2026): RocolaOsSpotifyLetraEnLaPared = false, asi que al final del abecedario no hay
+    # casilla de Spotify ni su verde, sin elegir y con REGRESAR+IZQUIERDA dos veces desde la A (la vuelta da a la ultima letra de verdad). Con la cuenta
     apifalsa $e "$CAT"; d=$(datos $e cuenta)
     abre $e "$d" "7:67,10:27+37,11.4:27+37" 17 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 9 pared-generos-letra-spotify),$(cap 14 pared-generos-letra-spotify-elegida)"
     espera $e; o="$W/$e"
     C1=$( [ -n "$CAPTURAS" ] && echo "$CAPTURAS" || echo "$W")
     si "letra: sale con 0" test "$(cat $o/salio)" = 0
-    python3 "$G/icono.py" "$C1/pared-generos-letra-spotify.png" "$C1/pared-generos-letra-spotify-elegida.png" > "$o/icono.txt" 2>&1; r=$?
+    python3 "$G/icono.py" --ausente "$C1/pared-generos-letra-spotify.png" "$C1/pared-generos-letra-spotify-elegida.png" > "$o/icono.txt" 2>&1; r=$?
     sed 's/^/   /' "$o/icono.txt"
-    si "letra: la casilla ♫ lleva el icono de Spotify (verde #1DB954 y tres ondas negras, de 15 px o mas), sin elegir y elegida, en 1024x768" test $r = 0 ;;
+    si "letra: SIN la casilla ♫ ni el verde de Spotify al final del abecedario, sin elegir y con la vuelta elegida, en 1024x768" test $r = 0 ;;
   *) echo "(escena desconocida: $e)" ;;
   esac
 done
