@@ -33,6 +33,7 @@
 //   (pared-generos) GET /v1/albums/catID         un disco del catalogo (4 canciones inventadas); los «catno...», 404 (Spotify no lo tiene)
 //   (pared-generos) search con q=album:"NOMBRE" artist:"ARTISTA" (type=album): un disco con ese nombre (id «catb...»); si el nombre dice
 //                                            «Sin Spotify», ninguno
+//   (27-11-2026) GET /control/nuevas   datos aparte para las mejoras de Spotify del 27-11 (repetidas, ediciones, «Canciones de» filtrado): ver InventaNuevas
 //   (rapido-spotify, para MEDIR) GET /control/imglento?ms=N    cada portada de Spotify (/img/) tarda N ms mas
 //   (rapido-spotify) GET /control/llavelento?ms=N               cada POST /api/token tarda N ms mas
 //   (rapido-spotify) GET /control/conexion?ms=N                 la PRIMERA peticion de cada conexion nueva (otro puerto de origen) tarda
@@ -52,7 +53,7 @@ using SkiaSharp;
 internal static class ApiFalsa
 {
     sealed class Artista { public string Id, Nombre; }
-    sealed class Cancion { public string Id, Nombre, Isrc; public Artista Art; public Disco Dis; public int Numero, Ms; }
+    sealed class Cancion { public string Id, Nombre, Isrc; public Artista Art, Inv; public Disco Dis; public int Numero, Ms; }   // (Inv: un artista invitado, 27-11-2026)
     sealed class Disco { public string Id, Nombre, Tipo = "album"; public Artista Art; public List<Cancion> Canciones = new List<Cancion>(); }
     sealed class Lista { public string Id, Nombre, Dueno; public List<Cancion> Canciones = new List<Cancion>(); }
 
@@ -172,6 +173,41 @@ internal static class ApiFalsa
         listas.Add(new Lista { Id = "lis002", Nombre = "Lista de Otro", Dueno = "otro-falso" });
     }
 
+    // (27-11-2026, mejoras de Spotify elegidas por el dueno: sin repetidas, sin ediciones repetidas, «Canciones de» filtrado) datos aparte, solo con
+    // GET /control/nuevas (ni en las busquedas ni en las demas escenas):
+    //   - «Los Ejemplos» (el artista de XP de los datos de prueba) con «Cancion 2» de 3,239 s (la misma que la de su disco de XP), «Cancion 3 - Remastered
+    //     2012» y «Cancion 1 (En Vivo)» (otra grabacion); y «Grupo Distinto» con otra «Cancion 2» de la misma duracion (otro artista)
+    //   - «Quinteto Eco», que solo esta en Spotify: Eco Total, su Remastered 2011 y su Deluxe Edition, Eco Segundo (Deluxe Edition, 9 canciones) y su
+    //     «- 25th Anniversary Edition» (5), Eco En Vivo y «Eco Total (Taylor's Version)» (otros discos); 17 canciones suyas, dos versiones de «Coro
+    //     del Barrio» con su nombre en el titulo y un dueto de «Duo Invitado» con Quinteto Eco (estas ultimas, en la busqueda por artista)
+    static void InventaNuevas()
+    {
+        if (artistas.Exists(x => x.Id == "art90")) return;
+        Artista ej = new Artista { Id = "art90", Nombre = "Los Ejemplos" }, gd = new Artista { Id = "art91", Nombre = "Grupo Distinto" };
+        artistas.Add(ej); artistas.Add(gd);
+        Disco dej = new Disco { Id = "dis900", Nombre = "Disco Uno", Art = ej }, dgd = new Disco { Id = "dis901", Nombre = "Disco Distinto", Art = gd };
+        Action<Disco, string, string, int, Artista> una = (d, id, nom, ms, inv) => { Cancion c = new Cancion { Id = id, Nombre = nom, Art = d.Art, Inv = inv, Dis = d, Numero = d.Canciones.Count + 1, Ms = ms }; d.Canciones.Add(c); canciones.Add(c); };
+        una(dej, "can9000", "Cancion 2", 3239, null); una(dej, "can9001", "Cancion 3 - Remastered 2012", 3300, null); una(dej, "can9002", "Cancion 1 (En Vivo)", 3239, null);
+        una(dgd, "can9010", "Cancion 2", 3239, null);
+        discos.Add(dej); discos.Add(dgd);
+        Artista eco = new Artista { Id = "art70", Nombre = "Quinteto Eco" }, coro = new Artista { Id = "art71", Nombre = "Coro del Barrio" }, duo = new Artista { Id = "art72", Nombre = "Duo Invitado" };
+        artistas.Add(eco); artistas.Add(coro); artistas.Add(duo);
+        string[] nombres = { "Eco Total", "Eco Total (Remastered 2011)", "Eco Total (Deluxe Edition)", "Eco Segundo (Deluxe Edition)", "Eco Segundo - 25th Anniversary Edition", "Eco En Vivo", "Eco Total (Taylor's Version)" };
+        int[] cuantas = { 2, 2, 3, 4, 3, 1, 2 };
+        int n = 0;
+        // (la «Deluxe» de Eco Segundo trae 9 canciones y su «25th Anniversary Edition» 5: entre dos ediciones sin original queda la de mas canciones)
+        for (int i = 0; i < nombres.Length; i++)
+        {
+            Disco d = new Disco { Id = "dis91" + i.ToString(CultureInfo.InvariantCulture), Nombre = nombres[i], Art = eco };
+            for (int k = 1; k <= (i == 3 ? 9 : i == 4 ? 5 : cuantas[i]); k++) una(d, "can91" + (n++).ToString("000", CultureInfo.InvariantCulture), "Tonada del Eco " + n.ToString(CultureInfo.InvariantCulture), 140000, null);
+            discos.Add(d);
+        }
+        Disco tri = new Disco { Id = "dis920", Nombre = "Tributo", Art = coro }, due = new Disco { Id = "dis921", Nombre = "Duetos", Art = duo };
+        una(tri, "can9200", "Tonada del Eco 1 (version de Quinteto Eco)", 140000, null); una(tri, "can9201", "Medley de Quinteto Eco", 140000, null);
+        una(due, "can9210", "Dueto con Eco", 140000, eco);
+        discos.Add(tri); discos.Add(due);
+    }
+
     // ---------- atender ----------
     static void Atiende(HttpListenerContext c)
     {
@@ -199,6 +235,7 @@ internal static class ApiFalsa
                 else if (ruta == "/control/5xx") n5xx = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/lento") lento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/muchos") muchos = true;
+                else if (ruta == "/control/nuevas") InventaNuevas();
                 else if (ruta == "/control/miente") miente = int.Parse(q["total"] ?? "1000", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/imgfalla") nImg = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/caalento") caaLento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
@@ -317,7 +354,7 @@ internal static class ApiFalsa
             return Escribe(w =>
             {
                 w.WriteStartObject();
-                if (tipos.Contains("track")) { w.WritePropertyName("tracks"); Pagina(w, canciones.FindAll(x => deArtista != null ? x.Art.Nombre.ToLowerInvariant() == deArtista : (x.Nombre + " " + x.Art.Nombre).ToLowerInvariant().Contains(t)), limite, desde, CancionEntera); }
+                if (tipos.Contains("track")) { w.WritePropertyName("tracks"); Pagina(w, canciones.FindAll(x => deArtista != null ? (x.Art.Nombre.ToLowerInvariant() == deArtista || (x.Inv != null && x.Inv.Nombre.ToLowerInvariant() == deArtista) || x.Nombre.ToLowerInvariant().Contains(deArtista)) : (x.Nombre + " " + x.Art.Nombre).ToLowerInvariant().Contains(t)), limite, desde, CancionEntera); }
                 if (tipos.Contains("album")) { w.WritePropertyName("albums"); int mt; lock (cerrojo) mt = miente; Pagina(w, discos.FindAll(x => (x.Nombre + " " + x.Art.Nombre).ToLowerInvariant().Contains(t)), limite, desde, (ww, d) => DiscoSimple(ww, d), mt); }
                 if (tipos.Contains("artist")) { w.WritePropertyName("artists"); Pagina(w, deArtista != null ? new List<Artista>() : arts, limite, desde, ArtistaEntero); }
                 w.WriteEndObject();
@@ -439,7 +476,7 @@ internal static class ApiFalsa
     static void DiscoSimple(Utf8JsonWriter w, Disco d) { w.WriteStartObject(); DiscoCampos(w, d); w.WriteEndObject(); }
     static void CancionCampos(Utf8JsonWriter w, Cancion c)
     {
-        w.WritePropertyName("artists"); w.WriteStartArray(); ArtistaSimple(w, c.Art); w.WriteEndArray();
+        w.WritePropertyName("artists"); w.WriteStartArray(); ArtistaSimple(w, c.Art); if (c.Inv != null) ArtistaSimple(w, c.Inv); w.WriteEndArray();
         w.WriteNumber("disc_number", 1); w.WriteNumber("duration_ms", c.Ms); w.WriteBoolean("explicit", false); w.WriteString("id", c.Id);
         w.WriteBoolean("is_playable", true); w.WriteString("name", c.Nombre); w.WriteNumber("track_number", c.Numero); w.WriteString("type", "track");
         w.WriteString("uri", "spotify:track:" + c.Id); w.WriteBoolean("is_local", false);

@@ -48,11 +48,13 @@ namespace Rocola
     {
         internal string Id, Uri, Titulo, Artista, Disco, DiscoId, DiscoUri, PortadaUrl;
         internal int DuracionMs, Numero;
+        internal string[] ArtistaIds;      // (27-11-2026) los ids de sus artistas, para «Canciones de ARTISTA» filtrado (RocolaOs.SpotifyEdiciones.cs)
     }
     internal sealed class RocolaOsSpotifyCatalogoDisco
     {
         internal string Id, Uri, Nombre, Artista, PortadaUrl, Tipo;   // Tipo: «album», «playlist» o «favoritas»
         internal List<RocolaOsSpotifyCatalogoCancion> Canciones;       // null = aun sin abrir
+        internal int NumCanciones;                                     // (27-11-2026) total_tracks (0 = no lo dijo): entre dos ediciones, la de mas canciones
     }
     internal sealed class RocolaOsSpotifyCatalogoArtista
     {
@@ -79,7 +81,10 @@ namespace Rocola
     internal static partial class RocolaOsSpotifyCatalogoApi   // (partial: la busqueda de la pareja de la sustitucion invisible va en RocolaOs.CalidadApi.cs)
     {
         internal const string Archivo = "rocola_spotify_api.txt";
-        internal const int EsperaBusquedaMs = 300;
+        // (27-11-2026, «esperar mas al teclear») lo que se espera tras la ULTIMA letra antes de preguntar a Spotify: antes 300 ms; con 650 una
+        // palabra tecleada a ritmo normal (150-250 ms entre letras) o con una pausa corta son UNA busqueda, no tres o cuatro. Lo que ya se sabe
+        // (memoria o disco: RocolaOs.SpotifyCatalogoMemoria.cs) no espera nada.
+        internal const int EsperaBusquedaMs = 650;
         internal const int ReintentoCuentaMs = 30000;
         internal const int PorPaginaPared = 10;      // lo que da Spotify por peticion (el tope de hoy en search y artists/{id}/albums)
         internal const int TopeTodos = 1000;         // search: offset de 0 a 1000 (documentacion de search del 14-11-2026)
@@ -206,7 +211,8 @@ namespace Rocola
         }
         internal static void Busca(string consulta, Action<object, string> listo)
         {
-            Pedido p = new Pedido { Que = "busca", Clave = consulta, Alguien = true, NoAntesDe = Environment.TickCount64 + EsperaBusquedaMs, Listo = listo };
+            bool sabida = RocolaOsSpotifyMemoria.TieneBusqueda(ClaveCache(consulta));
+            Pedido p = new Pedido { Que = "busca", Clave = consulta, Alguien = true, NoAntesDe = Environment.TickCount64 + (sabida ? 0 : EsperaBusquedaMs), Listo = listo };
             lock (cerrojo) { busquedaPendiente = p; }
             Despierta();
         }
@@ -322,7 +328,7 @@ namespace Rocola
             // (23-11-2026, revision) una excepcion fuera de lo que ya se atrapa ya no mata el hilo (la API quedaba muerta hasta reiniciar)
             while (true)
             {
-                try { CorreUna(); }
+                try { RocolaOsSpotifyMemoria.Limpia(); CorreUna(); }
                 catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "vuelta del hilo", ex); Thread.Sleep(1000); }
             }
         }
@@ -394,10 +400,19 @@ namespace Rocola
             {
                 RocolaOsSpotifyCatalogoBusqueda ya = BuscaYa(p.Clave);
                 if (ya != null) return ya;
-                JsonDocument d = Pide(c, false, "/search?q=" + Uri.EscapeDataString(p.Clave) + "&type=track,album,artist&limit=10&market=" + m, ref peticionesBusqueda, true, out error);
-                if (d == null) return null;
-                RocolaOsSpotifyCatalogoBusqueda b;
-                using (d) b = LeeBusqueda(p.Clave, d.RootElement);
+                // (27-11-2026) lo que Spotify contesto antes (aunque se apagara la rocola): del disco, sin peticion; y sin red o frenada, aun vencido
+                RocolaOsSpotifyCatalogoBusqueda b = RocolaOsSpotifyMemoria.Busqueda(ClaveCache(p.Clave), p.Clave, false);
+                if (b == null)
+                {
+                    JsonDocument d = Pide(c, false, "/search?q=" + Uri.EscapeDataString(p.Clave) + "&type=track,album,artist&limit=10&market=" + m, ref peticionesBusqueda, true, out error);
+                    if (d == null)
+                    {
+                        b = Pasajero(error) ? RocolaOsSpotifyMemoria.Busqueda(ClaveCache(p.Clave), p.Clave, true) : null;
+                        if (b == null) return null;
+                        error = null;
+                    }
+                    else { using (d) b = LeeBusqueda(p.Clave, d.RootElement); RocolaOsSpotifyMemoria.GuardaBusqueda(ClaveCache(p.Clave), b); }
+                }
                 lock (cerrojo) { Pon(busquedas, ordenBusquedas, ClaveCache(p.Clave), b, TopeBusquedas, false); foreach (RocolaOsSpotifyCatalogoDisco x in b.Discos) if (!discos.ContainsKey(x.Id)) Pon(discos, ordenDiscos, x.Id, x, TopeDiscos, false); }
                 return b;
             }
@@ -405,36 +420,16 @@ namespace Rocola
             {
                 RocolaOsSpotifyCatalogoDisco ya = DiscoYa(p.Clave);
                 if (ya != null) return ya;
-                JsonDocument d = Pide(c, false, "/albums/" + Uri.EscapeDataString(p.Clave) + "?market=" + m, ref peticionesDisco, true, out error);
-                if (d == null) return null;
-                RocolaOsSpotifyCatalogoDisco disco;
-                int total, leidas;
-                using (d)
+                // (27-11-2026) un disco ya contestado (en el disco de la rocola, 30 dias; aun vencido si no hay red): sin peticion
+                RocolaOsSpotifyCatalogoDisco deDisco = RocolaOsSpotifyMemoria.Disco(p.Clave, false);
+                if (deDisco == null)
                 {
-                    disco = LeeDisco(d.RootElement, null);
-                    disco.Canciones = new List<RocolaOsSpotifyCatalogoCancion>();
-                    JsonElement t;
-                    total = 0;
-                    leidas = 0;
-                    if (d.RootElement.TryGetProperty("tracks", out t) && t.ValueKind == JsonValueKind.Object)
-                    {
-                        LeeCancionesDeDisco(t, disco);
-                        total = Entero(t, "total");
-                        // (23-11-2026, revision) los renglones que trajo Spotify, no las que se pueden tocar: si en las primeras 50 hay alguna que no
-                        // se toca, antes no se pedia la segunda pagina y se perdian las de la 51 en adelante
-                        JsonElement its;
-                        if (t.TryGetProperty("items", out its) && its.ValueKind == JsonValueKind.Array) leidas = its.GetArrayLength();
-                    }
+                    JsonDocument d0 = Pide(c, false, "/albums/" + Uri.EscapeDataString(p.Clave) + "?market=" + m, ref peticionesDisco, true, out error);
+                    if (d0 == null) { deDisco = Pasajero(error) ? RocolaOsSpotifyMemoria.Disco(p.Clave, true) : null; if (deDisco == null) return null; error = null; }
+                    else return AtiendeDiscoRespuesta(c, m, p, d0);
                 }
-                // un disco de mas de 50 canciones: UNA pagina mas (de 50) como mucho
-                if (total > leidas && leidas >= 50)
-                {
-                    string e2;
-                    JsonDocument d2 = Pide(c, false, "/albums/" + Uri.EscapeDataString(p.Clave) + "/tracks?limit=50&offset=" + leidas.ToString(CultureInfo.InvariantCulture) + "&market=" + m, ref peticionesDisco, true, out e2);
-                    if (d2 != null) using (d2) LeeCancionesDeDisco(d2.RootElement, disco);
-                }
-                lock (cerrojo) { Pon(discos, ordenDiscos, disco.Id, disco, TopeDiscos, false); }
-                return disco;
+                lock (cerrojo) { Pon(discos, ordenDiscos, deDisco.Id, deDisco, TopeDiscos, false); }
+                return deDisco;
             }
             if (p.Que == "lista")
             {
@@ -577,6 +572,41 @@ namespace Rocola
             return null;
         }
 
+        // (27-11-2026) la respuesta de un disco (/albums/ID): sus canciones (hasta 100) y a la memoria y al disco; d0 se suelta aqui
+        private static RocolaOsSpotifyCatalogoDisco AtiendeDiscoRespuesta(Config c, string m, Pedido p, JsonDocument d0)
+        {
+            RocolaOsSpotifyCatalogoDisco disco;
+            int total, leidas;
+            using (d0)
+            {
+                disco = LeeDisco(d0.RootElement, null);
+                disco.Canciones = new List<RocolaOsSpotifyCatalogoCancion>();
+                JsonElement t;
+                total = 0;
+                leidas = 0;
+                if (d0.RootElement.TryGetProperty("tracks", out t) && t.ValueKind == JsonValueKind.Object)
+                {
+                    LeeCancionesDeDisco(t, disco);
+                    total = Entero(t, "total");
+                    // (23-11-2026, revision) los renglones que trajo Spotify, no las que se pueden tocar: si en las primeras 50 hay alguna que no
+                    // se toca, antes no se pedia la segunda pagina y se perdian las de la 51 en adelante
+                    JsonElement its;
+                    if (t.TryGetProperty("items", out its) && its.ValueKind == JsonValueKind.Array) leidas = its.GetArrayLength();
+                }
+            }
+            bool completo = true;
+            // un disco de mas de 50 canciones: UNA pagina mas (de 50) como mucho
+            if (total > leidas && leidas >= 50)
+            {
+                string e2;
+                JsonDocument d2 = Pide(c, false, "/albums/" + Uri.EscapeDataString(p.Clave) + "/tracks?limit=50&offset=" + leidas.ToString(CultureInfo.InvariantCulture) + "&market=" + m, ref peticionesDisco, true, out e2);
+                if (d2 != null) using (d2) LeeCancionesDeDisco(d2.RootElement, disco); else completo = false;
+            }
+            lock (cerrojo) { Pon(discos, ordenDiscos, disco.Id, disco, TopeDiscos, false); }
+            if (completo) RocolaOsSpotifyMemoria.GuardaDisco(p.Clave, disco);   // (con la segunda pagina caida no: se pediria mal la proxima vez)
+            return disco;
+        }
+
         // UNA PAGINA DE UNA PARED: 1 peticion de 10 (nada mas: la siguiente se pide cuando alguien la mira)
         private static object AtiendePagina(Config c, string m, Pedido p, out string error)
         {
@@ -589,10 +619,22 @@ namespace Rocola
             string ruta = p.Que == ParedArtista ? "/artists/" + Uri.EscapeDataString(de) + "/albums?include_groups=album,single" + off
                 : p.Que == ParedTodos ? "/search?q=" + Uri.EscapeDataString(de) + "&type=album" + off
                 : "/search?q=" + Uri.EscapeDataString("artist:\"" + de + "\"") + "&type=track" + off;
-            JsonDocument d = p.Que == ParedArtista ? Pide(c, false, ruta, ref peticionesArtista, true, out error) : Pide(c, false, ruta, ref peticionesPared, true, out error);
-            if (d == null) return null;
-            RocolaOsSpotifyCatalogoPagina pg = new RocolaOsSpotifyCatalogoPagina { Offset = desde };
-            using (d)
+            // (27-11-2026) la pagina que Spotify ya contesto (en el disco de la rocola; aun vencida si no hay red): sin peticion
+            RocolaOsSpotifyCatalogoPagina pg = RocolaOsSpotifyMemoria.Pagina(clave, false);
+            bool deMemoria = pg != null;
+            JsonDocument d = null;
+            if (pg == null)
+            {
+                d = p.Que == ParedArtista ? Pide(c, false, ruta, ref peticionesArtista, true, out error) : Pide(c, false, ruta, ref peticionesPared, true, out error);
+                if (d == null)
+                {
+                    pg = Pasajero(error) ? RocolaOsSpotifyMemoria.Pagina(clave, true) : null;
+                    if (pg == null) return null;
+                    error = null; deMemoria = true;
+                }
+                else pg = new RocolaOsSpotifyCatalogoPagina { Offset = desde };
+            }
+            if (d != null) using (d)
             {
                 JsonElement pag = d.RootElement, s;
                 if (p.Que != ParedArtista)
@@ -611,6 +653,7 @@ namespace Rocola
                         else { RocolaOsSpotifyCatalogoDisco y = LeeDisco(x, null); if (y != null) pg.Discos.Add(y); }
                     }
             }
+            if (!deMemoria) RocolaOsSpotifyMemoria.GuardaPagina(clave, pg);
             lock (cerrojo)
             {
                 for (int i = 0; i < pg.Discos.Count; i++) { RocolaOsSpotifyCatalogoDisco y; if (discos.TryGetValue(pg.Discos[i].Id, out y)) pg.Discos[i] = y; else Pon(discos, ordenDiscos, pg.Discos[i].Id, pg.Discos[i], TopeDiscos, false); }
@@ -958,6 +1001,15 @@ namespace Rocola
             foreach (JsonElement x in a.EnumerateArray()) { string n = Texto(x, "name"); if (string.IsNullOrEmpty(n)) continue; if (sb.Length > 0) sb.Append(", "); sb.Append(n); }
             return sb.ToString();
         }
+        // (27-11-2026) los ids de los artistas de una cancion (null si no los dice)
+        private static string[] IdsArtistas(JsonElement e)
+        {
+            JsonElement a;
+            if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("artists", out a) || a.ValueKind != JsonValueKind.Array) return null;
+            List<string> l = new List<string>();
+            foreach (JsonElement x in a.EnumerateArray()) { string id = Texto(x, "id"); if (!string.IsNullOrEmpty(id)) l.Add(id); }
+            return l.Count > 0 ? l.ToArray() : null;
+        }
         // la imagen mas cercana a 300 px (la de 300 de Spotify; lo que XP pinta en el cubo grande cabe)
         private static string Portada(JsonElement e)
         {
@@ -986,7 +1038,7 @@ namespace Rocola
         {
             string id = Texto(a, "id");
             if (string.IsNullOrEmpty(id)) return null;
-            return new RocolaOsSpotifyCatalogoDisco { Id = id, Uri = Texto(a, "uri") ?? ("spotify:album:" + id), Nombre = Texto(a, "name") ?? "", Artista = Artistas(a), PortadaUrl = Portada(a), Tipo = tipo ?? "album" };
+            return new RocolaOsSpotifyCatalogoDisco { Id = id, Uri = Texto(a, "uri") ?? ("spotify:album:" + id), Nombre = Texto(a, "name") ?? "", Artista = Artistas(a), PortadaUrl = Portada(a), Tipo = tipo ?? "album", NumCanciones = Entero(a, "total_tracks") };
         }
         private static RocolaOsSpotifyCatalogoCancion LeeCancion(JsonElement t, RocolaOsSpotifyCatalogoDisco disco)
         {
@@ -996,7 +1048,7 @@ namespace Rocola
             RocolaOsSpotifyCatalogoCancion c = new RocolaOsSpotifyCatalogoCancion
             {
                 Id = id, Uri = Texto(t, "uri") ?? ("spotify:track:" + id), Titulo = Texto(t, "name") ?? "", Artista = Artistas(t),
-                DuracionMs = Entero(t, "duration_ms"), Numero = Entero(t, "track_number"),
+                DuracionMs = Entero(t, "duration_ms"), Numero = Entero(t, "track_number"), ArtistaIds = IdsArtistas(t),
             };
             JsonElement al;
             if (t.TryGetProperty("album", out al) && al.ValueKind == JsonValueKind.Object)
@@ -1059,6 +1111,21 @@ namespace Rocola
             try
             {
                 long ahora = Environment.TickCount64;
+                string texto = TextoEstado();
+                string d = RocolaOs.Run("rocola-xp/spotify");
+                Directory.CreateDirectory(d);
+                string ruta = Path.Combine(d, "catalogo"), t = ruta + ".t";
+                File.WriteAllText(t, texto);
+                File.Move(t, ruta, true);
+                estadoEscrito = ahora;
+            }
+            catch { }
+        }
+        // (27-11-2026) lo que se sabe de la API (clave=valor, sin secretos): el archivo del buzon y la hoja «Spotify» de Ctrl+F4 (de memoria, sin leer el archivo)
+        internal static string TextoEstado()
+        {
+            {
+                long ahora = Environment.TickCount64;
                 long hasta = Volatile.Read(ref frenaHastaMs);
                 StringBuilder sb = new StringBuilder();
                 sb.Append("api=").Append(Frena ? "frena" : SinRed ? "sin_red" : api).Append('\n');
@@ -1081,14 +1148,9 @@ namespace Rocola
                 sb.Append("peticiones_60min=").Append(PeticionesUltimaHora().ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("ultimo_429=").Append(Hora(Interlocked.Read(ref ultimo429Unix))).Append('\n');
                 sb.Append("ultimo_exito=").Append(Hora(Interlocked.Read(ref ultimoExitoUnix))).Append('\n');
-                string d = RocolaOs.Run("rocola-xp/spotify");
-                Directory.CreateDirectory(d);
-                string ruta = Path.Combine(d, "catalogo"), t = ruta + ".t";
-                File.WriteAllText(t, sb.ToString());
-                File.Move(t, ruta, true);
-                estadoEscrito = ahora;
+                sb.Append(RocolaOsSpotifyMemoria.TextoEstado());   // (27-11-2026) cache_*: la memoria en disco
+                return sb.ToString();
             }
-            catch { }
         }
     }
 }

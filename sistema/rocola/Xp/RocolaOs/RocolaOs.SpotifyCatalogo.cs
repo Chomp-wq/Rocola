@@ -277,6 +277,26 @@ namespace Rocola
             RocolaOsSpotifyCatalogoPoneResultados(m, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
             RocolaOsSpotifyCatalogoApi.PideEstado();
         }
+        // (27-11-2026, «sin repetidas en el buscador») ¿la cancion de Spotify es la MISMA GRABACION de alguna TUYA que XP ya puso en los resultados?
+        // Entonces sale una sola vez, la tuya. La misma idea que el «no repetir» de la cola (RocolaOs.SpotifyRepetida.cs): la pareja de la sustitucion
+        // invisible, o titulo base, marcas de version, artista principal y duracion a 3 s. Solo se miran las tuyas que ya estan en la lista de XP.
+        private bool RocolaOsSpotifyYaEstaEnLocal(List<SearchItem> xp, RocolaOsSpotifyCatalogoCancion c)
+        {
+            foreach (SearchItem it in xp)
+            {
+                if (it == null || it.Kind != 2 || it.TrackRef == null || it.TrackRef.Path == null || it.TrackRef.Path.StartsWith("spotify:", StringComparison.Ordinal)) continue;
+                Track local = it.TrackRef;
+                RocolaOsCalidad.Pareja par;
+                string porQue;
+                if (RocolaOsCalidad.Pares.TryGetValue(local.Path, out par) && par != null && par.Id != null)
+                {
+                    if (string.Equals(par.Uri, c.Uri, StringComparison.Ordinal)) { if (par.Verif >= 0) return true; continue; }   // su pareja (salvo medida de que es otra grabacion)
+                    if (par.Verif < 0) continue;
+                }
+                if (RocolaOsMismaPorDatos(local, c.Titulo ?? "", c.Artista ?? "", c.DuracionMs, out porQue)) return true;
+            }
+            return false;
+        }
         private List<SearchItem> RocolaOsSpotifyCatalogoMezcla(List<SearchItem> xp, RocolaOsSpotifyCatalogoBusqueda b)
         {
             List<SearchItem> artistas;
@@ -287,16 +307,18 @@ namespace Rocola
             foreach (SearchItem it in xp)
                 if (it != null && it.Kind == 2 && it.TrackRef != null && it.TrackRef.Path != null && it.TrackRef.Path.StartsWith("spotify:", StringComparison.Ordinal))
                     (yaVan ?? (yaVan = new HashSet<string>(StringComparer.Ordinal))).Add(it.TrackRef.Path);
-            int n = 0;
+            int n = 0, repetidas = 0; StringBuilder nombresRep = new StringBuilder();
             foreach (RocolaOsSpotifyCatalogoCancion c in b.Canciones)
             {
                 if (n >= 8) break;
                 if (yaVan != null && c != null && c.Uri != null && yaVan.Contains(c.Uri)) continue;
+                if (c != null && RocolaOsSpotifyYaEstaEnLocal(xp, c)) { repetidas++; if (nombresRep.Length < 300) nombresRep.Append(nombresRep.Length > 0 ? ", " : "").Append('«').Append(c.Titulo).Append("» de ").Append(c.Artista); continue; }   // (27-11-2026) la misma grabacion ya sale, la tuya: una sola vez
                 Album a = RocolaOsSpotifyCatalogoDiscoDe(c);
                 Track t = RocolaOsSpotifyCatalogoPista(c);
                 sp.Add(new SearchItem { Kind = 2, Display = (c.Artista.Length > 0 ? c.Artista + " - " : "") + c.Titulo, Key = "", AlbumRef = a, TrackRef = t });
                 n++;
             }
+            if (repetidas > 0) RocolaOs.Apunta("spotify_catalogo", "buscador: " + repetidas.ToString(CultureInfo.InvariantCulture) + " cancion(es) de Spotify no salen: " + nombresRep + " (ya estan en tu musica)");
             n = 0;
             foreach (RocolaOsSpotifyCatalogoDisco d in b.Discos)
             {
@@ -667,6 +689,8 @@ namespace Rocola
                 RocolaOsSpotifyCatalogoPortada(a, d.Id, d.PortadaUrl);
             }
             else if (d.Canciones != null && rocolaOsSpDeDisco.TryGetValue(a, out RocolaOsSpotifyCatalogoDisco viejo) && viejo.Canciones == null) rocolaOsSpDeDisco[a] = d;
+            // (27-11-2026) el disco que se armo de una cancion de la busqueda no trae cuantas canciones tiene: se completa con el que si lo dice (las ediciones)
+            if (d.NumCanciones > 0 && rocolaOsSpDeDisco.TryGetValue(a, out RocolaOsSpotifyCatalogoDisco v2) && v2.NumCanciones <= 0) v2.NumCanciones = d.NumCanciones;
             RocolaOsSpotifyCatalogoPortadaPerdida(a);
             RocolaOsSpotifyCatalogoDisco este = rocolaOsSpDeDisco[a];
             if (este.Canciones != null && a.Tracks.Count == 0) RocolaOsSpotifyCatalogoLlena(a, este);
