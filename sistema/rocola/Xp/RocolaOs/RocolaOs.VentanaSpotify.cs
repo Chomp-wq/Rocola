@@ -116,6 +116,40 @@ namespace Rocola
             catch { }
             return r;
         }
+        // (27-11-2026, revision) lo leido de disco se recuerda: la hoja arma la vista cada 0,5 s EN EL HILO DE LA PANTALLA. El archivo del vigilante y la
+        // cola de 160 KB de la bitacora (dos regex por linea) se vuelven a leer solo cada 5 s o si cambio su tamano o su fecha (un FileInfo por vuelta)
+        private const long SpotifyReleeMs = 5000;
+        private static readonly object spotifyMemoVista = new object();
+        private static string spotifyVigTexto; private static long spotifyVigMs = long.MinValue / 2, spotifyVigLargo = -1, spotifyVigTicks;
+        private static List<string[]> spotifyUltimas; private static long spotifyUltMs = long.MinValue / 2, spotifyUltLargo = -1, spotifyUltTicks; private static string spotifyUltRuta;
+        private static bool SpotifyCambio(string ruta, ref long largo, ref long ticks)
+        {
+            long l = -1, t = 0;
+            try { FileInfo fi = new FileInfo(ruta); if (fi.Exists) { l = fi.Length; t = fi.LastWriteTimeUtc.Ticks; } } catch { }
+            bool c = l != largo || t != ticks;
+            largo = l; ticks = t;
+            return c;
+        }
+        private static string RocolaOsSpotifyVigilanteMemo()
+        {
+            lock (spotifyMemoVista)
+            {
+                long ahora = Environment.TickCount64;
+                bool cambio = SpotifyCambio(RocolaOs.Run("rocola-soloist/estado"), ref spotifyVigLargo, ref spotifyVigTicks);
+                if (cambio || ahora - spotifyVigMs >= SpotifyReleeMs) { spotifyVigTexto = RocolaOsSpotifyLeeEstadoVigilante(); spotifyVigMs = ahora; }
+                return spotifyVigTexto;
+            }
+        }
+        private static List<string[]> RocolaOsSpotifyUltimasMemo(string ruta, int max)
+        {
+            lock (spotifyMemoVista)
+            {
+                long ahora = Environment.TickCount64;
+                bool cambio = SpotifyCambio(ruta, ref spotifyUltLargo, ref spotifyUltTicks) || !string.Equals(ruta, spotifyUltRuta, StringComparison.Ordinal);
+                if (cambio || spotifyUltimas == null || ahora - spotifyUltMs >= SpotifyReleeMs) { spotifyUltimas = RocolaOsSpotifyUltimasDeBitacora(ruta, max); spotifyUltMs = ahora; spotifyUltRuta = ruta; }
+                return new List<string[]>(spotifyUltimas);
+            }
+        }
         // todo junto, sin dibujar (lo lee la hoja cada segundo y la prueba)
         internal static RocolaOsSpotifyVista RocolaOsSpotifyArmaVista()
         {
@@ -123,7 +157,7 @@ namespace Rocola
             v.Encendido = RocolaOsSpotify.Encendido;
             RocolaOsSpotifyEstado e = RocolaOsSpotify.Estado;
             v.Ws = e.Ws; v.Sesion = e.Sesion; v.Activa = e.Activa; v.Dispositivo = e.Dispositivo ?? ""; v.Reproduce = e.Status ?? "";
-            Dictionary<string, string> vg = RocolaOsSpotifyClaves(RocolaOsSpotifyLeeEstadoVigilante());
+            Dictionary<string, string> vg = RocolaOsSpotifyClaves(RocolaOsSpotifyVigilanteMemo());
             string x;
             if (vg.TryGetValue("fase", out x) && x.Length > 0) v.Fase = x;
             if (vg.TryGetValue("version", out x)) v.Version = x;
@@ -138,7 +172,7 @@ namespace Rocola
             if (api.TryGetValue("ultimo_exito", out x)) v.UltimoExito = x;
             if (api.TryGetValue("frena_s", out x)) v.FrenaS = x;
             v.Cobradas = RocolaOsSpotify.Cobradas; v.Devueltas = RocolaOsSpotify.Devueltas; v.NoPedidas = RocolaOsSpotify.NoPedidas; v.EnCola = RocolaOsSpotify.EnCola;
-            v.Ultimas = RocolaOsSpotifyUltimasDeBitacora(RocolaOs.Datos("rocola_spotify.txt"), SpotifyUltimasMax);
+            v.Ultimas = RocolaOsSpotifyUltimasMemo(RocolaOs.Datos("rocola_spotify.txt"), SpotifyUltimasMax);
             v.CacheDisco = RocolaOsSpotifyMemoria.Activa;
             long a, ve, sn, g, b; int n;
             RocolaOsSpotifyMemoria.Numeros(out a, out ve, out sn, out g, out b, out n);

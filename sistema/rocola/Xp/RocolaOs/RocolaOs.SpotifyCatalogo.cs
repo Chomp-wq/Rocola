@@ -555,11 +555,12 @@ namespace Rocola
         {
             RocolaOsSpotifyCatalogoCancion c;
             if (!rocolaOsSpCanciones.TryGetValue(t.Path, out c)) return;
-            if (!RocolaOsSpotifyListo)
+            string noPuede;   // (revision 27-11-2026) el motivo real que da el nucleo (sordo, reiniciandose, sin sesion...), no siempre «sin sesion»
+            if (!RocolaOsSpotify.PuedePedir(out noPuede))
             {
-                // Soloist sin sesion: no se pide nada (ni se cobra); el aviso que XP ya tiene
+                // Soloist sin sesion, sordo o reiniciandose: no se pide nada (ni se cobra); el aviso que XP ya tiene
                 RocolaOsSpotifyCatalogoAviso("Espera un momento y vuelve a intentarlo");
-                RocolaOs.Apunta("spotify_catalogo", "no se pidio «" + c.Uri + "»: Spotify aun no esta listo (Soloist sin sesion)");
+                RocolaOs.Apunta("spotify_catalogo", "no se pidio «" + c.Uri + "»: Spotify aun no esta listo (" + (noPuede ?? "Soloist sin sesion") + ")");
                 return;
             }
             RocolaOsSpotifyPista p = new RocolaOsSpotifyPista

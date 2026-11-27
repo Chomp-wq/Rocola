@@ -142,6 +142,26 @@ Solo Rocola OS con el modo Spotify. Ganchos g430-g437 (más la ayuda de g252-g25
    tomas por lectura), completa la lectura con la música que sigue y le pone 1 ms de fundido; no toca retomadas ni cortes seguidos. Con el Soloist falso (1400 ms de ceros) la música
    llega ~1 s antes. Efecto aceptado: el anillo queda sin colchón un instante (huecos al azar también aparecen sin la función con la máquina cargada).
 
+**Revisión de lo anterior (27-11-2026, un revisor de solo lectura sobre lo hecho desde e759e3f).** Siete puntos comprobados uno a uno:
+
+- **Caché en disco truncada** (`RocolaOs.SpotifyCatalogoMemoria.cs`; REAL): un apagón tras el cambio de nombre (sin fsync, NTFS por ntfs3) dejaba un archivo cortado que `Lee` aceptaba
+  (un disco con menos canciones 30 días, una página con menos discos). Ahora cada archivo termina con `fin<TAB>N` (N = las líneas de datos) y `Lee` lo exige y comprueba la cuenta; si falta o no
+  coincide, se borra y es como si no hubiera (se vuelve a pedir). Los archivos viejos, sin cierre, se piden otra vez (una vez). No se usó `Canciones.Count == NumCanciones`: `total_tracks` cuenta
+  las que no se pueden tocar (que no se guardan) y las de más de 100, y habría descartado discos sanos para siempre; la cuenta del cierre detecta el truncado sin ese riesgo.
+- **Claves de edición «Vol 1/Vol 2 Deluxe»** (`RocolaOs.SpotifyEdiciones.cs`; NO ES REAL): el segundo bucle de `Clave` devuelve el número a la clave (`greatest hits vol 1` / `vol 2`,
+  `now 20` / `now 21`). Casos dejados en `Pruebas/RocolaOs/catalogo/EdicionesClave` (`dotnet run`, sin la rocola).
+- **Busca en el hilo de la pantalla** (`RocolaOs.SpotifyCatalogoApi.cs`; REAL): `Busca` consultaba `TieneBusqueda` (SHA1, ruta, `FileInfo` en el disco de la música) en cada tecla. Ahora el pedido nace con la
+  espera entera (`Perezosa`) y el hilo del catálogo (`DecideBusqueda`, antes de tomarlo) la quita si lo escrito ya está en el disco. Lo que se ve no cambia (lo sabido sigue sin esperar).
+- **La uri de una sustituida pedida después** (`RocolaOs.Calidad.cs`, `RocolaOs.SpotifyPide.cs`; REAL, menor): los ganchos g430-g437 miran por la uri sola, y `sombraDe` la dejaba asociada a tu MP3
+  hasta 4000 uris. `RocolaOsSpotifyAbre` (la pedida directa) ahora quita la asociación (`QuitaSombra`) y lo apunta («pedida directa de ...: ya no es la sombra de ...»). La sombra la vuelve a poner al armar su cadena.
+- **Motivo real al no poder pedir** (`RocolaOs.SpotifyCatalogo.cs`, `RocolaOsSpotifyCatalogoPide`; REAL, menor): usa `PuedePedir(out motivo)` y apunta sordo, reiniciándose, sin WebSocket... en vez de «Soloist sin sesion».
+- **La hoja Spotify** (`RocolaOs.VentanaSpotify.cs`; REAL, menor): `RocolaOsSpotifyArmaVista` (cada 0,5 s en el hilo de la pantalla) releía el archivo del vigilante y la cola de 160 KB de la bitácora con dos
+  expresiones por línea. Ahora se recuerdan y se releen solo cada 5 s o si cambió tamaño o fecha (un `FileInfo` por vuelta). La carpeta de la caché solo se recorre una vez (hasta que `Limpia`, al arrancar el hilo de la API, ya sabe la suma): no hacía falta más.
+- **Recorte del silencio inicial** (`RocolaOs.SpotifyFuente.cs`): (a) REAL, arreglado: tras 16 tomas sin música, la última (sin mirar) se devolvía como sonido (silencio contado como sonido, o música
+  sin recortar); ahora son 16 tomas y una vuelta 17 que solo mira, y lo no mirado no se entrega (probado solo por lectura: con el Soloist falso el anillo no tiene colchón para 16 tomas llenas seguidas).
+  (b) Microcortes tras el recorte: SIN EVIDENCIA, no se cambió. Medido con el Soloist falso, `arranque` (huecos a media canción de la bitácora, ms): con la función y 1400 ms de ceros 504 y 694, sin ella
+  822 y 442; sin ceros 945 y 0 (con la función) y 1509 y 254 (sin ella, con intro suave): son los mismos huecos al azar de la máquina cargada, con y sin recorte (ya lo decía la nota de la escena).
+
 Pruebas: spotify-xp `arranque`, `sordopide`, `mitad` (cortada2 y cortadalarga ajustadas a la regla nueva); sustitucion `nivelmp3`. Soloist falso: `SOLOIST_FALSO_SILENCIO=MS` y
 `SOLOIST_FALSO_INTRO_SUAVE=MS`. No con Soloist real ni en el A4.
 

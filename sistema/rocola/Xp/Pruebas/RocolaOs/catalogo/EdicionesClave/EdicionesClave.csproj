@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- (27-11-2026, revision) la CLAVE DE EDICION sola: SpotifyEdiciones.cs con MotorBusqueda y UnicodeXp, sin la rocola; dotnet run -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../../../RocolaOs/RocolaOs.SpotifyEdiciones.cs" />
+    <Compile Include="../../../../Codigo/MotorBusqueda.cs" />
+    <Compile Include="../../../../Plataforma/UnicodeXp.cs" />
+  </ItemGroup>
+</Project>

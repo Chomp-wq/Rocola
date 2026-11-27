@@ -231,6 +231,8 @@ namespace Rocola
             { IAudioSource calidad = RocolaOsCalidadAbre(path); if (calidad != null) return calidad; }   // (la sustitucion invisible: una tuya desde Spotify; RocolaOs.Calidad.cs)
             if (!path.StartsWith("spotify:", StringComparison.Ordinal) || !RocolaOsSpotify.Encendido) return null;
             if (!RocolaOsSpotify.EsUriDeCancion(path)) return null;
+            string mp3DeAntes;   // (revision 27-11-2026) pedida directa: lo de tu MP3 de una sustitucion de antes con esta uri no le toca
+            if (RocolaOsCalidad.QuitaSombra(path, out mp3DeAntes)) RocolaOsCalidad.Apunta("pedida directa de " + path + ": ya no es la sombra de " + Path.GetFileName(mp3DeAntes) + " (no se mira su EQ, su duracion ni su parejo)");
             RocolaOsSpotifyPista p;
             RocolaOsSpotify.Pistas.TryGetValue(path, out p);
             RocolaOsFuenteSpotify f = new RocolaOsFuenteSpotify(path, p != null ? p.Titulo : "", p != null ? p.DuracionMs : 0);
