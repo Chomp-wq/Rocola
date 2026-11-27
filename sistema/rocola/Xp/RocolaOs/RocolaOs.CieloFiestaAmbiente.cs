@@ -109,7 +109,7 @@ namespace Rocola
             {
                 float q = 1f - lib;   // la pared: los controles de arriba y los titulos de la ultima fila
                 if (q > 0.01f) { Zona(0f, 0f, W, H * 0.135f, q); Zona(0f, e.Horizonte - 78f * S, W, e.Horizonte + 20f, 0.7f * q); }
-                if (lib > 0.01f) Zona(W * 0.48f, H * 0.09f, W, H * 0.60f, 0.85f * lib);   // la columna de la letra del reposo (x 500-1024, y 70-460): lo que flota se aparta
+                if (lib > 0.01f && RocolaOsLetraSuena.Actual != null) Zona(W * 0.20f, H * 0.12f, W * 0.97f, H * 0.66f, 0.85f * lib);   // la columna de la letra del reposo, estilo Apple Music (RocolaOs.LetraCielo.cs: x 224-978, y 108-488 en 1024x768), solo si hay letra: lo que flota se aparta
             }
         }
         private void Zona(float x0, float y0, float x1, float y1, float peso)
