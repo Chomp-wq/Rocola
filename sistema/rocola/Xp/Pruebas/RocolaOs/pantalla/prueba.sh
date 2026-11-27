@@ -170,8 +170,8 @@ if [[ " $partes " == *" teclado "* ]]; then
   # El foco vuelve a la barra de la resolucion; Tab (los hercios), Tab («Volver a lo automatico»: «Probar» esta en gris), Tab (el brillo),
   # tres veces derecha: brillo 3; y Escape.
   # (con las pestanas Sonido y Archivos, dos Tab mas desde la primera pestana hasta la barra; salida-audio, 21-11-2026: con la pestana Sonido,
-  # otro mas; el 27-11-2026 el navegador se quito y con la pestana Spotify son 5 Tab: Pantalla, Sonido, Spotify y Archivos)
-  P="6:17+115,7:9,7.15:9,7.3:9,7.45:9,7.6:9,7.8:35,8.05:9,8.3:9,8.6:13,11:9,11.4:13,13:9,13.2:9,13.4:9,13.6:39,13.8:39,14:39,16:27"
+  # otro mas; el 27-11-2026 el navegador se quito y con la pestana Spotify son 5 Tab: Pantalla, Sonido, Spotify y Archivos; con la pestana Imagen, 6)
+  P="6:17+115,7:9,7.1:9,7.2:9,7.3:9,7.45:9,7.6:9,7.8:35,8.05:9,8.3:9,8.6:13,11:9,11.4:13,13:9,13.2:9,13.4:9,13.6:39,13.8:39,14:39,16:27"
   abre teclado "$d" "$P" "10:teclado-pregunta,15:teclado-guardado" 19 TERM ROCOLA_OS=1 ROCOLA_KMS_SIMULADO="$SIM"
   k="$o/kms.txt"; sed 's/^/   kms: /' "$k" | cut -c1-110
   si "sale con 0" test "$(cat $o/salio)" = 0
