@@ -53,6 +53,14 @@ namespace Rocola
             }
             return EstadoDe(deLinux[vk], fs);
         }
+        // (27-11-2026) una tecla de Linux sin codigo de Windows: no llega a la rocola (como antes); se apunta una vez por codigo, para saber
+        // que manda un boton que no responde (rocola_os.txt -> la bitacora de Rocola OS)
+        private static readonly HashSet<int> desconocidas = new HashSet<int>();
+        private static void Desconocida(int codigo)
+        {
+            lock (desconocidas) { if (!desconocidas.Add(codigo) || desconocidas.Count > 64) return; }
+            try { RocolaOs.Apunta("teclas", "tecla de Linux " + codigo.ToString(CultureInfo.InvariantCulture) + " sin codigo de Windows: no la oye la rocola"); } catch { }
+        }
         // (22-11-2026) lo mismo por el codigo de Linux (las teclas de volumen, que no tienen codigo de Windows en Botones.cs)
         internal static int FisicaLinux(int codigo)
         {
@@ -243,9 +251,9 @@ namespace Rocola
                     continue;
                 }
                 if (codigo >= 0x110 && codigo < 0x160) continue;   // otros botones de raton y de mando (no son teclas)
-                if (VolumenTeclas.Atiende(codigo, valor == 1)) continue;   // (22-11-2026) subir y bajar el volumen: en XP lo hacia Windows
+                if (!RocolaOs.Activo && VolumenTeclas.Atiende(codigo, valor == 1)) continue;   // (22-11-2026) subir y bajar el volumen: en XP lo hacia Windows
                 int vk = Botones.CodigoWindows(codigo);
-                if (vk == 0) continue;
+                if (vk == 0) { if (valor == 1) Desconocida(codigo); continue; }
                 bool abajo = valor == 1;
                 Tecla t = (Tecla)vk;
                 lock (candado)

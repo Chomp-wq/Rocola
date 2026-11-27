@@ -1992,7 +1992,7 @@ namespace Rocola
 #if ROCOLA_GPU
             if (gpuEnabled && gpuPanel != null) gpuPanel.TouchUi();
 #endif
-            if (attractOn)
+            if (RocolaOsTeclaVolumen(keyData, msg)) return true; if (attractOn)   // ROCOLA OS g424: (XP) if (attractOn) — un boton de volumen (el del asistente o las teclas multimedia) solo sube o baja el volumen, sin despertar ni hacer otra cosa (RocolaOs.TeclasVolumen.cs)
             {
                 // Cualquier boton despierta la rocola... pero la MONEDA ademas ACREDITA. Antes este return se
                 // tragaba el pulso del monedero: el cliente metia su moneda durante la atraccion (el estado MAS

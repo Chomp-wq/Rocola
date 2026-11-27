@@ -37,6 +37,10 @@ namespace Rocola
             t[82] = 0x60; t[79] = 0x61; t[80] = 0x62; t[81] = 0x63; t[75] = 0x64; t[76] = 0x65; t[77] = 0x66; t[71] = 0x67; t[72] = 0x68; t[73] = 0x69;
             t[55] = 0x6A; t[78] = 0x6B; t[74] = 0x6D; t[83] = 0x6E; t[98] = 0x6F;
             // signos (teclado de EE. UU.; los VK_OEM de Windows)
+            // (27-11-2026) las multimedia, para que el asistente de botones pueda aprenderlas (como en Windows: VK_VOLUME_MUTE/DOWN/UP,
+            // VK_MEDIA_NEXT/PREV/STOP/PLAY_PAUSE) y F13 a F24 (algunas placas de botones las mandan)
+            t[113] = 0xAD; t[114] = 0xAE; t[115] = 0xAF; t[163] = 0xB0; t[165] = 0xB1; t[166] = 0xB2; t[164] = 0xB3;
+            for (int i = 0; i < 12; i++) t[183 + i] = 0x7C + i;
             t[12] = 0xBD; t[13] = 0xBB; t[26] = 0xDB; t[27] = 0xDD; t[39] = 0xBA; t[40] = 0xDE; t[41] = 0xC0; t[43] = 0xDC; t[51] = 0xBC; t[52] = 0xBE; t[53] = 0xBF;
             return t;
         }

@@ -1952,9 +1952,9 @@ namespace Rocola
         {
             if (lblConfig == null) return;
             string t = "CONFIGURACION DE BOTONES DE LA ROCOLA\r\n\r\n";
-            t += "Paso " + (configStep + 1) + " de " + ConfigSteps.Length + "\r\n\r\n";
+            t += "Paso " + (configStep + 1) + " de " + RocolaOsPasos().Length + "\r\n\r\n";   // ROCOLA OS g420: (XP) t += "Paso " + (configStep + 1) + " de " + ConfigSteps.Length + "\r\n\r\n"; — con Rocola OS, 10 pasos: los 8 de XP y SUBIR y BAJAR VOLUMEN (RocolaOs/RocolaOs.TeclasVolumen.cs)
             t += "Presiona en la rocola el boton para:\r\n\r\n";
-            t += ">>>   " + ConfigSteps[configStep] + "   <<<";
+            t += ">>>   " + RocolaOsPasos()[configStep] + "   <<<";   // ROCOLA OS g421: (XP) t += ">>>   " + ConfigSteps[configStep] + "   <<<"; — el paso de los 10 (RocolaOs.TeclasVolumen.cs)
             if (warn != null) t += "\r\n\r\n" + warn;
             t += "\r\n\r\n\r\n(cada boton debe ser distinto)";
             lblConfig.Text = t;
@@ -1967,11 +1967,11 @@ namespace Rocola
             if (msg.Repetida) return;   // ignora auto-repeticion (boton mantenido); EN LINUX: (msg.LParam & 0x40000000) != 0 -> msg.Repetida, el bit 30 de WM_KEYDOWN
             Tecla k = keyData & Tecla.KeyCode;   // EN LINUX: Keys -> Tecla, los mismos numeros
             if (k == Tecla.None || k == Tecla.Menu || k == Tecla.ControlKey) return;   // ignora teclas vacias/control sueltas; EN LINUX: Keys -> Tecla, los mismos numeros
-            for (int j = 0; j < configStep; j++)
+            if (RocolaOsCapturaVolumen(k)) return; for (int j = 0; j < configStep; j++)   // ROCOLA OS g423: (XP) for (int j = 0; j < configStep; j++) — los pasos 9 y 10 (el volumen; REGRESAR salta) los atiende RocolaOs.TeclasVolumen.cs
                 if (configCap[j] == k) { UpdateConfigPrompt("Ese boton ya esta usado. Presiona OTRO."); return; }
             configCap[configStep] = k;
             configStep++;
-            if (configStep >= ConfigSteps.Length) FinishConfig();
+            if (configStep >= RocolaOsPasos().Length) FinishConfig();   // ROCOLA OS g422: (XP) if (configStep >= ConfigSteps.Length) FinishConfig(); — con Rocola OS acaba tras el paso 10 (RocolaOs.TeclasVolumen.cs)
             else UpdateConfigPrompt(null);
         }
 

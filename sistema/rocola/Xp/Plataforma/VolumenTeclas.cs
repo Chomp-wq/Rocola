@@ -43,6 +43,20 @@ namespace Rocola
             return true;
         }
 
+        // (27-11-2026) un paso pedido por la rocola (los botones de volumen que se configuran en el asistente: RocolaOs.TeclasVolumen.cs; la
+        // repeticion al dejarlo apretado la da la de las teclas)
+        internal static void Paso(int dir)
+        {
+            if (dir == 0) return;
+            lock (candado) { Arranca(); pendiente += dir > 0 ? 1 : -1; }
+            senal.Set();
+        }
+        internal static void Silencio()
+        {
+            lock (candado) { Arranca(); silencio = true; }
+            senal.Set();
+        }
+
         private static long Ahora() { return Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency; }
 
         private static void Arranca()
