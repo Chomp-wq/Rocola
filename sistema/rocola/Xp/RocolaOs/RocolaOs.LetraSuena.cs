@@ -486,7 +486,7 @@ namespace Rocola
             RocolaOs.Registra(new RocolaOsFuncion
             {
                 Nombre = "letra_cielo",
-                Que = "pedir la letra de lo que suena (LRCLIB, o la del MP3): solo los datos, aun no se dibuja",
+                Que = "la letra de lo que suena en el cielo del reposo (LRCLIB, o la del MP3): se pide y se dibuja (RocolaOs.LetraCielo.cs)",
                 DeFabrica = true,
                 Latido = f => f.RocolaOsLetraLatido(),
                 Vivo = (f, sb) =>
