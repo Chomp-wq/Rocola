@@ -15,6 +15,90 @@ sigue APAGADA de fabrica** (`DeFabrica = false` en `RocolaOs.Cielo.cs`, decision
 | FI5 el escaparate de la fecha (`escaparate_fiesta`) | papel picado arriba, globos, corazones o la bandera en las orillas y el mensaje de la fecha entre los de XP | capa `Escaparate` y g136 (nucleo), solo la atraccion |
 | FI6 tus fechas (`fechas_propias`) | cumpleanos y aniversarios de `rocola_fechas.txt`: globos, confeti y «¡Feliz cumpleaños, NOMBRE!» | `Escaparate`, g136 y g139 |
 
+## Que se note mas (27-11-2026)
+
+Peticion del dueno tras ver las 16 fechas en capturas: «las decoraciones se me hacen muy sutiles, quiero que se note mas»; despues vio una maqueta
+interactiva y la aprobo («Me gusta hazlo asi») con dos cambios: todo diciembre de Navidad (salvo la Guadalupana y las posadas, SOLO sus dias) y Navidad
+con copos de nieve. **Esta seccion sustituye** lo que mas abajo diga de «12 a 16 px», del papel picado de 34 px solo en el escaparate y de «orillas»
+(reglas 3 y 4, FI2 y FI5); el resto de las secciones sigue valiendo.
+
+### Que cambio
+
+| Archivo | Cambio |
+|---|---|
+| `RocolaOs.CieloFiestaAmbiente.cs` (nuevo) | El pintor FI5/FI6 de la capa `TrasFondo` (DETRAS de portadas, cubo, ficha y todo texto de XP; antes iba encima, en la capa `Escaparate`): el papel picado en dos guirnaldas y lo que flota de cada fiesta por todo el cielo libre. Reemplaza a `RocolaOsFiestaEscaparate` |
+| `RocolaOs.CieloFiestaPinta.cs` | FI2 reescrito: la fila del horizonte de ~34 px (escaparate y reposo) o ~19 px (pared), una cada 53 px, con resplandor ancho; un adorno propio por fiesta (por su clave) |
+| `RocolaOs.CieloFiestaFormas.cs` y `...Formas2.cs` (nuevo) | Formas planas nuevas (banderin con calado, confeti, serpentinas, petalos, flores, rosas, nochebuena, corona, calaverita, esfera, pinata, estrella guia, notas, copos de seis brazos, banderas); tablas de seno y coseno de los discos (antes un `Math.Cos` por vertice) |
+| `RocolaOs.CieloFiesta.cs` | La aurora de la fecha con mas luz (ver FI1 abajo); `ApuntaTris` (prueba) |
+| `RocolaOs.CieloFiestas.cs` | Calendario de diciembre (abajo) |
+| `RocolaOs.Cielo.cs` | solo el texto de la clave `escaparate_fiesta` |
+| `Pruebas/RocolaOs/cielo-fiestas/prueba.sh`, `cielo/sol_y_calendario.py` | pruebas (abajo) |
+
+Ningun gancho nuevo: todo va por los enchufes del nucleo (`ganchos.py` TODO BIEN, 112 archivos, 34 con ganchos).
+
+### El calendario de diciembre (decision del dueno)
+
+Guadalupana SOLO el 12; Posadas SOLO del 16 al 23 (sus nueve noches acaban en Nochebuena; el 24 ya es Navidad, **sin alternar**; la sesion lo
+eligio asi, el dueno puede acortarlas); Navidad todos los demas dias (1-11, 13-15 y 24-31); Ano Nuevo solo el 1-1 (la cuenta de 10 s y los fuegos desde las
+23:59:50 del 31 no cambian). `sol_y_calendario.py` lo comprueba dia por dia.
+
+### Lo que se ve, por fiesta
+
+El papel picado (banderines de 44 x 54 px con marco, flor de cuatro petalos, rombos y lagrimas caladas, en un tono oscuro del color para que se lea como
+hueco; dos guirnaldas con 46 px de caida que se mecen) sale en TODAS, en el escaparate y en el reposo; no en la pared (arriba van los controles). Cada
+cuatro banderines cuelga algo (esferas en Navidad, pinatas de siete picos en Posadas, farolitos en Candelaria). Calado de calavera en Muertos y de flor
+de petalos en Amor, Mujer, Madres y Guadalupana. Lo propio de cada fiesta, ademas:
+
+| Fiesta | Flota por el cielo | Fila del horizonte |
+|---|---|---|
+| Ano Nuevo | confeti dorado y plata, serpentinas, chispas de cuatro puntas | estrellas que titilan |
+| Reyes | la estrella guia grande (con cruz de rayos, cola y halo), coronas, chispas | estrellas que titilan |
+| Candelaria | farolitos que suben con su resplandor | farolitos |
+| Amor y amistad | corazones de 30 a 62 px que suben, petalos | corazones |
+| Bandera | la bandera grande ondeando (asta a la izquierda), banderitas, confeti tricolor | banderitas |
+| Dia de la Mujer | flores moradas y petalos que caen girando | flores moradas con tallo |
+| Dia del Nino | globos de 42 x 56 px, confeti, serpentinas | globitos amarrados |
+| 10 de mayo | petalos de rosa cayendo, flores rosas | rosas con hojas |
+| Dia del Padre | globos azules y oro, confeti, chispas | estrellas que titilan |
+| Independencia | banderitas, confeti y serpentinas tricolor | cadena de foquitos (cable que cuelga) |
+| Muertos | petalos de cempasuchil cayendo, cempasuchil, veladoras con llama, calaveritas sencillas | cempasuchil y veladoras |
+| Revolucion | banderitas, confeti tricolor | cadena de foquitos |
+| Santa Cecilia | notas y notas dobles de 36 a 60 px que suben | notas que suben |
+| Guadalupana (12-12) | rosas y petalos azul, rosa y blanco, estrellitas doradas | rosas con hojas |
+| Posadas (16-23-12) | farolitos, confeti, chispas, pinatas colgando de la guirnalda | farolitos y velas |
+| Navidad (resto de diciembre) | COPOS de seis brazos con ramitas, de 14 a 30 px, que caen despacio, con vaiven y giran (con un poco de brillo), nieve fina de puntitos, nochebuenas, esferas colgando | cadena de foquitos que se enciende en ola |
+| Cumple y aniversario propios | globos, confeti, serpentinas de feria | (la fila de la fiesta del dia, si la hay) |
+
+**Cantidades** (a 1024 x 768): unos 40 elementos flotando en el escaparate, 30 en el reposo y 20 en la pared (`cuota` de `Fiesta`); si el mismo dia hay
+dos fiestas (solo con `rocola_fechas.txt`) cada una pone el 62 %.
+
+**La aurora (FI1)**: sigue siendo la de XP (forma, ondeo y filo, y sigue a la musica), pero con los colores de la fecha y mas luz: de noche el canal mas
+fuerte de lo que XP le da se multiplica por 1,3 (1,7 en el escaparate y el reposo) y se le suma un piso de 0,08 a 0,14; de dia, con el cielo claro de la
+hora, baja a un 60 % de la de XP (mas luz no se lee). Se rehace al pasar de la pared al escaparate o al reposo.
+
+### Reglas, medidas
+
+- **La noche es la de XP** y **nada cambia de lugar**: todo va en capas de antes de la interfaz (`TrasAurora`, `TrasFondo`).
+- **Siempre se lee**. Donde hay texto, lo que flota se apaga con un paso suave de 30 px: el escaparate con ficha (la columna de la ficha y su mensaje), el
+  escaparate de siempre (el «N canciones / toca un boton» bajo el cubo), la pagina de lo mas pedido mientras entra (el papel picado ademas **se recoge
+  hacia arriba y se apaga**: su cabecera empieza a 38 px), la pared (los controles de arriba y los titulos de la ultima fila) y, en el reposo, la
+  columna de la letra de la cancion (x 500 a 1024, y 70 a 460: alfa a un 15 %, y el papel picado solo mide 72 px de alto en el reposo). Nada pasa de la
+  raya del horizonte. **De dia** los adornos del horizonte se oscurecen (hasta un 25 % de su color) y sus resplandores casi se apagan: con las cuatro
+  funciones encendidas el cielo de la hora ya tiene 0,11 a 0,13 de luz cerca de la raya, y un adorno blanco pasaba de 0,17. La regla 3 se midio con las cuatro
+  funciones (cielo, fiestas, vidrio; clima=0): **ver «Pruebas»**; con las funciones por separado (`cielo=0`) como en la version anterior, igual o mejor.
+- **Calma**: todo lo que se mueve va por un reloj propio que avanza con la calma (`0,55 + 0,45 * calma`; un cambio de calma ya no teletransporta nada: antes
+  el reloj se multiplicaba, y al cambiar la calma todo saltaba) y el alfa baja a `0,65 + 0,35 * calma`. Sin destellos de pantalla; los fuegos no cambian
+  (tope de 3 por segundo).
+- **Apagado = XP**: la escena `apagado` de la bateria (cinta de la tarjeta, byte a byte contra la rama principal) sigue igual con `fiestas=0` y con las
+  seis claves en 0.
+- **Sin memoria por cuadro**: arreglos fijos (la malla crece una sola vez). Lo que se pinta por cuadro, en el peor caso medido (`ROCOLA_FIESTAS_TRIS`):
+
+  | | triangulos (ambiente) | resplandores | triangulos (horizonte) | resplandores |
+  |---|---|---|---|---|
+  | peor (final) | Navidad 4 540 | 34 | Candelaria 1 430, Amor 1 300, Madres 1 260 | 51 (patrias) |
+  | el resto | 1 850 a 2 890 | 0 a 26 | 170 a 1 530 | 11 a 51 |
+
+
 ## Que se hizo
 
 | Archivo (todo en `RocolaOs/`, salvo lo que se dice) | Que lleva |
@@ -28,6 +112,8 @@ sigue APAGADA de fabrica** (`DeFabrica = false` en `RocolaOs.Cielo.cs`, decision
 | `Pruebas/RocolaOs/cielo-fiestas/` | `prueba.sh` (la bateria) y `datos.sh` (la musica inventada) |
 
 ## Las reglas, una por una
+
+> **27-11-2026:** las reglas 3 y 4 (lo claro de 16 px, el papel picado de 34 px, las orillas) quedaron sustituidas por «Que se note mas»; las demas igual.
 
 1. **La noche es la de XP.** De noche el cielo no cambia (nada de DN); lo de las fiestas SI se ve de noche (la fiesta es lo que «una idea encendida
    que de noche si se ve» deja pasar): la aurora con los colores de la fecha, los adornos, los fuegos. Con la fiesta apagada (o sin ella hoy) es XP.
@@ -65,6 +151,8 @@ Va por un delegado (`RocolaOsCieloDia.RayaTinte`, 4 lineas en `RocolaOs.CieloDia
 registro; sin FI1, nadie lo llena y DN5 es la de antes.
 
 ## FI2: la fila baja de adornos sobre la raya del horizonte
+
+> **27-11-2026:** de 34 px (escaparate y reposo) y 19 px (pared), una cada 53 px, con otro adorno por fiesta y la cadena de foquitos: ver «Que se note mas». Lo de abajo es la primera version.
 
 Un pintor de la capa `TrasAurora` (delante de la aurora, su raya y su reflejo; detras del grano, las estrellas, las portadas y todo texto):
 adornos de 12 a 16 px de alto con su base en la raya del horizonte de XP (la `y` de la escena: 665 en la pared, 525 en el reposo con musica),
@@ -118,6 +206,8 @@ puede probar de otra manera).
 
 ## FI5: el escaparate de la fecha
 
+> **27-11-2026:** el papel picado, los globos, corazones y la bandera se rehicieron, van detras de todo (capa `TrasFondo`) y tambien salen en el reposo y, tenues, en la pared: ver «Que se note mas». Lo de abajo es la primera version (el mensaje de la fecha no cambio).
+
 Un pintor de la capa `Escaparate` (despues de lo de XP) solo con la atraccion en pantalla (`Modo 4`), con entrada de 1,2 s:
 
 - **Papel picado** (con cualquier fiesta del calendario o una `fiesta` propia): una cuerda que cuelga en tramos de 6 banderines, en los 34 px de
@@ -169,6 +259,36 @@ aqui solo se lee.)
 Todo lo demas son enchufes del nucleo (g128, g129, g130-g139). `ganchos.py` dice TODO BIEN. **Archivo comun tocado:** `RocolaOs.CieloDia.cs`
 (`RayaTinte`, 4 lineas); lo demas son archivos nuevos `RocolaOs.CieloFiesta*.cs`.
 
+### Pruebas de «Que se note mas» (27-11-2026)
+
+Corridas completas de `prueba.sh` con las CUATRO funciones encendidas (`OSTXT='fiestas=1\ncielo=1\nclima=0\nvidrio=1\n'`, como vendran de fabrica), JIT, la
+maquina compartida (carga 4 a 17 de otros agentes): partes `ganchos apagado escenas reposo nota cumple fugaz` (corrida 1: 145 de 146; la unica que fallo
+fue la regla 3 del reposo de Ano Nuevo, 0,171) y, tras oscurecer un poco mas de dia, `fuegos contraste`: **TODO BIEN, 70 comprobaciones**.
+
+- `ganchos`: TODO BIEN (112 archivos, 34 con ganchos). `apagado`: IGUAL a la rama principal con `fiestas=0` y con las seis claves en 0 (la cinta de la tarjeta).
+- `escenas`: las 16 fechas de noche + el 5-12 (Navidad: «lo de hoy (2026-12-05): navidad»), el 24-12 (solo Navidad) y el 18-12 (posadas); `reposo`: 16 capturas.
+- `nota` (NUEVA): cada fecha cambia la captura de noche frente a la misma escena sin fiestas en esta parte de los pixeles (cambios de mas de 50 por canal): escaparate 12,9 a 17,8 %
+  (minimo pedido 3 %), reposo 8,7 a 14,6 % (2 %), pared 1,2 a 3,0 % (0,4 %). Antes de este cambio, lo visible eran el papel picado de 34 px y unas orillas.
+- `contraste` (regla 3, de dia a las 13:00, con el cielo de la hora): la luz mas alta de las 16 fechas, todas <= 0,17: pared 0,117 (6,3:1), escaparate (la caja de abajo
+  a la derecha) 0,143 (5,4:1), escaparate franja del horizonte (nueva medida) 0,145 (5,4:1), reposo 0,152 (5,2:1). **Esta medida con las cuatro funciones es nueva**: la bateria
+  antes corria con `cielo=0` (el cielo de dia de XP), donde el cielo cerca de la raya tiene 0,11; con el cielo de la hora ya valia 0,107 a 0,13 sin fiesta, y la version
+  anterior de las fiestas llegaba a 0,20 (escaparate de Candelaria): por eso de dia los adornos del horizonte se oscurecen, sus resplandores casi se apagan y la aurora baja a un 60 %.
+- `fuegos`: Grito 10 destellos (como mucho 1 en un segundo), Ano Nuevo 9 (3), con la calma 4 frente a 9; no cambiaron (la primera corrida fallo por la carga: 6 destellos con 17 de carga).
+- `cumple` y `fugaz`: BIEN. `sol_y_calendario.py` ya espera el calendario de diciembre nuevo (no se corrio: pide el programa de la rama de pruebas del nucleo).
+- **Tiempo por cuadro** (`ROCOLA_CIELO_RELOJ`, lo que tarda el trabajo del cuadro; llvmpipe, JIT, antes y despues a la vez; la carga de la maquina hace ruidosos
+  los p95/p99; las corridas incluyen la pared de los primeros 40 s):
+
+  | Escena | antes p50 / p95 / p99 | despues p50 / p95 / p99 |
+  |---|---|---|
+  | Navidad, pared y escaparate (80 s) | 2,29 / 3,75 / 9,50 | 3,65 / 8,12 / 16,40 |
+  | Muertos, pared y escaparate (80 s) | 2,58 / 4,02 / 8,30 | 3,04 / 4,50 / 8,43 |
+  | Navidad, pared, escaparate y reposo (135 s) | 2,16 / 3,25 / 6,80 | 3,31 / 5,47 / 9,77 |
+  | Muertos, pared, escaparate y reposo (135 s) | 2,53 / 4,67 / 8,71 | 2,98 / 5,08 / 8,97 |
+
+  Muertos cuesta unos 0,5 ms mas por cuadro en el procesador de pruebas; **Navidad es el peor, +1,2 a +1,4 ms** (4 500 triangulos, 34 resplandores y los copos de seis
+  brazos). Esa medida incluye pintar con llvmpipe (el rasterizado por procesador); en la Radeon HD 8370D los triangulos son baratos, pero el armado de los vertices
+  (`Math.Sin` por adorno y lineas de los copos) si corre en el procesador del A4. No se midio en el A4.
+
 ## Pruebas
 
 `Pruebas/RocolaOs/cielo-fiestas/prueba.sh` (cabecera: partes y variables) con los datos de `datos.sh` (musica inventada: 16 artistas x 2 discos de
@@ -199,6 +319,8 @@ de dia, `fuegos.jpg`, `cumple.jpg`, `fugaz.jpg`), y a tamano completo `fuegos-gr
 menos); no se midio el reloj de los cuadros (p95/p99 de §7) ni se publico en NativeAOT: queda para la junta.
 
 ## Lo no probado y lo pendiente
+
+- **De «Que se note mas»**: nada en el A4 (ni como se ve, ni el tiempo por cuadro de su tarjeta; los adornos del horizonte de dia salen oscuros a proposito: es la regla 3); no se probo NativeAOT; el escaparate con su ficha de canciones («vitrina») y la lista de lo mas pedido con el papel picado que se recoge no se capturaron (las capturas son del escaparate de «N canciones», cuyo texto de abajo se respeta con una zona propia): se comprueba por la geometria (`ColumnaEscaparate`, `GeometriaTop`); la letra del cielo del reposo (otro trabajo, `RocolaOs.LetraCielo.cs`) no estaba en esta rama: la columna x 500-1024, y 70-460 se reservo con lo que dijo el coordinador, sin verla; las capturas de «antes» son de la rama anterior con solo la funcion `fiestas` (las de «despues», con las cuatro: se ven los contornos de las piezas de vidrio); las fiestas de dos dias del mismo calendario ya no se alternan (el 24-12 es solo Navidad); la regla 3 del texto del reposo con la letra se midio sin la letra (la caja 0,100,1024,513).
 
 - **Nada en el A4**: ni como se ve, ni lo que cuesta en su tarjeta (el reloj es de llvmpipe, en una maquina compartida). Los adornos son de 12 a
   16 px: en el A4 (1024x768) pueden verse chicos o grandes; el 1,3 x de su escala (`RocolaOsFiestaHorizonte`, `s * 1.3f`) es lo que se mueve.

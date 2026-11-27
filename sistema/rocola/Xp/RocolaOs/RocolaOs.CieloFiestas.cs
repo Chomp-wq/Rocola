@@ -108,7 +108,7 @@ namespace Rocola
     // LO DE HOY: las fiestas, las fechas propias, los mensajes del escaparate y los proximos fuegos (lo calcula el latido para la foto)
     internal sealed class RocolaOsCalendarioHoy
     {
-        internal readonly RocolaOsFiesta[] Fiestas;          // las de hoy (puede haber dos: el 24-12, posadas y Navidad), sin las quitadas
+        internal readonly RocolaOsFiesta[] Fiestas;          // las de hoy (casi siempre una; dos si rocola_fechas.txt anade otra), sin las quitadas
         internal readonly RocolaOsFechaPropia[] Propias;     // cumpleanos y aniversarios de hoy
         internal readonly string[] Mensajes;                 // los del escaparate de hoy (los de rocola_fechas.txt mandan sobre los de fabrica)
         internal readonly DateTime? ProximosFuegos;          // cuando empiezan los proximos fuegos (hora local), si es dentro de las proximas 24 h
@@ -171,7 +171,7 @@ namespace Rocola
         {
             List<RocolaOsFiesta> l = new List<RocolaOsFiesta>(2);
             int m = dia.Month, d = dia.Day;
-            if ((m == 12 && d == 31) || (m == 1 && d == 1)) l.Add(AnioNuevo);
+            if (m == 1 && d == 1) l.Add(AnioNuevo);   // (27-11-2026: el 31-12 de dia ya es Navidad; la cuenta y los fuegos desde las 23:59:50 no cambian)
             if (m == 1 && d == 6) l.Add(Reyes);
             if (m == 2 && d == 2) l.Add(Candelaria);
             if (m == 2 && d == 14) l.Add(Amor);
@@ -184,9 +184,11 @@ namespace Rocola
             if ((m == 10 && d == 31) || (m == 11 && d <= 2)) l.Add(Muertos);
             if (m == 11 && d == 20) l.Add(Revolucion);
             if (m == 11 && d == 22) l.Add(SantaCecilia);
+            // (27-11-2026, decision del dueno: diciembre es de Navidad, salvo la Guadalupana, SOLO el 12, y las posadas, SOLO del 16 al 23: sus nueve noches
+            // acaban en Nochebuena, y el 24 ya es Navidad sin alternar con las posadas)
             if (m == 12 && d == 12) l.Add(Guadalupana);
-            if (m == 12 && d >= 16 && d <= 24) l.Add(Posadas);
-            if (m == 12 && (d == 24 || d == 25)) l.Add(Navidad);
+            if (m == 12 && d >= 16 && d <= 23) l.Add(Posadas);
+            if (m == 12 && d != 12 && !(d >= 16 && d <= 23)) l.Add(Navidad);
             return l;
         }
 

@@ -8,12 +8,15 @@
 #   BASE:     el programa de la rama principal (JIT), para «apagado» (de fabrica $W/base)
 #   W:        la carpeta de trabajo (de fabrica /tmp/rocola-cielo-fiestas; se rehace salvo los datos); CAPTURAS (de fabrica $W/capturas)
 #   PY:       donde estan brotli, numpy y pillow (pip install --target PY brotli numpy pillow; de fabrica $W/py)
-# partes (de fabrica todas): ganchos apagado escenas reposo fuegos cumple fugaz contraste
+# partes (de fabrica todas): ganchos apagado escenas reposo nota fuegos cumple fugaz contraste
 #   ganchos   ganchos.py TODO BIEN, g340 y g341 en el manifiesto y diff-xp.py --sin-ganchos igual que la base
 #   apagado   APAGADO = XP: la cinta de la tarjeta (cielo/cinta.py) de la pared en el 25-12 (Navidad), sin ROCOLA_OS, con la funcion «fiestas»
 #             apagada y con ella encendida y sus seis claves en 0, igual a la de la base; y el control (todas encendidas): distinta
 #   escenas   por cada fecha del calendario (PLAN §6, 17 corridas), de noche (21:00): la pared a los 24 s y el escaparate a los 58 s
 #   reposo    el reposo con musica (la franja AHORA SUENA) con cada fecha del calendario, por «Ver como se veria» (/run/rocola-cielo-ver)
+#   nota      (27-11-2026, «que se note mas») cada fecha se NOTA: la captura de noche del escaparate (y la del reposo) difiere de la misma escena sin
+#             fiestas en una parte minima de los pixeles (ver NOTA_MIN), y la pared tambien, pero menos que el escaparate; usa las capturas de «escenas»
+#             y «reposo» (corre esas partes antes)
 #   fuegos    los fuegos del Grito (23:00 del 15-9) y de Ano Nuevo (con su cuenta de 10 s); el tope de 3 destellos por segundo contado en el
 #             registro de nacimientos (ROCOLA_FUEGOS_LOG), y con la calma al 35 % (ROCOLA_FUEGOS_CALMA) menos de la mitad
 #   cumple    rocola_fechas.txt con un cumpleanos, un aniversario, una fiesta propia con colores y un «quitar»: el mensaje en el escaparate, los
@@ -23,7 +26,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-ganchos apagado escenas reposo fuegos cumple fugaz contraste}"
+partes="${*:-ganchos apagado escenas reposo nota fuegos cumple fugaz contraste}"
 W=${W:-/tmp/rocola-cielo-fiestas}; CAPTURAS=${CAPTURAS:-$W/capturas}; PY=${PY:-$W/py}; BASE=${BASE:-$W/base}
 LETRAS=${LETRAS:-/root/rocola-trabajo/port/dibujo/letras-xp-falsas}
 mkdir -p "$W" "$CAPTURAS"
@@ -122,6 +125,12 @@ if [[ " $partes " == *" escenas "* ]]; then
     ok=1; [ -f "$CAPTURAS/pared-$k-noche.png" ] && [ -f "$CAPTURAS/escaparate-$k-noche.png" ] || ok=0
     si "$k: la pared y el escaparate capturados, y la bitacora dice la fiesta de hoy" bash -c "[ $ok = 1 ] && grep -q 'lo de hoy ($(date -d ${x#*:} +%F)): .*$k' '$(bit $k-noche)'"
   done
+  # diciembre (27-11-2026): cualquier dia que no sea de la Guadalupana (12) ni de las posadas (16 al 23) es de Navidad, con sus copos
+  lote 3; escena "navidad5-noche" 2026-12-05 "$HORA_ESC"; wait
+  si "5 de diciembre: de Navidad (la bitacora lo dice)" contiene "$(bit navidad5-noche)" "lo de hoy (2026-12-05): navidad"
+  lote 3; escena "navidad24-noche" 2026-12-24 "$HORA_ESC"; wait
+  si "24 de diciembre: solo Navidad (ya no alterna con las posadas)" bash -c "grep -q 'lo de hoy (2026-12-24): navidad\$' '$(bit navidad24-noche)'"
+  si "18 de diciembre: posadas (no Navidad)" bash -c "grep -q 'lo de hoy (2026-12-18): posadas\$' '$(bit posadas-noche)'"
   # los mensajes de la fecha entre los del escaparate
   si "independencia: el escaparate arma sus mensajes con el de la fecha (5 + 1)" contiene "$(bit independencia-noche)" "escaparate: 5 mensajes (los de la fecha: 1"
 fi
@@ -188,7 +197,7 @@ if [[ " $partes " == *" cumple "* ]]; then
   si "cumpleanos y aniversario de hoy: la bitacora los lee (cumple Juan, aniversario El Billar) y arma 7 mensajes (4 de XP + 1 de XP... + 2 propios)" \
      bash -c "grep -q 'lo de hoy (2026-03-16): cumple Juan, aniversario El Billar' '$(bit cumple)' && grep -q 'escaparate: [0-9]* mensajes (los de la fecha: 0, propios: 2)' '$(bit cumple)'"
   si "una fiesta propia («fiesta;Mi fiesta|#ff0000,#ffffff»): la bitacora la dice (propia)" contiene "$(bit propia)" "lo de hoy (2026-04-10): propia"
-  si "«24-12;quitar;navidad»: el 24-12 queda solo posadas (sin Navidad)" bash -c "grep -q 'lo de hoy (2026-12-24): posadas\$' '$(bit quitar)'"
+  si "«24-12;quitar;navidad»: el 24-12 (que es de Navidad, sin alternar con las posadas) queda sin fiesta" bash -c "grep -q 'lo de hoy (2026-12-24): ninguna\$' '$(bit quitar)'"
   si "el mensaje de rocola_fechas.txt (el 5-5) entra entre los del escaparate" contiene "$(bit mensaje)" "(los de la fecha: 1"
 fi
 
@@ -223,6 +232,8 @@ if [[ " $partes " == *" contraste "* ]]; then
     if [ -f "$f" ]; then
       contraste "$f" --solo 560,560,1000,650 > "$W/contraste-escaparate-$k.txt" 2>&1
       si "regla 3 en el escaparate de $k a las 13:00: $(cat "$W/contraste-escaparate-$k.txt")" contiene "$W/contraste-escaparate-$k.txt" "regla 3 (<= 0,17): BIEN"
+      contraste "$f" --solo 150,600,900,660 > "$W/contraste-escaparate2-$k.txt" 2>&1   # (bajo el texto de abajo del cubo, donde esta el horizonte con su resplandor)
+      si "regla 3 en el escaparate de $k, franja del horizonte, a las 13:00: $(cat "$W/contraste-escaparate2-$k.txt")" contiene "$W/contraste-escaparate2-$k.txt" "regla 3 (<= 0,17): BIEN"
     else si "la captura del escaparate de $k de dia" false; fi
   done
   # el reposo, de dia: la misma corrida del reposo con las fechas a las 13:00
@@ -237,6 +248,32 @@ if [[ " $partes " == *" contraste "* ]]; then
       contraste "$f" --hasta 0.668 --solo 0,100,1024,513 > "$W/contraste-reposo-$k.txt" 2>&1
       si "regla 3 en el reposo de $k a las 13:00: $(cat "$W/contraste-reposo-$k.txt")" contiene "$W/contraste-reposo-$k.txt" "regla 3 (<= 0,17): BIEN"
     else si "la captura del reposo de $k de dia" false; fi
+  done
+fi
+
+
+# ---------------------------------------------------------------- nota: que cada fecha se note (la fiesta frente a la misma escena sin fiestas)
+if [[ " $partes " == *" nota "* ]]; then
+  echo "== nota"
+  OSTXT='fiestas=0\ncielo=0\nclima=0\nvidrio=0\n' corre sinfiesta "$prog" 128 ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-18 21:00" ROCOLA_PULSA="20:45,21:45,32:13,38:13,44:27" ROCOLA_CAPTURA="24:$CAPTURAS/pared-sinfiesta.png,58:$CAPTURAS/escaparate-sinfiesta.png,118:$CAPTURAS/reposo-sinfiesta.png" ROCOLA_CAPTURA_SALE=1
+  espera sinfiesta
+  for x in $FIESTAS; do
+    k=${x%%:*}
+    for esc in escaparate:3.0 reposo:2.0 pared:0.4; do
+      e=${esc%%:*}; minimo=${esc#*:}; a=$CAPTURAS/$e-$k-noche.png; b=$CAPTURAS/$e-sinfiesta.png
+      if [ -f "$a" ] && [ -f "$b" ]; then
+        r=$(PYTHONPATH="$PY" python3 - "$a" "$b" <<'PY'
+import sys
+import numpy as np
+from PIL import Image
+a = np.asarray(Image.open(sys.argv[1]).convert('RGB'), np.int32); b = np.asarray(Image.open(sys.argv[2]).convert('RGB'), np.int32)
+d = np.abs(a - b).sum(axis=2) > 150   # (el cielo de dos corridas no es identico: la aurora, las estrellas; lo que se mide es lo nuevo, que es mucho mas fuerte)
+print("%.2f" % (100.0 * d.mean()))
+PY
+)
+        si "se nota: $k en $e cambia el $r % de los pixeles (minimo $minimo %)" python3 -c "import sys; sys.exit(0 if float('$r') >= float('$minimo') else 1)"
+      else si "se nota: las capturas de $k en $e" false; fi
+    done
   done
 fi
 
