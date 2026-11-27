@@ -167,6 +167,12 @@ namespace Rocola
             Si("y a las 3 h 01 min ya no (despejado)", !cl.Vigente(ahora.AddMinutes(181)));
             using (JsonDocument d = JsonDocument.Parse("{\"current\":{\"cloud_cover\":10}}")) Si("una respuesta sin weather_code no vale", RocolaOsClima.DeOpenMeteo(d.RootElement, ahora) == null);
             Si("un rocola_clima.txt roto no vale", RocolaOsClima.DeTexto("medida=ayer\ncodigo=x\n") == null);
+            // (punto 1 del repaso del 27-11-2026: un numero obligatorio que no se lee descarta el archivo, no queda en 0)
+            Si("un codigo= que no se lee no queda en 0 (despejado): el archivo no vale", RocolaOsClima.DeTexto("medida=2026-11-20T18:00:00Z\ncodigo=x\nnubes=40\n") == null);
+            Si("y con el codigo bueno (0 = despejado) si vale", RocolaOsClima.DeTexto("medida=2026-11-20T18:00:00Z\ncodigo=0\nnubes=10\n") != null);
+            Si("un lugar con lat= que no se lee no vale (no queda en el golfo de Guinea)", RocolaOsLugar.DeTexto("lat=abc\nlon=-99.13\nciudad=X\nfecha=2026-11-20T18:00:00Z\n") == null
+                && RocolaOsLugar.DeTexto("lat=19.43\nlon=\nfecha=2026-11-20T18:00:00Z\n") == null);
+            Si("pero lat=0 de verdad si vale", RocolaOsLugar.DeTexto("lat=0\nlon=-99.13\nfecha=2026-11-20T18:00:00Z\n") != null);
             int[] cod = { 0, 1, 2, 3, 45, 48, 51, 55, 61, 63, 65, 66, 71, 80, 82, 95, 99 };
             RocolaOsClimaTipo[] esp = { RocolaOsClimaTipo.Despejado, RocolaOsClimaTipo.PocoNublado, RocolaOsClimaTipo.PocoNublado, RocolaOsClimaTipo.Nublado, RocolaOsClimaTipo.Neblina,
                 RocolaOsClimaTipo.Neblina, RocolaOsClimaTipo.Llovizna, RocolaOsClimaTipo.Llovizna, RocolaOsClimaTipo.Lluvia, RocolaOsClimaTipo.Lluvia, RocolaOsClimaTipo.Aguacero,

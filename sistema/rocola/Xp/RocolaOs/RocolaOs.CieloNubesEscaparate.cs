@@ -53,12 +53,16 @@ namespace Rocola
             return Hora(hora) + (g.Length > 0 ? " · " + g : "") + " · " + Tiempo(c.Tipo);
         }
         // el mensaje del escaparate (corto: cabe en la columna junto al cubo; XP lo acorta por palabras si no)
-        internal static string Mensaje(RocolaOsClima c)
+        internal static string Mensaje(RocolaOsClima c) { return Mensaje(c, c.DeDia); }
+        // (deDia: el despejado de noche no pide «sol»)
+        internal static string Mensaje(RocolaOsClima c, bool deDia)
         {
             string g = Grados(c.Temperatura), de = g.Length > 0 ? " (" + g + ")" : "";
             switch (c.Tipo)
             {
-                case RocolaOsClimaTipo.Despejado: return "Afuera: " + (g.Length > 0 ? g + " y " : "") + "despejado. ¡Pon algo para el sol!";
+                case RocolaOsClimaTipo.Despejado:
+                    return deDia ? "Afuera: " + (g.Length > 0 ? g + " y " : "") + "despejado. ¡Pon algo para el sol!"
+                                 : "Afuera: " + (g.Length > 0 ? g + " y " : "") + "noche despejada. ¡Pon tu favorita!";
                 case RocolaOsClimaTipo.PocoNublado: return "Afuera" + de + ", poco nublado. ¡Pon una canción!";
                 case RocolaOsClimaTipo.Nublado: return "Afuera está nublado" + de + ". ¡Ponle música!";
                 case RocolaOsClimaTipo.Neblina: return "Afuera hay neblina" + de + ". Aquí suena mejor";
@@ -79,7 +83,7 @@ namespace Rocola
         internal override void Pon(List<string> mensajes, RocolaOsCieloFoto f)
         {
             if (!f.CL5 || !f.ClimaSabido) return;
-            string m = RocolaOsCieloClimaTextos.Mensaje(f.Clima);
+            string m = RocolaOsCieloClimaTextos.Mensaje(f.Clima, f.SolAlt > 0);   // (de dia o de noche por el sol del lugar)
             if (string.IsNullOrEmpty(m)) return;
             mensajes.Insert(Math.Min(2, mensajes.Count), m);   // tras «Elige tu cancion» y «Una moneda = ...»
         }

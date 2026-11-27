@@ -191,7 +191,7 @@ namespace Rocola
                 RocolaOsCieloFoto f = RocolaOsCielo.Foto;
                 string t;
                 if (f == null) t = "El cielo vivo no va en esta sesión (sus cuatro funciones están apagadas): aquí no hay hora del sol que ver.";
-                else t = "Ahora: " + f.Lugar.Replace('\n', ' ') + " (" + f.Lat.ToString("0.00", CultureInfo.InvariantCulture) + ", " + f.Lon.ToString("0.00", CultureInfo.InvariantCulture) + ")\n"
+                else t = (f.LugarSabido ? "" : "Lugar sin saber: elige la ciudad.\n") + "Ahora: " + f.Lugar.Replace('\n', ' ') + " (" + f.Lat.ToString("0.00", CultureInfo.InvariantCulture) + ", " + f.Lon.ToString("0.00", CultureInfo.InvariantCulture) + ")\n"
                     + "Hora del cielo " + f.Local.ToString("HH:mm", CultureInfo.InvariantCulture) + ", sol a " + f.SolAlt.ToString("0", CultureInfo.InvariantCulture) + "° ("
                     + (f.SolSube ? "sube" : "baja") + "), fase «" + f.Fase + "»." + (f.VerComo ? "\nSe está viendo «Ver cómo se vería»." : "");
                 if (ciuAhora.Text != t) ciuAhora.Text = t;
@@ -214,6 +214,7 @@ namespace Rocola
                 RocolaOsCieloFoto f = RocolaOsCielo.Foto;
                 string t;
                 if (f == null) t = "El cielo vivo no va en esta sesión: no se sabe.";
+                else if (!f.LugarSabido) t = "Lugar sin saber: elige la ciudad en la hoja «Día y noche». Sin el lugar no se pide ni se enseña el clima.";
                 else if (!f.ClimaSabido) t = "Todavía no se sabe el clima de afuera (se ve despejado).";
                 else
                 {

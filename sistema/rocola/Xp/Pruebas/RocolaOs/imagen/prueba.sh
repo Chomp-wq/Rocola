@@ -2,7 +2,7 @@
 # LA PRUEBA DE LA HOJA IMAGEN DE CTRL+F4 (27-11-2026; RocolaOs/RocolaOs.VentanaImagen.cs y RocolaOs.VentanaImagenFechas.cs;
 # FASE11_hoja-imagen.md). Con datos INVENTADOS (los de partida de las escenas de ventanas, DATOS0), fuera de pantalla (1024x768) y sin sonido.
 # NADA de esto es el A4.
-#   bash prueba.sh PROGRAMA [orden interruptores ver tecla fechas sin]
+#   bash prueba.sh PROGRAMA [orden interruptores ver raton tecla fechas sin]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT, con el ejecutable rocola-xp)
 #   W (de fabrica /root/rocola-trabajo/fase11/imagen/prueba), DATOS0, CAPTURAS (donde se copian las capturas que se ensenan)
 # Las cuatro funciones del cielo vienen encendidas de fabrica (27-11-2026): la escena «interruptores» las parte de APAGADAS a mano (rocola_os.txt); las demas las
@@ -12,7 +12,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-orden interruptores ver tecla fechas sin}"
+partes="${*:-orden interruptores ver raton tecla fechas sin}"
 W=${W:-/root/rocola-trabajo/fase11/imagen/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 CAPTURAS=${CAPTURAS:-}
@@ -98,6 +98,26 @@ E
   si "la captura de la hoja y la de la rocola con lo elegido miden 1024x768" bash -c "[ \"\$(medida $o/imagen-ver.png)\" = 1024x768 ] && [ \"\$(medida $o/imagen-ver-rocola.png)\" = 1024x768 ]"
   si "rocola_error.txt sin fallos de Rocola OS" nocontiene "$d/rocola_error.txt" "Rocola OS"
   guarda_captura "$o/imagen-ver.png" "imagen-ver.png"; guarda_captura "$o/imagen-ver-rocola.png" "imagen-ver-rocola.png"
+fi
+
+# raton: el raton que solo se mueve NO quita «Ver como se veria» (repaso del 27-11-2026, g438); una tecla si
+if [[ " $partes " == *" raton "* ]]; then
+  echo "== raton (mover el raton tras «Verlo» no lo quita; 2 s de gracia tras ponerlo; una tecla despues si)"
+  d=$(datos raton "$TODO")
+  P="$IMAGEN,9:clic:$SUB_VER:144,10:clic:84:220,11:clic:276:527,12:raton:700:400,14:raton:300:300,17:raton:620:500,20:raton:100:100,26:38"
+  abre raton "$d" "$P" "" 31 TERM ROCOLA_OS=1 ROCOLA_CLIMA_YA=1
+  b="$d/rocola_os_bitacora.txt"; o="$W/raton"
+  si "sale con 0" test "$(cat $o/salio)" = 0
+  si "ver como se veria puesto (30 s)" bash -c "grep -qE 'ver como se veria: [0-9-]+ 20:00 \(30 s\)' '$b'"
+  si "el raton que solo se mueve (4 veces, hasta el segundo 20) no lo quita: solo se quita con la tecla del 26, unos 15 s despues de ponerlo" python3 - "$b" <<'E2'
+import sys,datetime
+L=[l for l in open(sys.argv[1]) if '[cielo]' in l and 'ver como se veria' in l]
+f=lambda l: datetime.datetime.strptime(l[:19],'%Y-%m-%d %H:%M:%S')
+a=[f(l) for l in L if '(30 s)' in l]; z=[f(l) for l in L if 'se quita' in l]
+d=(z[0]-a[0]).total_seconds() if a and z else -1; print('   se quito a los %.0f s' % d); sys.exit(0 if 13 <= d <= 18 else 1)
+E2
+  si "una tecla en el segundo 26 si lo quita («se toco un boton»)" bash -c "grep -qF 'ver como se veria: se quita (se toco un boton)' '$b'"
+  si "rocola_error.txt sin fallos de Rocola OS" nocontiene "$d/rocola_error.txt" "Rocola OS"
 fi
 
 # tecla: un boton de la rocola quita lo que se ve

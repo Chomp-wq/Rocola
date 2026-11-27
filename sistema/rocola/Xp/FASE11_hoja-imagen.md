@@ -106,3 +106,8 @@ Capturas de 1024x768 de la sesion: Dia y noche (apagada y con `cielo` encendido)
   hojitas sirvan de verdad (la escena «ver» lo hace desde `rocola_os.txt`, no desde la hoja, porque la funcion madre no vale hasta el siguiente arranque).
 
 > **27-11-2026, junta final:** las cuatro funciones del cielo vivo van ahora ENCENDIDAS de fabrica (`DeFabrica = true`); lo que arriba diga «apagada de fabrica» o «en esta version» era de la version anterior. Sus ideas que costaban (VI1, VI2, VI4, VI6) y `luna_camino` siguen apagadas.
+
+## Repaso del 27-11-2026
+
+- **«Ver como se veria» desde la hoja ya no se quita solo.** Se quitaba al primer cambio de `lastInput`; el raton lo actualiza al moverse mas de 4 px (`Form1.Video.cs`), asi que al cerrar la hoja se quitaba al instante (la escena `raton` con el programa de antes: se quito al 1.er segundo). Ahora (a) el raton que solo se mueve no lo quita (gancho g438, `RocolaOsRatonMueve`: si antes del movimiento no habia otra cosa nueva, se absorbe) y (b) 2 s de gracia tras ponerlo (lo que mueva el cierre de la hoja). Una tecla o un clic (pasada la gracia) lo quita como siempre. Prueba: `imagen/prueba.sh ... raton` (4 movimientos del raton hasta el segundo 20 y una tecla en el 26: se quita a los 14 s de ponerlo; antes de este cambio, a 1 s).
+- La hoja dice «Lugar sin saber: elige la ciudad» cuando el lugar es automatico y no se ha sabido (ver FASE11_cielo-clima.md).

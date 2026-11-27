@@ -154,8 +154,8 @@ namespace Rocola
                 string k = l.Substring(0, i), v = l.Substring(i + 1).Trim(); float f;
                 switch (k)
                 {
-                    case "medida": DateTime.TryParse(v, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out medida); break;
-                    case "codigo": int.TryParse(v, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out codigo); break;
+                    case "medida": if (!DateTime.TryParse(v, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out medida)) medida = DateTime.MinValue; break;
+                    case "codigo": { int c; codigo = int.TryParse(v, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out c) ? c : -1; } break;   // (si no se lee, el archivo no vale: nada de «0 = despejado»)
                     case "nubes": if (Num(v, out f)) nubes = f / 100f; break;
                     case "lluvia": if (Num(v, out f)) lluvia = f; break;
                     case "viento": if (Num(v, out f)) viento = f; break;
@@ -211,8 +211,9 @@ namespace Rocola
                 string l = r.Trim(); int i = l.IndexOf('=');
                 if (l.Length == 0 || l[0] == '#' || i <= 0) continue;
                 string k = l.Substring(0, i), v = l.Substring(i + 1).Trim();
-                if (k == "lat") double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out lat);
-                else if (k == "lon") double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out lon);
+                double d;   // (TryParse que falla deja 0 en el out: un lat=0 valido no sale de ahi; si no se lee, NaN y el archivo no vale)
+                if (k == "lat") lat = double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out d) ? d : double.NaN;
+                else if (k == "lon") lon = double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out d) ? d : double.NaN;
                 else if (k == "ciudad") ciudad = v;
                 else if (k == "fecha") DateTime.TryParse(v, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out cuando);
             }
@@ -304,7 +305,7 @@ namespace Rocola
                     }
                     double la, lo; string n; LugarDelBar(out la, out lo, out n);
                     bool movido = !double.IsNaN(laAntes) && (Math.Abs(la - laAntes) > 0.01 || Math.Abs(lo - loAntes) > 0.01);
-                    if (clima && climaForzado == null && (ahora >= proximoClima || movido))
+                    if (clima && climaForzado == null && LugarSabido && (ahora >= proximoClima || movido))   // (sin saber el lugar no se pide el clima de la Ciudad de Mexico)
                     {
                         bool ok = PideClima(la, lo);
                         proximoClima = DateTime.UtcNow.AddMinutes(ok ? ClimaCadaMin : (ClimaGuardado == null ? 2 : 5));

@@ -57,3 +57,8 @@ entero (caso que no se da: detras de ella hay cielo y portadas oscurecidas).
 - Nada en el A4; el coste en tiempo se midio solo con llvmpipe (ver abajo).
 
 > **27-11-2026, junta final:** las cuatro funciones del cielo vivo van ahora ENCENDIDAS de fabrica (`DeFabrica = true`); lo que arriba diga «apagada de fabrica» o «en esta version» era de la version anterior. Sus ideas que costaban (VI1, VI2, VI4, VI6) y `luna_camino` siguen apagadas.
+
+## Repaso del 27-11-2026
+
+- El comentario de cabecera de `RocolaOs.CieloVidrio.cs` decia «DeFabrica = false»: la funcion «vidrio» va encendida de fabrica (`true`) desde la junta final; VI1, VI2, VI4 y VI6 siguen apagadas.
+- **La ranura no se rehace al recortarse la zona.** `RocolaOsVidrioDesenfoca` pedia la ranura (2 texturas y 2 FBO) con la medida de la zona RECORTADA a la pantalla; un aviso (VI6) que se desliza cortado por el borde la rehacia en cada cuadro unos 0,3 s. Ahora la zona va SIN recortar (la ranura mide siempre lo mismo) y lo que cae fuera de la pantalla se lee con CLAMP (se repite el borde); solo se rechaza si asoma menos de 16 px o si es mas ancha o alta que dos pantallas. El pintor (`RocolaOsVidrioFondo`) mapea U, V sobre la zona entera y solo recorta lo que dibuja (`VidrioVtx` ya sujeta U, V). Sin prueba con tarjeta real del deslizamiento (la escena con todo el vidrio encendido corre sin fallos); no medido en el A4.

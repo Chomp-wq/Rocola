@@ -850,7 +850,7 @@ namespace Rocola
                 Point ultimoMouseGpu = new Point(-10000, -10000);
                 PantallaRocola.OyeRaton(gpuPanel, AvisoRaton.Mueve, delegate(Raton mouse) {   // EN LINUX: gpuPanel.MouseMove += delegate(object senderMouse, MouseEventArgs mouse): el evento MouseMove del panel, por la pantalla (Nativo/PantallaRocola.Vistas.cs: lo avisa la pantalla despues de su Raton, donde WinForms lanza el evento: Control.OnMouseMove)
                     if (Math.Abs(mouse.X - ultimoMouseGpu.X) + Math.Abs(mouse.Y - ultimoMouseGpu.Y) < 4) return;
-                    ultimoMouseGpu = new Point(mouse.X, mouse.Y); lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false;   // EN LINUX: mouse.Location (MouseEventArgs.Location: new Point(X, Y))
+                    ultimoMouseGpu = new Point(mouse.X, mouse.Y); RocolaOsRatonMueve(lastInput, lastInput = DateTime.Now); gpuPanel.IdleExpandTarget = false;   // EN LINUX: mouse.Location (MouseEventArgs.Location: new Point(X, Y))   // ROCOLA OS g438: (XP) ultimoMouseGpu = new Point(mouse.X, mouse.Y); lastInput = DateTime.Now; gpuPanel.IdleExpandTarget = false; — el raton que solo se mueve no quita «Ver como se veria» del cielo (RocolaOs/RocolaOs.Cielo.cs, RocolaOsRatonMueve); lastInput se pone igual que en XP
                     AsistenteMueveRaton(new Point(mouse.X, mouse.Y));   // EN LINUX: mouse.Location
                 });   // EN LINUX: }; (el cierre de PantallaRocola.OyeRaton)
                 PantallaRocola.OyeRaton(gpuPanel, AvisoRaton.Abajo, delegate {   // EN LINUX: gpuPanel.MouseDown += delegate {...}: el evento MouseDown del panel, por la pantalla (Control.OnMouseDown)
