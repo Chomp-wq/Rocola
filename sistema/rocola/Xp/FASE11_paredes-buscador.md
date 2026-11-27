@@ -559,3 +559,39 @@ XP tal cual. Sin ganchos nuevos (todo pasa por g41: RocolaOsSpotifyCatalogoElige
   los 30 s se cierra todo; b) un artista tuyo que Spotify no conoce abre una pared con solo tus discos, sin peticiones de pared, sin el icono
   de Spotify, REGRESAR y cierre a los 60 s; c) un artista tuyo con todos sus discos ya tuyos abre la pared unida (1 página de la API, ningún
   disco de Spotify, con el icono). No probado en el A4 ni con Spotify real.
+
+## 27-11-2026: cinco mejoras de Spotify que el dueño eligió (sin repetidas, ediciones, «Canciones de», espera, memoria en disco)
+
+Solo Rocola OS con el modo Spotify (sin él, XP tal cual). Sin ganchos nuevos en `Codigo/` (todo en `RocolaOs/`); ganchos.py: TODO BIEN.
+
+1. **Sin repetidas en el buscador** (`RocolaOsSpotifyYaEstaEnLocal`, `RocolaOs.SpotifyCatalogo.cs`, dentro de `RocolaOsSpotifyCatalogoMezcla`): una
+   canción de Spotify de la búsqueda no sale si es la MISMA GRABACIÓN de una tuya que XP ya puso en los resultados. La misma idea del «no repetir»
+   de la cola (`RocolaOs.SpotifyRepetida.cs`, que ahora expone `RocolaOsMismaPorDatos` con título, artista y duración): la pareja de la sustitución
+   invisible si es esa uri (y no está medida como otra grabación), o título base, marcas de versión (en vivo, remix...; «- Remastered» no cuenta),
+   artista principal y duración a 3 s. Solo se comparan las tuyas que ya están en la lista de XP; la bitácora dice cuáles se quitaron.
+2. **Sin ediciones repetidas en las paredes del buscador** (`RocolaOs.SpotifyEdiciones.cs`, `RocolaOsSpotifyRecompone`): «Abbey Road»,
+   «Abbey Road (Remastered 2009)» y «Abbey Road (Super Deluxe Edition)» son uno: la CLAVE DE EDICIÓN quita lo que SOLO dice edición
+   (Remastered, Deluxe, Edition, Anniversary, Expanded, Special, Collector's, Bonus, Reissue, «de lujo»... entre paréntesis o corchetes, tras « - » o al
+   final); «(Taylor's Version)», «(Live)», «(Unplugged)» son otro disco y se quedan. **Decisión:** de las ediciones queda el ORIGINAL (nombre sin
+   marcas); si no hay, la de más canciones (`total_tracks`); a igualdad, la primera que llegó. Se prefiere el original porque la «Deluxe» a la
+   vista hace pedir rellenos en vez del disco que se busca; las extras están en «Canciones de ARTISTA». En la pared unida también se quitan los
+   discos de Spotify que son edición de uno TUYO. La bitácora apunta cada edición quitada y con cuál se queda. **Para la junta:** el «parecido de
+   nombres de disco» de este grupo vive en `RocolaOsSpotifyEdiciones.Clave/Mejor` (la pared del buscador); el de la pared normal es de otro agente
+   (`RocolaOs.ParedGeneros.cs`): que la junta deje uno solo (`Clave` se puede llamar desde `ParedGeneros`).
+3. **«Canciones de ARTISTA» filtrado** (`RocolaOsSpotifyEdiciones.EsDeArtista`, `RocolaOsSpotifyLlegaronCanciones`): solo canciones donde el
+   artista está entre los artistas de la pista (por su id: `LeeCancion` ahora guarda los ids; si no se saben, por su nombre sin acentos), sea el
+   principal o invitado; las versiones de otros y lo que la búsqueda de texto trae de más se quitan (la bitácora dice cuántas por página).
+4. **Esperar más al teclear**: `EsperaBusquedaMs` 300 → **650 ms** tras la última letra (una palabra a ritmo normal, 150 a 250 ms entre letras, o
+   una pausa corta ya no dispara 2 o 3 búsquedas; menos cuota). Lo ya sabido (memoria o disco) no espera nada (`Busca` mira `TieneBusqueda`).
+   El tope de 2 s de la tarjeta «BUSCANDO / Cargando…» (`RocolaOsSpEsperaMs`, g40) NO cambia: lo local nunca espera más que antes por Spotify;
+   con red lenta (más de ~1,3 s de respuesta, antes 1,7 s) sale lo local y Spotify se mezcla al llegar, como ya hacía.
+5. **Memoria en disco** (`RocolaOs.SpotifyCatalogoMemoria.cs`): lo que contesta Spotify se guarda en `rocola_spotify_cache/` de los datos grandes
+   (`DatosGrandes`, disco de la música; NUNCA `/rocola/datos`; sin disco aparte o con menos de 256 MB libres no se usa). Caducidad: búsquedas 12 h,
+   «Todos los discos de» 12 h, «Canciones de» 2 días, discos de un artista 3 días, un disco con sus canciones 30 días; vencido pero sin red o con
+   429 se sirve igual (hasta 7 veces su caducidad). Tope 48 MB y 6000 archivos (al arrancar el hilo de la API y cada 6 h se borran los vencidos del
+   todo y, si pasa, los más viejos). Un archivo de texto por cosa (clave exacta en la 1.ª línea, un hash en el nombre); lo que no se entiende se
+   borra. Solo datos públicos (ids, nombres, números, direcciones de portadas): lo de la cuenta (listas, favoritas, atajos), las parejas y las
+   llaves NUNCA. El estado de la API (`/run/rocola-xp/spotify/catalogo`, el buzón) gana `cache_*`.
+
+Pruebas (`Pruebas/RocolaOs/catalogo`, con `/control/nuevas` de la API falsa, datos aparte): escenas `repetidas`, `ediciones`, `teclea`, `memoria` y
+`hoja` (ver `FASE11_hoja-spotify.md`). Nada con Spotify real ni en el A4.

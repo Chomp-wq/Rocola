@@ -182,7 +182,8 @@ namespace Rocola
         {
             if (bytes < 1024) return bytes.ToString(CultureInfo.InvariantCulture) + " B";
             if (bytes < 1024 * 1024) return (bytes / 1024.0).ToString("0.#", CultureInfo.InvariantCulture) + " KB";
-            return (bytes / 1048576.0).ToString("0.#", CultureInfo.InvariantCulture) + " MB";
+            if (bytes < 1073741824L) return (bytes / 1048576.0).ToString("0.#", CultureInfo.InvariantCulture) + " MB";
+            return (bytes / 1073741824.0).ToString("0.#", CultureInfo.InvariantCulture) + " GB";
         }
 
         private RocolaOsPagina RocolaOsPaginaSpotify(RocolaOsVentanaCtx x)
@@ -254,8 +255,8 @@ namespace Rocola
 
             // ================= LA PARED: paginas por letra (pared_paginas) =================
             bool hayClave = RocolaOs.ClaveDe(SpotifyClavePaginas) != null;
-            Rotulo nomPar = new Rotulo(); nomPar.SetBounds(16, 38, ancho - 120, 18); nomPar.BackColor = Color.Transparent; nomPar.ForeColor = x.CTexto; nomPar.Font = x.FNom; nomPar.Text = "Páginas por letra en la pared";
-            Rotulo valPar = new Rotulo(); valPar.SetBounds(16 + ancho - 160, 36, 160, 20); valPar.BackColor = Color.Transparent; valPar.ForeColor = cVerde; valPar.Font = x.FVal; valPar.TextAlign = AlineaTexto.TopRight;
+            Rotulo nomPar = new Rotulo(); nomPar.SetBounds(16, 38, ancho - 180, 18); nomPar.BackColor = Color.Transparent; nomPar.ForeColor = x.CTexto; nomPar.Font = x.FNom; nomPar.Text = "Páginas por letra en la pared";
+            Rotulo valPar = new Rotulo(); valPar.SetBounds(16 + ancho - 170, 36, 170, 20); valPar.BackColor = Color.Transparent; valPar.ForeColor = cVerde; valPar.Font = x.FVal; valPar.TextAlign = AlineaTexto.TopRight;
             Deslizador barPar = new Deslizador(); barPar.SetBounds(16, 58, ancho, 22); barPar.Minimum = 0; barPar.Maximum = SpotifyPasosPaginas.Length - 1; barPar.Acento = Color.FromArgb(190, 160, 255);
             Rotulo infoPar = new Rotulo(); infoPar.SetBounds(16, 84, ancho, 36); infoPar.BackColor = Color.Transparent; infoPar.ForeColor = x.CTenue; infoPar.Font = x.FDes;
             tPar.Controls.Add(nomPar); tPar.Controls.Add(valPar); tPar.Controls.Add(barPar); tPar.Controls.Add(infoPar);
@@ -264,9 +265,9 @@ namespace Rocola
             Action pintaPar = delegate
             {
                 int n = SpotifyPasosPaginas[pasoPar];
-                valPar.Text = n + (n == 100 ? " (de fábrica)" : "");
+                valPar.Text = n + (n == 100 ? " · de fábrica" : "");
                 infoPar.Text = hayClave
-                    ? "Las portadas ocuparían como mucho " + RocolaOsSpotifyPesoPaginas(n) + ": el paquete de portadas trae unas 60 000. Vale en un minuto o al reabrir la letra."
+                    ? "Portadas: como mucho " + RocolaOsSpotifyPesoPaginas(n) + "; el paquete trae unas 60 000. Vale en un minuto o al reabrir la letra."
                     : "Este programa no declara «" + SpotifyClavePaginas + "» (se declara con la pared por género): aquí no se puede cambiar.";
             };
             barPar.Value = pasoPar; barPar.Enabled = hayClave;
@@ -287,14 +288,14 @@ namespace Rocola
                 Action<Rotulo, string, Color> pon = delegate (Rotulo r, string t, Color c) { if (r.Text != t) r.Text = t; if (r.ForeColor != c) r.ForeColor = c; };
                 bool mal = v.Fase == "caducado" || v.Fase == "sin_programa";
                 pon(vFase, v.Encendido ? RocolaOsSpotifyFase(v.Fase) : "el modo Spotify esta apagado (spotify=0)", !v.Encendido ? x.CApagado : mal ? cMal : v.Fase == "corriendo" ? cBien : x.CAviso);
-                pon(vVer, v.Version.Length > 0 ? RocolaOsSpotifyCorta(v.Version, 34) + (v.Caduca.Length > 0 ? " · caduca el " + v.Caduca : "") : "-", x.CTexto);
+                pon(vVer, v.Version.Length > 0 ? RocolaOsSpotifyCorta(v.Version, 34) : "-", x.CTexto);
                 int dias; bool hayDias = int.TryParse(v.Dias, NumberStyles.Integer, CultureInfo.InvariantCulture, out dias);
-                pon(vDias, !hayDias ? "-" : dias < 0 ? "ya caduco" : dias + (dias == 1 ? " dia" : " dias") + (dias < 21 ? " (se busca uno nuevo)" : ""), !hayDias ? x.CApagado : dias <= 7 ? cMal : dias < 21 ? x.CAviso : cBien);
+                pon(vDias, !hayDias ? "-" : dias < 0 ? "ya caduco" : dias + (dias == 1 ? " dia" : " dias") + (v.Caduca.Length > 0 ? " (caduca el " + v.Caduca + ")" : "") + (dias < 21 ? ", se busca uno nuevo" : ""), !hayDias ? x.CApagado : dias <= 7 ? cMal : dias < 21 ? x.CAviso : cBien);
                 pon(vWs, v.Encendido ? (v.Ws ? "si" : "no") : "-", !v.Encendido ? x.CApagado : v.Ws ? cBien : cMal);
                 pon(vSes, v.Encendido && v.Ws ? (v.Sesion ? "si" : "no: falta emparejarlo desde la app de Spotify") : "-", !v.Encendido || !v.Ws ? x.CApagado : v.Sesion ? cBien : x.CAviso);
                 pon(vBoc, v.Dispositivo.Length > 0 ? RocolaOsSpotifyCorta(v.Dispositivo, 30) + (v.Activa ? " (activa)" : "") : "-", x.CTexto);
                 pon(vRep, v.Reproduce.Length > 0 ? (v.Reproduce == "playing" ? "tocando" : v.Reproduce == "paused" ? "en pausa" : v.Reproduce == "buffering" ? "cargando" : v.Reproduce == "idle" ? "sin tocar" : v.Reproduce) : "-", x.CTexto);
-                pon(vApi, RocolaOsSpotifyApiDice(v), v.Api == "bien" ? cBien : v.Api == "sin_llave" ? x.CApagado : v.Api == "-" ? x.CApagado : x.CAviso);
+                pon(vApi, v.Api == "sin_llave" && v.Llave ? "todavia sin preguntar" : RocolaOsSpotifyApiDice(v), v.Api == "bien" || (v.Api == "sin_llave" && v.Llave) ? cBien : v.Api == "sin_llave" ? x.CApagado : v.Api == "-" ? x.CApagado : x.CAviso);
                 pon(vLla, (v.Llave ? "llave de la app: si" : "llave de la app: no") + " · " + (v.Cuenta ? "tu cuenta: si" : "tu cuenta: no"), v.Llave ? x.CTexto : x.CApagado);
                 pon(vCod, v.UltimoCodigo == "0" ? "-" : v.UltimoCodigo, x.CTexto);
                 pon(vPet, v.Peticiones60, x.CTexto);
@@ -311,7 +312,7 @@ namespace Rocola
                 }
                 pon(vCac1, v.CacheDisco ? v.CacheArchivos + " archivos, " + RocolaOsSpotifyPeso(v.CacheBytes) + " en el disco de la rocola (tope 48 MB)" : "sin disco aparte: no se guarda nada en disco", v.CacheDisco ? x.CTexto : x.CApagado);
                 pon(vCac2, "Aciertos " + v.CacheAciertos + " · vencidas servidas " + v.CacheVencidas + " · guardadas " + v.CacheGuardadas, x.CTexto);
-                pon(vCac3, "Busquedas 12 h, discos 30 dias, artistas 3 dias. Nunca llaves ni tu cuenta.", x.CTenue);
+                pon(vCac3, "Busquedas 12 h, discos 30 dias, artistas 3 dias.", x.CTenue);
                 bVacia.Enabled = v.CacheDisco && v.CacheArchivos > 0;
                 pon(vEstado, aviso, cBien);
                 bVacia.Invalidate();
