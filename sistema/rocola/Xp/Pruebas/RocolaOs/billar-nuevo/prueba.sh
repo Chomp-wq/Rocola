@@ -84,10 +84,11 @@ if [[ " $partes " == *" hoja "* ]]; then
   si "hoja: «Tocar las 8 bandas» (en mono, por su propia salida: aqui la nula)" bash -c "grep -qF 'suenan las 8 bandas en mono' '$d/rocola_os_bitacora.txt'"
   si "hoja: rocola_error.txt sin fallos de Rocola OS" nocontiene "$d/rocola_error.txt" "Rocola OS"
   guarda_captura "$o/billar.png" "billar.png"; guarda_captura "$o/billar-cambiado.png" "billar-cambiado.png"
-  # sin la cadena nueva ni billar_nuevo: la pestana no sale (en 818 esta Spotify, como siempre: cinco pestanas, Spotify en (818,54))
+  # sin la cadena nueva ni billar_nuevo: la pestana no sale (seis pestanas con la «Cadena» del marco, juntada el 27-11-2026: en (818,54) esta
+  # Cadena; antes de ella, cinco pestanas con Spotify en (818,54))
   d=$(datos sin ""); o="$W/sin"
   abre sin "$d" "6:17+115,8:clic:818:54,10:27" "9:sin-billar" 12 ROCOLA_OS=1
-  si "sin la cadena nueva: la pestana Billar no sale (la hoja que se abre en (818,54) es Spotify, como siempre)" bash -c "grep -q 'Rocola OS - Spotify' '$o/traza.txt' && ! grep -q 'Rocola OS - Billar' '$o/traza.txt'"
+  si "sin la cadena nueva: la pestana Billar no sale (la hoja que se abre en (818,54) es la Cadena del marco)" bash -c "grep -q 'Rocola OS - Cadena de sonido' '$o/traza.txt' && ! grep -q 'Rocola OS - Billar' '$o/traza.txt'"
   # con la cadena nueva elegida (la clave del marco), si sale
   d=$(datos cadena "cadena_nueva=1"); o="$W/cadena"
   abre cadena "$d" "6:17+115,8:clic:818:54,10:27" "9:con-cadena" 12 ROCOLA_OS=1

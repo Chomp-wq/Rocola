@@ -120,7 +120,10 @@ con la tarjeta con reloj; lo que sono se mide con el **ebur128 de ffmpeg** (otra
 | spotify | con el Soloist falso: la 1.a vez por la A con la ganancia fija estimada (25 medidas de XP) y SIN el nivelado en vivo (0,02 dB de salto); medida en vivo al sonar entera; la 2.a, con su medida y sin moverse |
 
 Tambien: NLayer en coma flotante (`ROCOLA_SIN_MPG123=1`): decodifica y sin huecos igual. NativeAOT publicado sin avisos nuevos; `dotnet build`
-con los 13 avisos de siempre.
+con los 13 avisos de siempre. La prueba entera: **70 de 70 en NativeAOT** (`aot.log`, 27-11-2026). Lo de antes con la nueva APAGADA: `andamio`
+101 de 101 (JIT), `pantalla` 59 bien y los 2 «NO» de siempre de esta maquina (sin el BusyBox de QEMU ni la referencia con trazas; el teclado,
+con el Tab de mas), `billar-nuevo` 86 de 86 (NativeAOT; la hoja con el candado de lo pesado, y su comprobacion de la pestana de (818,54) ya con
+la Cadena del marco). Con otros agentes trabajando conviene correr las escenas con el candado (`flock -o /root/rocola-trabajo/fase11/pesado.lock`).
 
 ## Lo no comprobado y lo que queda
 
