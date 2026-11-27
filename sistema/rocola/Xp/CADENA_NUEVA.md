@@ -92,4 +92,64 @@ el PROZOR primero · D13 botones de volumen a 1 dB por toque.
 | Piezas de la cadena B (mono, paso alto, curva del billar, bajo virtual, afinacion de varios puntos) | RocolaOs.Billar2*.cs | g480-g489 |
 | Comparacion ciega, ABX y medidas (despues) | RocolaOs.Compara*.cs | g490-g499 |
 
+### 8.1 El contrato de las piezas (marco comun; RocolaOs/RocolaOs.CadenaNuevaPieza.cs) — lo siguen las piezas de la B
+
+- UNA PIEZA es un `ISampleProvider` de NAudio 3 (como las etapas de hoy: `Read(Span<float>)` con `Puente.Lee` y `Read(float[], int, int)`), en
+  coma flotante, DOS canales, a la tasa de la cancion, armada con sus parametros FIJOS antes de sonar (nada que siga a la musica). SIN RETARDO:
+  cada cuadro sale en su sitio (si necesita lo que viene, lee por delante, como el grave en mono de hoy). Y ademas `IRocolaOsPieza`:
+  `void Sigue(IRocolaOsPieza anterior)` para el DISCO CONTINUO: la misma pieza (mismo tipo, mismo puesto en la receta) de la cancion que acaba
+  entera; se llama en el hilo de la pantalla antes de la primera lectura y la pieza la toma en su primera lectura (hilo del sonido) solo si
+  cuadra (tasa, canales, parametros), como `Sigue/Hereda` de `GraveMono` o `EcualizadorDueno`. `RocolaOsPiezaDePaso` es la identidad.
+- LA RECETA `RocolaOsReceta`: `Cadena` ('A'/'B'), `Ruta`, `Tasa`, `Midiendo` (true en la medida: hilo de fondo, NADA del estado de XP),
+  `Medida` (`RocolaOsMedidaNueva`: Lufs, TpDb, PicoDb, Lra, Tercios, arreglos), los arreglos fijos ya decididos, `GananciaDb`, y `Piezas`
+  (cada pieza se anota en orden con `r.Anota(p)`).
+- LA B: el agente del billar asigna, en el `[ModuleInitializer]` de su archivo, `RocolaOsCadenaB.Arma = (receta, entrada) => salida` y
+  `RocolaOsCadenaB.Huella = () => "texto corto con sus parametros"`. `entrada` es lo que sale de los arreglos fijos (canal mudo copiado,
+  invertido volteado, continua y zumbido quitados); `salida` va al ecualizador del dueno (memoria del billar), la ganancia, la noche y la salida,
+  que pone el marco. Sus piezas: mono (L+R)/2, el paso alto, la curva del billar, el bajo virtual fijo... cada una `IRocolaOsPieza` y anotada.
+  `Arma` corre en el hilo de la pantalla o en el de la medida (`r.Midiendo`): nada pesado y, midiendo, nada de XP (lo suyo, de una foto).
+  Mientras `Arma` sea null la B lleva una pieza de paso. Si `Huella` cambia, lo medido con la B se vuelve a medir. La medida de la B (L, TP,
+  tercios) la hace el marco pasando la cancion por `Arma` con `Midiendo = true`.
+
+### 8.2 Las piezas de la B (agente del billar; detalle, numeros y pruebas en CADENA_NUEVA_B.md) — HECHAS en su rama, sin oir
+
+- `RocolaOsCadenaB.Arma` y `.Huella` los pone `RocolaOs.Billar2.cs`. `Arma` devuelve UNA pieza (`RocolaOsBillar2Tramo`, anotada): mono
+  (L+R)/2 (la ley de -6 dB: la ganancia se mide despues; no sube picos) -> paso alto Butterworth de 24 dB/oct en `billar_paso_alto=` (80 Hz)
+  -> curva del billar (objetivo plano hasta 1 kHz y -0,75 dB/oct, afinacion de 1 a 8 puntos, claridad -2 dB en 315 Hz y +2 en 2,8 kHz; de -9 a
+  +3 dB), paso alto y curva en UN SOLO FIR DE FASE LINEAL (por FFT, lee 50 ms por delante, sin retardo) -> bajo virtual fijo (|x| del grave que
+  se quita, homogeneo de grado 1; `billar_bajo_virtual=0`, apagado). Nada sigue a la senal (ganancia constante medida: 0,000000 dB). No voltea:
+  los arreglos del marco ya voltearon el invertido. Midiendo: de dia, sin nada de XP. Huella: sin la noche.
+- LA NOCHE EN LA B: el corte de noche (`noche_corte=`) va DENTRO del paso alto del tramo, en la misma curva (el mayor de los dos, con la mezcla
+  `GraveMono.NocheMezcla`). **El marco NO debe poner `GraveMono.DeNoche` despues de la ganancia en la B** (serian dos filtros en serie); los
+  graves de noche (120 Hz) y `FactorNoche` si.
+- EL DISCO CONTINUO: `Sigue` llamado AL PREPARAR EL RELEVO (antes de que acabe la de antes) da el MODO EXACTO: la de antes lee del origen de la
+  siguiente sus primeros 50 ms, sale con ellos y se los pasa (el cambio de pista sale cuadro a cuadro igual que las dos pegadas). Llamado tarde,
+  el empalme de siempre: sin escalon, pero la cola de la de antes (50 ms) deja pasar grave y puede chasquear. Ninguna etapa de delante de la
+  pieza debe leer por delante (`Cebado`); si algo mas leyera la siguiente antes de que suene, `ExactoAlFinal = false`.
+- La hojita «Billar» de Ctrl+F4 (afinacion de varios puntos con el ruido por bandas EN MONO, la curva dibujada, los mandos) sale con
+  `cadena_nueva=1` o `billar_nuevo=1`. El ruido por bandas suena por `CreaWaveOut` (como la prueba de bocinas de XP): con la salida nueva
+  siempre abierta hace falta un camino suyo (agente de la salida).
+- Pruebas: `Pruebas/RocolaOs/billar-nuevo/prueba.sh`, 86 de 86 en NativeAOT (respuesta, fase lineal, ganancia constante, bajo virtual
+  homogeneo y sin aliasing, disco continuo, afinacion, guardar y leer, la hojita); 0,24-0,50 % de un nucleo aqui.
+
+### 8.3 El marco, la medida nueva y la cadena A (agente del marco; detalle, numeros y pruebas en CADENA_NUEVA_A.md) — HECHOS, sin oir
+
+- Funciones `cadena_nueva` (APAGADA; cual suena, en vivo desde la siguiente cancion: Ctrl+F4 -> Cadena; con el modo billar guardado, la B) y
+  `medida_nueva` (encendida: solo mide, y solo con la nueva puesta o `RocolaOsMedidaTrabajo.Pedida`). Claves `nivel_lufs=-18`, `techo_dbtp=-1`,
+  `agudos_mp3=0`, `tono_parejo=0`. Ganchos g460 (ArmaCadena), g461 (SigueA: el disco continuo, al PREPARAR el relevo, pieza con pieza del mismo
+  tipo y orden) y g462 (OpenAudio: el MP3 en coma flotante). `ganchos.py` TODO BIEN.
+- El MP3: libmpg123 `ENC_FLOAT_32` (NLayer en coma flotante sin ella), sin recorte; sin huecos con LAME, iTunSMPB y VBRI en MPEG-1/2/2.5.
+- La medida: la cancion entera por la cadena (A, o B por `RocolaOsCadenaB.Arma` con `Midiendo`) a ganancia 1 sin el EQ del dueno: BS.1770-4,
+  pico real 4x, LRA, pico de muestra, 30 tercios y los arreglos fijos (mudo, invertido, continua; el zumbido de XP). `rocola_medida_nueva.txt`
+  con el sello del archivo. Al entrar a la cola, de fondo (nice 19, las mas pedidas primero) y en vivo (Spotify; o la que entro sin tiempo).
+- La ganancia: `min(T - L', C - TP')` con el EQ del dueno y el tono parejo estimados por el espectro; los discos en racha, una del disco; sin
+  medida, la estimacion conservadora de XP; Spotify la 1.a vez fija estimada y sin el nivelado en vivo; la sustitucion con la de Spotify o la
+  de tu MP3. El modo noche: `FactorNoche` en la ganancia y los graves de noche (`SalaLocal`); el corte de 80 Hz (`GraveMono.DeNoche`) solo en la
+  A: en la B va dentro de su paso alto (§8.2).
+- Las piezas de la A y la B juntas en esta rama (la del billar, 9526e98, juntada): escena con la rocola de verdad y la tarjeta con reloj, A y B
+  a -18,0 LUFS (ebur128 de ffmpeg) sin pasar -1 dBTP; ganancia constante (escalones de +-10 dB: 0,002 dB de vaiven en la A; la de hoy, 2,5).
+  `Pruebas/RocolaOs/cadena-nueva/prueba.sh`.
+- Para la salida nueva: las cadenas nuevas entregan float estereo a la tasa de la cancion en `CadenaCancion.Salida` (con el fundido de XP al
+  final), sin limitador: la proteccion de 0 dBFS es de la salida.
+
 Estado: EN CURSO desde el 27-11-2026. Nada probado en el A4 ni oido.

@@ -334,7 +334,7 @@ namespace Rocola
         // cambio, y el del grave en mono deja un golpe en el grave que se oye. Lo toman en su primera lectura.
         private static void SigueA(CadenaCancion nueva, CadenaCancion vieja)
         {
-            if (nueva == null || vieja == null) return;
+            if (nueva == null || vieja == null || RocolaOsCadenaNuevaSigue(nueva, vieja)) return;   // ROCOLA OS g461: (XP) if (nueva == null || vieja == null) return; — el disco continuo con una cadena de sonido nueva lo hace Rocola OS (cada pieza con la suya; entre una nueva y una de XP nada se hereda: RocolaOs/RocolaOs.CadenaNueva.cs); entre dos de XP, false y lo de XP
             if (nueva.Tap != null) nueva.Tap.Sigue(vieja.Tap);
             if (nueva.Mono != null) nueva.Mono.Sigue(vieja.Mono);
             if (nueva.Noche != null) nueva.Noche.Sigue(vieja.Noche);
