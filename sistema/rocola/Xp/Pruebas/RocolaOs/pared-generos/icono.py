@@ -3,11 +3,14 @@
 # no el texto. Mide en cada captura, en la franja de la barra de la derecha (donde va la ultima letra): el circulo verde (alto y ancho de 15 puntos o mas,
 # unos 300 de area) y las ondas negras dentro (de 25 a 250 puntos oscuros, en tres tiras). Con -v guarda un recorte ampliado junto a la captura.
 #   icono.py CAPTURA.png [CAPTURA2.png ...]
+#   icono.py --ausente CAPTURA.png [...]   (27-11-2026: el dueno quito la letra ♫, RocolaOsSpotifyLetraEnLaPared = false) lo contrario: en esa
+#                                          franja NO hay circulo verde de Spotify (ni 30 puntos de su verde), sin elegir y elegida
 import sys
 from PIL import Image
 
 mal = 0
-for ruta in sys.argv[1:]:
+ausente = "--ausente" in sys.argv[1:]
+for ruta in [x for x in sys.argv[1:] if x != "--ausente"]:
     a = Image.open(ruta).convert("RGB")
     if a.size != (1024, 768):
         print("MAL: %s no es de 1024x768 (%s)" % (ruta, a.size))
@@ -20,6 +23,12 @@ for ruta in sys.argv[1:]:
             r, g, b = a.getpixel((x, y))
             if abs(r - 0x1D) <= 40 and abs(g - 0xB9) <= 40 and abs(b - 0x54) <= 50 and g > r + 60:
                 verde.append((x, y))
+    if ausente:
+        print("%s: %d puntos del verde de Spotify en la franja de la ultima letra (debe haber menos de 30)" % (ruta.rsplit("/", 1)[-1], len(verde)))
+        if len(verde) >= 30:
+            print("MAL: sale el icono de Spotify al final del abecedario y ya no debe salir")
+            mal += 1
+        continue
     if not verde:
         print("MAL: %s: ningun punto del verde de Spotify en la casilla" % ruta)
         mal += 1

@@ -339,7 +339,7 @@ namespace Rocola
                 p.EnCancionMs = (int)Math.Min(int.MaxValue, enCancion * 1000);
                 p.FinMotivo = natural ? RocolaOsSpotifyPeticion.Termino : motivo;
                 p.Devolver = devolver;
-                p.SegundosSonados = seg;
+                p.SegundosSonados = seg; p.RecortadoSeg = recortados / (double)hz;
                 MideDiagnostico(p);
                 Suelta();
                 Volatile.Write(ref p.Fase, RocolaOsSpotifyPeticion.Acabada);

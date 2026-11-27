@@ -7,7 +7,7 @@
 # Soloist de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso
+#   escenas (de fabrica todas): apagado fabrica dos adelanto adelantoxp adelantoreloj adelantosilencio mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso
 #   vigilante noche (adelanto y adelantoxp: el play adelantado de la siguiente de Spotify, rapido-spotify: FASE11_rapido-spotify.md); del 22-11-2026: copiauri nivela portadatarde repetida vacia cortada speq (speq: el EQ automatico y el brillo a la medida de una de Spotify, FASE11_spotify-nivela.md §7); del 24-11-2026 (revision de mejoras): cierraws sordo adelantoviejo diag repetidad cortadalarga (cierraws: Soloist que cuelga el WebSocket al instante; sordo: Soloist vivo pero sordo, se pide el reinicio al vigilante con el archivo «reinicia»; adelantoviejo: el archivo sin_adelanto caduca a los 7 dias; diag: sellos en ms, huecos, adelanto usado, eventos raros una vez y las opciones ya sabidas; repetidad: la pareja es otra uri; cortadalarga: con Soloist reiniciandose seguir una cortada tiene 60 s)
 #   PULSO: el libpulse.so.0 de rocola-pulso (sistema/rocola/pulso, otro grupo) para las escenas «pulso» y «vigilante» (sin el, no se corren)
 #   VIGILANTE: el rocola-soloist de verdad (sistema/board/rocola/rootfs_overlay/usr/bin/rocola-soloist, del grupo soloist) para la escena
@@ -314,10 +314,12 @@ fi
 
 # ---------------------------------------------------------------- adelantoreloj (revision): la salvaguarda del play adelantado
 # Un Soloist que SIN LECTOR sigue avanzando por su reloj (SOLOIST_FALSO_RELOJ=1; el falso de siempre no avanza): la de Spotify adelantada desde
-# una de XP pierde su principio. La rocola lo ve (sono menos que su duracion), apaga el adelanto para siempre y la siguiente suena entera, con
-# su play al abrir la fuente (como antes de rapido-spotify)
+# una de XP pierde su principio y Soloist pasa a otra cuando su reloj llega al final. DESDE EL 23-11-2026 (revision) Y EL 24-11 la salvaguarda solo
+# cuenta un final de verdad (la fuente llego a su duracion): una cancion que acaba porque Soloist paso a otra es un final natural (un corte en
+# sus ultimos 5 s se da por bueno) y no suma fallos ni apaga el adelanto; el apagado es con 3 fallos SEGUIDOS (AdelantoCortosMax) y no por uno solo.
+# La escena comprueba eso: aqui la salvaguarda NO se dispara (ni la cuenta ni el archivo), las dos siguen adelantadas y suenan sin devolver
 if [[ " $partes " == *" adelantoreloj "* ]]; then
-  echo "== adelantoreloj (Soloist que avanza sin lector: la salvaguarda apaga el adelanto)"
+  echo "== adelantoreloj (Soloist que avanza sin lector: un final por cambio de cancion no apaga el adelanto)"
   d=$(datos adelantoreloj); T0=$(date +%s.%N)
   abre adelantoreloj "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;11.9:pide spotify:track:f550d006bb|$P|6000;33:copia" 34 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=0.2 SOLOIST_FALSO_RELOJ=1
   o="$W/adelantoreloj"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
@@ -325,18 +327,25 @@ if [[ " $partes " == *" adelantoreloj "* ]]; then
   si "adelantoreloj: sale con 0" test "$(cat $o/salio)" = 0
   si "adelantoreloj: el falso avanzo sin lector" contiene "$o/falso.txt" "sin lector: avanza por el reloj"
   si "adelantoreloj: la 1a de Spotify, adelantada" contiene "$b" "play adelantado spotify:track:f440d006aa"
-  si "adelantoreloj: la salvaguarda la vio corta y apago el adelanto" contiene "$b" "EL PLAY ADELANTADO SE APAGA para siempre (la adelantada spotify:track:f440d006aa"
-  si "adelantoreloj: y lo guardo (rocola_spotify_sin_adelanto.txt)" test -f "$d/rocola_spotify_sin_adelanto.txt"
-  si "adelantoreloj: la 2a ya no se adelanto" nocontiene "$b" "play adelantado spotify:track:f550d006bb"
-  t550=$(oye "$f" 550)
-  si "adelantoreloj: la 2a entera (6 s: $t550 s)" entre "$t550" 5.7 6.3
+  si "adelantoreloj: la 2a tambien (el cambio de cancion no es un fallo del adelanto)" contiene "$b" "play adelantado spotify:track:f550d006bb"
+  si "adelantoreloj: ningun fallo del adelanto apuntado ni lo apago" bash -c "! grep -qE 'el play adelantado fallo|SE APAGA' '$b'"
+  si "adelantoreloj: y no hay rocola_spotify_sin_adelanto.txt" test ! -f "$d/rocola_spotify_sin_adelanto.txt"
   si "adelantoreloj: 2 cobradas, ninguna devuelta" bash -c "[ \$(grep -c 'COBRADA' '$b') = 2 ] && ! grep -q DEVUELTA '$b'"
-  # y al volver a abrir con el mismo archivo, ni se intenta
-  T0=$(date +%s.%N)
-  abre adelantoreloj2 "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;24:copia" 25 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_LENTO=0.2 SOLOIST_FALSO_RELOJ=1
-  o="$W/adelantoreloj2"; f="$o/frec.txt"
-  t440=$(oye "$f" 440)
-  si "adelantoreloj: otra vez: sin adelanto (lo guardado manda) y entera (6 s: $t440 s)" bash -c "[ \$(grep -c 'play adelantado' '$b') = 1 ] && python3 -c 'import sys; sys.exit(0 if 5.7 <= float(sys.argv[1]) <= 6.3 else 1)' '$t440'"
+  si "adelantoreloj: las dos acabaron con su sonido (la salvaguarda no las devuelve ni las corta)" bash -c "[ \$(grep -c '^.*acabo spotify:track:' '$b') = 2 ]"
+fi
+
+# adelantosilencio (27-11-2026, la junta final): spotify_arranque quita el silencio digital del principio de cada de Spotify; ese silencio recortado
+# NO es sonido que Soloist se comiera: una adelantada con 1,4 s de ceros al empezar que acaba por su duracion no debe sumar fallos del adelanto
+# (antes sonaba dur - 1,4 s < dur - 0,3 s y 3 canciones seguidas con silencio apagaban el adelanto 7 dias)
+if [[ " $partes " == *" adelantosilencio "* ]]; then
+  echo "== adelantosilencio (el silencio recortado al empezar no cuenta como fallo del play adelantado)"
+  d=$(datos adelantosilencio); T0=$(date +%s.%N)
+  abre adelantosilencio "$d" "7:67,9.5:13,11:13" "11.6:pide spotify:track:f440d006aa|$P|6000;11.9:pide spotify:track:f550d006bb|$P|6000;12.2:pide spotify:track:f660d006cc|$P|6000;40:copia" 41 TERM ROCOLA_OS=spotify,spotify-prueba,spotify_arranque SOLOIST_FALSO_SILENCIO=1400
+  o="$W/adelantosilencio"; b="$d/rocola_spotify.txt"
+  si "adelantosilencio: sale con 0" test "$(cat $o/salio)" = 0
+  si "adelantosilencio: se recorto el silencio de la 1a (el arranque lo apunta)" bash -c "grep -q 'de silencio digital al principio quitados' '$b'"
+  si "adelantosilencio: al menos 2 de las 3 adelantadas" bash -c "[ \$(grep -c 'play adelantado spotify:track:' '$b') -ge 2 ]"
+  si "adelantosilencio: ningun fallo del adelanto ni se apago" bash -c "! grep -qE 'el play adelantado fallo|SE APAGA' '$b' && [ ! -f '$d/rocola_spotify_sin_adelanto.txt' ]"
 fi
 
 # ---------------------------------------------------------------- mezcla: con las de XP, el turno, sin creditos
@@ -1048,8 +1057,8 @@ if [[ " $partes " == *" repetidad "* ]]; then
   for v in 0 -1; do
     n=repetidad$([ $v = 0 ] && echo a || echo b)
     d=$(datos $n); T0=$(date +%s.%N)
-    { printf 'ROCOLA-SPOTIFY-PARES v1\n'; printf '%s\t0\t0\tf990d003zz\t-\t3240\t3240\t%s\t%s\t-\t-\t-\t-\ttitulo\n' "$d/musica/Los Ejemplos - Disco Uno/01 Cancion 1.mp3" "$v" "$(date +%s)"; } > "$d/rocola_spotify_pares.txt"
-    abre $n "$d" "7:67,10:13,11.5:13" "9:pide spotify:track:f550d020xa|$P|20000;13:pide $R;18:copia" 19 TERM ROCOLA_OS=spotify,spotify-prueba
+    { printf 'ROCOLA-SPOTIFY-PARES v1\n'; printf '%s\t0\t0\tf990d003zz\t-\t3240\t3240\t%s\t%s\t-\t-\t-\t-\ttitulo\n' "$d/musica/Los Ejemplos/Disco Uno/01 Cancion 1.mp3" "$v" "$(date +%s)"; } > "$d/rocola_spotify_pares.txt"
+    abre $n "$d" "7:67,10:13,11.5:13" "9:pide spotify:track:f550d020xa|$P|20000;13:pide $R;18:copia" 19 TERM ROCOLA_OS=spotify,spotify-prueba,calidad_spotify
     o="$W/$n"; sed 's/^/   /' "$(log $o)"
     si "$n: sale con 0" test "$(cat $o/salio)" = 0
     if [ $v = 0 ]; then

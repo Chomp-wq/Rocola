@@ -130,6 +130,8 @@ namespace Rocola
         private char rocolaOsPgUltimaLetra;
         private string rocolaOsPgUltimaPagina;
         private bool rocolaOsPgArrancada, rocolaOsPgHayLlave, rocolaOsPgDescargando;
+        private bool rocolaOsPgMideVivo;                                  // (pruebas, ROCOLA_PARED_VIVO=1: cada segundo se mide lo que SE QUEDA en la memoria tras recoger la basura, no el monton con ella)
+        private long rocolaOsPgVivoMax;
         private bool rocolaOsPgSinPastillas;                              // (pruebas, ROCOLA_PARED_SIN_PASTILLAS=1: la misma pared sin pastillas, para comparar)
         private bool rocolaOsPgSoloMide;                                  // (pruebas, ROCOLA_PARED_MIDE=1 con el modo apagado: solo se miden los cuadros)
         // LO QUE PREGUNTAN LAS CASILLAS (solo la pantalla): las letras armadas que valen ahora (null sin el modo, sin la llave o sin catalogo)
@@ -171,7 +173,7 @@ namespace Rocola
             rocolaOsPgEsperanVecinas = new Dictionary<string, List<KeyValuePair<Album, int>>>(StringComparer.OrdinalIgnoreCase);
             rocolaOsPgAbriendo = new HashSet<Album>();
             rocolaOsPgCuadros = new int[1001]; rocolaOsPgCuadrosHojeo = new int[1001];
-            try { rocolaOsPgSinPastillas = Environment.GetEnvironmentVariable("ROCOLA_PARED_SIN_PASTILLAS") == "1"; } catch { }
+            try { rocolaOsPgSinPastillas = Environment.GetEnvironmentVariable("ROCOLA_PARED_SIN_PASTILLAS") == "1"; rocolaOsPgMideVivo = Environment.GetEnvironmentVariable("ROCOLA_PARED_VIVO") == "1"; } catch { }
             RocolaOs.Apunta("pared_generos", "encendida: el catalogo en " + RocolaOsPgDescarga.Carpeta + " (de " + RocolaOsPgDescarga.Url + "), en cuanto haya la llave de la API");
         }
 
@@ -183,6 +185,7 @@ namespace Rocola
             long mem = Environment.WorkingSet, gc = GC.GetTotalMemory(false);
             if (mem > rocolaOsPgMemMax) rocolaOsPgMemMax = mem;
             if (gc > rocolaOsPgGcMax) rocolaOsPgGcMax = gc;
+            if (rocolaOsPgMideVivo) { long vivo = GC.GetTotalMemory(true); if (vivo > rocolaOsPgVivoMax) rocolaOsPgVivoMax = vivo; }   // (solo pruebas: lo que no es basura; sin esto el monton fluctua con cuando corre el recolector)
             if (rocolaOsPgSoloMide) { if (++rocolaOsPgLatidos % 2 == 0) RocolaOsPgEscribeEstado(); return; }
             // LA LLAVE DE LA API (el archivo se lee como mucho cada 5 s): sin ella, ni se baja el catalogo ni hay pared con el catalogo
             bool llave = RocolaOsSpotifyCatalogoApi.HayLlave;
@@ -1054,7 +1057,7 @@ namespace Rocola
                 long api = RocolaOsSpotifyCatalogoApi.Peticiones;
                 sb.Append("api_peticiones=").Append(api.ToString(CultureInfo.InvariantCulture)).Append('\n');
                 sb.Append("memoria_mb=").Append((Environment.WorkingSet / 1048576).ToString(CultureInfo.InvariantCulture)).Append("\nmemoria_mb_max=").Append((rocolaOsPgMemMax / 1048576).ToString(CultureInfo.InvariantCulture))
-                  .Append("\ngc_mb=").Append((GC.GetTotalMemory(false) / 1048576).ToString(CultureInfo.InvariantCulture)).Append("\ngc_mb_max=").Append((rocolaOsPgGcMax / 1048576).ToString(CultureInfo.InvariantCulture)).Append('\n');
+                  .Append("\ngc_mb=").Append((GC.GetTotalMemory(false) / 1048576).ToString(CultureInfo.InvariantCulture)).Append("\ngc_mb_max=").Append((rocolaOsPgGcMax / 1048576).ToString(CultureInfo.InvariantCulture)).Append("\nvivo_mb_max=").Append((rocolaOsPgVivoMax / 1048576).ToString(CultureInfo.InvariantCulture)).Append('\n');
                 if (rocolaOsPgCuadros != null) { RocolaOsPgPercentiles(sb, "todos", rocolaOsPgCuadros); RocolaOsPgPercentiles(sb, "hojeo", rocolaOsPgCuadrosHojeo); }
                 string dir = RocolaOs.Run("rocola-xp/pared");
                 Directory.CreateDirectory(dir);
