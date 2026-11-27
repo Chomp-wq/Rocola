@@ -111,4 +111,25 @@ el PROZOR primero · D13 botones de volumen a 1 dB por toque.
   Mientras `Arma` sea null la B lleva una pieza de paso. Si `Huella` cambia, lo medido con la B se vuelve a medir. La medida de la B (L, TP,
   tercios) la hace el marco pasando la cancion por `Arma` con `Midiendo = true`.
 
+### 8.2 Las piezas de la B (agente del billar; detalle, numeros y pruebas en CADENA_NUEVA_B.md) — HECHAS en su rama, sin oir
+
+- `RocolaOsCadenaB.Arma` y `.Huella` los pone `RocolaOs.Billar2.cs`. `Arma` devuelve UNA pieza (`RocolaOsBillar2Tramo`, anotada): mono
+  (L+R)/2 (la ley de -6 dB: la ganancia se mide despues; no sube picos) -> paso alto Butterworth de 24 dB/oct en `billar_paso_alto=` (80 Hz)
+  -> curva del billar (objetivo plano hasta 1 kHz y -0,75 dB/oct, afinacion de 1 a 8 puntos, claridad -2 dB en 315 Hz y +2 en 2,8 kHz; de -9 a
+  +3 dB), paso alto y curva en UN SOLO FIR DE FASE LINEAL (por FFT, lee 50 ms por delante, sin retardo) -> bajo virtual fijo (|x| del grave que
+  se quita, homogeneo de grado 1; `billar_bajo_virtual=0`, apagado). Nada sigue a la senal (ganancia constante medida: 0,000000 dB). No voltea:
+  los arreglos del marco ya voltearon el invertido. Midiendo: de dia, sin nada de XP. Huella: sin la noche.
+- LA NOCHE EN LA B: el corte de noche (`noche_corte=`) va DENTRO del paso alto del tramo, en la misma curva (el mayor de los dos, con la mezcla
+  `GraveMono.NocheMezcla`). **El marco NO debe poner `GraveMono.DeNoche` despues de la ganancia en la B** (serian dos filtros en serie); los
+  graves de noche (120 Hz) y `FactorNoche` si.
+- EL DISCO CONTINUO: `Sigue` llamado AL PREPARAR EL RELEVO (antes de que acabe la de antes) da el MODO EXACTO: la de antes lee del origen de la
+  siguiente sus primeros 50 ms, sale con ellos y se los pasa (el cambio de pista sale cuadro a cuadro igual que las dos pegadas). Llamado tarde,
+  el empalme de siempre: sin escalon, pero la cola de la de antes (50 ms) deja pasar grave y puede chasquear. Ninguna etapa de delante de la
+  pieza debe leer por delante (`Cebado`); si algo mas leyera la siguiente antes de que suene, `ExactoAlFinal = false`.
+- La hojita «Billar» de Ctrl+F4 (afinacion de varios puntos con el ruido por bandas EN MONO, la curva dibujada, los mandos) sale con
+  `cadena_nueva=1` o `billar_nuevo=1`. El ruido por bandas suena por `CreaWaveOut` (como la prueba de bocinas de XP): con la salida nueva
+  siempre abierta hace falta un camino suyo (agente de la salida).
+- Pruebas: `Pruebas/RocolaOs/billar-nuevo/prueba.sh`, 86 de 86 en NativeAOT (respuesta, fase lineal, ganancia constante, bajo virtual
+  homogeneo y sin aliasing, disco continuo, afinacion, guardar y leer, la hojita); 0,24-0,50 % de un nucleo aqui.
+
 Estado: EN CURSO desde el 27-11-2026. Nada probado en el A4 ni oido.
