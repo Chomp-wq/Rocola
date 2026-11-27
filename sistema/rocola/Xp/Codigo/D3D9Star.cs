@@ -1432,7 +1432,7 @@ namespace Rocola
                         // paleta de siempre.
                         shoots[i].Col = gorda ? ((srnd.Next(2) == 0) ? 0x00FFFFFFu : 0x00FFE6A0u)
                                               : shootPal[srnd.Next(shootPal.Length)];
-                        break;
+                        shoots[i].Col |= RocolaOsMarcaAzar(); break;   // ROCOLA OS g301: (XP) break; — marca la fugaz al azar en el bit 31 de su color (XP solo mira los 24 de abajo) para que g300 la distinga de la de festejo; 0 sin ROCOLA_OS
                     }
             }
             int vi = 0;
@@ -1442,7 +1442,7 @@ namespace Rocola
                 Shoot s = shoots[i];
                 float k = s.Life / s.MaxLife; if (k < 0f) k = 0f;
                 if (s.Nace) { float edad = s.MaxLife - s.Life; if (edad < 0.15f) k *= Math.Max(0f, edad / 0.15f); }   // la de la lluvia entra suave
-                uint la = (uint)(230 * k * dim); if (la > 255) la = 255;   // fugaz atenuada mientras se navega con musica
+                uint la = (uint)(230 * k * dim * RocolaOsFugazAzar(s.Col)); if (la > 255) la = 255;   // fugaz atenuada mientras se navega con musica   // ROCOLA OS g300: (XP) uint la = (uint)(230 * k * dim); if (la > 255) la = 255;   // fugaz atenuada mientras se navega con musica — DN4: las fugaces al azar de XP se atenuan con la luz de estrellas (de dia no se ven); la de festejo y todo sin ROCOLA_OS, por 1f (el mismo numero)
                 float tailX = s.X - s.VX * s.Tail, tailY = s.Y - s.VY * s.Tail;   // estela de largo variado
                 float len = (float)Math.Sqrt(s.VX * s.VX + s.VY * s.VY);
                 float nx = (len > 0.001f) ? s.VX / len : 1f, ny = (len > 0.001f) ? s.VY / len : 0f;
@@ -1452,7 +1452,7 @@ namespace Rocola
                 VShoot(shootV, vi + 0, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 1, s.X - ox, s.Y - oy, headC); VShoot(shootV, vi + 2, tailX - ox, tailY - oy, tailC);
                 VShoot(shootV, vi + 3, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 4, tailX - ox, tailY - oy, tailC); VShoot(shootV, vi + 5, tailX + ox, tailY + oy, tailC);
                 vi += 6;
-                uint hc = (Math.Min(255u, la + 40u) << 24) | rgb; float hs = 0.9f + s.Wdt;   // cabeza brillante, tamaño segun grosor
+                uint hc = (Math.Min(255u, la + (uint)(40f * RocolaOsFugazAzar(s.Col))) << 24) | rgb; float hs = 0.9f + s.Wdt;   // cabeza brillante, tamaño segun grosor   // ROCOLA OS g303: (XP) uint hc = (Math.Min(255u, la + 40u) << 24) | rgb; float hs = 0.9f + s.Wdt;   // cabeza brillante, tamaño segun grosor — DN4: el punto de la cabeza de la fugaz (alfa +40) tambien baja con la luz de estrellas; con 1f, 40u exacto
                 VShoot(shootV, vi + 0, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 1, s.X + hs, s.Y - hs, hc); VShoot(shootV, vi + 2, s.X + hs, s.Y + hs, hc);
                 VShoot(shootV, vi + 3, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 4, s.X + hs, s.Y + hs, hc); VShoot(shootV, vi + 5, s.X - hs, s.Y + hs, hc);
                 vi += 6;

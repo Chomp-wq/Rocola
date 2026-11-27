@@ -275,7 +275,7 @@ namespace Rocola
             cieloVivoTick = t; cieloVivoOk = true;
             DateTime ahora = DateTime.Now;
             Form1.CieloHora(ahora, out horaHondo, out horaCalor);
-            faseLuna = Form1.FaseLunar(ahora.ToUniversalTime());
+            faseLuna = RocolaOsFaseLuna(Form1.FaseLunar(ahora.ToUniversalTime()));   // ROCOLA OS g302: (XP) faseLuna = Form1.FaseLunar(ahora.ToUniversalTime()); — DN3: con Ver como se veria (o ROCOLA_CIELO_LUNA=1) la fase de la luna sale de la hora del cielo; si no, la de XP
             double f; float rx, ry;
             Form1.LluviaDe(ahora, out f, out rx, out ry);
             stars.Lluvia((float)f, rx, ry);
