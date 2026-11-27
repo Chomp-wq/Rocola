@@ -81,7 +81,7 @@ namespace Rocola
             {
                 Nombre = Funcion,
                 Que = "el cielo vivo: dia y noche por la hora del sol de la ciudad del bar (DN1-DN6) y lo comun del cielo",
-                DeFabrica = false,   // (junta 4: apagado de fabrica en esta version; vuelve a true en la version del cielo, PLAN_CIELO_VIVO.md)
+                DeFabrica = true,   // (27-11-2026, version del cielo: encendido de fabrica, decision del 20-11-2026)
                 Claves = new RocolaOsClave[]
                 {
                     RocolaOsClave.SiNo("cielo_sol", true, true, "DN1: el cielo de XP sigue al sol (alba, amanecer, manana, mediodia, tarde dorada, atardecer, anochecer)"),
@@ -102,7 +102,7 @@ namespace Rocola
             {
                 Nombre = FuncionFiestas,
                 Que = "las fiestas en el cielo (FI1-FI6), sin internet",
-                DeFabrica = false,   // (junta 4: apagado de fabrica en esta version; vuelve a true en la version del cielo, PLAN_CIELO_VIVO.md)
+                DeFabrica = true,   // (27-11-2026, version del cielo: encendido de fabrica, decision del 20-11-2026)
                 Claves = new RocolaOsClave[]
                 {
                     RocolaOsClave.SiNo("aurora_fiesta", true, true, "FI1: la aurora de XP con los colores de la fecha"),
@@ -121,7 +121,7 @@ namespace Rocola
             {
                 Nombre = FuncionClima,
                 Que = "CL1: las nubes de afuera (Open-Meteo cada 15 min, gratis y sin llave) y lo demas del clima (CL2-CL5)",
-                DeFabrica = false,   // (junta 4: apagado de fabrica en esta version; vuelve a true en la version del cielo, PLAN_CIELO_VIVO.md)
+                DeFabrica = true,   // (27-11-2026, version del cielo: encendido de fabrica, decision del 20-11-2026)
                 Claves = new RocolaOsClave[]
                 {
                     RocolaOsClave.SiNo("lluvia", true, true, "CL2: lluvia detras de la musica, con el viento real"),
@@ -138,7 +138,7 @@ namespace Rocola
             {
                 Nombre = FuncionVidrio,
                 Que = "las piezas de XP de vidrio (VI1-VI6), en su sitio",
-                DeFabrica = false,   // (junta 4: apagado de fabrica en esta version; vuelve a true en la version del cielo, PLAN_CIELO_VIVO.md)
+                DeFabrica = true,   // (27-11-2026, version del cielo: encendido de fabrica, decision del 20-11-2026)
                 Claves = new RocolaOsClave[]
                 {
                     RocolaOsClave.SiNo("vidrio_ficha", false, true, "VI1: la ficha de vidrio (desenfoca lo de detras: apagada hasta medirla en el A4)"),

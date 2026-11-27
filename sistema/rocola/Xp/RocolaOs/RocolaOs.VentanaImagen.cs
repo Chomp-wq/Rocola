@@ -11,7 +11,7 @@
 // Cada interruptor cambia su clave de rocola_os.txt al momento (RocolaOs.PonAjuste: se guarda para siempre). Las cuatro funciones (cielo, fiestas,
 // clima, vidrio) se deciden una vez por arranque (RocolaOs.Encendida): su interruptor se guarda al momento pero vale desde el SIGUIENTE ARRANQUE, y
 // la hoja lo dice; las ideas de dentro cambian en vivo. Si la funcion de una idea esta apagada en rocola_os.txt, la idea va en gris diciendo cual
-// necesita (su valor guardado se conserva). NO cambia nada de fabrica: las cuatro funciones siguen apagadas hasta la junta final.
+// necesita (su valor guardado se conserva). Las cuatro funciones van encendidas de fabrica desde la junta final (27-11-2026).
 // Para anadir un interruptor (por ejemplo el de la letra en el cielo si cambia de nombre) basta una linea en las tablas de abajo.
 using System;
 using System.Collections.Generic;

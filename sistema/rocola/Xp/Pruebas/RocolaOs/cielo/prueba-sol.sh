@@ -103,13 +103,13 @@ cinta() {   # NOMBRE PROGRAMA OS [VAR=valor...]: la pared sin teclas, los cuadro
 if [[ " $partes " == *" apagado "* ]]; then
   echo "== apagado"
   TODO0='cielo=0\nfiestas=0\nclima=0\nvidrio=0\n'
-  IDEAS0='cielo=1\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\n'
+  IDEAS0='cielo=1\nfiestas=0\nclima=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\n'
   cinta base-sin "$BASE" -; espera base-sin
   cinta mio-sin "$prog" -; espera mio-sin
   cinta mio-cero "$prog" "$TODO0" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$FECHA13" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera mio-cero
   cinta mio-ideas0 "$prog" "$IDEAS0" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$FECHA13" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera mio-ideas0
   # (control: DN2 sola a las 17:40, cuando asoma tambien en la pared: la cinta SI cambia)
-  cinta control-sol "$prog" 'cielo=1\ncielo_sol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-18 17:40" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera control-sol
+  cinta control-sol "$prog" 'cielo=1\nfiestas=0\nclima=0\nvidrio=0\ncielo_sol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-18 17:40" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera control-sol
   for v in mio-sin mio-cero mio-ideas0; do
     PYTHONPATH="$PY" python3 "$G/cinta.py" compara "$W/base-sin.cinta" "$W/$v.cinta" > "$W/$v.compara" 2>&1; r=$?
     sed 's/^/   /' "$W/$v.compara"
@@ -127,10 +127,10 @@ caps_de() { local n="$1" t0="$2" k=0 caps=""; for h in $HORAS; do caps="$caps,$(
 buzon() { local n="$1" t0="$2"; ( sleep "$t0"; for h in $HORAS; do echo "2026-11-18 $h" > "$W/$n/run/rocola-cielo-ver"; sleep 6; done ) & }
 # variantes de rocola_os.txt
 declare -A V
-V[todo]='cielo=1\n'
-V[lunab]='cielo=1\nluna_camino=1\n'
-V[sol]='cielo=1\ncielo_sol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\n'
-V[estrellas]='cielo=1\ncielo_sol=0\nsol=0\nluna_camino=0\nhorizonte_hora=0\nnubes=0\n'
+V[todo]='cielo=1\nfiestas=0\nclima=0\nvidrio=0\n'
+V[lunab]='cielo=1\nfiestas=0\nclima=0\nvidrio=0\nluna_camino=1\n'
+V[sol]='cielo=1\nfiestas=0\nclima=0\nvidrio=0\ncielo_sol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\n'
+V[estrellas]='cielo=1\nfiestas=0\nclima=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nhorizonte_hora=0\nnubes=0\n'
 PIDE="6:45,6.8:45,8:27+39,9.3:27+39,10.6:27+39,11.9:27+39,21:39,21.5:39,22:39,22.5:39,27.5:13,29.5:13"
 escena() {   # VARIANTE ESCENA
   local v="$1" e="$2" n="$1-$2" t0 seg pulsa=""
@@ -180,12 +180,12 @@ if [[ " $partes " == *" luna "* ]]; then
   # fases: 8 fechas de un mes (el 2026-11-09 la luna estaba nueva: 8 pasos de 3,7 dias), a las 23:30 (la noche cerrada: la luna de XP) con la fase de la hora
   # del cielo (ROCOLA_CIELO_LUNA=1); y la A de dia (13:00: sobre el horizonte o no) frente a la de noche
   k=0; for d in 2026-11-09 2026-11-13 2026-11-17 2026-11-20 2026-11-24 2026-11-28 2026-12-02 2026-12-06; do
-    corre luna-$k "$prog" 36 'cielo=1\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$d 23:30" ROCOLA_CIELO_LUNA=1 ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED ROCOLA_CAPTURA="30:$CAPTURAS/luna-fase-$k.png" ROCOLA_CAPTURA_SALE=1
+    corre luna-$k "$prog" 36 'cielo=1\nfiestas=0\nclima=0\nvidrio=0\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$d 23:30" ROCOLA_CIELO_LUNA=1 ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED ROCOLA_CAPTURA="30:$CAPTURAS/luna-fase-$k.png" ROCOLA_CAPTURA_SALE=1
     k=$((k + 1)); [ $((k % 4)) = 0 ] && espera luna-$((k - 4)) luna-$((k - 3)) luna-$((k - 2)) luna-$((k - 1))
   done
   # la luna B de dia y de noche (con la luna sobre el horizonte el 2026-11-24 a las 13:00 y 20:00)
   for h in 13:00 20:00 02:00; do
-    corre lunab-${h/:/} "$prog" 36 'cielo=1\nluna_camino=1\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-24 $h" ROCOLA_CIELO_LUNA=1 ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED ROCOLA_CAPTURA="30:$CAPTURAS/lunab-${h/:/}.png" ROCOLA_CAPTURA_SALE=1
+    corre lunab-${h/:/} "$prog" 36 'cielo=1\nfiestas=0\nclima=0\nvidrio=0\nluna_camino=1\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-24 $h" ROCOLA_CIELO_LUNA=1 ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED ROCOLA_CAPTURA="30:$CAPTURAS/lunab-${h/:/}.png" ROCOLA_CAPTURA_SALE=1
   done
   espera luna-4 luna-5 luna-6 luna-7 lunab-1300 lunab-2000 lunab-0200
   nc=0; for i in 0 1 2 3 4 5 6 7; do [ -f "$CAPTURAS/luna-fase-$i.png" ] && nc=$((nc + 1)); done
@@ -212,7 +212,7 @@ if [[ " $partes " == *" fugaz "* ]]; then
   echo "== fugaz"
   # las fugaces al azar de XP salen cada 7 a 16 s: en 100 s hay unas siete. De dia con DN4 su alfa va a 0 (g300): la cinta de DrawShootStreaks lleva
   # los vertices con su color; se cuentan los de alfa > 8 en cada corrida (13:00 sin DN4 frente a con DN4; y 23:30 con DN4 = sin DN4)
-  for c in "sin 13:00 cielo=1\nestrellas_anochecer=0\n" "con 13:00 cielo=1\n" "sin 23:30 cielo=1\nestrellas_anochecer=0\n" "con 23:30 cielo=1\n"; do
+  for c in "sin 13:00 cielo=1\nfiestas=0\nclima=0\nvidrio=0\nestrellas_anochecer=0\n" "con 13:00 cielo=1\nfiestas=0\nclima=0\nvidrio=0\n" "sin 23:30 cielo=1\nfiestas=0\nclima=0\nvidrio=0\nestrellas_anochecer=0\n" "con 23:30 cielo=1\nfiestas=0\nclima=0\nvidrio=0\n"; do
     set -- $c; k=$1; h=$2; shift 2; os="$*"
     corre fugaz-$k-${h/:/} "$prog" 120 "$os" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-18 $h" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED ROCOLA_CINTA="$W/fugaz-$k-${h/:/}.cinta" ROCOLA_CINTA_CUADROS=10-110
   done
@@ -229,7 +229,7 @@ if [[ " $partes " == *" reloj "* ]]; then
   for vuelta in 1 2; do
     for c in encendido apagado; do
       n=reloj-$c-$vuelta
-      if [ $c = apagado ]; then os='cielo=0\nfiestas=0\nclima=0\nvidrio=0\n'; else os='cielo=1\nluna_camino=1\n'; fi
+      if [ $c = apagado ]; then os='cielo=0\nfiestas=0\nclima=0\nvidrio=0\n'; else os='cielo=1\nfiestas=0\nclima=0\nvidrio=0\nluna_camino=1\n'; fi
       # la pared, la ficha y la atraccion (el escaparate), a las 17:40 (el cielo mezclando dos paletas): 70 s, se mide de los 8 s en adelante
       corre $n "$AOTMIO" 70 "$os" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-18 17:40" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED \
         ROCOLA_PULSA="6:27+39,7.3:27+39,8.6:27+39,9.9:27+39,19.2:39" ROCOLA_CIELO_RELOJ="$W/$n/reloj.txt"

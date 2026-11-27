@@ -9,6 +9,8 @@ funciones apagadas, o con todas sus claves en 0, la rocola pinta lo de XP (compr
 tolerancia los colores de la nebulosa, las estrellas, la aurora y el color medio de la raya; no es «byte a byte como el port» en todo). **Nada probado
 en el A4.**
 
+> **ACTUALIZADO en la junta final (27-11-2026): las cuatro funciones (`cielo`, `fiestas`, `clima`, `vidrio`) van ENCENDIDAS de fabrica (`DeFabrica = true`)**, como decidio el dueno el 20-11-2026; lo de abajo describe la version anterior. VI1, VI2, VI4, VI6 y `luna_camino` siguen apagadas; con las cuatro en 0 (o sin `ROCOLA_OS`) la rocola es la de XP.
+
 > **En esta version, apagado de fabrica (junta 4, 21-11-2026).** Decision del dueno al juntar («Cuando termines esto sube a github, ya lo
 > demas que entre en otra version»; el cielo vivo va en la siguiente): las cuatro funciones del cielo vivo (`cielo`, `fiestas`, `clima` y
 > `vidrio`, `RocolaOs.Cielo.cs`) van con `DeFabrica = false`: sin `cielo=1` (o `fiestas=1`, `clima=1`, `vidrio=1`) en `rocola_os.txt` no
