@@ -104,3 +104,5 @@ Capturas de 1024x768 de la sesion: Dia y noche (apagada y con `cielo` encendido)
   la de `llvmpipe` fuera de pantalla, no la del monitor del A4.
 - Con las funciones del cielo apagadas de fabrica (esta version), la hoja explica como encenderlas; encenderlas y reabrir hace que las cuatro
   hojitas sirvan de verdad (la escena «ver» lo hace desde `rocola_os.txt`, no desde la hoja, porque la funcion madre no vale hasta el siguiente arranque).
+
+> **27-11-2026, junta final:** las cuatro funciones del cielo vivo van ahora ENCENDIDAS de fabrica (`DeFabrica = true`); lo que arriba diga «apagada de fabrica» o «en esta version» era de la version anterior. Sus ideas que costaban (VI1, VI2, VI4, VI6) y `luna_camino` siguen apagadas.

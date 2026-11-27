@@ -56,7 +56,7 @@ corre() {
   local o="$W/$n"; rm -rf "$o"; mkdir -p "$o/run" "$o/datos"
   ( cd "$DATOS" && tar cf - . ) | ( cd "$o/datos" && tar xf - ); rm -f "$o/datos/rocola_estado.txt"
   printf 'dir=%s\r\n' "$MUSICA" >> "$o/datos/rocola_config.txt"
-  if printf '%s\n' "$@" | grep -qx 'ROCOLA_OS=1'; then printf '%b' "${OSTXT-fiestas=1\n}" > "$o/datos/rocola_os.txt"; fi
+  if printf '%s\n' "$@" | grep -qx 'ROCOLA_OS=1'; then printf '%b' "${OSTXT-fiestas=1\ncielo=0\nclima=0\nvidrio=0\n}" > "$o/datos/rocola_os.txt"; fi
   [ -n "${FECHAS:-}" ] && printf '%b' "$FECHAS" > "$o/datos/rocola_fechas.txt"
   printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj }\n' "$AL/libasound_module_pcm_reloj.so" > "$o/alsa.conf"
   ( cd "$o/datos" && exec env -u ROCOLA_OS -u ROCOLA_CIELO_FECHA -u ROCOLA_CLIMA -u ROCOLA_CIUDAD ROCOLA_DATOS="$o/datos" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj \
@@ -91,10 +91,10 @@ if [[ " $partes " == *" apagado "* ]]; then
   F="2026-12-25 21:00"
   mkdir -p "$W/py-ok"
   OSTXT='' cinta base "$BASE"; OSTXT='' cinta mio-sin "$prog"; espera base mio-sin
-  OSTXT='fiestas=0\ncielo=0\n' cinta mio-fiestas0 "$prog" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$F"
-  OSTXT='fiestas=1\ncielo=0\naurora_fiesta=0\nhorizonte_fiesta=0\nfugaz_fiesta=0\nfuegos=0\nescaparate_fiesta=0\nfechas_propias=0\n' cinta mio-claves0 "$prog" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$F"
+  OSTXT='fiestas=0\ncielo=0\nclima=0\nvidrio=0\n' cinta mio-fiestas0 "$prog" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$F"
+  OSTXT='fiestas=1\ncielo=0\nclima=0\nvidrio=0\naurora_fiesta=0\nhorizonte_fiesta=0\nfugaz_fiesta=0\nfuegos=0\nescaparate_fiesta=0\nfechas_propias=0\n' cinta mio-claves0 "$prog" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$F"
   espera mio-fiestas0 mio-claves0
-  OSTXT='fiestas=1\ncielo=0\n' cinta control "$prog" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$F"
+  OSTXT='fiestas=1\ncielo=0\nclima=0\nvidrio=0\n' cinta control "$prog" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$F"
   espera control
   for v in mio-sin mio-fiestas0 mio-claves0; do
     PYTHONPATH="$PY" python3 "$XP/Pruebas/RocolaOs/cielo/cinta.py" compara "$W/base.cinta" "$W/$v.cinta" > "$W/$v.compara" 2>&1; r=$?
@@ -162,7 +162,7 @@ if [[ " $partes " == *" fuegos "* ]]; then
   # con la calma al 35 %
   corre grito-calma "$prog" 75 ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-09-15 22:59:30" ROCOLA_FUEGOS_LOG="$W/grito-calma.fuegos" ROCOLA_FUEGOS_CALMA=0.35
   # el mismo Grito pero con la clave «fuegos» apagada: ninguno
-  OSTXT='fiestas=1\nfuegos=0\n' corre grito-sin "$prog" 60 ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-09-15 22:59:30" ROCOLA_FUEGOS_LOG="$W/grito-sin.fuegos"
+  OSTXT='fiestas=1\ncielo=0\nclima=0\nvidrio=0\nfuegos=0\n' corre grito-sin "$prog" 60 ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-09-15 22:59:30" ROCOLA_FUEGOS_LOG="$W/grito-sin.fuegos"
   # y fuera de la hora: el 15-9 a las 20:00 no hay fuegos
   corre grito-temprano "$prog" 60 ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-09-15 20:00" ROCOLA_FUEGOS_LOG="$W/grito-temprano.fuegos"
   espera grito-calma grito-sin grito-temprano

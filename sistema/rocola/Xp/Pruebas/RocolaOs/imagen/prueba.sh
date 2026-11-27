@@ -5,7 +5,7 @@
 #   bash prueba.sh PROGRAMA [orden interruptores ver tecla fechas sin]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT, con el ejecutable rocola-xp)
 #   W (de fabrica /root/rocola-trabajo/fase11/imagen/prueba), DATOS0, CAPTURAS (donde se copian las capturas que se ensenan)
-# Las cuatro funciones del cielo vienen apagadas de fabrica: la escena «interruptores» las parte de apagadas (la hoja las enciende); las demas las
+# Las cuatro funciones del cielo vienen encendidas de fabrica (27-11-2026): la escena «interruptores» las parte de APAGADAS a mano (rocola_os.txt); las demas las
 # encienden en rocola_os.txt para que el cielo vivo ande y se pueda «Ver como se veria».
 export ROCOLA_CLIMA_API="${ROCOLA_CLIMA_API:-http://127.0.0.1:7}" ROCOLA_LUGAR_API="${ROCOLA_LUGAR_API:-http://127.0.0.1:7/lugar}"
 export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_API="${ROCOLA_GENIUS_API:-http://127.0.0.1:7}"
@@ -59,8 +59,8 @@ if [[ " $partes " == *" orden "* ]]; then
 fi
 
 if [[ " $partes " == *" interruptores "* ]]; then
-  echo "== interruptores (las cuatro funciones apagadas: la hoja las enciende; una idea en gris no se guarda; la ciudad)"
-  d=$(datos interruptores)
+  echo "== interruptores (las cuatro funciones puestas en 0 a mano: la hoja las enciende; una idea en gris no se guarda; la ciudad)"
+  d=$(datos interruptores 'cielo=0\nfiestas=0\nclima=0\nvidrio=0\n')   # (de fabrica vienen encendidas desde el 27-11-2026: aqui se parten de 0 a mano)
   # (sol en gris; cielo; cielo_sol apagado y encendido; la ciudad con un clic a la mitad de la barra; el vidrio; se guarda al cerrar)
   P="$IMAGEN,9.4:clic:84:350,9.8:clic:84:242,10.6:clic:84:296,11.4:clic:84:296,12.2:clic:748:246,12.8:clic:$SUB_VID:144,13.6:clic:84:242,15.4:27"
   abre interruptores "$d" "$P" "9.2:imagen-dia-apagado,10.2:imagen-dia-encendido,13.2:imagen-vidrio,15.1:imagen-vidrio-encendido" 17 TERM ROCOLA_OS=1
@@ -71,7 +71,7 @@ if [[ " $partes " == *" interruptores "* ]]; then
   si "una idea apagada y encendida: cielo_sol=0 apuntado y despues cielo_sol=1" bash -c "grep -qF 'Imagen: cielo_sol=0' '$b' && grep -qF 'Imagen: cielo_sol=1' '$b' && ! grep -qx 'cielo_sol=0' '$d/rocola_os.txt'"
   si "la ciudad: ciudad_bar=N (de 1 a 41) guardado al cerrar" bash -c "grep -Eq '^ciudad_bar=([1-9]|[1-3][0-9]|4[01])$' '$d/rocola_os.txt' && grep -qF 'Imagen: ciudad_bar=' '$b'"
   si "el vidrio: vidrio=1 guardado, y sus ideas de fabrica apagadas (vidrio_ficha) sin tocar" bash -c "grep -qx 'vidrio=1' '$d/rocola_os.txt' && grep -qF 'Imagen: vidrio=1' '$b' && ! grep -q '^vidrio_ficha=' '$d/rocola_os.txt'"
-  si "ninguna otra clave se cambio sola (fiestas y clima sin guardar)" bash -c "! grep -qE '^(fiestas|clima)=' '$d/rocola_os.txt'"
+  si "ninguna otra clave se cambio sola (fiestas y clima sin guardar)" bash -c "! grep -qE '^(fiestas|clima)=1' '$d/rocola_os.txt'"
   si "la captura de la hoja mide 1024x768" bash -c "[ \"\$(medida $o/imagen-dia-encendido.png)\" = 1024x768 ]"
   si "rocola_error.txt sin fallos de Rocola OS" nocontiene "$d/rocola_error.txt" "Rocola OS"
   for f in imagen-dia-apagado imagen-dia-encendido imagen-vidrio imagen-vidrio-encendido; do guarda_captura "$o/$f.png" "$f.png"; done

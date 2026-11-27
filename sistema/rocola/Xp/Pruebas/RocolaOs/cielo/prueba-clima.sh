@@ -126,9 +126,9 @@ TORMENTA="tormenta,100,9,35,240,15"
 if [[ " $partes " == *" apagado "* ]]; then
   echo "== apagado"
   TODO0='cielo=0\nfiestas=0\nclima=0\nvidrio=0\n'
-  IDEAS0='cielo=1\nclima=1\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\nlluvia=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
-  SIN_NUBES='cielo=1\nclima=1\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nlluvia=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
-  SIN_LLUVIA='cielo=1\nclima=1\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
+  IDEAS0='cielo=1\nclima=1\nfiestas=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\nlluvia=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
+  SIN_NUBES='cielo=1\nclima=1\nfiestas=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nlluvia=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
+  SIN_LLUVIA='cielo=1\nclima=1\nfiestas=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
   cinta base-sin "$BASE" -; espera base-sin
   cinta mio-sin "$prog" -; espera mio-sin
   cinta mio-cero "$prog" "$TODO0" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$FECHA13" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED ROCOLA_CLIMA="$TORMENTA"; espera mio-cero
@@ -153,7 +153,7 @@ if [[ " $partes " == *" noche "* ]]; then
   echo "== noche"
   [ -f "$W/base-sin.cinta" ] || { cinta base-sin "$BASE" -; espera base-sin; }
   # a las 23:30, con cielo y clima encendidos y sin clima: sin nubes (nubes=0) la noche es la de XP
-  cinta noche-sin "$prog" 'cielo=1\nclima=1\nnubes=0\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$FECHA23" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera noche-sin
+  cinta noche-sin "$prog" 'cielo=1\nclima=1\nfiestas=0\nvidrio=0\nnubes=0\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$FECHA23" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera noche-sin
   PYTHONPATH="$PY" python3 "$G/cinta.py" compara "$W/base-sin.cinta" "$W/noche-sin.cinta" > "$W/noche-sin.compara" 2>&1; r=$?
   sed 's/^/   /' "$W/noche-sin.compara" | head -6
   si "DE NOCHE = XP (23:30, cielo y clima encendidos, sin nubes, sin clima): la cinta igual a la de la rama principal" test $r = 0
@@ -171,7 +171,7 @@ CL[llovizna]="llovizna,90,0.4,12,250,15"
 CL[lluvia]="lluvia,95,3,28,270,16"
 CL[tormenta]="$TORMENTA"
 CL[nieve]="nieve,90,1.5,12,300,-1"
-TODO='cielo=1\nclima=1\n'
+TODO='cielo=1\nclima=1\nfiestas=0\nvidrio=0\n'
 PIDE="6:45,6.8:45,8:27+39,9.3:27+39,10.6:27+39,11.9:27+39,21:39,21.5:39,22:39,22.5:39,27.5:13,29.5:13"
 # escena CLIMA ESCENA [VAR=valor...]: CLIMA es uno de CL, «sinred», «caducado» o «falso»
 escena() {
@@ -255,7 +255,7 @@ if [[ " $partes " == *" reloj "* ]]; then
   for vuelta in 1 2; do
     for c in encendido apagado; do
       n=reloj-$c-$vuelta
-      if [ $c = apagado ]; then os='cielo=0\nfiestas=0\nclima=0\nvidrio=0\n'; else os='cielo=1\nclima=1\n'; fi
+      if [ $c = apagado ]; then os='cielo=0\nfiestas=0\nclima=0\nvidrio=0\n'; else os='cielo=1\nclima=1\nfiestas=0\nvidrio=0\n'; fi
       # la pared, la ficha y la atraccion (el escaparate), a las 17:40 con lluvia: 70 s, se mide de los 8 s en adelante
       corre $n "$AOTMIO" 70 "$os" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-18 17:40" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED ROCOLA_CLIMA="lluvia,95,3,28,270,16" \
         ROCOLA_PULSA="6:27+39,7.3:27+39,8.6:27+39,9.9:27+39,19.2:39" ROCOLA_CIELO_RELOJ="$W/$n/reloj.txt"

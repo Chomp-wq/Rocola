@@ -431,3 +431,59 @@ Las baterías de `Pruebas/RocolaOs` y `Pruebas/Importa` (pasadas/total):
   junta»): no se corrieron las escenas aquí; quien corra el nivel 0 entero puede aceptarla así.
 - No se corrió: el nivel 0 entero (arneses, banco, recorridos, escenas), la prueba de QEMU ni ninguna compilación del sistema (el navegador
   pide la COMPLETA). Lo pendiente de cada rama sigue en su documento. Nada probado en el A4.
+
+
+## Junta final (27-11-2026): el cielo vivo ENCENDIDO de fábrica
+
+Decisión del dueño del 20-11-2026 («me gustaron todas las ideas, haz todo»), ya en la versión del cielo: `DeFabrica = true` en las cuatro
+funciones del cielo vivo (`cielo`, `fiestas`, `clima`, `vidrio`; `RocolaOs/RocolaOs.Cielo.cs`). **No cambian los valores de cada idea**: VI1, VI2,
+VI4, VI6 y `luna_camino` siguen apagadas. Sin `ROCOLA_OS`, o con las cuatro funciones en 0 en `rocola_os.txt`, la rocola dibuja lo de XP
+(comprobado abajo con las cintas de la tarjeta, en JIT y NativeAOT). Los textos «apagado de fábrica en esta versión» de la hoja Imagen
+(`RocolaOs.VentanaImagen.cs`) y de los `FASE11_cielo-*.md`, `FASE11_hoja-imagen.md` y `PLAN_CIELO_VIVO.md` quedan actualizados con una nota.
+Compila con los mismos 13 avisos (0 errores) y `ganchos.py` da TODO BIEN (112 archivos, 34 con ganchos).
+
+### Lo que se ajustó en las pruebas (todas eran suposiciones de «viene apagado», no fallos del programa)
+
+- `cielo/prueba.sh`: «DE FÁBRICA» ya no pide la cinta de XP sino que el cielo ARRANCA solo y la cinta cambia (control, 13:00); `noche` pasa
+  `CIELO_SIN_VIDRIO=1` (`vidrio=0`): con el vidrio puesto las pastillas y el filo de luz cambian a propósito el dibujo de la pared y la «Raya»
+  de la noche sale distinta (lo hace igual la rama de antes, con las cuatro funciones puestas a mano). La regla «la noche es la de XP» es del cielo.
+- `cielo/prueba-sol.sh`, `cielo/prueba-clima.sh`, `cielo-fiestas/prueba.sh`: cada escena que encendía UNA función ahora apaga a mano las otras
+  tres (antes las otras venían en 0); si no, «APAGADO = XP» comparaba con el vidrio y las fiestas puestos.
+- `imagen/prueba.sh`: la escena `interruptores` parte de las cuatro funciones en 0 a mano (lo que prueba es que la hoja las enciende).
+- `letra-cielo/escenas.sh`: la escena `apagado` pone las cuatro funciones en 0 en `base`, `cero` y `uno` (para que solo cambie la letra). Ojo:
+  su `BASE` debe ser un programa de ANTES de la letra (`/root/rocola-trabajo/fase11/letra-cielo/base`), no la rama principal (que ya la trae).
+
+### Baterías (JIT, una a la vez; máquina de 4 CPU)
+
+| Batería | Resultado con el cielo encendido | De antes (rama sin el cambio) |
+|---|---|---|
+| `cielo` (ganchos, orden, clima, apagado, noche, medio) | 32/32 al repetir (la `noche` falló una vez de 8 con «degradados distintos» y no se repitió: la hora real mueve el tinte de XP entre la cinta base y la otra) | — |
+| `cielo` NativeAOT (apagado, noche) | 11/11; `reloj` FALTA (necesita las maquetas, `DATOSM`) | — |
+| `sol` (ganchos, orden, apagado) | 7/7 tras el ajuste; escenas, luna y fugaz (68 en la primera corrida, 67 BIEN + el `apagado` ya arreglado) | — |
+| `clima` (ganchos, orden, apagado, noche, escenas, relámpagos) | 102/102 tras el ajuste (la primera corrida: 3 MAL de cinta, los arreglados) | — |
+| `fiestas` | 0 MAL, 69 BIEN; llegó al tope de 28 min en la última escena (`contraste`), sin fallo | — |
+| `vidrio` (`--prueba-vidrio`) | 16/16 (la batería de la rama no trae su `prueba.sh`, solo `comun.sh` y `rapida.sh`) | — |
+| `imagen` | 29/29 tras el ajuste (antes 25/29: las cuatro del apartado de arriba) | — |
+| `letra-cielo` | 31/31 con las escenas (28 BIEN + el `apagado` 5/5 con la base de antes de la letra) | — |
+| `catalogo` | 3 MAL de 275: `atajos` (3) | los mismos 3, también sin el cambio |
+| `spotify-xp` | 5 MAL de 226: `adelantoreloj` (5) más `repetidadb` (1) | los mismos 5 y el mismo 1, también sin el cambio |
+| `sustitucion` | 3 MAL de 105 (`isrc` 2, `titulo` 1) | los mismos 3, también sin el cambio |
+| `asistente` | 31/32 (`menu`: el latido del verde) | el mismo, también sin el cambio |
+| `pantalla` | 59/61; los 2 «MAL» son `NO`: falta el BusyBox del sistema y la referencia con trazas | de fuera |
+| `salida-audio` | 29/29 | — |
+| `archivos` | 17/17 | — |
+| `pared-generos` | 82/88, 4 FALTA (el catálogo real); `hojea` memoria (266 MB contra 250) bien al repetir (163 y 206 MB) y `letra` ♫ con el icono | `letra` igual sin el cambio (decisión del 27-11: la letra ♫ no vuelve, la prueba está vieja); `hojea` fluctúa (246, 206) |
+| `atraccion-semana` | 22/22 | — |
+| `huecos` | 61/62 (`costo lame320`, 15,5-16,2 ms contra < 15) | igual sin el cambio (16,96 ms) |
+| `andamio` / `convierte` / `letras` | 101/101, 57/57, 88/88 | — |
+| `apagones`, `noche-video`, `nivel0`, `rapido-spotify` | FALTA: piden datos de partida o la referencia congelada que no están en esta máquina | — |
+
+Notas: `catalogo` y `spotify-xp` pasaron del tope de 28 min de cada corrida; las escenas que faltaron (`repetidas ediciones teclea memoria hoja` y
+`cortada speq volumen ...`) se corrieron aparte. Lo de «de antes» se midió con la rama de partida (741a366) compilada aparte y las mismas pruebas.
+NativeAOT: `dotnet publish -p:PublishAot=true` sin avisos nuevos (los 13 de siempre) y `cielo` `apagado` + `noche` 11/11 con ese ejecutable.
+
+### Lo que no se comprobó
+
+- Nada en el A4. Las escenas con las maquetas (`DATOSM`: escenas y `reloj` de `cielo`, `sol` y `clima`), la medida de rendimiento del cielo encendido,
+  `apagones`, `noche-video`, `nivel0` entero (arneses, banco, recorridos, escenas contra la referencia congelada), `rapido-spotify` y QEMU.
+- `fiestas` NativeAOT, `catalogo`, `spotify-xp`, `asistente`, `sustitucion`, `pantalla`, `huecos`, etc. solo en JIT.

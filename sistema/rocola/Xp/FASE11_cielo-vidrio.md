@@ -55,3 +55,5 @@ entero (caso que no se da: detras de ella hay cielo y portadas oscurecidas).
   `BuscadorPortadasGpu`; queda para la junta.
 - La regla 5 (calma) no tiene nada que calmar: nada del vidrio se mueve solo.
 - Nada en el A4; el coste en tiempo se midio solo con llvmpipe (ver abajo).
+
+> **27-11-2026, junta final:** las cuatro funciones del cielo vivo van ahora ENCENDIDAS de fabrica (`DeFabrica = true`); lo que arriba diga «apagada de fabrica» o «en esta version» era de la version anterior. Sus ideas que costaban (VI1, VI2, VI4, VI6) y `luna_camino` siguen apagadas.

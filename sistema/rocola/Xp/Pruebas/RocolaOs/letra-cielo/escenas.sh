@@ -111,9 +111,10 @@ fi
 if [[ " $escenas " == *" apagado "* ]]; then
   echo "== apagado"
   cinta() { local n="$1" p="$2" d="$3"; shift 3; NOMBRE=$n; falso $n; PROG=$p abre $n "$d" "$(pide 'rio dorado')" 56 ROCOLA_CINTA="$W/$n.cinta" ROCOLA_CINTA_CUADROS=44-45.5 "$@"; espera $n; para_falso; }
-  cinta base "$BASE" "$(datos base)" ROCOLA_OS=1
-  cinta cero "$prog" "$(datos cero letra_cielo=0)" ROCOLA_OS=1
-  cinta uno "$prog" "$(datos uno)" ROCOLA_OS=1
+  # (27-11-2026: las cuatro funciones del cielo vienen encendidas de fabrica; aqui van en 0 en las tres para que lo unico que cambie sea la letra)
+  cinta base "$BASE" "$(datos base cielo=0 fiestas=0 clima=0 vidrio=0)" ROCOLA_OS=1
+  cinta cero "$prog" "$(datos cero letra_cielo=0 cielo=0 fiestas=0 clima=0 vidrio=0)" ROCOLA_OS=1
+  cinta uno "$prog" "$(datos uno cielo=0 fiestas=0 clima=0 vidrio=0)" ROCOLA_OS=1
   cinta sin "$prog" "$(datos sin)"
   C() { PYTHONPATH="$PY" python3 "$CIE/cinta.py" compara "$1" "$2"; }
   C "$W/base.cinta" "$W/cero.cinta" > "$W/cero.cmp" 2>&1; r=$?; sed 's/^/   /' "$W/cero.cmp" | head -5

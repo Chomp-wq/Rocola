@@ -97,3 +97,5 @@ en la pared y una hoja con la pastilla de cada tiempo de dia y de noche.
 - **La luna B** (DN3 en su camino) no queda tapada por las nubes de delante (solo la de XP en su sitio); y en el reposo con musica las nubes no cambian de sitio.
 - **Los relampagos** son una mancha de luz dentro de la nube: sin rayo dibujado, a proposito (pocos destellos, regla 5 y la del 9-10 de no abusar).
 - **Las capturas** de las pruebas no van en el commit (estan en el worktree: `prueba-clima*/capturas`).
+
+> **27-11-2026, junta final:** las cuatro funciones del cielo vivo van ahora ENCENDIDAS de fabrica (`DeFabrica = true`); lo que arriba diga «apagada de fabrica» o «en esta version» era de la version anterior. Sus ideas que costaban (VI1, VI2, VI4, VI6) y `luna_camino` siguen apagadas.

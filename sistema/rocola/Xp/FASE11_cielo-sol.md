@@ -132,3 +132,5 @@ derecha, la luna A palida, DN4 a medias), `todo-pared-0650.png` (el sol asomando
 - **Otro horizonte** (otras resoluciones): el sol y la luna usan `Escena.Horizonte` y `Escena.Alto` (se corren y escalan), pero solo se vio a
   1024x768.
 - Sin el catalogo de colores del sol por la fase (el nucleo es siempre `#fff6dc` como dice §5): al ponerse se ve blanco palido sobre el naranja.
+
+> **27-11-2026, junta final:** las cuatro funciones del cielo vivo van ahora ENCENDIDAS de fabrica (`DeFabrica = true`); lo que arriba diga «apagada de fabrica» o «en esta version» era de la version anterior. Sus ideas que costaban (VI1, VI2, VI4, VI6) y `luna_camino` siguen apagadas.

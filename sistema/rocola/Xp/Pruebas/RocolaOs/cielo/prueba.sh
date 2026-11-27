@@ -58,9 +58,12 @@ corre() {
   local n="$1" p="$2" seg="$3" d="$4"; shift 4
   local o="$W/$n"; mkdir -p "$o/run"
   if [ "${d#=}" != "$d" ]; then d="${d#=}"; else copia "$d" "$o/datos"; d="$o/datos"; fi
-  # (junta 4) las cuatro funciones del cielo vienen APAGADAS de fabrica en esta version (vuelven en la del cielo): con ROCOLA_OS=1 la bateria
-  # las enciende en rocola_os.txt (la que ya diga cielo=, fiestas=, clima= o vidrio= manda); CIELO_DE_FABRICA=1 lo deja como de fabrica
+  # (27-11-2026) las cuatro funciones del cielo vienen ENCENDIDAS de fabrica (junta final): con ROCOLA_OS=1 la bateria las deja escritas en
+  # rocola_os.txt (la que ya diga cielo=, fiestas=, clima= o vidrio= manda); CIELO_DE_FABRICA=1 lo deja como de fabrica (sin escribir nada)
   if printf '%s\n' "$@" | grep -qx 'ROCOLA_OS=1' && ! printf '%s\n' "$@" | grep -qx 'CIELO_DE_FABRICA=1'; then
+    # (27-11-2026) CIELO_SIN_VIDRIO=1: «vidrio=0» (las pastillas y el filo de luz del vidrio SI cambian el dibujo de la pared a proposito: la regla de
+    # «la noche es la de XP» es del cielo, no del vidrio; con ellos puestos la «Raya» de la noche sale distinta tambien en la rama de antes)
+    printf '%s\n' "$@" | grep -qx 'CIELO_SIN_VIDRIO=1' && { grep -q "^vidrio=" "$d/rocola_os.txt" 2>/dev/null || printf 'vidrio=0\n' >> "$d/rocola_os.txt"; }
     for k in cielo fiestas clima vidrio; do grep -q "^$k=" "$d/rocola_os.txt" 2>/dev/null || printf '%s=1\n' "$k" >> "$d/rocola_os.txt"; done
   fi
   printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj }\n' "$AL/libasound_module_pcm_reloj.so" > "$o/alsa.conf"
@@ -178,14 +181,14 @@ if [[ " $partes " == *" apagado "* ]]; then
   si "el control (DN1 encendida a las 13:00): la cinta SI cambia (el comparador ve el cielo)" test $r = 1
   si "sin ROCOLA_OS no se escribe nada de Rocola OS (ni rocola_os.txt ni su bitacora) y no corre el hilo del cielo" \
      bash -c "[ ! -e '$W/mio-sin/datos/rocola_os.txt' ] && [ ! -e '$W/mio-sin/datos/rocola_os_bitacora.txt' ] && [ ! -e '$W/mio-sin/datos/rocola_clima.txt' ]"
-  # (junta 4) DE FABRICA (sin rocola_os.txt): las cuatro funciones apagadas, sin ciudad ni clima falsos y con el lugar y el clima a un puerto
-  # donde nada escucha: ni una peticion, el cielo no arranca y la cinta es la de XP
-  cinta fabrica "$prog" ROCOLA_OS=1 CIELO_DE_FABRICA=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA_API=$SINRED ROCOLA_LUGAR_API=$SINRED/lugar; espera fabrica
+  # (27-11-2026) DE FABRICA (sin rocola_os.txt): las cuatro funciones ENCENDIDAS; a las 13:00 el cielo arranca y la cinta SI cambia (el control),
+  # y con el lugar y el clima a un puerto donde nada escucha no queda ningun archivo del clima (sin red, el cielo sigue y no se cae)
+  cinta fabrica "$prog" ROCOLA_OS=1 CIELO_DE_FABRICA=1 ROCOLA_CIELO_FECHA="2026-11-18 13:00" ROCOLA_CLIMA_YA=1 ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED ROCOLA_LUGAR_API=$SINRED/lugar; espera fabrica
   compara_cinta "$W/base-sin.cinta" "$W/fabrica.cinta" > "$W/fabrica.compara" 2>&1; r=$?
   sed 's/^/   /' "$W/fabrica.compara"
-  si "DE FABRICA (junta 4, sin rocola_os.txt): la cinta de la pared igual a la de la rama principal" test $r = 0
-  si "DE FABRICA: el cielo no arranca, no pide el lugar ni el clima y no deja sus archivos" \
-     bash -c "[ -e '$(bit fabrica)' ] && ! grep -q '\\[cielo\\]' '$(bit fabrica)' && ! grep -qi 'lugar\\|clima' '$(bit fabrica)' && [ ! -e '$W/fabrica/datos/rocola_clima.txt' ] && [ ! -e '$W/fabrica/datos/rocola_clima_lugar.txt' ]"
+  si "DE FABRICA (27-11-2026, sin rocola_os.txt): el cielo arranca solo y la cinta de la pared a las 13:00 SI cambia" test $r = 1
+  si "DE FABRICA: el cielo arranca, pide el clima a un puerto sin nadie y no lo logra sin caerse (sin rocola_clima.txt)" \
+     bash -c "grep -q '\\[cielo\\] arranca' '$(bit fabrica)' && [ ! -e '$W/fabrica/datos/rocola_clima.txt' ]"
   si "con las cuatro funciones en 0: el cielo no arranca (ni su hilo ni sus archivos)" \
      bash -c "! grep -q '\\[cielo\\]' '$(bit mio-cero)' && [ ! -e '$W/mio-cero/datos/rocola_clima.txt' ]"
   si "con todas las claves en 0: arranca (la foto), pero no pinta nada (la cinta igual) y no pide el clima" \
@@ -194,10 +197,10 @@ fi
 if [[ " $partes " == *" noche "* ]]; then
   echo "== noche"
   [ -f "$W/base-sin.cinta" ] || { cinta base-sin "$BASE"; espera base-sin; }
-  cinta noche "$prog" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-18 23:30" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera noche
+  cinta noche "$prog" ROCOLA_OS=1 CIELO_SIN_VIDRIO=1 ROCOLA_CIELO_FECHA="2026-11-18 23:30" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera noche
   compara_cinta "$W/base-sin.cinta" "$W/noche.cinta" > "$W/noche.compara" 2>&1; r=$?
   sed 's/^/   /' "$W/noche.compara"
-  si "DE NOCHE = XP: a las 23:30 del 18-11 (sin fiesta), todo encendido y sin clima, la cinta igual a la de la rama principal" test $r = 0
+  si "DE NOCHE = XP: a las 23:30 del 18-11 (sin fiesta), todo encendido salvo el vidrio y sin clima, la cinta igual a la de la rama principal" test $r = 0
   si "a las 23:30 la fase es la noche («fase noche» en la bitacora)" contiene "$(bit noche)" "fase noche"
 fi
 

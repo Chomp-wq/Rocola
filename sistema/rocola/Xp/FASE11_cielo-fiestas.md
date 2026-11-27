@@ -216,3 +216,5 @@ menos); no se midio el reloj de los cuadros (p95/p99 de §7) ni se publico en Na
   tambien lo despierta; el 35 % se vio por la cuenta de nacimientos, no en una captura.
 - **Santa Cecilia, «notas que suben con la aurora»**: se hizo como notas que suben desde la raya (la aurora es de XP y no se movio).
 - **Las fiestas de dos dias o semanas** (Muertos del 31-10 al 2-11, posadas del 16 al 24-12) llevan el mismo adorno todos sus dias.
+
+> **27-11-2026, junta final:** las cuatro funciones del cielo vivo van ahora ENCENDIDAS de fabrica (`DeFabrica = true`); lo que arriba diga «apagada de fabrica» o «en esta version» era de la version anterior. Sus ideas que costaban (VI1, VI2, VI4, VI6) y `luna_camino` siguen apagadas.
