@@ -251,7 +251,6 @@ namespace Rocola
         internal void RocolaOsLetraPrepara()
         {
             letraVa = false;
-            if (Environment.GetEnvironmentVariable("ROCOLA_LETRA_DEBUG") != null && (AhoraMs() % 2000) < 40) Console.Error.WriteLine("LETRA prepara cielo=" + Form1.RocolaOsLetraCielo + " stars=" + (stars != null) + " act=" + (RocolaOsLetraSuena.Actual != null) + " ruta=" + (RocolaOs.LaRocola != null ? RocolaOs.LaRocola.RocolaOsLetraRuta() : "-") + " idle=" + idleBlend);
             if (!Form1.RocolaOsLetraCielo || stars == null) { LetraLibera(); return; }
             Form1 r = RocolaOs.LaRocola;
             RocolaOsLetra l = RocolaOsLetraSuena.Actual;

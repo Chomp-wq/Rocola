@@ -7,20 +7,20 @@
 #   BASE:     el programa de antes de la letra (JIT; de fabrica /root/rocola-trabajo/fase11/letra-cielo/base) para «apagado»
 #   W:        la carpeta de trabajo (de fabrica /root/rocola-trabajo/fase11/letra-cielo/prueba; se rehace); CAPTURAS (de fabrica $W/capturas)
 #   PY:       donde esta brotli (pip install --target PY brotli)
-# escenas (de fabrica todas): ganchos modelo apagado compas mp3 sinvoz nada reloj
+# escenas (de fabrica todas): ganchos modelo apagado compas mp3 nada cielo reloj (el sinvoz va dentro de compas)
 #   ganchos  ganchos.py TODO BIEN y los dos ganchos (g380, g381) en el manifiesto
 #   modelo   `rocola-xp --prueba-letra-cielo-modelo`: las cuentas puras (llenado, cambio de verso, sin voz, reparto de la del MP3)
 #   apagado  con letra_cielo=0 la cinta de la tarjeta del reposo con musica es la de BASE; con letra_cielo=1 es otra (control); sin ROCOLA_OS, nada
 #   compas   la letra sincronizada: capturas a mitad del llenado, en el cambio de verso, y el compas (el llenado va al tiempo de la cancion)
 #   mp3      la letra del MP3 (sin tiempos): los renglones suben despacio, «Letra: el MP3»
-#   sinvoz   el tramo sin voz (un renglon vacio del LRC): el cielo de XP tal cual
 #   nada     no sale con la pared, el buscador, el disco abierto ni la ayuda
+#   cielo    la regla 3 (la letra se lee) con el cielo vivo encendido: de dia con nubes, en una fiesta, al anochecer y de noche
 #   reloj    p50/p95/p99/max del trabajo de cada cuadro con la letra y sin ella (ROCOLA_CIELO_RELOJ), en NativeAOT si AOTMIO
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 LET="$G/../letras"; CIE="$G/../cielo"
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-ganchos modelo apagado compas mp3 sinvoz nada reloj}"
+escenas="${*:-ganchos modelo apagado compas mp3 nada cielo reloj}"
 T0=/root/rocola-trabajo/fase11/letra-cielo
 W=${W:-$T0/prueba}
 BASE=${BASE:-$T0/base}

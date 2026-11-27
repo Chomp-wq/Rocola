@@ -186,3 +186,87 @@ sinllave 4, suena 8). Con el programa de antes (`117ac6f`), la escena `choque` d
 preguntas a Genius), y en `orden` las del freno, la del respaldo `/api/search` y la de tocar `/run` fallaron (9 MAL). `ganchos.py`: TODO
 BIEN (112 archivos, 17 con ganchos; esta revisión no toca `Codigo/`). El nivel 0 no se volvió a correr: nada de lo cambiado corre sin
 `ROCOLA_OS` (los ganchos devuelven antes de llegar a ello), y la escena `apagado` y la `cero` dan lo mismo que antes.
+
+## 6. La letra en el cielo del reposo (K6, maqueta 3), 27-11-2026
+
+Rama `worktree-agent-aaccd699f49f1d6eb`, encima de `0461bf0` y unida con `claude/modest-carson-fa2v2n`. Es lo que la §1 dejó «solo los datos»: **dibujar**
+la letra de lo que suena, **como la aprobó el dueño** (decisión del 20-11-2026, «Me gusta así la letra», maqueta 3; las maquetas se perdieron y esto sigue
+su descripción). Solo Rocola OS, solo la tarjeta (GPU), con **la misma función `letra_cielo=`** (encendida de fábrica: la que ya pedía la letra; apagada,
+ni se pide ni se dibuja nada). La fuente no se tocó: se lee `RocolaOsLetraSuena.Actual`.
+
+### 6.1 Qué se ve
+
+En el **reposo con música**, en el cielo libre entre la estrella y la aurora (el cielo sobre la raya del horizonte, donde empieza el panel AHORA SUENA),
+dos renglones centrados: el central a `StatusTopY - 0,115 x alto` (435 de 768) y el que sigue 0,062 x alto más abajo.
+
+| Pieza | Cómo es |
+|---|---|
+| El que se canta | letra de los títulos de XP (Trebuchet MS en negrita, 0,050 x alto = 38 px), blanco con sombra suave (una nube desenfocada y un filo), que **se llena de ámbar `#FFCE78` de izquierda a derecha al compás** de la canción, con **borde suave de 10 px** |
+| El que sigue | más chico (0,033 x alto), **lavanda `#D6CCFF`**, con la misma sombra |
+| Al cambiar de verso | 0,3 s: **todo sube un renglón** (el que se cantaba sale arriba y se apaga, el que seguía se hace grande en su sitio, entra otro abajo) |
+| «Letra: LRCLIB» | chiquito, abajo a la derecha del cielo, sobre el panel («Letra: el MP3» si es la del MP3) |
+| Tramos sin voz | un renglón vacío del LRC (o un verso que dura más de 14 s y ya se llenó 4 s antes): todo se apaga en 0,3 s y queda **el cielo de XP tal cual**; vuelve con el siguiente verso |
+| La del MP3 (sin tiempos; maqueta 4) | los renglones con texto se **reparten por la duración de la canción** y suben despacio (el cambio ocupa el último 22 % de cada renglón: ~2 s con 10 renglones en 100 s), **sin llenarse**; es un repaso aproximado |
+| Dónde NO sale | pared, buscador, disco abierto, ayuda, Ctrl+F3/Ctrl+F4, atracción ni video: solo con el reposo abierto (`idleBlend`, aparece de 0,55 a 1); si se abre uno de esos con el reposo aún a la vista, se va en 0,15 s |
+
+**El llenado «al compás»**: el renglón i se llena linealmente de su tiempo al del siguiente renglón del LRC (el último, hasta el final o 6 s), pero nunca en
+más de 10 s (`LlenaMaxS`); la posición es la que se oye (`PosicionActual` de XP: cuenta el colchón de la salida y el salto de silencios; con Spotify, la de
+su fuente), medida como mucho cada 50 ms y suavizada entre una medida y otra. El LRC de LRCLIB es de línea (sin tiempos por palabra): el llenado es parejo
+por todo el renglón.
+
+**La calma (regla 5 del cielo vivo), decidido: la letra NO se atenúa ni se detiene con la calma.** Es contenido, no adorno; y no hace falta: el reposo solo
+está abierto cuando nadie toca nada (15 s) y en cuanto se toca un botón se cierra y la letra con él.
+
+### 6.2 Cómo está hecho
+
+| Archivo (en `RocolaOs/`) | Qué lleva |
+|---|---|
+| `RocolaOs.LetraCielo.cs` | `RocolaOsLetraModelo` (las cuentas puras: llenado, voz, escalera del cambio, reparto del MP3), `RocolaOsLetraHornea` (un renglón = un mapa de bits blanco con su sombra negra: **el color lo pone el color del vértice**), `Form1` (lo que XP sabe: ruta, posición, si algo está abierto) y `GpuPanel` (estado, horneado y dibujo) |
+| `RocolaOs.LetraCieloPrueba.cs` | la orden `rocola-xp --prueba-letra-cielo-modelo` (17 comprobaciones sin pantalla) |
+
+- **Independiente del cielo vivo**: en esta versión sus cuatro funciones van apagadas de fábrica (`Va` falso), así que la letra **no pasa por sus capas**
+  (`PonPintor`): tiene sus dos ganchos. Con el cielo vivo encendido convive igual (probado: escena `cielo`).
+- **Se hornea una vez por renglón, en Prepara** (g381, fuera del cuadro: Direct3D no deja crear texturas con la escena abierta), **como mucho dos mapas por
+  cuadro**; por renglón hay dos (el grande y el chico); se sueltan los lejanos y todos al irse el reposo.
+- **El ámbar son vértices**: lo llenado con el color ámbar, lo que falta con el blanco, y en los 10 px del borde las dos capas con alfas contrarios. Ninguna
+  memoria nueva por cuadro (los vértices son un arreglo fijo). La sombra es negra en el mapa y el color del vértice no la tiñe.
+- Un renglón largo se achica hasta el 60 % para caber en 0,86 del ancho; si aún no cabe, se corta con puntos.
+- Para las pruebas: `ROCOLA_LETRA_LOG=archivo` (una línea cada 50 ms con la letra a la vista: hora de pared, posición, verso, llenado, `u`, voz, idle) y
+  `ROCOLA_LETRA_CAMBIO_S` (alarga el cambio de verso: cada captura para el cuadro casi un segundo y de 0,3 s no se vería nada).
+
+### 6.3 Ganchos (rango g380-g389; se usaron dos)
+
+| Id | Dónde | De XP | Ahora |
+|---|---|---|---|
+| g381 | `Codigo/D3D9Star.cs` (`RenderFrame`, tras `StepIdle`) | `idleBlend = StepIdle(...);` | `... RocolaOsLetraPrepara();`: el estado y los horneados de la letra, antes de abrir el cuadro |
+| g380 | `Codigo/D3D9Star.cs` (`RenderFrame`, tras el buscador con portadas) | `PiezasConLaVentana(gw, uiPropia);` | `... RocolaOsLetraPinta();`: los dos renglones, antes de la interfaz de XP del pie y del panel del reposo |
+
+`ganchos.py`: TODO BIEN (112 archivos, 34 con ganchos). En el merge con la rama principal el único choque fue `GANCHOS.tsv` (dos ramas añadieron al final): se
+dejaron las filas de las dos.
+
+### 6.4 Las pruebas (`Pruebas/RocolaOs/letra-cielo/`, `bash prueba.sh PROGRAMA [escenas]`)
+
+La rocola entera fuera de pantalla (llvmpipe, 1024x768) con la tarjeta de sonido de prueba con reloj, MP3 **inventados** (los de `../letras/hazmp3.py`), un
+**LRCLIB falso** (`../letras/falso.py`) y letras **inventadas** (`datos.json`; nunca letras ni fuentes de verdad). El LRC: 8 s, 16 s, un verso largo de 24
+a 34 s, **un tramo sin voz de 34 a 44 s**, 44, 52 y 60 s. (Las capturas están fuera del repositorio.)
+
+| Escena | Qué comprueba |
+|---|---|
+| `ganchos` | `ganchos.py` TODO BIEN y g380-g381 en el manifiesto |
+| `modelo` | el llenado a su tiempo (error 0 cada 10 ms), el tope de 10 s, la voz (vacío, verso largo), la escalera del cambio, el reparto del MP3 |
+| `compas` | la posición que usa la letra avanza al paso del reloj (razón 0,998); en cuatro instantes de la canción el **ámbar que se ve** avanza como lo que dice la canción (a 0,05 entre capturas) y va retrasado siempre lo mismo (0,03 a 0,08 del renglón, ~0,7 s: lo que tarda en escribirse el PNG, que para el cuadro); en el cambio de verso (3 s en la prueba) los renglones suben (altura media de la tinta 452 a 424 px); en el tramo sin voz no hay letra; regla 3 con el cielo de XP: blanco 7,8 a 1, ámbar 5,3, lavanda 5,2 |
+| `mp3` | la letra es la del MP3 (el LRCLIB falso dijo 404), `llena=-1` siempre, sin ámbar, los renglones cambian entre 44, 56 y 68 s |
+| `nada` | con el reposo abierto la letra se ve; tras tocar (pared), abrir el buscador, un disco o la ayuda ya no hay reposo abierto para ella |
+| `cielo` | la regla 3 con **cielo, fiestas y clima encendidos**: de día con nubes (blanco 6,8; ámbar 4,7; lavanda 4,5), el 20-11 (fiesta) con lluvia (6,1 / 4,2 / 4,1), al anochecer (6,8 / 4,7 / 4,5) y de noche (7,2 / 4,9 / 4,8) |
+| `apagado` | con `letra_cielo=0` la forma de los cuadros de la tarjeta y sus dibujos de textura por cuadro (5,00) son los de la rama sin la letra; con ella, 10,00 (control); sin `ROCOLA_OS`, ni log ni archivos |
+| `reloj` | p50/p95/p99/max del trabajo de cada cuadro (`ROCOLA_CIELO_RELOJ`, NativeAOT, 70 s): **con la letra 1,62 / 2,39 / 3,24 / 11,8 ms; sin ella 1,67 / 2,53 / 4,67 / 228,8 ms** (3 328 y 2 791 cuadros; máquina compartida y cargada: el máximo de «sin» es un tropiezo de la máquina) |
+
+### 6.5 Lo que no se sabe
+
+- **Nada en el A4, ni con LRCLIB de verdad, ni con letras de canciones de verdad.** La sincronizada de LRCLIB es de línea: el llenado es parejo por renglón y
+  puede ir un poco adelantado o atrasado según el LRC.
+- La posición con **Spotify** sale de la fuente de Spotify (`CurrentTime` de `SpotifyFuente`, que `PosicionActual` ya usa): no se probó con Soloist real.
+- Se probó con las cuatro funciones del cielo vivo encendidas y fecha/clima forzados, no con las ideas de vidrio de otras ramas (VI1 a VI6).
+- El contraste se midió con la letra de repuesto de la máquina de pruebas (Trebuchet MS cae a DejaVu Sans Bold sin las letras del disco de Windows): en el A4
+  la forma de las letras cambia un poco, no la sombra ni los colores.
+- El horneado cuesta 1 a 2 ms por mapa (dos por cuadro como mucho): al cambiar de canción el primer renglón puede verse un cuadro más tarde (no medido en el A4).

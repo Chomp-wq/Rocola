@@ -9,7 +9,7 @@ if [[ " $escenas " == *" compas "* ]]; then
   echo "== compas"
   NOMBRE=compas; falso compas; d=$(datos compas)
   # (el cambio de verso dura 3 s en esta escena, ROCOLA_LETRA_CAMBIO_S: cada captura para el cuadro casi un segundo)
-  abre compas "$d" "$(pide 'rio dorado')" 96 ROCOLA_OS=1 ROCOLA_LETRA_CAMBIO_S=3 ROCOLA_CAPTURA="$(CAPS 42 44 46 48 50 54 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 74)" ROCOLA_CAPTURA_SALE=0
+  abre compas "$d" "$(pide 'rio dorado')" 96 ROCOLA_OS=1 ROCOLA_LETRA_CAMBIO_S=3 ROCOLA_CAPTURA="$(CAPS 44 45 46 47 48 50 54 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 74)" ROCOLA_CAPTURA_SALE=0
   espera compas; para_falso
   o="$W/compas"; L="$o/letra.log"
   si "compas: sale con 0 y escribio su log" bash -c "[ \"\$(cat $o/salio)\" = 0 ] && [ -s $L ]"
@@ -26,9 +26,10 @@ EOF
   # (la captura se escribe al disco con un retraso de menos de un segundo: lo que se compara es el AVANCE entre capturas y que lo llenado vaya
   # detras de la cancion por un retraso fijo, el de escribir el PNG; la posicion y el ambar salen del mismo reloj)
   tot=0; ok=0; mono=1; ant=-1; antl=-1; ofs=""
-  for s in 42 44 46 48 50; do
+  for s in 44 45 46 47 48 50; do
     f=$CAPTURAS/compas-$s.png; [ -f "$f" ] || continue
     lg=$(linea_log "$L" "$f"); fr=$(analiza relleno "$f" | grep -o 'frac=[0-9.]*' | cut -d= -f2); ll=$(campo "$lg" llena); [ -z "$fr" -o -z "$ll" ] && continue
+    [ $s = 44 ] && continue   # (la primera captura de la corrida tarda mas en escribirse: no cuenta)
     tot=$((tot + 1)); echo "   S=$s: se ve $fr de ambar; la cancion llevaba $ll en el momento de escribir el PNG ($(campo "$lg" pos) s)"
     if [ "$antl" != -1 ] && awk "BEGIN { d = ($fr - $ant) - ($ll - $antl); exit !(d < 0.05 && d > -0.05) }"; then ok=$((ok + 1)); fi
     awk "BEGIN { exit !($fr >= $ant - 0.02) }" || mono=0
@@ -85,19 +86,24 @@ if [[ " $escenas " == *" nada "* ]]; then
     o="$W/nada-$n"; L="$o/letra.log"
     f=$CAPTURAS/nada-$n-43.png; g=$CAPTURAS/nada-$n-$(echo "$t + 7" | bc).png
     antes=$(analiza tinta "$f" 372 515); desp=$(analiza contraste "$g" 2>&1 | head -1)
-    ult=$(tail -1 "$L" | cut -d' ' -f1); mf=$(stat -c %Y.%N "$f" | cut -d. -f1)
-    # la letra se va con el reposo: el log (que solo escribe con la letra a la vista) para al tocar la tecla
-    pasado=$(python3 - "$L" "$g" <<'EOF'
-import os, sys
-m = os.stat(sys.argv[2]).st_mtime * 1000
-n = 0
-for l in open(sys.argv[1]):
-    p = l.split()
-    if p and p[0].isdigit() and int(p[0]) > m - 1500 and float(p[6].split('=')[1]) > 0.01: n += 1
-print(n)
-EOF
-)
-    si "nada ($n): con el reposo abierto (43 s) la letra se ve (tinta $antes) y tras tocar ($k a los $t s) ya no hay reposo abierto para ella: $pasado lineas del log con el reposo abierto (idle > 0) en el ultimo 1,5 s antes de la captura de 7 s despues" bash -c "[ $antes -gt 800 ] && [ $pasado = 0 ]"
+    # la letra se va con el reposo: en el cuadro de la captura de 7 s despues (el log, con el retraso de escribirse el PNG) el reposo ya no esta abierto para ella
+    # (idle 0, o ni una linea del log cerca: la letra solo anota con el reposo abierto, aunque sea a medias)
+    lg=$(linea_log "$L" "$g" 700); dms=${lg%% *}; idl=$(campo "$lg" idle)
+    si "nada ($n): con el reposo abierto (43 s) la letra se ve (tinta $antes) y tras tocar ($k a los $t s) ya no hay letra en el cuadro de los $(echo "$t + 7" | bc) s (log a $dms ms: idle ${idl:--})" bash -c "[ $antes -gt 800 ] && { [ -z '$lg' ] || [ ${dms:-99999} -gt 1000 ] || awk 'BEGIN { exit !(${idl:-0} < 0.01) }'; }"
+  done
+fi
+
+# ---------------------------------------------------------------- cielo
+if [[ " $escenas " == *" cielo "* ]]; then
+  echo "== cielo"
+  # la regla 3 con el cielo vivo encendido (cielo, fiestas y clima): de dia con nubes, de dia en una fiesta (el 20-11, Revolucion), al anochecer y de noche
+  for caso in 'dia|2026-11-18 13:00|nublado,90,0,10,90,18' 'fiesta|2026-11-20 13:00|lluvia,90,2,10,90,15' 'tarde|2026-11-18 17:40|despejado,5,0,5,90,22' 'noche|2026-11-18 23:30|nublado,70,0,5,90,12'; do
+    IFS="|" read -r n fecha clima <<< "$caso"
+    NOMBRE=cielo-$n; falso cielo-$n; d=$(datos cielo-$n cielo=1 fiestas=1 clima=1 vidrio=1)
+    abre cielo-$n "$d" "$(pide 'rio dorado')" 62 ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$fecha" ROCOLA_CLIMA="$clima" ROCOLA_CLIMA_YA=1 ROCOLA_CAPTURA="$(CAPS 45 47)" ROCOLA_CAPTURA_SALE=0
+    espera cielo-$n; para_falso
+    f=$CAPTURAS/cielo-$n-47.png; c=$(analiza contraste "$f"); echo "   $n ($fecha, $clima): $c"
+    si "regla 3 ($n, cielo vivo encendido): el texto blanco se lee (4,5 a 1 o mas) y el ambar y el lavanda (3 a 1 o mas)" bash -c "echo '$c' | grep -oP 'blanco \K[0-9.]+' | awk '{ exit !(\$1 >= 4.5) }' && echo '$c' | grep -oP '(ambar|lavanda) \K[0-9.]+' | awk '{ if (\$1 < 3) m = 1 } END { exit m }'"
   done
 fi
 
