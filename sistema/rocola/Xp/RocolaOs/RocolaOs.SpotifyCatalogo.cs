@@ -293,6 +293,15 @@ namespace Rocola
                     if (string.Equals(par.Uri, c.Uri, StringComparison.Ordinal)) { if (par.Verif >= 0) return true; continue; }   // su pareja (salvo medida de que es otra grabacion)
                     if (par.Verif < 0) continue;
                 }
+                // (un MP3 sin etiquetas se llama como su archivo, «02 Cancion 2»: sin el numero de pista del principio, si el de Spotify no lo trae)
+                string t = local.Title ?? "";
+                int k = 0;
+                while (k < t.Length && char.IsDigit(t[k])) k++;
+                if (k > 0 && k <= 3 && k < t.Length && (t[k] == ' ' || t[k] == '.' || t[k] == '-') && !(c.Titulo ?? "").StartsWith(t.Substring(0, k), StringComparison.Ordinal))
+                {
+                    while (k < t.Length && (t[k] == ' ' || t[k] == '.' || t[k] == '-')) k++;
+                    local = new Track { Path = local.Path, Artist = local.Artist, Title = t.Substring(k), Album = local.Album, Genre = local.Genre };
+                }
                 if (RocolaOsMismaPorDatos(local, c.Titulo ?? "", c.Artista ?? "", c.DuracionMs, out porQue)) return true;
             }
             return false;

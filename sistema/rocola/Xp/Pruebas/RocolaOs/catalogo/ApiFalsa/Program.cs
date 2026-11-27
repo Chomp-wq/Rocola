@@ -175,7 +175,7 @@ internal static class ApiFalsa
 
     // (27-11-2026, mejoras de Spotify elegidas por el dueno: sin repetidas, sin ediciones repetidas, «Canciones de» filtrado) datos aparte, solo con
     // GET /control/nuevas (ni en las busquedas ni en las demas escenas):
-    //   - «Los Ejemplos» (el artista de XP de los datos de prueba) con «Cancion 2» de 3,239 s (la misma que la de su disco de XP), «Cancion 3 - Remastered
+    //   - «Disco Uno» (el «artista» de la cancion de XP de los datos de prueba: sin etiquetas, el nombre del disco) con «Cancion 2» de 3,239 s (la misma que la de su disco de XP), «Cancion 3 - Remastered
     //     2012» y «Cancion 1 (En Vivo)» (otra grabacion); y «Grupo Distinto» con otra «Cancion 2» de la misma duracion (otro artista)
     //   - «Quinteto Eco», que solo esta en Spotify: Eco Total, su Remastered 2011 y su Deluxe Edition, Eco Segundo (Deluxe Edition, 9 canciones) y su
     //     «- 25th Anniversary Edition» (5), Eco En Vivo y «Eco Total (Taylor's Version)» (otros discos); 17 canciones suyas, dos versiones de «Coro
@@ -183,7 +183,7 @@ internal static class ApiFalsa
     static void InventaNuevas()
     {
         if (artistas.Exists(x => x.Id == "art90")) return;
-        Artista ej = new Artista { Id = "art90", Nombre = "Los Ejemplos" }, gd = new Artista { Id = "art91", Nombre = "Grupo Distinto" };
+        Artista ej = new Artista { Id = "art90", Nombre = "Disco Uno" }   /* (los MP3 de prueba no traen etiquetas: XP toma el nombre del disco por artista) */, gd = new Artista { Id = "art91", Nombre = "Grupo Distinto" };
         artistas.Add(ej); artistas.Add(gd);
         Disco dej = new Disco { Id = "dis900", Nombre = "Disco Uno", Art = ej }, dgd = new Disco { Id = "dis901", Nombre = "Disco Distinto", Art = gd };
         Action<Disco, string, string, int, Artista> una = (d, id, nom, ms, inv) => { Cancion c = new Cancion { Id = id, Nombre = nom, Art = d.Art, Inv = inv, Dis = d, Numero = d.Canciones.Count + 1, Ms = ms }; d.Canciones.Add(c); canciones.Add(c); };

@@ -693,18 +693,19 @@ PY
     si "sinanidar d: en la pared de XP, ROJO+ABAJO abrio la estrella (circulo verde) y el rojo la cerro" bash -c "$(declare -f verde); ca='$ca'; verde sinanidar-estrella-en-xp 1 && verde sinanidar-estrella-cerrada 0"
     si "sinanidar: nada pedido" test "$(pedidos $o)" = 0 ;;
   repetidas)
-    # SIN REPETIDAS EN EL BUSCADOR (27-11-2026): «cancion 2» (tus dos «Cancion 2» de XP; la API falsa: la de Los Ejemplos, de 3,239 s como la tuya, y otra
+    # SIN REPETIDAS EN EL BUSCADOR (27-11-2026): «cancion 2» (tus dos «Cancion 2» de XP; la API falsa: la de «Disco Uno» (el artista de tu cancion sin etiquetas), de 3,239 s como la tuya, y otra
     # de «Grupo Distinto»): la de Los Ejemplos es la MISMA grabacion de la tuya y no sale; la de otro artista si. Despues «cancion 3» (la de Spotify dice
-    # (sin la c: es la tecla de la moneda) «- Remastered 2012»: la misma) y «cancion 1» (la de Spotify es «(En Vivo)»: otra grabacion, sale)
+    # «- Remastered 2012»: la misma) y «cancion 1» (la de Spotify es «(En Vivo)»: otra grabacion, sale)
     apifalsa $e; control nuevas; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,$(escribe2 9.5 'ancion 2'),15:8,15.1:8,15.2:8,15.3:8,15.4:8,15.5:8,15.6:8,15.7:8,15.8:8,$(escribe2 16.5 'ancion 3'),24:8,24.1:8,24.2:8,24.3:8,24.4:8,24.5:8,24.6:8,24.7:8,24.8:8,$(escribe2 25.5 'ancion 1')" 36 ROCOLA_OS=1 \
+    sed -i 's/moneda=67/moneda=90/' "$d/rocola_teclas.txt"   # (la moneda en la Z: la «c» de «cancion» era la moneda)
+    abre $e "$d" "7:90,8:27+38,$(escribe2 9.5 'cancion 2'),15:8,15.1:8,15.2:8,15.3:8,15.4:8,15.5:8,15.6:8,15.7:8,15.8:8,$(escribe2 16.5 'cancion 3'),24:8,24.1:8,24.2:8,24.3:8,24.4:8,24.5:8,24.6:8,24.7:8,24.8:8,$(escribe2 25.5 'cancion 1')" 36 ROCOLA_OS=1 \
       ROCOLA_CAPTURA="$(cap 14 repetidas-cancion-2),$(cap 22 repetidas-cancion-3),$(cap 33 repetidas-cancion-1)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; b="$d/rocola_os_bitacora.txt"
     grep 'ya estan en tu musica' "$b" | sort -u | sed 's/^/   /'
     si "repetidas: sale con 0" test "$(cat $o/salio)" = 0
-    si "repetidas: «cancion 2»: la de Los Ejemplos no sale (la tuya si)" contiene "$b" "«Cancion 2» de Los Ejemplos"
+    si "repetidas: «cancion 2»: la de Los Ejemplos no sale (la tuya si)" contiene "$b" "«Cancion 2» de Disco Uno"
     si "repetidas: «cancion 2»: la de Grupo Distinto se queda (otro artista)" nocontiene "$b" "«Cancion 2» de Grupo Distinto"
-    si "repetidas: «cancion 3»: la «- Remastered 2012» tampoco sale (la remasterizada es la misma grabacion)" contiene "$b" "«Cancion 3 - Remastered 2012» de Los Ejemplos"
+    si "repetidas: «cancion 3»: la «- Remastered 2012» tampoco sale (la remasterizada es la misma grabacion)" contiene "$b" "«Cancion 3 - Remastered 2012» de Disco Uno"
     si "repetidas: «cancion 1»: la «(En Vivo)» si sale (otra grabacion)" nocontiene "$b" "«Cancion 1 (En Vivo)»"
     si "repetidas: nada pedido" test "$(pedidos $o)" = 0 ;;
   ediciones)
