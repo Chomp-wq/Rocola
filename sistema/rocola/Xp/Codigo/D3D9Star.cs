@@ -2864,7 +2864,7 @@ namespace Rocola
                     stars.DrawQuad(wt, winQuad);
                 }
             }
-            PiezasConLaVentana(gw, uiPropia); RocolaOsLetraPinta();   // ROCOLA OS g380: (XP) PiezasConLaVentana(gw, uiPropia); — la letra de lo que suena en el cielo del reposo (K6): dos renglones sobre la raya del horizonte, bajo el panel del reposo y los textos de XP (RocolaOs/RocolaOs.LetraCielo.cs; sin ROCOLA_OS o con letra_cielo=0 no hace nada)   // el buscador con portadas: su casilla, lo elegido y sus tarjetas van con la ventana (BuscadorPortadasGpu.cs)
+            PiezasConLaVentana(gw, uiPropia); RocolaOsLetraPinta();   // ROCOLA OS g380: (XP) PiezasConLaVentana(gw, uiPropia); — la letra de lo que suena en el cielo del reposo (K6, como la de Apple Music): la columna de versos sobre la raya del horizonte, bajo el panel del reposo y los textos de XP (RocolaOs/RocolaOs.LetraCielo.cs; sin ROCOLA_OS o con letra_cielo=0 no hace nada)   // el buscador con portadas: su casilla, lo elegido y sus tarjetas van con la ventana (BuscadorPortadasGpu.cs)
             if (uiBotTex != IntPtr.Zero && uiBotW > 0 && uiBotH > 0)
             {
                 uint botAlfa = (uint)((1-idleBlend)*255);   // con el reposo del todo abierto va a opacidad cero: no se manda

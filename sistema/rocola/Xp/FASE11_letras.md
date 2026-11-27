@@ -189,6 +189,9 @@ BIEN (112 archivos, 17 con ganchos; esta revisión no toca `Codigo/`). El nivel 
 
 ## 6. La letra en el cielo del reposo (K6, maqueta 3), 27-11-2026
 
+> **SUSTITUIDA por la §7 (mismo día):** el dueño pidió que la letra se vea como la de Apple Music; ya no hay dos renglones centrados, ni llenado de ámbar,
+> ni lavanda. Lo que sigue se deja como historia de la maqueta 3 y de las pruebas que la acompañaron.
+
 Rama `worktree-agent-aaccd699f49f1d6eb`, encima de `0461bf0` y unida con `claude/modest-carson-fa2v2n`. Es lo que la §1 dejó «solo los datos»: **dibujar**
 la letra de lo que suena, **como la aprobó el dueño** (decisión del 20-11-2026, «Me gusta así la letra», maqueta 3; las maquetas se perdieron y esto sigue
 su descripción). Solo Rocola OS, solo la tarjeta (GPU), con **la misma función `letra_cielo=`** (encendida de fábrica: la que ya pedía la letra; apagada,
@@ -270,3 +273,106 @@ a 34 s, **un tramo sin voz de 34 a 44 s**, 44, 52 y 60 s. (Las capturas están f
 - El contraste se midió con la letra de repuesto de la máquina de pruebas (Trebuchet MS cae a DejaVu Sans Bold sin las letras del disco de Windows): en el A4
   la forma de las letras cambia un poco, no la sombra ni los colores.
 - El horneado cuesta 1 a 2 ms por mapa (dos por cuadro como mucho): al cambiar de canción el primer renglón puede verse un cuadro más tarde (no medido en el A4).
+
+## 7. La letra en el cielo del reposo, como la de Apple Music (K6 rehecho), 27-11-2026
+
+Petición del dueño de hoy, con una captura de Apple Music en el teléfono: «Te dije que la letra de las canciones debía verse como las de Apple Music».
+**Sustituye la §6** (la maqueta 3: dos renglones centrados que se llenan de ámbar, el siguiente en lavanda; ya no hay ámbar ni lavanda). Lo demás de la §6
+sigue: solo Rocola OS, solo la tarjeta (GPU), la misma función `letra_cielo=` (encendida de fábrica), la fuente (`RocolaOsLetraSuena.Actual`), la posición que se
+oye (`PosicionActual`), el reposo abierto (`idleBlend`) y dónde no sale, y «Letra: LRCLIB» / «Letra: el MP3».
+
+### 7.1 Qué se ve
+
+| Pieza | Cómo es |
+|---|---|
+| La columna | varios versos (el anterior arriba y los que siguen abajo, 5 o 6 según quepan) **alineados a la izquierda**, en la letra de los títulos de XP en negrita (Trebuchet MS, 0,052 x alto = 40 px en 1024x768), con aire entre versos (medio renglón). Un verso largo **se parte en renglones** (hasta 4; si sobra, el último termina en puntos), no se achica |
+| Dónde | de `x = 224` a `x = 978` y de `y = 108` a `y = 488` en 1024x768 (todo en proporción: `LetraGeometria`). El borde izquierdo es **a la derecha de la estrella en el extremo izquierdo de su recorrido**: su centro mínimo (`mx` de `StarTravelCenter`, 117) más 1,5 radios (el de `DrawDetailedMoon` en el reposo, 71). Abajo, 0,045 x alto sobre el panel del reposo **con el reposo del todo abierto** (la columna no se mueve mientras el panel sube); arriba, en 0,14 x alto |
+| La estrella | la estrella de XP **recorre todo el cielo**, no solo la izquierda (`StarTravelCenter`), así que el borde izquierdo no basta: donde la estrella esté en ese cuadro, la letra se **atenúa a 0,2** en un círculo de 1,25 radios (con borde suave desde 0,8 radios; las celdas son de 24 px), para no taparla. No se atenúa si la estrella está lejos |
+| El verso que se canta | **blanco opaco** con la sombra suave de antes (una nube y un filo, regla 3), hacia el tercio de arriba de la columna (a 0,27 de su alto) |
+| Los demás | **blanco translúcido** (0,38 el siguiente, un poco menos cuanto más lejos hasta 0,30) y **un poco desenfocados**, más cuanto más lejos (mezcla de 0,45 a 1 con el mapa desenfocado). El anterior se queda arriba a 0,34 y se apaga más arriba; todo se **desvanece por los bordes** de arriba y de abajo de la columna (15 % del alto de la columna, suave, sin cortes) |
+| Al cambiar de verso | la columna entera **sube con un resorte crítico** (sin rebote, ~0,55 s, `5,9 / 0,55` de frecuencia), con **35 ms de retraso por verso hacia abajo** (los de abajo llegan un poco después); el nuevo pasa de translúcido a opaco, de desenfocado a nítido y **crece de 0,96 a 1 desde su borde izquierdo**, todo porque alfa, desenfoque y tamaño son funciones de la **posición** de cada verso (su distancia al sitio del que se canta) |
+| Tramo sin voz > 5 s | (un renglón vacío del LRC, o antes del primer verso) en el sitio del verso, **tres puntos blancos que respiran** uno tras otro (crecen y se iluminan cada 2,6 s, con 0,16 de desfase), entran en 0,5 s y **se van 0,45 s antes del siguiente verso**. Si el tramo es de 5 s o menos, nada (el verso anterior sigue). El renglón vacío del final de la canción no cuenta |
+| La del MP3 (sin tiempos) | como Apple con la letra no sincronizada: **todos los versos igual de visibles** (blanco a 0,85, sin desenfoque, sin verso resaltado ni escala) y la columna **se desliza despacio y continua** a lo largo de la canción: el último verso queda en su sitio al acabar (`Reparto`) |
+| Lo demás | solo con el reposo abierto (de 0,55 a 1), se va en 0,15 s si se abre pared, buscador, disco, ayuda, Ctrl+F3/F4, atracción o video; «Letra: LRCLIB» / «Letra: el MP3» chiquito abajo a la derecha; **no se atenúa con la calma** |
+
+### 7.2 Cómo está hecho
+
+| Archivo (en `RocolaOs/`) | Qué lleva |
+|---|---|
+| `RocolaOs.LetraCielo.cs` | `RocolaOsLetraModelo` (cuentas puras: `Arma` los versos y los tramos sin voz, `Actual`, `PuntosVis`, `PuntoBrillo`, `AlfaD`/`BlurD`/`EscalaD`, `Mascara`, `Resorte`, `Reparto`), `RocolaOsLetraHornea` (`Parte` el verso en renglones con la medida de XP, `Dibuja` el mapa blanco con su sombra, `Desenfoca`, `Punto`), `Form1` (lo que XP sabe) y `GpuPanel` (estado, resortes, horneado y dibujo) |
+| `RocolaOs.LetraCieloPrueba.cs` | la orden `rocola-xp --prueba-letra-cielo-modelo`: 20 comprobaciones sin pantalla |
+
+- **Un verso = dos mapas**, el nítido y el desenfocado (el mismo, desenfocado con sigma de 0,075 x tamaño de letra): se hornean **una vez, en Prepara** (g381, fuera
+  del cuadro) y **UN mapa por cuadro como mucho**: el nítido del verso que falte primero (el que se canta, los que siguen, el anterior) y, en el cuadro
+  siguiente, su desenfocado (queda guardado un solo mapa pendiente). Se sueltan los lejanos (más de 4 antes o 11 después del que se canta) y todos al irse
+  el reposo. El mapa de un verso mide el ancho de la columna (755 px) más margen, por 56 px el renglón: hasta 14 versos x 2 mapas, unos 25 MB de textura como mucho.
+- **Cada verso tiene su posición** (arreglos del tamaño de la letra, una vez por canción: `letraY`, `letraVel`, `letraOk`). Al cambiar de verso, cada uno sigue un
+  **resorte crítico** (`Resorte`: solución exacta, estable con cualquier paso) hacia su sitio nuevo, que le llega con su retraso. Si el cambio es un salto de
+  más de 5 versos (buscar en la canción), se coloca sin animar. El tamaño de cada verso (cuántos renglones) se mide con la letra de XP la primera vez.
+- **El dibujo** (g380): cada mapa es una caja recortada a la columna y partida en tiras (para el desvanecido de arriba y abajo) y, si la estrella toca la caja,
+  en celdas de 24 px (para atenuarla cerca de la estrella); el alfa de cada esquina sale de `LetraAlfaEn`. Un lote (`DrawTexturedBatch`) por mapa. Sin memoria nueva
+  por cuadro (los vértices, un arreglo fijo).
+- Para las pruebas: `ROCOLA_LETRA_LOG=archivo` (una línea cada 50 ms con la letra a la vista: hora, posición, cosa de la columna, `y` del verso que se canta,
+  `mov` lo que le falta, y lo que tardaron el dibujo, el desenfoque y la subida; la primera línea, `geo`, dice dónde está la columna) y `ROCOLA_LETRA_CAMBIO_S`
+  (alarga el resorte: con 3 s se puede capturar a la mitad de un cambio; el retraso crece con él).
+
+### 7.3 Ganchos (rango g380-g389; los mismos dos de la §6, sin ninguno nuevo)
+
+| Id | Dónde | De XP | Ahora |
+|---|---|---|---|
+| g381 | `Codigo/D3D9Star.cs` (`RenderFrame`, tras `StepIdle`) | `idleBlend = StepIdle(...);` | `... RocolaOsLetraPrepara();`: el estado, los resortes y el horneado, antes de abrir el cuadro |
+| g380 | `Codigo/D3D9Star.cs` (`RenderFrame`, tras el buscador con portadas) | `PiezasConLaVentana(gw, uiPropia);` | `... RocolaOsLetraPinta();`: la columna, antes de la interfaz de XP del pie y del panel del reposo |
+
+Solo cambió el texto de la explicación de g380 (decía «dos renglones»). `ganchos.py`: TODO BIEN (112 archivos, 34 con ganchos).
+
+### 7.4 Las pruebas (`Pruebas/RocolaOs/letra-cielo/`, `bash prueba.sh PROGRAMA [escenas]`)
+
+Como en la §6.4 (la rocola entera fuera de pantalla, MP3 y LRCLIB **inventados**, el LRC de `datos.json` con 13 renglones: 0 vacío, 8, 14, 20 un verso largo,
+30, **36 vacío (12 s sin voz hasta el 48)**, 48, 54, 60, 66, 72, 80 y 88 vacío). Las escenas con medidas (`columna`, `mp3`, `nada`) van **con el cielo vivo
+apagado** (su sol, luna y nubes meten tinta clara); `cielo` es la que lo enciende. `analiza.py` mide con la geometría que el log dice (`geo`).
+
+| Escena | Qué comprueba |
+|---|---|
+| `ganchos` | `ganchos.py` TODO BIEN y g380-g381 en el manifiesto |
+| `modelo` | 20 comprobaciones puras (los versos y los tramos sin voz con y sin renglón vacío, un tramo corto sin puntos, los puntos antes del primer verso, `PuntosVis`, alfa/desenfoque/escala continuos y con los valores pedidos, la máscara, el resorte sin rebote y exacto con cualquier paso, el reparto parejo del MP3, partir un verso largo sin perder palabras y en 4 renglones como mucho) |
+| `columna` | la geometría (borde izquierdo ≥ 224 = estrella en su extremo izquierdo, derecho cerca del borde, vertical sobre la raya); **el resorte en el log** (en cada cambio el verso baja sin retroceder, sin pasarse más de 0,6 px y llega); varios renglones a la vista, todos arrancando en el borde izquierdo; el verso largo en 4 renglones de blanco opaco; el que se canta opaco y los demás translúcidos; el desvanecido de abajo; **regla 3** del verso opaco; en el cambio la tinta sube; **los tres puntos** en el tramo sin voz (a los 56 y 60 s, ningún verso opaco); y pasado el tramo el verso que vuelve es el opaco |
+| `mp3` | la letra es la del MP3, todos los versos igual de visibles (ni opacos ni translúcidos), alineados a la izquierda, la columna sube de los 44 a los 68 s y el verso de referencia no se mueve a más de 30 px por segundo de canción (lo normal: 6 a 19) |
+| `nada` | con el reposo abierto la letra se ve; tras tocar (pared, buscador, disco, ayuda) el log de la letra (que solo anota con la letra a la vista) calla 4 s antes de la captura |
+| `cielo` | la regla 3 con **cielo, fiestas y clima encendidos**: de día con nubes, el 20-11 (fiesta) con lluvia, al anochecer y de noche |
+| `apagado` | con `letra_cielo=0` la forma de los cuadros de la tarjeta y sus dibujos de textura (sueltos y en lote) son los de la rama sin la letra; con ella, más lotes (control); sin `ROCOLA_OS`, ni log ni archivos |
+| `reloj` | p50/p95/p99/max del trabajo de cada cuadro (`ROCOLA_CIELO_RELOJ`, NativeAOT, 70 s) con la letra y sin ella |
+
+**Resultados (27-11-2026, la máquina compartida con carga de 20 a 45 en 4 núcleos, una escena a la vez):**
+
+| Qué | Resultado |
+|---|---|
+| Compila (JIT, `dotnet build -c Release`) | 0 errores; los 13 avisos de siempre |
+| NativeAOT (`dotnet publish -p:PublishAot=true -r linux-x64`) | 0 errores; los mismos 13 avisos; **0 avisos IL/AOT** |
+| `prueba.sh` completa (JIT; `reloj` en NativeAOT) | **37 BIEN, 0 MAL** (ganchos 2, modelo 1 con sus 20, columna 13, mp3 6, nada 4, cielo 4, apagado 5, reloj 1; los números de las escenas están en este documento) |
+| `modelo` | 20 BIEN, 0 MAL |
+| Resorte en el log (`columna`, cambio de 3 s) | 8 cambios de verso: ninguno retrocede, se pasan 0,4 px como mucho (redondeo) y llegan al 95 % en 2,9 s con el resorte de 3 s (con el de 0,55 s serían 0,44 s, por la cuenta) |
+| Regla 3 (blanco opaco con sombra contra el cielo, medido en el verso que se canta) | cielo de XP 7,6; con cielo vivo: de día con nubes 7,9; el 20-11 con lluvia 8,5; al anochecer 8,3; de noche 8,0 (se pide 4,5) |
+| `apagado` | con `letra_cielo=0`: misma forma de cuadros, 5,00 dibujos sueltos y 2,00 lotes por cuadro (igual que sin la letra); con la letra, 6,00 y 6,00; sin `ROCOLA_OS`: ni log ni archivos |
+| `reloj` (NativeAOT, 70 s, p50/p95/p99/max en ms por cuadro) | **con la letra 2,41 / 4,56 / 9,20 / 27,0; sin ella 2,29 / 3,54 / 6,58 / 169,3** (891 y 1 275 cuadros). Con la máquina a carga 35 la cifra absoluta no vale (la §6 midió 1,62 / 2,39 / 3,24 con la máquina más libre): vale la diferencia, unos 0,1 ms en p50 y 1 a 2,6 ms en p95 y p99 (el horneado y las tiras del dibujo); el máximo de «sin» es un tropiezo de la máquina |
+| Horneado (de la columna `ms_dibuja`, `ms_borra` y `ms_sube` del log, carga 30) | el mapa nítido 1,5 a 6 ms, el desenfocado 0,7 a 2 ms, la subida 0,4 a 1 ms; uno por cuadro |
+
+**Lo que falló por el camino y se corrigió (no era de antes):** la geometría medida con el panel a medio subir (el log ahora anota `geo` con el panel abierto del todo y la
+columna usa su posición final: así no se mueve mientras el reposo se abre); las manchas de la estrella y la luna del cielo vivo contaban como tinta (las escenas con
+medidas van con el cielo vivo apagado); la estrella atenuando el verso que se canta hasta quitarle el contraste (el círculo de atenuación bajó de 1,9 a 1,25 radios:
+`cielo-fiesta` medía 2,67 con la estrella cerca y ahora 8,5); un horneado de dos mapas por cuadro con picos de 10 a 20 ms bajo carga (ahora uno por cuadro y la sombra se
+desenfoca una vez en vez de dos).
+
+### 7.5 Lo que no se sabe
+
+- **Nada en el A4, ni con LRCLIB de verdad, ni con letras de canciones de verdad, ni comparado con la captura de Apple Music del dueño** (no la tengo: se hizo con
+  su descripción). Los parámetros que dependen del gusto están como constantes: tamaño de letra 0,052, alfas 0,38 / 0,34 / 0,85, desenfoque, 0,55 s, 35 ms de retraso.
+- **La estrella recorre todo el cielo.** La letra no puede evitarla del todo: el borde izquierdo la deja pasar a su izquierda (donde estaba en la captura del dueño)
+  y, cuando pasa por encima de la columna, la letra se atenúa a 0,2 en un círculo de 1,25 radios alrededor de ella, así que **ese trozo del verso que se canta
+  deja de ser blanco opaco** mientras la estrella pasa (regla 3 contra regla «no tapar la estrella»: gana la estrella). Si el dueño prefiere lo contrario, es una constante.
+- El contraste (regla 3) se midió con la letra de repuesto de la máquina (Trebuchet MS cae a DejaVu Sans Bold sin las letras del disco de Windows): en el A4 la forma
+  cambia un poco, no la sombra ni los colores. Se midió sin la estrella encima del verso.
+- Con Spotify la posición sale de su fuente (como en la §6): no se probó con Soloist real. La sincronizada de LRCLIB es de línea: el verso entra a su tiempo, no por palabra.
+- El horneado cuesta más que el de los dos renglones de la §6 (versos de hasta 4 renglones, dos mapas por verso, el desenfoque): **medido a 1,5 a 6 ms por mapa con la
+  máquina a carga 20 a 45 en 4 núcleos** (las cifras de `reloj` salen muy ruidosas con esa carga); en el A4 sin medir. Al empezar la canción los versos de abajo
+  aparecen uno por cuadro (unos 12 cuadros).
+- El mapa nítido y el desenfocado se mezclan con dos alfas (no una mezcla exacta): el resultado es parecido, no idéntico, a desenfocar con radio variable.

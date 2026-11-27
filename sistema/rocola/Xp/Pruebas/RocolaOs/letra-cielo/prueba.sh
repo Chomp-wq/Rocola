@@ -1,5 +1,5 @@
 #!/bin/bash
-# LA PRUEBA DE LA LETRA EN EL CIELO (K6; RocolaOs/RocolaOs.LetraCielo.cs; FASE11_letras.md §6). La rocola entera fuera de pantalla (1024x768, llvmpipe),
+# LA PRUEBA DE LA LETRA EN EL CIELO (K6; RocolaOs/RocolaOs.LetraCielo.cs; FASE11_letras.md §7, la letra como la de Apple Music). La rocola entera fuera de pantalla (1024x768, llvmpipe),
 # con la tarjeta de sonido de prueba con reloj (suena a su ritmo), MP3 y letras INVENTADOS (hazmp3.py de ../letras: un tono con su ID3 y su USLT) y un
 # LRCLIB FALSO (falso.py de ../letras, con datos.json de aqui). Nunca letras de canciones de verdad.
 #   bash prueba.sh PROGRAMA [escenas...]
@@ -7,20 +7,22 @@
 #   BASE:     el programa de antes de la letra (JIT; de fabrica /root/rocola-trabajo/fase11/letra-cielo/base) para «apagado»
 #   W:        la carpeta de trabajo (de fabrica /root/rocola-trabajo/fase11/letra-cielo/prueba; se rehace); CAPTURAS (de fabrica $W/capturas)
 #   PY:       donde esta brotli (pip install --target PY brotli)
-# escenas (de fabrica todas): ganchos modelo apagado compas mp3 nada cielo reloj (el sinvoz va dentro de compas)
+# escenas (de fabrica todas): ganchos modelo apagado columna mp3 nada cielo reloj
 #   ganchos  ganchos.py TODO BIEN y los dos ganchos (g380, g381) en el manifiesto
-#   modelo   `rocola-xp --prueba-letra-cielo-modelo`: las cuentas puras (llenado, cambio de verso, sin voz, reparto de la del MP3)
+#   modelo   `rocola-xp --prueba-letra-cielo-modelo`: las cuentas puras (los versos y los tramos sin voz, el alfa, el desenfoque y el tamano segun la distancia,
+#            el resorte, el reparto de la del MP3, partir un verso largo)
 #   apagado  con letra_cielo=0 la cinta de la tarjeta del reposo con musica es la de BASE; con letra_cielo=1 es otra (control); sin ROCOLA_OS, nada
-#   compas   la letra sincronizada: capturas a mitad del llenado, en el cambio de verso, y el compas (el llenado va al tiempo de la cancion)
-#   mp3      la letra del MP3 (sin tiempos): los renglones suben despacio, «Letra: el MP3»
+#   columna  la letra sincronizada: la geometria de la columna, versos alineados a la izquierda, el que se canta opaco y los demas translucidos, el verso largo
+#            partido, el desvanecido, el resorte del cambio de verso (3 s con ROCOLA_LETRA_CAMBIO_S), los tres puntos del tramo sin voz y su salida
+#   mp3      la letra del MP3 (sin tiempos): todos igual de visibles, la columna se desliza continua, «Letra: el MP3»
 #   nada     no sale con la pared, el buscador, el disco abierto ni la ayuda
-#   cielo    la regla 3 (la letra se lee) con el cielo vivo encendido: de dia con nubes, en una fiesta, al anochecer y de noche
+#   cielo    la regla 3 (el verso que se canta se lee) con el cielo vivo encendido: de dia con nubes, en una fiesta, al anochecer y de noche
 #   reloj    p50/p95/p99/max del trabajo de cada cuadro con la letra y sin ella (ROCOLA_CIELO_RELOJ), en NativeAOT si AOTMIO
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 LET="$G/../letras"; CIE="$G/../cielo"
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-ganchos modelo apagado compas mp3 nada cielo reloj}"
+escenas="${*:-ganchos modelo apagado columna mp3 nada cielo reloj}"
 T0=/root/rocola-trabajo/fase11/letra-cielo
 W=${W:-$T0/prueba}
 BASE=${BASE:-$T0/base}

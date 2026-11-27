@@ -2,7 +2,7 @@
  "llave": "llave-falsa-de-genius-0123456789",
  "lrclib": {
   "Rio Dorado|Los Probados": {
-   "synced": "[ti:Rio Dorado]\n[ar:Los Probados]\n[00:00.00]\n[00:08.00]linea inventada numero uno del principio\n[00:16.00]linea inventada numero dos que sigue despues\n[00:24.00]verso largo para medir el compas del llenado de ambar\n[00:34.00]\n[00:44.00]el verso que vuelve despues del tramo sin voz\n[00:52.00]penultimo renglon de la cancion de prueba\n[01:00.00]ultimo renglon antes del final\n[01:08.00]\n",
+   "synced": "[ti:Rio Dorado]\n[ar:Los Probados]\n[00:00.00]\n[00:08.00]linea inventada numero uno del principio de la cancion\n[00:14.00]linea inventada numero dos que sigue despues\n[00:20.00]verso largo inventado para medir como se parte en varios renglones dentro de la columna de la letra\n[00:30.00]otra linea inventada mas corta\n[00:36.00]\n[00:48.00]el verso que vuelve despues del tramo sin voz\n[00:54.00]penultimo renglon de la cancion de prueba\n[01:00.00]un renglon mas que entra por abajo\n[01:06.00]otro renglon para llenar la columna entera\n[01:12.00]ya casi acaba esta cancion inventada\n[01:20.00]ultimo renglon antes del final\n[01:28.00]\n",
    "plain": null
   }
  },
