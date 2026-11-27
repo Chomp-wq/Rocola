@@ -100,12 +100,12 @@ namespace Rocola
             Si("Tablas: la primera de cada grupo es una funcion registrada (cielo, fiestas, clima, vidrio) y las demas dependen de ella", madres && ideas);
             Si("Tablas: ninguna clave repetida", !repetidas);
             Si("Tablas: la letra en el cielo (letra_cielo) es una funcion registrada de si o no", RocolaOs.Busca(Form1.ImagenLetra.Clave) != null && RocolaOs.ClaveDe(Form1.ImagenLetra.Clave) != null);
-            // las 6+6+4+6 ideas del plan, todas en la hoja: las claves de las cuatro funciones menos la propia y menos ciudad_bar
+            // las 6+6+4+6 ideas del plan, todas en la hoja: las claves de las cuatro funciones menos la propia y menos ciudad_bar, bar_lat y bar_lon
             foreach (string func in new[] { "cielo", "fiestas", "clima", "vidrio" })
             {
                 RocolaOsFuncion fu = RocolaOs.Busca(func);
                 int n = 0;
-                foreach (RocolaOsClave c in fu.Claves) if (c.Nombre != "ciudad_bar") n++;
+                foreach (RocolaOsClave c in fu.Claves) if (c.Nombre != "ciudad_bar" && c.Nombre != "bar_lat" && c.Nombre != "bar_lon") n++;
                 int enHoja = 0;
                 foreach (Form1.ImagenFila[] t in tablas) if (t[0].Clave == func) enHoja = t.Length - 1;
                 Si("Tablas: «" + func + "»: las " + n + " ideas de su funcion estan todas en la hoja (" + enHoja + ")", n == enHoja);

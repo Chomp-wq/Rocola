@@ -2,7 +2,7 @@
 # LA PRUEBA DE LA HOJA IMAGEN DE CTRL+F4 (27-11-2026; RocolaOs/RocolaOs.VentanaImagen.cs y RocolaOs.VentanaImagenFechas.cs;
 # FASE11_hoja-imagen.md). Con datos INVENTADOS (los de partida de las escenas de ventanas, DATOS0), fuera de pantalla (1024x768) y sin sonido.
 # NADA de esto es el A4.
-#   bash prueba.sh PROGRAMA [orden interruptores ver raton tecla fechas sin]
+#   bash prueba.sh PROGRAMA [orden interruptores ver raton tecla fechas coordenadas sin]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT, con el ejecutable rocola-xp)
 #   W (de fabrica /root/rocola-trabajo/fase11/imagen/prueba), DATOS0, CAPTURAS (donde se copian las capturas que se ensenan)
 # Las cuatro funciones del cielo vienen encendidas de fabrica (27-11-2026): la escena «interruptores» las parte de APAGADAS a mano (rocola_os.txt); las demas las
@@ -12,7 +12,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-orden interruptores ver raton tecla fechas sin}"
+partes="${*:-orden interruptores ver raton tecla fechas coordenadas sin}"
 W=${W:-/root/rocola-trabajo/fase11/imagen/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 CAPTURAS=${CAPTURAS:-}
@@ -155,6 +155,30 @@ if [[ " $partes " == *" fechas "* ]]; then
   abre fechas3 "$d" "$P3" "10.5:imagen-fechas-elegida,12:imagen-fechas-quitada" 15 TERM ROCOLA_OS=1
   si "elegido el renglon de Juan y «Quitar la elegida»: ya no esta, y lo demas queda como estaba" bash -c "! grep -q 'Juan' '$d/rocola_fechas.txt' && grep -qx '# mis fechas' '$d/rocola_fechas.txt' && grep -qx '31-10;mensaje;Pasen a bailar' '$d/rocola_fechas.txt'"
   for f in imagen-fechas-elegida imagen-fechas-quitada; do guarda_captura "$W/fechas3/$f.png" "$f.png"; done
+fi
+
+# coordenadas: la latitud y la longitud exactas del bar (bar_lat= y bar_lon=) en la hojita Dia y noche: una que no vale se rechaza (y Esc no guarda), las dos por separado,
+# las dos pegadas de un mapa, y quitarlas. «Poner latitud y longitud» (639,455), «Quitar las coordenadas» (857,455).
+if [[ " $partes " == *" coordenadas "* ]]; then
+  echo "== coordenadas (bar_lat y bar_lon desde la hoja)"
+  d=$(datos coordenadas "$TODO")
+  P="$IMAGEN,9:clic:639:455,$(escribe 10.5 0.15 95),12.5:13,13.5:27,15:clic:639:455,$(escribe 16 0.15 20.6597),17.5:13,$(escribe 18.5 0.15 -103.3496),20.2:13"
+  abre coordenadas "$d" "$P" "12.8:imagen-coordenadas-error,22:imagen-coordenadas" 24 TERM ROCOLA_OS=1
+  b="$d/rocola_os_bitacora.txt"; o="$W/coordenadas"
+  si "sale con 0" test "$(cat $o/salio)" = 0
+  si "una latitud de 95 se rechaza y Esc no guarda nada de ella; las dos separadas si: bar_lat=20.6597 y bar_lon=-103.3496" \
+     bash -c "! grep -q '^bar_lat=95' '$d/rocola_os.txt' && grep -qx 'bar_lat=20.6597' '$d/rocola_os.txt' && grep -qx 'bar_lon=-103.3496' '$d/rocola_os.txt' && grep -qF 'Imagen: bar_lat=20.6597 bar_lon=-103.3496' '$b'"
+  si "el cielo se mueve a las coordenadas («coordenadas del bar (20.66, -103.35)» en la bitacora, sin pedir el lugar por internet)" \
+     bash -c "grep -qF 'coordenadas del bar (20.66, -103.35)' '$b'"
+  si "la captura mide 1024x768" bash -c "[ \"\$(medida $o/imagen-coordenadas.png)\" = 1024x768 ]"
+  guarda_captura "$o/imagen-coordenadas-error.png" "imagen-coordenadas-error.png"; guarda_captura "$o/imagen-coordenadas.png" "imagen-coordenadas.png"
+  # quitarlas (con Quitar), y despues pegar las dos de un mapa («19.4326, -99.1332»)
+  P3="$IMAGEN,9:clic:857:455"
+  abre coordenadas3 "$d" "$P3" "" 13 TERM ROCOLA_OS=1
+  si "«Quitar las coordenadas»: ya no estan bar_lat ni bar_lon (vuelve a la ciudad o a internet) y lo demas sigue" bash -c "! grep -q '^bar_' '$d/rocola_os.txt' && grep -qx 'cielo=1' '$d/rocola_os.txt' && grep -qF 'bar_lat y bar_lon quitadas' '$b'"
+  P2="$IMAGEN,9:clic:639:455,$(escribe 10.5 0.15 '19.4326, -99.1332'),14:13"
+  abre coordenadas2 "$d" "$P2" "" 17 TERM ROCOLA_OS=1
+  si "pegadas las dos («19.4326, -99.1332») de una vez: bar_lat=19.4326 y bar_lon=-99.1332" bash -c "grep -qx 'bar_lat=19.4326' '$d/rocola_os.txt' && grep -qx 'bar_lon=-99.1332' '$d/rocola_os.txt'"
 fi
 
 # sin: sin ROCOLA_OS, Ctrl+F4 no hace nada (XP tal cual)

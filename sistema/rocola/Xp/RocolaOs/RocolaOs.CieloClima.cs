@@ -5,12 +5,14 @@
 //     en rocola_clima.txt y vale 3 horas: sin internet, a las 3 h el cielo vuelve a lo normal (despejado).
 //   - EL LUGAR (con ciudad_bar=0): ipapi.co, ipwho.is o get.geojs.io, una vez por semana (rocola_clima_lugar.txt); sin internet, el ultimo; sin
 //     ninguno, la Ciudad de Mexico.
+//   - EL METAR (RocolaOs.CieloMetar.cs): la observacion del aeropuerto mas cercano (a 40 km o menos), si es de menos de 90 min, manda sobre Open-Meteo.
 //   - rocola_fechas.txt: se vuelve a leer cuando cambia (RocolaOs.CieloFiestas.cs).
 // Para las pruebas: ROCOLA_CLIMA (un tipo, o «tipo,nubes,lluvia,viento,direccion,temperatura»: sin red, no caduca), ROCOLA_CLIMA_API y
 // ROCOLA_LUGAR_API (servidores falsos), ROCOLA_CIUDAD («lat,lon»: el lugar sin red) y ROCOLA_CLIMA_YA (sin la espera de 20 s del principio).
 // Nunca llaves: ni Open-Meteo ni los del lugar las piden. Solo los escribe el programa.
 using System;
 using System.Globalization;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -36,16 +38,23 @@ namespace Rocola
         internal readonly bool DeDia;            // lo que dice Open-Meteo (is_day)
         internal readonly DateTime Medida;       // cuando se midio (UTC)
         internal readonly bool Forzado;          // ROCOLA_CLIMA o «Ver como se veria»: no caduca
+        internal readonly string Fuente;         // «metar» (observado en un aeropuerto) o «» (Open-Meteo, forzado)
+        internal readonly string Estacion;       // el id de la estacion del METAR («MMGL»)
+        internal readonly float Km;              // su distancia al bar
         internal const double ValeHoras = 3;
         internal static readonly RocolaOsClima Despejado0 = new RocolaOsClima(RocolaOsClimaTipo.Despejado, -1, 0f, 0f, 0f, 0f, float.NaN, float.NaN, true, DateTime.MinValue, false);
         internal RocolaOsClima(RocolaOsClimaTipo tipo, int codigo, float nubes, float lluvia, float viento, float direccion, float temperatura, float visibilidad,
-                               bool deDia, DateTime medida, bool forzado)
+                               bool deDia, DateTime medida, bool forzado) : this(tipo, codigo, nubes, lluvia, viento, direccion, temperatura, visibilidad, deDia, medida, forzado, "", "", 0f) { }
+        internal RocolaOsClima(RocolaOsClimaTipo tipo, int codigo, float nubes, float lluvia, float viento, float direccion, float temperatura, float visibilidad,
+                               bool deDia, DateTime medida, bool forzado, string fuente, string estacion, float km)
         {
+            Fuente = fuente ?? ""; Estacion = estacion ?? ""; Km = km;
             Tipo = tipo; Codigo = codigo; Nubes = Math.Max(0f, Math.Min(1f, nubes)); Lluvia = Math.Max(0f, lluvia); Viento = Math.Max(0f, viento);
             Direccion = direccion; Temperatura = temperatura; Visibilidad = visibilidad; DeDia = deDia; Medida = medida; Forzado = forzado;
         }
         // si todavia vale (3 h desde la medida; el forzado siempre)
         internal bool Vigente(DateTime utcAhora) { return Forzado || (Tipo != RocolaOsClimaTipo.SinSaber && utcAhora >= Medida.AddMinutes(-10) && (utcAhora - Medida).TotalHours <= ValeHoras); }
+        internal RocolaOsClima AClimaConMedida(DateTime medida) { return new RocolaOsClima(Tipo, Codigo, Nubes, Lluvia, Viento, Direccion, Temperatura, Visibilidad, DeDia, medida, Forzado, Fuente, Estacion, Km); }   // (las pruebas)
         internal string Nombre { get { return NombreDe(Tipo); } }
         internal static string NombreDe(RocolaOsClimaTipo t)
         {
@@ -127,7 +136,7 @@ namespace Rocola
         internal string Texto(double lat, double lon)
         {
             StringBuilder sb = new StringBuilder();
-            sb.Append("# el ultimo clima de afuera (Open-Meteo); lo escribe rocola-xp y vale 3 horas\n");
+            sb.Append("# el ultimo clima de afuera (Open-Meteo o el METAR de un aeropuerto cercano); lo escribe rocola-xp y vale 3 horas\n");
             sb.Append("medida=").Append(Medida.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)).Append('\n');
             sb.Append("codigo=").Append(Codigo.ToString(CultureInfo.InvariantCulture)).Append('\n');
             sb.Append("nubes=").Append(((int)Math.Round(Nubes * 100)).ToString(CultureInfo.InvariantCulture)).Append('\n');
@@ -137,6 +146,7 @@ namespace Rocola
             sb.Append("temperatura=").Append(F(Temperatura)).Append('\n');
             sb.Append("visibilidad=").Append(F(Visibilidad)).Append('\n');
             sb.Append("de_dia=").Append(DeDia ? "1" : "0").Append('\n');
+            if (Fuente.Length > 0) sb.Append("fuente=").Append(Fuente).Append("\nestacion=").Append(Estacion).Append("\nkm=").Append(F(Km)).Append('\n');
             sb.Append("lat=").Append(lat.ToString("0.00", CultureInfo.InvariantCulture)).Append('\n');
             sb.Append("lon=").Append(lon.ToString("0.00", CultureInfo.InvariantCulture)).Append('\n');
             return sb.ToString();
@@ -146,7 +156,7 @@ namespace Rocola
         internal static RocolaOsClima DeTexto(string texto)
         {
             if (string.IsNullOrEmpty(texto)) return null;
-            DateTime medida = DateTime.MinValue; int codigo = -1; float nubes = float.NaN, lluvia = 0, viento = 0, dir = 0, temp = float.NaN, vis = float.NaN; bool dia = true;
+            DateTime medida = DateTime.MinValue; int codigo = -1; float nubes = float.NaN, lluvia = 0, viento = 0, dir = 0, temp = float.NaN, vis = float.NaN, km = 0; bool dia = true; string fuente = "", est = "";
             foreach (string r in texto.Split('\n'))
             {
                 string l = r.Trim(); int i = l.IndexOf('=');
@@ -163,10 +173,13 @@ namespace Rocola
                     case "temperatura": if (Num(v, out f)) temp = f; break;
                     case "visibilidad": if (Num(v, out f)) vis = f; break;
                     case "de_dia": dia = v != "0"; break;
+                    case "fuente": fuente = v == "metar" ? "metar" : ""; break;
+                    case "estacion": est = v.Length <= 8 ? v : ""; break;
+                    case "km": if (Num(v, out f)) km = f; break;
                 }
             }
             if (medida == DateTime.MinValue || codigo < 0 || float.IsNaN(nubes)) return null;
-            return new RocolaOsClima(DeCodigo(codigo, nubes), codigo, nubes, lluvia, viento, dir, temp, vis, dia, DateTime.SpecifyKind(medida, DateTimeKind.Utc), false);
+            return new RocolaOsClima(DeCodigo(codigo, nubes), codigo, nubes, lluvia, viento, dir, temp, vis, dia, DateTime.SpecifyKind(medida, DateTimeKind.Utc), false, fuente, est, km);
         }
         // LA RESPUESTA DE OPEN-METEO (/v1/forecast?...&current=...); null si no trae lo necesario
         internal static RocolaOsClima DeOpenMeteo(JsonElement raiz, DateTime utcAhora)
@@ -298,7 +311,7 @@ namespace Rocola
                     bool cielo = FuncionVa("cielo"), clima = FuncionVa("clima");
                     // el lugar: solo si alguna idea lo usa (el sol y la luna de DN1-DN6, el filo de luz VI5, el clima), con ciudad_bar=0 y sin
                     // ROCOLA_CIUDAD; una vez por semana, como mucho un intento por hora
-                    if ((clima || (cielo && UsaElSol())) && CiudadElegida == 0 && CiudadForzada == null && (Lugar == null || Lugar.Viejo(ahora)) && (ahora - ultimoLugar).TotalHours >= 1)
+                    if ((clima || (cielo && UsaElSol())) && CiudadElegida == 0 && CiudadForzada == null && !CoordenadasDelBar(out _, out _) && (Lugar == null || Lugar.Viejo(ahora)) && (ahora - ultimoLugar).TotalHours >= 1)
                     {
                         ultimoLugar = ahora;
                         BuscaLugar();
@@ -330,6 +343,7 @@ namespace Rocola
 
         private static void LeeGuardados()
         {
+            LeeEstacionGuardada();
             try
             {
                 string[] l = Form1.RocolaOsLeeLineas(RocolaOs.Datos(ArchivoLugar));
@@ -424,11 +438,35 @@ namespace Rocola
             RocolaOs.Apunta("cielo", "no se supo el lugar por internet (" + errores + "); vale " + (Lugar != null ? "el ultimo, " + Describe(Lugar) : "la Ciudad de Mexico"));
         }
         private static string Host(string url) { try { return new Uri(url).Host; } catch { return url; } }
+        // EL CLIMA DE AHORA (cada 15 min): Open-Meteo (el pronostico del modelo para las coordenadas) y, si hay una estacion cerca, su METAR (lo observado).
+        // Con un METAR de menos de 90 min manda el METAR; Open-Meteo rellena lo que no trae y es el clima si no hay METAR. false si no hay nada nuevo.
         private static bool PideClima(double la, double lo)
+        {
+            RocolaOsClima om = PideOpenMeteo(la, lo);
+            if (om != null) climaOm = om;
+            float km; RocolaOsMetarObs ob = null;
+            try { ob = PideMetar(la, lo, out km); } catch (Exception ex) { RocolaOs.Falla("cielo", "METAR", ex); km = 0; }
+            DateTime ahora = DateTime.UtcNow;
+            RocolaOsClima c = ob != null && ob.Fresco(ahora) ? ob.AClima(climaOm, ahora, km) : om;
+            if (c == null) return false;
+            Interlocked.Increment(ref climaBien);
+            RocolaOsClima antes = ClimaGuardado;
+            Volatile.Write(ref climaGuardado, c);
+            try { Form1.RocolaOsEscribeSeguro(RocolaOs.Datos(ArchivoClima), c.Texto(la, lo)); } catch (Exception ex) { RocolaOs.Falla("cielo", "guardar " + ArchivoClima, ex); }
+            if (antes == null || antes.Tipo != c.Tipo || antes.Fuente != c.Fuente || antes.Estacion != c.Estacion)
+                RocolaOs.Apunta("cielo", "el clima de afuera: " + c.Nombre + " (codigo " + c.Codigo + ", nubes " + (int)Math.Round(c.Nubes * 100) + " %, "
+                    + c.Temperatura.ToString("0", CultureInfo.InvariantCulture) + " C; " + (c.Fuente == "metar" ? "observado en " + c.Estacion + " a " + c.Km.ToString("0.#", CultureInfo.InvariantCulture) + " km"
+                    + (ob != null && ob.Tiempo.Length > 0 ? ", «" + ob.Tiempo + "»" : "") : "pronostico de Open-Meteo") + ")");
+            OtraFoto();
+            return true;
+        }
+        private static string Cuatro(double v) { return v.ToString("0.####", CultureInfo.InvariantCulture); }
+        private static RocolaOsClima PideOpenMeteo(double la, double lo)
         {
             string b = Environment.GetEnvironmentVariable("ROCOLA_CLIMA_API");
             string baseUrl = string.IsNullOrEmpty(b) ? "https://api.open-meteo.com" : b.TrimEnd('/');
-            string url = baseUrl + "/v1/forecast?latitude=" + la.ToString("0.00", CultureInfo.InvariantCulture) + "&longitude=" + lo.ToString("0.00", CultureInfo.InvariantCulture)
+            // (las coordenadas con hasta 4 decimales, unos 11 m: la rejilla del modelo es de 9 a 25 km, pero Open-Meteo ajusta la temperatura a la altura del punto)
+            string url = baseUrl + "/v1/forecast?latitude=" + Cuatro(la) + "&longitude=" + Cuatro(lo)
                 + "&current=weather_code,cloud_cover,precipitation,rain,showers,snowfall,wind_speed_10m,wind_direction_10m,temperature_2m,visibility,is_day";
             Interlocked.Increment(ref climaPedidos);
             string e;
@@ -439,18 +477,10 @@ namespace Rocola
                 string f = e ?? "respuesta sin clima";
                 if (f != climaFallo) RocolaOs.Apunta("cielo", "no se pudo pedir el clima: " + f + (ClimaGuardado != null ? " (vale el ultimo hasta las 3 h)" : ""));
                 climaFallo = f;
-                return false;
+                return null;
             }
             climaFallo = "";
-            Interlocked.Increment(ref climaBien);
-            RocolaOsClima antes = ClimaGuardado;
-            Volatile.Write(ref climaGuardado, c);
-            try { Form1.RocolaOsEscribeSeguro(RocolaOs.Datos(ArchivoClima), c.Texto(la, lo)); } catch (Exception ex) { RocolaOs.Falla("cielo", "guardar " + ArchivoClima, ex); }
-            if (antes == null || antes.Tipo != c.Tipo)
-                RocolaOs.Apunta("cielo", "el clima de afuera: " + c.Nombre + " (codigo " + c.Codigo + ", nubes " + (int)Math.Round(c.Nubes * 100) + " %, "
-                    + c.Temperatura.ToString("0", CultureInfo.InvariantCulture) + " C)");
-            OtraFoto();
-            return true;
+            return c;
         }
     }
 }

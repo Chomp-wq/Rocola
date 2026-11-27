@@ -49,6 +49,12 @@ clave, basta cambiar la linea `ImagenLetra` (o anadir una fila a `ImagenDia`). S
 
 ### La ciudad del bar
 
+(27-11-2026) Debajo de la barra, «Poner latitud y longitud» (dos hojitas de texto como las de Tus fechas: la latitud y luego la longitud, o pegas las dos de un mapa, `20.6597, -103.3496`; valida
+rangos y dice por que no vale; Esc cancela) y «Quitar las coordenadas». Se guardan como `bar_lat=` y `bar_lon=` y **mandan sobre la ciudad y sobre internet**. El texto de abajo dice «De donde sale:
+coordenadas del bar / ciudad de la lista / por internet: X (aproximado)». En la hojita Clima, «El clima de afuera, ahora» dice ademas de donde sale y que tan viejo es («Observado en el aeropuerto
+MMGL (12 km) hace 18 min.», «Pronostico de Open-Meteo para tus coordenadas...», «Sin internet: el de hace 1 h.»). Ver `FASE11_cielo-clima.md` §9. Las dos claves no son interruptores:
+la prueba de tablas las deja fuera de las ideas de `cielo`.
+
 Un deslizador de 0 a 41: 0 es «Automatica (por internet)» (una vez por semana; mientras no se sepa, la Ciudad de Mexico) y de 1 a 41 una de las
 ciudades de `RocolaOsCiudades`. Se guarda como `ciudad_bar=N` a los 0,5 s de dejar quieta la barra y al cerrar la ventana; el hilo del cielo
 detecta el cambio y pide el clima de la ciudad nueva. Debajo, el lugar de ahora (nombre y coordenadas), la hora del cielo, el sol y la fase.
@@ -84,7 +90,7 @@ leen la misma hora del cielo (`AhoraLocal`), asi que todo (sol, luna, estrellas,
   `RocolaOsCielo.HojasAbiertas` (el contador que el nucleo ya preveia para Ctrl+F4; nadie lo subia) y la quita al cerrar.
 - Los fuegos del Grito y de Ano Nuevo piden ademas su hora (23:00 y 00:00): para verlos, elige fecha y hora.
 
-## Pruebas (`Pruebas/RocolaOs/imagen/prueba.sh PROGRAMA [orden interruptores ver tecla fechas sin]`)
+## Pruebas (`Pruebas/RocolaOs/imagen/prueba.sh PROGRAMA [orden interruptores ver tecla fechas coordenadas sin]`)
 
 - **orden** (`--prueba-imagen`): leer, agregar y quitar renglones, el archivo de verdad, las tablas y que cada clave exista: 31 comprobaciones.
 - **interruptores**: con las cuatro funciones apagadas, Ctrl+F4 -> Imagen; una idea en gris (sol) no guarda; el interruptor de `cielo` guarda
@@ -93,6 +99,7 @@ leen la misma hora del cielo (`AhoraLocal`), asi que todo (sol, luna, estrellas,
   igual que antes.
 - **tecla**: con el clima forzado, una flecha a los 4 s lo quita («se toco un boton») sin esperar los 30 s.
 - **fechas**: agregar un cumpleanos con el teclado (nombre y fecha), que lo de antes siga, quitarlo eligiendo su renglon; «Quitar» en gris sin elegir.
+- **coordenadas** (6): una latitud de 95 se rechaza y Esc no guarda; latitud y longitud por separado (`bar_lat=20.6597`, `bar_lon=-103.3496`) y el cielo se mueve ahi; quitarlas; pegar las dos de una vez.
 - **sin**: sin `ROCOLA_OS`, ninguna hoja.
 
 Capturas de 1024x768 de la sesion: Dia y noche (apagada y con `cielo` encendido), Vidrio, Ver como se veria y Tus fechas (no se suben: ni png ni jpg).
