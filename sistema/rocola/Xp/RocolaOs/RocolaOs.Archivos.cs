@@ -1,5 +1,6 @@
 // ROCOLA OS (fase 11): EL GESTOR DE ARCHIVOS DE LA VENTANA DE CTRL+F4, lo que no es la hoja (peticion del dueno del 20-11-2026: «un gestor de
-// archivos basico solo para lo de la rocola, ahi seria mas facil meter las keys que se requieran»; FASE11_navegador-archivos.md). Solo con
+// archivos basico solo para lo de la rocola, ahi seria mas facil meter las keys que se requieran»; FASE11_navegador-archivos.md; el navegador y las
+// descargas se quitaron el 27-11-2026). Solo con
 // ROCOLA_OS. La hoja (lo que se ve y los botones) esta en RocolaOs.ArchivosHoja.cs; las piezas propias (la lista y el editor), en
 // RocolaOs.ArchivosPiezas.cs.
 //
@@ -39,8 +40,8 @@ namespace Rocola
     {
         internal string Nombre;        // lo que dice su boton
         internal string Ruta;          // ya resuelta (realpath)
-        internal bool Escribe;         // los datos y las descargas
-        internal int Tipo;             // RocolaOsArchivos.TUsb (0: lo de fabrica, de solo lectura), TDatos, TDescargas o TPapelera
+        internal bool Escribe;         // los datos
+        internal int Tipo;             // RocolaOsArchivos.TUsb (0: lo de fabrica, de solo lectura), TDatos o TPapelera
         internal string Montada;       // si la monto la rocola (se desmonta al cerrar)
         internal string Clave;         // para saber si es la misma de antes (la ruta)
     }
@@ -58,11 +59,8 @@ namespace Rocola
     {
         internal const string Nombre = "archivos";
         internal const int MaxTexto = 64 * 1024;
-        internal const int TUsb = 0, TDatos = 1, TDescargas = 2, TPapelera = 3;
-        // LAS DESCARGAS DEL NAVEGADOR (rocola-navegador le dice a WebKit que baje aqui: XDG_DOWNLOAD_DIR en user-dirs.dirs) y LA PAPELERA, dentro
-        // de los datos de rocola-xp pero cada una en su apartado: en la lista de los datos no salen
-        internal const string CarpetaDescargas = "descargas";
-        internal static string DirDescargas { get { return Path.Combine(Form1.CarpetaDatos, CarpetaDescargas); } }
+        internal const int TUsb = 0, TDatos = 1, TPapelera = 2;
+        // LA PAPELERA, dentro de los datos de rocola-xp pero en su apartado: en la lista de los datos no sale
         private const UnixFileMode Solo700 = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
         // ---------- realpath ----------
@@ -151,24 +149,6 @@ namespace Rocola
             try { Directory.CreateDirectory(d); } catch { }
             string r = Real(d) ?? d;
             return new RocolaOsRaiz { Nombre = "Datos de la rocola", Ruta = r, Escribe = true, Tipo = TDatos, Clave = r };
-        }
-        // LAS DESCARGAS: la carpeta (0700) de verdad dentro de los datos; si es un enlace o no se puede, de solo lectura y vacia (no se usa)
-        internal static RocolaOsRaiz Descargas()
-        {
-            string d = DirDescargas;
-            bool vale = false;
-            try
-            {
-                if (!EsEnlace(d))
-                {
-                    if (!Directory.Exists(d)) Directory.CreateDirectory(d, Solo700);
-                    string datos = Real(Form1.CarpetaDatos);
-                    vale = datos != null && Real(d) == datos.TrimEnd('/') + "/" + CarpetaDescargas;
-                }
-            }
-            catch { }
-            string r = Real(d) ?? d;
-            return new RocolaOsRaiz { Nombre = "Descargas", Ruta = r, Escribe = vale, Tipo = TDescargas, Clave = "descargas:" + r };
         }
         internal static RocolaOsRaiz Papelera()
         {
@@ -316,8 +296,8 @@ namespace Rocola
                             if (!Dentro(raiz.Ruta, e)) { fuera++; continue; }   // un enlace que sale: ni se lista
                             esDir = Directory.Exists(e);
                         }
-                        // (en la raiz de los datos, las descargas y la papelera no salen: son sus propios apartados)
-                        if (raiz.Tipo == TDatos && dir.TrimEnd('/') == raiz.Ruta.TrimEnd('/') && (i.Name == CarpetaDescargas || i.Name == RocolaOsPapelera.Carpeta)) continue;
+                        // (en la raiz de los datos la papelera no sale: es su propio apartado)
+                        if (raiz.Tipo == TDatos && dir.TrimEnd('/') == raiz.Ruta.TrimEnd('/') && i.Name == RocolaOsPapelera.Carpeta) continue;
                         RocolaOsEntrada x = new RocolaOsEntrada { Nombre = i.Name, Ruta = e, Carpeta = esDir, Enlace = enlace, Fecha = i.LastWriteTime };
                         if (!esDir) { x.Tamano = enlace ? new FileInfo(Real(e)).Length : ((FileInfo)i).Length; x.Llave = EsLlave(e, raiz.Ruta); }
                         (esDir ? carpetas : archivos).Add(x);
@@ -411,17 +391,17 @@ namespace Rocola
             catch (Exception ex) { try { File.Delete(paso); } catch { } return "No se pudo guardar: " + ex.Message; }
         }
 
-        // ---------- copiar de una USB (o de las descargas) a los datos ----------
+        // ---------- copiar de una USB a los datos ----------
         // el nombre con que queda en los datos (rocola_spotify.txt de una USB es la llave de Soloist: rocola_spotify_llave.txt)
         internal static string NombreAlCopiar(string nombre) { return string.Equals(nombre, "rocola_spotify.txt", StringComparison.OrdinalIgnoreCase) ? "rocola_spotify_llave.txt" : nombre; }
         internal static string Copia(RocolaOsRaiz origen, string ruta, RocolaOsRaiz datos, string dirDestino, bool reemplaza, out string destino)
         {
             destino = Path.Combine(dirDestino, NombreAlCopiar(Path.GetFileName(ruta)));
-            if (origen == null || (origen.Tipo != TUsb && origen.Tipo != TDescargas) || !Dentro(origen.Ruta, ruta)) return origen != null && origen.Tipo == TDescargas ? "Ese archivo no es de las descargas." : "Ese archivo no es de la USB.";
+            if (origen == null || origen.Tipo != TUsb || !Dentro(origen.Ruta, ruta)) return "Ese archivo no es de la USB.";
             if (datos == null || !datos.Escribe || datos.Tipo != TDatos || !Dentro(datos.Ruta, dirDestino)) return "Esa carpeta no es de los datos.";
-            // (ni a la papelera ni a las descargas: van por sus botones)
-            string dd = Real(dirDestino), pap = Real(RocolaOsPapelera.Dir), des = Real(DirDescargas);
-            if (dd == null || (pap != null && (dd == pap || dd.StartsWith(pap + "/", StringComparison.Ordinal))) || (des != null && (dd == des || dd.StartsWith(des + "/", StringComparison.Ordinal)))) return "Esa carpeta no es de los datos.";
+            // (ni a la papelera: va por sus botones)
+            string dd = Real(dirDestino), pap = Real(RocolaOsPapelera.Dir);
+            if (dd == null || (pap != null && (dd == pap || dd.StartsWith(pap + "/", StringComparison.Ordinal)))) return "Esa carpeta no es de los datos.";
             if (Directory.Exists(ruta)) return "Aquí solo se copian archivos, no carpetas.";
             if (!EsArchivoNormal(ruta)) return "No es un archivo normal (una tubería, un aparato...): no se copia.";
             if (EsEnlace(destino)) return "En los datos hay un enlace con ese nombre: no se escribe.";

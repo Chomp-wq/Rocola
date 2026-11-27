@@ -1,5 +1,7 @@
 # Fase 11: las juntas
 
+*27-11-2026: el navegador de Ctrl+F4 (y el apartado Descargas de Archivos) se quitó; ver `FASE11_navegador-archivos.md`. Lo que abajo dice del navegador, de `navegador-archivos` o de la compilación completa por WebKit es la historia de esas juntas (la prueba se llama ahora `Pruebas/RocolaOs/archivos`).*
+
 Cada tanda de la fase 11 se junta en una rama propia y se comprueba entera antes de llegar a la rama principal (`PLAN_FASE11.md` §0 y
 §2.6). Aquí va un resumen corto de cada junta; el detalle de cada grupo, en su `FASE11_<grupo>.md`.
 

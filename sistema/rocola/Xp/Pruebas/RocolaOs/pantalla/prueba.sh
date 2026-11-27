@@ -4,7 +4,7 @@
 # las escenas de ventanas, DATOS0), fuera de pantalla con un KMS SIMULADO (RocolaOs/RocolaOs.PantallaSimulada.cs: los modos de un monitor
 # inventado, la tabla de gamma de la radeon -256, por la llamada de siempre- y sin matriz de color) y sin sonido. NADA de esto es el A4 ni
 # un monitor de verdad.
-#   bash prueba.sh PROGRAMA [numeros guion ventana teclado arranque caidas malo monitor navegador lista apagada sin]
+#   bash prueba.sh PROGRAMA [numeros guion ventana teclado arranque caidas malo monitor lista apagada sin]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT, con el ejecutable rocola-xp)
 #   W: la carpeta de trabajo (/root/rocola-trabajo/fase11/pantalla/prueba); se rehace en cada corrida
 #   CAPTURAS: donde se copian las capturas que se ensenan (de fabrica, ninguna)
@@ -18,7 +18,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SIS=$(cd "$XP/../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-numeros guion ventana teclado arranque caidas malo monitor navegador lista apagada sin}"
+partes="${*:-numeros guion ventana teclado arranque caidas malo monitor lista apagada sin}"
 W=${W:-/root/rocola-trabajo/fase11/pantalla/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 REF=${REF:-/root/rocola-trabajo/port/ventanas/ref-trazas/sistema/rocola/Xp/bin/Release/net10.0}
@@ -169,9 +169,9 @@ if [[ " $partes " == *" teclado "* ]]; then
   # Tab (los hercios), Tab («Probar»), Intro: cambia y pregunta, con el foco en «No»; Tab («Si»), Intro: guardado.
   # El foco vuelve a la barra de la resolucion; Tab (los hercios), Tab («Volver a lo automatico»: «Probar» esta en gris), Tab (el brillo),
   # tres veces derecha: brillo 3; y Escape.
-  # (navegador-archivos: con las pestanas Navegador y Archivos, dos Tab mas desde la primera pestana hasta la barra; salida-audio, 21-11-2026: con
-  # la pestana Sonido, otro mas)
-  P="6:17+115,7:9,7.15:9,7.3:9,7.45:9,7.6:9,7.75:35,8:9,8.3:9,8.6:13,11:9,11.4:13,13:9,13.2:9,13.4:9,13.6:39,13.8:39,14:39,16:27"
+  # (con las pestanas Sonido y Archivos, dos Tab mas desde la primera pestana hasta la barra; salida-audio, 21-11-2026: con la pestana Sonido,
+  # otro mas; el 27-11-2026 el navegador se quito y la cuenta baja a 4: Pantalla, Sonido y Archivos)
+  P="6:17+115,7:9,7.15:9,7.3:9,7.45:9,7.75:35,8:9,8.3:9,8.6:13,11:9,11.4:13,13:9,13.2:9,13.4:9,13.6:39,13.8:39,14:39,16:27"
   abre teclado "$d" "$P" "10:teclado-pregunta,15:teclado-guardado" 19 TERM ROCOLA_OS=1 ROCOLA_KMS_SIMULADO="$SIM"
   k="$o/kms.txt"; sed 's/^/   kms: /' "$k" | cut -c1-110
   si "sale con 0" test "$(cat $o/salio)" = 0
@@ -237,39 +237,6 @@ if [[ " $partes " == *" monitor "* ]]; then
   abre monitor "$d" "" "" 8 TERM ROCOLA_OS=1 ROCOLA_KMS_SIMULADO="$SIM"
   si "lo automatico, sin contar el arranque, y lo guardado se queda (por si vuelve el monitor)" bash -c "head -1 '$W/monitor/kms.txt' | grep -q ' modo 1024x768@75$' && [ \"\$(cat '$d/rocola_pantalla.txt')\" = 'modo=2560x1440@60' ]"
   si "la bitacora lo dice" contiene "$d/rocola_os_bitacora.txt" "el modo guardado 2560x1440@60 no lo da este monitor"
-fi
-
-if [[ " $partes " == *" navegador "* ]]; then
-  # (revision de la junta 2) AL VOLVER DEL NAVEGADOR el mando de la tarjeta puede no volver a la primera (Retoma: drmSetMaster sin mirar lo
-  # que devuelve): el KMS simulado con «retoma=N» hace fallar el modo N veces despues de Recupera. Con 2, el modo guardado se vuelve a poner
-  # y NO se borra; con 14 (mas que los 10 reintentos de los 15 s de gracia), lo de siempre: lo automatico y modo_malo
-  NAV="$SIS/board/rocola/rootfs_overlay/usr/bin/rocola-navegador"; INICIO="$SIS/board/rocola/rootfs_overlay/usr/share/rocola/navegador/inicio.html"
-  for v in 2 14; do
-    n=navegador-$v; echo "== $n (el modo guardado 1920x1080@60; Ctrl+F4 -> Navegador -> Abrir; Ctrl+Alt+F1; el mando no vuelve en $v intentos)"
-    d=$(datos $n); o="$W/$n"
-    printf 'modo=1920x1080@60\n' > "$d/rocola_pantalla.txt"
-    mkdir -p "$W/cog-$v"
-    cat > "$W/cog-$v/cog" <<EOF
-#!/bin/sh
-echo "\$(date +%s.%N) cog \$*" >> "$W/cog-$v/cog.txt"
-trap 'exit 0' TERM
-while :; do sleep 0.2; done
-EOF
-    chmod 755 "$W/cog-$v/cog"
-    # en 1920x1080 el cliente de la hoja empieza en (480,187): la pestana Navegador en (1266,210) y su boton Abrir en (724,489)
-    P="6:17+115,8:clic:1266:210,10.5:clic:724:489,15:17~1200,15.1:18~1000,15.3:112"
-    abre $n "$d" "$P" "" $([ $v = 2 ] && echo 26 || echo 36) TERM ROCOLA_OS=1 ROCOLA_KMS_SIMULADO="$SIM;retoma=$v" \
-      ROCOLA_NAVEGADOR_ORDEN="$NAV" ROCOLA_COG="$W/cog-$v/cog" ROCOLA_NAVEGADOR_TTY=/dev/null ROCOLA_NAVEGADOR_INICIO_HTML="$INICIO" ROCOLA_NAVEGADOR_TRAZA="$o/nav.txt"
-    k="$o/kms.txt"; b="$d/rocola_os_bitacora.txt"
-    grep -v ' gamma ' "$k" | sed 's/^/   kms: /' | cut -c1-110; grep -F '[pantalla]' "$b" | sed 's/^/   bit: /' | cut -c1-200
-    si "$n: sale con 0, el navegador se abrio y se cerro con Ctrl+Alt+F1, y el mando no volvio a la primera" bash -c "[ \"\$(cat '$o/salio')\" = 0 ] && grep -q ' cierra (Ctrl+Alt+F1)' '$o/nav.txt' && grep -q ' retoma (composiciones ' '$o/nav.txt' && grep -q ' falla al retomar 1920x1080@60\$' '$k'"
-    if [ $v = 2 ]; then
-      si "$n: al volver, el mismo modo otra vez (2 veces sin el mando, la tercera bien) y la bitacora lo dice" bash -c "[ \$(grep -c ' falla sin el mando 1920x1080@60\$' '$k') = 2 ] && [ \"\$(grep ' modo ' '$k' | tail -1 | cut -d' ' -f2-)\" = 'modo 1920x1080@60' ] && grep -qF 'el mismo modo otra vez, bien (intento 3)' '$b'"
-      si "$n: el modo guardado NO se borra (modo=1920x1080@60, sin modo_malo) y nunca se paso a lo automatico" bash -c "grep -qx 'modo=1920x1080@60' '$d/rocola_pantalla.txt' && ! grep -q modo_malo '$d/rocola_pantalla.txt' && ! grep -q ' modo 1024x768@75\$' '$k'"
-    else
-      si "$n: tras los 10 reintentos, lo de siempre: lo automatico (1024x768@75) y modo_malo con el porque" bash -c "[ \$(grep -c ' falla sin el mando 1920x1080@60\$' '$k') = 10 ] && grep -q ' modo 1024x768@75\$' '$k' && grep -qx 'modo=auto' '$d/rocola_pantalla.txt' && grep -qF 'modo_malo=1920x1080@60: drmModeSetCrtc -13' '$d/rocola_pantalla.txt'"
-    fi
-  done
 fi
 
 if [[ " $partes " == *" lista "* ]] || [[ " $partes " == *" apagada "* ]]; then

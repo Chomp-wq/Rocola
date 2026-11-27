@@ -37,7 +37,7 @@ namespace Rocola
                 if (i > 0) { string[] t = p.Substring(i + 1).Split('x'); if (t.Length == 2) { int.TryParse(t[0], out w); int.TryParse(t[1], out h); } }
                 s = new FueraDePantalla(w, h);
             }
-            Actual = new Anfitrion(s); RocolaOs.LaSuperficie = s;   // ROCOLA OS g101: (antes) Actual = new Anfitrion(s); — la pantalla abierta, para que el navegador de Ctrl+F4 (RocolaOs/RocolaOs.Navegador.cs) la suelte (DRM master) y la retome; sin ROCOLA_OS nadie la usa
+            Actual = new Anfitrion(s);
             PantallaRocola.Componer = Actual.Compone;
             // el pintado (WM_PAINT) y la composicion pendiente los lleva la pantalla; una hoja que cambia pide componer. (Lo vuelve a poner la
             // ventana de la rocola al abrirse, con lo demas suyo: PantallaRocola.Ventana.cs, AbreNativa. Aqui, para lo que corre sin la rocola

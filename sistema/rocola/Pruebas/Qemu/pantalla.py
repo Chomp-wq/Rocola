@@ -81,7 +81,7 @@ def principal(prog):
        m.group(0)[:150] if m else "")
     si("la bitacora: controlador bochs y sin tabla de gamma ni CTM", re.search(r"controlador bochs[^;]*; gamma no; CTM no", bit) is not None)
     f0 = captura("p1-antes.png"); si("antes: la pantalla en 1024x768 (lo automatico)", medida(f0) == "1024x768", medida(f0))
-    # Ctrl+F4 (el foco en la pestana); Tab x5 (salida-audio, 21-11-2026: la pestana Sonido, una parada mas; junta 2: con las pestanas Navegador y Archivos, dos paradas mas, como en
+    # Ctrl+F4 (el foco en la pestana); Tab x4 (salida-audio, 21-11-2026: la pestana Sonido, una parada mas; junta 2: con la pestana Archivos, otra mas; el 27-11-2026 el navegador se quito, como en
     # Pruebas/RocolaOs/pantalla/prueba.sh): la barra de la resolucion; derecha: la siguiente mas grande (en bochs, 1280x768, que solo
     # tiene 60 Hz: la barra de los hercios va en gris y el tabulador la salta); Tab: «Probar»; Intro
     teclas("m", pausa=2.0)   # (despierta de la atraccion si hace falta y acredita: la moneda)
@@ -89,7 +89,7 @@ def principal(prog):
     teclas("ctrl-f4", pausa=2.0); c.espera_cuadros(1, 200)
     f1 = captura("p2-ventana.png")
     si("Ctrl+F4 abre la ventana de Rocola OS (la pantalla cambia)", P.colores(f1) > 50, "%d colores" % P.colores(f1))
-    teclas("tab", "tab", "tab", "tab", "tab", "right", "tab", pausa=1.5); c.espera_cuadros(1, 200)
+    teclas("tab", "tab", "tab", "tab", "right", "tab", pausa=1.5); c.espera_cuadros(1, 200)
     t0 = time.time(); teclas("ret", pausa=0.5)
     # el modo nuevo: lo dice la bitacora y la pantalla de QEMU cambia de medida
     nuevo = None; fin = time.time() + 120

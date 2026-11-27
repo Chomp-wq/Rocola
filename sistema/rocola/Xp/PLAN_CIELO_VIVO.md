@@ -178,11 +178,11 @@ texto, como mucho 3 destellos por segundo y al 35 % si alguien elige. Los mensaj
 2. **Cuatro grupos en paralelo** sobre el nucleo, cada uno en su rama y en sus archivos (RocolaOs.Cielo<Grupo>*.cs) y su rango de
    ganchos: sol, luna y estrellas (DN2-DN4); nubes y clima (DN6, CL1-CL5); fiestas (FI1-FI6 y rocola_fechas.txt); vidrio (VI1-VI6).
    Cada uno con su revision independiente.
-3. **La hoja Imagen de Ctrl+F4** (sobre la junta de la segunda compilacion: pantalla-ctrlf4 y navegador-archivos): los interruptores
+3. **La hoja Imagen de Ctrl+F4** (sobre la junta de la segunda compilacion: pantalla-ctrlf4 y archivos; el navegador se quito el 27-11-2026): los interruptores
    de las cuatro funciones en hojitas por familia (Dia y noche, Fiestas, Clima, Vidrio), en gris con el motivo cuando no pueden; la
    ciudad; las fechas propias; «Ver como se veria» (hora, fecha, clima; 30 s).
-4. **Junta** de todo en la rama principal, baterias completas, y la compilacion COMPLETA del sistema (la pide el navegador de
-   Ctrl+F4: WPE y cog).
+4. **Junta** de todo en la rama principal, baterias completas, y la compilacion del sistema (ya no hay navegador de Ctrl+F4: se quito el
+   27-11-2026, y con el WPE WebKit y cog).
 
 No probado en el A4: ninguna de estas ideas se ha visto alli. Las de vidrio que desenfocan van apagadas hasta medirlas con el
 diagnostico completo.

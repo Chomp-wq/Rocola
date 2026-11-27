@@ -1,5 +1,7 @@
 # Fase 11, grupo navegador-archivos: el navegador y el gestor de archivos de la ventana de Ctrl+F4
 
+**27-11-2026: EL NAVEGADOR SE QUITÓ.** Decisión del dueño: «Lo del navegador descartalo, es mucho pedo, borra todos los rastros de eso en la proxima version» (WPE WebKit no cabía de una sola compilación y la 39 se congeló sin memoria; la 41 ya lo había dejado fuera). Se quitaron la hoja «Navegador» de Ctrl+F4, `RocolaOs.Navegador.cs`, `/usr/bin/rocola-navegador` y su página de inicio, los paquetes `WPEWEBKIT`, `COG`, `LIBSOUP3_SSL` y `XKEYBOARD_CONFIG` del defconfig (nada más los usaba), `WPEWEBKIT_BUILD_OPTS` de `external.mk`, los ganchos g100 y g101 (la pantalla sin `Minimizada` ni `LaSuperficie`: `Codigo/` y `Nativo/` vuelven a lo de antes), el reintento al retomar de `RocolaOs.Pantalla.cs` (y `retoma=` del KMS simulado) y el apartado **Descargas** de «Archivos» (solo guardaba lo que bajaba el navegador). Se quedan «Archivos» con su **Papelera** y las USB. Lo que sigue describe lo que hubo, como historia; la prueba pasó a `Pruebas/RocolaOs/archivos/`. `RocolaOsConfirma` (que vivía en `RocolaOs.Navegador.cs`) está ahora en `RocolaOs.ArchivosHoja.cs`.
+
 20-11-2026. Rama `navegador-archivos`, sobre `pantalla-ctrlf4` (2f24a8d: la ventana de Ctrl+F4 con su hoja «Pantalla»;
 `FASE11_pantalla.md`). Es la petición del dueño del 20-11-2026 (AGENTS.md: «en la ventana de ctrl f4, debes poner un navegador por si quiero
 desarrollar en la misma rocola entrando a Claude, y un gestor de archivos basico solo para lo de la rocola, ahi seria mas facil meter las

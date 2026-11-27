@@ -130,8 +130,8 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Herramientas
         run: sudo apt-get update -q && sudo apt-get install -y -q build-essential cpio rsync bc unzip file clang zlib1g-dev qemu-system-x86 python3
-      # MEMORIA DE RESPALDO (22-11-2026): la 39 se congelo a media compilacion de WebKit (el registro se corta a las 23:19 y GitHub la
-      # dio por fallida a las 00:59 sin ningun error): sin memoria con 5 trabajos de WebKit. 12 GB de swap (y WebKit con 3, external.mk).
+      # MEMORIA DE RESPALDO (22-11-2026): la 39 se congelo a media compilacion (el registro se corta a las 23:19 y GitHub la
+      # dio por fallida a las 00:59 sin ningun error): se quedo sin memoria con 5 trabajos de un paquete enorme. 12 GB de swap.
       - name: Memoria de respaldo (swap)
         run: |
           sudo swapoff -a || true

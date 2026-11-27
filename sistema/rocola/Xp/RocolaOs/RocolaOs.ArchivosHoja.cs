@@ -4,9 +4,9 @@
 //   Arriba, un boton por raiz: «Datos de la rocola» y cada memoria USB (de solo lectura; se miran cada 2 s con la ventana abierta). Debajo,
 //   donde se esta, la lista (carpetas primero; nombre, tamano y fecha; la llave con su icono) y los botones: Abrir (entrar en la carpeta o
 //   abrir el texto), Subir, Copiar a los datos (desde una USB, a la carpeta de los datos donde se estuvo por ultimo), Renombrar, Borrar (con
-//   confirmacion: manda a la PAPELERA) y Archivo nuevo (en los datos). Abajo, lo que paso. Ademas de los datos y las USB, dos apartados:
-//   DESCARGAS (lo que baja el navegador: ver, renombrar, borrar, editar y copiar a los datos) y la PAPELERA (Ver, Devolver, Borrar ya y
-//   Vaciar papelera, con confirmacion; RocolaOs.Papelera.cs). Lo de la papelera y copiar, en un hilo (nunca en el de la pantalla).
+//   confirmacion: manda a la PAPELERA) y Archivo nuevo (en los datos). Abajo, lo que paso. Ademas de los datos y las USB, un apartado: la
+//   PAPELERA (Ver, Devolver, Borrar ya y Vaciar papelera, con confirmacion; RocolaOs.Papelera.cs). (El apartado DESCARGAS, de lo que bajaba el
+//   navegador, se quito el 27-11-2026 con el navegador.) Lo de la papelera y copiar, en un hilo (nunca en el de la pantalla).
 //   El texto se abre en su hoja (hasta 64 KB): se escribe con el teclado; «Guardar» (o Ctrl+S) lo guarda de un tiron; las llaves, tapadas
 //   salvo con «Mostrar» (pide confirmar) y guardadas 0600; Escape cierra (si hay cambios sin guardar, pregunta).
 using System;
@@ -28,7 +28,7 @@ namespace Rocola
             int latidos = 0;
             RocolaOs.Registra(new RocolaOsFuncion
             {
-                Nombre = RocolaOsArchivos.Nombre, Que = "el gestor de archivos de Ctrl+F4 (los datos de la rocola, las descargas, la papelera y las USB)", DeFabrica = true,
+                Nombre = RocolaOsArchivos.Nombre, Que = "el gestor de archivos de Ctrl+F4 (los datos de la rocola, la papelera y las USB)", DeFabrica = true,
                 Claves = new RocolaOsClave[] {
                     RocolaOsClave.Entero(RocolaOsPapelera.ClaveTope, 64, 16, 256, true, "el tope de la papelera de Archivos (MB; va en lo aprendido, datos.img, de 512 MB): si lo pasa, se borra lo mas viejo primero; lo de mas de 30 dias, siempre"),
                 },
@@ -45,14 +45,14 @@ namespace Rocola
             bool va = RocolaOs.Encendida(RocolaOsArchivos.Nombre);
             Rocola.Nativo.Letra fLista = Rocola.Nativo.Letra.EnPuntos(FamiliaUi(), 10f), fChica = Rocola.Nativo.Letra.EnPuntos(FamiliaUi(), 8.5f, true);
             RocolaOsRaiz datos = RocolaOsArchivos.Datos();
-            RocolaOsRaiz descargas = RocolaOsArchivos.Descargas(), papelera = RocolaOsArchivos.Papelera();
+            RocolaOsRaiz papelera = RocolaOsArchivos.Papelera();
             RocolaOsRaiz raiz = datos;
             string dir = datos.Ruta, dirDatos = datos.Ruta;
             string estado = null; bool estadoBien = false;
             bool ocupado = false, cerrada = false;
             List<RocolaOsTirado> tirados = new List<RocolaOsTirado>();
 
-            // los botones de los apartados (hasta 5), arriba: los datos, las descargas, la papelera y las USB
+            // los botones de los apartados (hasta 5), arriba: los datos, la papelera y las USB
             List<BotonPlano> bRaiz = new List<BotonPlano>();
             List<RocolaOsRaiz> raices = new List<RocolaOsRaiz>();
             for (int i = 0; i < 5; i++)
@@ -127,7 +127,7 @@ namespace Rocola
                 RocolaOsEntrada e = lista.LaElegida;
                 bool hay = e != null && !e.Subir;
                 bool p = raiz.Tipo == RocolaOsArchivos.TPapelera, li = va && !ocupado;
-                bool desdeFuera = raiz.Tipo == RocolaOsArchivos.TUsb || raiz.Tipo == RocolaOsArchivos.TDescargas;
+                bool desdeFuera = raiz.Tipo == RocolaOsArchivos.TUsb;
                 bAbrir.Text = p ? "Ver" : e != null && e.Carpeta ? "Entrar" : raiz.Tipo == RocolaOsArchivos.TUsb ? "Ver" : "Abrir";
                 bCopiar.Text = p ? "Devolver" : "Copiar a los datos";
                 bBorra.Text = p ? "Borrar ya" : "Borrar";
@@ -153,12 +153,9 @@ namespace Rocola
                             s = "«" + t.Nombre + "» vino de " + t.DeNombre + "/" + t.Ruta + " · se tiró el " + fecha(t.Cuando) + "\nSe borra sola el " + fecha(t.Cuando + RocolaOsPapelera.Dias * RocolaOsPapelera.DiaMs).Substring(0, 10)
                                 + " (o antes, lo más viejo primero, si la papelera pasa su tope de " + RocolaOsArchivos.Medida(tope) + ")." + (t.Llave ? " Es una llave: se ve tapada." : "");
                         }
-                        else s = "La papelera: lo que se borra en los datos y en las descargas. Se vacía sola a los " + RocolaOsPapelera.Dias + " días o al pasar\nsu tope de " + RocolaOsArchivos.Medida(tope) + " (lo más viejo primero). «Devolver» lo pone donde estaba, sin pisar nada.";
+                        else s = "La papelera: lo que se borra en los datos. Se vacía sola a los " + RocolaOsPapelera.Dias + " días o al pasar\nsu tope de " + RocolaOsArchivos.Medida(tope) + " (lo más viejo primero). «Devolver» lo pone donde estaba, sin pisar nada.";
                     }
                     else if (raiz.Tipo == RocolaOsArchivos.TUsb) s = "Memoria USB: solo se ve y se copia a los datos (a " + (rd.Length == 0 ? "la carpeta de los datos" : rd) + ", donde estuviste por última vez).";
-                    else if (raiz.Tipo == RocolaOsArchivos.TDescargas)
-                        s = raiz.Escribe ? "Lo que baja el navegador. «Copiar a los datos» lo copia a " + (rd.Length == 0 ? "la carpeta de los datos" : rd) + "; «Borrar» lo manda a la papelera."
-                                         : "La carpeta de las descargas no se puede usar (no es una carpeta de los datos).";
                     else s = "Los datos de la rocola. Las llaves (llave, key, api, token, secret...) se ven tapadas y se guardan 0600. «Borrar» manda a la papelera.";
                     if (fuera > 0 && !p) s += "\n" + fuera + (fuera == 1 ? " enlace sale" : " enlaces salen") + " de la carpeta: no se muestra" + (fuera == 1 ? "." : "n.");
                 }
@@ -199,7 +196,7 @@ namespace Rocola
             };
             Action pideRaices = delegate
             {
-                List<RocolaOsRaiz> n = new List<RocolaOsRaiz> { datos, descargas, papelera };
+                List<RocolaOsRaiz> n = new List<RocolaOsRaiz> { datos, papelera };
                 n.AddRange(RocolaOsArchivos.Usbs);
                 bool igual = n.Count == raices.Count;
                 for (int i = 0; igual && i < n.Count; i++) igual = n[i].Clave == raices[i].Clave;
@@ -253,7 +250,7 @@ namespace Rocola
             lista.Sube += delegate { sube(); };
             bAbrir.Click += delegate { abre(); };
             bSubir.Click += delegate { sube(); lista.Focus(); };
-            // COPIAR A LOS DATOS (de una USB o de las descargas; en un hilo: puede ser grande). Si ya hay uno, pregunta; el de antes va a la
+            // COPIAR A LOS DATOS (de una USB; en un hilo: puede ser grande). Si ya hay uno, pregunta; el de antes va a la
             // papelera (nada se pisa sin poder devolverlo). En la papelera, este boton es «Devolver».
             Action copia = delegate
             {
@@ -266,7 +263,7 @@ namespace Rocola
                 if (File.Exists(destino) || Directory.Exists(destino) || RocolaOsArchivos.EsEnlace(destino))
                 {
                     if (!File.Exists(destino) || RocolaOsArchivos.EsEnlace(destino) || Directory.Exists(destino)) { dice(Directory.Exists(destino) ? "En los datos hay una carpeta con ese nombre." : "En los datos hay un enlace con ese nombre: no se escribe.", false); lista.Focus(); return; }
-                    if (!RocolaOsConfirma(x, "¿Reemplazar?", "En los datos ya hay un «" + Path.GetFileName(destino) + "».\nSe cambia por el de " + (origen.Tipo == RocolaOsArchivos.TDescargas ? "las descargas" : "la memoria USB") + " (el de antes va a la papelera).", "Sí, reemplazar")) { lista.Focus(); return; }
+                    if (!RocolaOsConfirma(x, "¿Reemplazar?", "En los datos ya hay un «" + Path.GetFileName(destino) + "».\nSe cambia por el de " + "la memoria USB" + " (el de antes va a la papelera).", "Sí, reemplazar")) { lista.Focus(); return; }
                     reemplaza = true;
                 }
                 string dest = null; bool aPapelera = false;
@@ -287,7 +284,7 @@ namespace Rocola
                     {
                         string n = Path.GetFileName(dest);
                         bool llave = RocolaOsArchivos.EsLlave(dest, datos.Ruta);
-                        RocolaOs.Apunta(RocolaOsArchivos.Nombre, "copiado de " + (origen.Tipo == RocolaOsArchivos.TDescargas ? "las descargas" : "la USB") + " a los datos: " + n + (llave ? " (llave, 0600)" : "") + (aPapelera ? " (el de antes, a la papelera)" : ""));
+                        RocolaOs.Apunta(RocolaOsArchivos.Nombre, "copiado de " + "la USB" + " a los datos: " + n + (llave ? " (llave, 0600)" : "") + (aPapelera ? " (el de antes, a la papelera)" : ""));
                         dice("Copiado a " + dest + (n != nom ? " (como " + n + ")" : "") + (llave ? ": es una llave, queda con permisos 0600." : ".") + (aPapelera ? " El de antes está en la papelera." : ""), true);
                     }
                     else dice(r == "YA_HAY" ? "En los datos ya hay uno con ese nombre." : r, false);
@@ -413,7 +410,7 @@ namespace Rocola
                 lista.Focus();
             };
 
-            raices.Add(datos); raices.Add(descargas); raices.Add(papelera);
+            raices.Add(datos); raices.Add(papelera);
             pintaRaices();
             carga(dir, null);
             if (va) RocolaOsArchivos.BuscaUsbs();
@@ -547,6 +544,30 @@ namespace Rocola
                 if (guardado) res = "Guardado: " + ruta + (llave ? " (llave, permisos 0600)." : ".");
             }
             return res;
+        }
+
+        // UNA CONFIRMACION como «¿Se ve bien?» de la hoja Pantalla: «No» con el foco (Intro o Escape sin mirar: no) y el boton de si.
+        internal bool RocolaOsConfirma(RocolaOsVentanaCtx x, string titulo, string texto, string si)
+        {
+            bool ok = false;
+            using (Hoja q = new Hoja(MarcoXp.Dialogo))
+            {
+                q.Text = "Rocola OS";
+                q.ClientSize = new Size(520, 200);
+                q.BackColor = x.CFondo; q.Font = x.FSub;
+                Rotulo lT = new Rotulo(); lT.SetBounds(22, 14, 476, 28); lT.BackColor = Color.Transparent; lT.ForeColor = Color.FromArgb(232, 238, 255); lT.Font = x.FTit; lT.Text = titulo; lT.UseMnemonic = false;
+                Rotulo lD = new Rotulo(); lD.SetBounds(24, 52, 476, 70); lD.BackColor = Color.Transparent; lD.ForeColor = x.CTenue; lD.Font = x.FSub; lD.Text = texto; lD.UseMnemonic = false;
+                BotonPlano bNo = new BotonPlano(); bNo.SetBounds(22, 138, 230, 40); bNo.Font = x.FBot; bNo.TabIndex = 0; bNo.Text = "No";
+                BotonPlano bSi = new BotonPlano(); bSi.SetBounds(268, 138, 230, 40); bSi.Font = x.FBot; bSi.TabIndex = 1; bSi.Text = si;
+                bSi.Relleno = Color.FromArgb(110, 40, 46); bSi.Borde = Color.FromArgb(220, 96, 96);
+                bNo.Click += delegate { ok = false; q.Close(); };
+                bSi.Click += delegate { ok = true; q.Close(); };
+                q.Controls.Add(bNo); q.Controls.Add(bSi); q.Controls.Add(lT); q.Controls.Add(lD);
+                q.TeclaAntes += delegate (PulsoTecla ke) { if (ke.KeyCode == Tecla.Escape) { ok = false; q.Close(); } };
+                MonedaTambienAqui(q);
+                q.MuestraModal(x.Dlg);
+            }
+            return ok;
         }
     }
 }

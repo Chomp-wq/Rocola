@@ -22,7 +22,7 @@ namespace Rocola
 #pragma warning restore CA2255
         internal static void RocolaOsRegistraHojitaSalida()
         {
-            // (Orden 15: entre Pantalla y Navegador. Las pestanas van pegadas a la derecha: Navegador y Archivos no se mueven)
+            // (Orden 15: entre Pantalla y Archivos. Las pestanas van pegadas a la derecha; el navegador se quito el 27-11-2026)
             RocolaOsHojitas.Registra(new RocolaOsHojita { Nombre = "Sonido", Orden = 15, Arma = (f, x) => f.RocolaOsPaginaSalida(x) });
         }
 
