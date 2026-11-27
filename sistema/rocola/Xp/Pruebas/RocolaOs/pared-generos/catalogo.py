@@ -13,6 +13,7 @@ import gzip, hashlib, os, sys
 
 out = sys.argv[1]
 grande = int(sys.argv[2]) if len(sys.argv) > 2 else 9000
+grande_a = int(sys.argv[3]) if len(sys.argv) > 3 else grande   # (27-11-2026) la A con mas: no todos entran en la pared (sin portada o sin marcas), y aun asi tiene que pasar de las 500 paginas
 os.makedirs(out, exist_ok=True)
 GEN = ["Regional", "Tropical", "Bolero", "Latino", "Pop", "Rock", "Reggaeton", "Electronica", "Jazz", "Otros"]
 SIL = ["ra", "mo", "li", "ta", "ve", "su", "no", "ca", "pe", "di", "lu", "ro", "sa", "mi", "te", "ga"]
@@ -28,10 +29,12 @@ def nombre(letra, i):
 lineas = []
 na = nd = 0
 n = 0   # numerador global de discos (ids, mbid)
+ESPECIAL = [False]
 def disco(nom, anio, conid=True, idfijo=None, portada=None):
     global n
     n += 1
     m = mbid(n)
+    if ESPECIAL[0] and m.endswith('0'): m = m[:-1] + '7'   # (los de la A puestos a proposito: su portada si esta en el paquete; el falso da 404 a los mbid que acaban en 0)
     if portada is None: portada = 0 if n % 11 == 0 else 1
     if idfijo is not None: sid = idfijo
     elif conid and n % 7 != 0: sid = "cat%06d" % n
@@ -43,6 +46,7 @@ for L in ["#", "A", "B", "C", "L", "M", "O", "Q"]:
     bloque = []; arts = 0; dis = 0
     if L in "ABC":
         if L == "A":
+            ESPECIAL[0] = True
             bloque.append("A\tÁngeles Ficticios\tTropical\t99999\tcatart01\tMX\tw")
             for k, x in enumerate(["Cumbias del Recuerdo", "Más Cumbias Ficticias", "Éxitos Ficticios"]):
                 bloque.append(disco(x, 1990 + k)); dis += 1
@@ -54,12 +58,13 @@ for L in ["#", "A", "B", "C", "L", "M", "O", "Q"]:
             bloque.append(disco("Disco Sin Spotify", 2002, conid=False)); dis += 1
             bloque.append(disco("Disco Uno Por Nombre", 2003, conid=False)); dis += 1
             arts += 3
+            ESPECIAL[0] = False
         i = 0
-        while dis < grande:
+        while dis < (grande_a if L == "A" else grande):
             g = GEN[i % len(GEN)]
             bloque.append("A\t%s\t%s\t%d\tcatart%s%05d\tMX\tw" % (nombre(L, i), g, 90000 - i, L, i)); arts += 1
             for k in range(6):
-                if dis >= grande: break
+                if dis >= (grande_a if L == "A" else grande): break
                 bloque.append(disco("%s Disco %d" % (nombre(L, i), k + 1), 1960 + (i + k) % 60)); dis += 1
             i += 1
     else:

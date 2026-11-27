@@ -241,6 +241,11 @@ def main():
     disco(b, 'Plata Sin Fecha', escuchas=0)
     c = artista('Ñandú Sonoro', area=22, generos=['salsa'], wikipedias=3, escuchas=20000, oyentes=900)   # MX subiendo dos saltos
     disco(c, 'Ñandú Salsero', ano=1988, escuchas=1000, sp='uno', portada='frente')
+    # lo que no va en la pared (27-11-2026): el catalogo los MARCA (columna 7) y los pone despues de los demas
+    disco(c, 'Ñandú en el Cine', ano=1990, escuchas=900000, secundarios=[2], portada='frente')              # tipo secundario Soundtrack: s
+    disco(c, 'Ñandú Quest (Original Game Soundtrack)', ano=1995, escuchas=800000, portada='frente')       # por el nombre: sj
+    disco(c, 'Ñandú Karaoke Hits', ano=1996, escuchas=700000, portada='frente')                            # k
+    disco(c, 'Ñandú: la Lost Edition', ano=1997, escuchas=600000, portada='frente')                        # «lost» no es «ost»: sin marca
     d = artista('¡Ay Caramba Banda!', area=1, generos=['banda'], wikipedias=0, escuchas=500, oyentes=20)        # va a «#»
     disco(d, 'Caramba', ano=2015, escuchas=10)
     e = artista('3 Gallos del Valle', area=6, generos=['norteno'], wikipedias=1, escuchas=7000, oyentes=300)    # «#», Puerto Rico

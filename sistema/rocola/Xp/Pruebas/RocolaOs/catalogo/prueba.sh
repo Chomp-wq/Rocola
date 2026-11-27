@@ -758,12 +758,12 @@ PY
     si "memoria: sin disco aparte, nada en la carpeta de datos" test ! -e "$d/rocola_spotify_cache" ;;
   hoja)
     # LA HOJA «SPOTIFY» DE CTRL+F4 (27-11-2026): Ctrl+F4, Tab, Tab (la pestana Spotify) e Intro: la hoja con el vigilante sembrado (corriendo, caduca en 82
-    # dias), la API, las ultimas de la bitacora y la cache; despues, con Tab x5, el mando de paginas por letra: dos veces la flecha derecha (100 -> 200)
+    # dias), la API, las ultimas de la bitacora y la cache; despues, con Tab x4 (Archivos, Listo, Vaciar), el mando de paginas por letra: dos veces la flecha derecha (100 -> 200)
     # y Escape: guardado pared_paginas=200
     apifalsa $e; d=$(datos $e encendido); mkdir -p "$W/$e/run/rocola-soloist"
     printf 'fase=corriendo\nversion=1.3.10.86 build 20261119\ncaduca=2027-02-17\ndias=82\npid=1234\nreinicios=0\n' > "$W/$e/run/rocola-soloist/estado"
     printf '2026-11-27 21:02:11  acabo spotify:track:can0001 (Tema de Mentira): termino, sono 187.4 s [huecos]\n2026-11-27 21:08:40  DEVUELTA spotify:track:can0002 (Otra Tonada 2): Soloist no la empezo, sono 0.0 s [huecos]: se devuelve el credito\n2026-11-27 21:15:02  acabo spotify:track:can0003 (Cancion Inventada 3): termino, sono 201.0 s [huecos]\n' > "$d/rocola_spotify.txt"
-    abre $e "$d" "6:17+115,7:9,7.3:9,7.6:13,8.6:9,8.8:9,9:9,9.2:9,9.4:9,10.2:39,10.5:39,12:27" 15 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/grande-hoja" ROCOLA_CAPTURA="$(cap 8.3 hoja-spotify),$(cap 11 hoja-spotify-ajustada)"
+    abre $e "$d" "6:17+115,7:9,7.3:9,7.6:13,8.6:9,8.8:9,9:9,9.2:9,10.2:39,10.5:39,12:27" 15 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/grande-hoja" ROCOLA_CAPTURA="$(cap 8.3 hoja-spotify),$(cap 11 hoja-spotify-ajustada)"
     espera $e; o="$W/$e"; b="$d/rocola_os_bitacora.txt"
     si "hoja: sale con 0" test "$(cat $o/salio)" = 0
     si "hoja: Ctrl+F4 abierta y sin fallos de Rocola OS en rocola_error.txt" bash -c "grep -q 'Ctrl+F4 abierta' '$b' && ! grep -q 'Rocola OS' '$d/rocola_error.txt' 2>/dev/null"

@@ -57,6 +57,41 @@ TIPOS_SECUNDARIOS_FUERA = frozenset(['Spokenword', 'Interview', 'Audiobook', 'Au
                                      'Remix', 'Field recording'])
 TIPO_PRINCIPAL = 'Album'
 
+# LO QUE NO VA EN LA PARED DE DISCOS (peticion del dueno del 27-11-2026: bandas sonoras, videojuegos y cosas de ese tipo, tambien musicales,
+# infantiles, karaoke, para dormir o meditar, solo se encuentran con el buscador). El catalogo NO los quita: los MARCA, en la columna 7 de su
+# linea «D» (letras de LETRAS_MARCA; solo si hay alguna), y los pone al final de los discos de su artista; la rocola (RocolaOs.ParedExclusiones.cs)
+# no los mete en la pared. Las marcas salen del tipo secundario Soundtrack de MusicBrainz (s), de estas palabras del nombre del disco y del
+# artista y del genero del artista. LAS FRASES SON LAS MISMAS DE RocolaOs.ParedExclusiones.cs (el catalogo YA publicado no trae la columna y la rocola
+# las usa por su cuenta): si cambia una tabla, cambia la otra (prueba/exclusiones.tsv las comprueba a las dos). Van normalizadas: minusculas, sin
+# acentos y sin signos (lo que no es letra o cifra, un espacio), y valen como palabras enteras («ost» no marca «lost»).
+LETRAS_MARCA = 'sjmkidh'
+MARCAS_PALABRAS_DISCO = [
+    ('s', ['soundtrack', 'soundtracks', 'ost', 'o s t', 'banda sonora', 'bandas sonoras', 'bso', 'original score', 'film score',
+           'motion picture', 'music from the film', 'music from the movie', 'music from the original', 'inspired by the film',
+           'inspired by the motion picture', 'from the netflix', 'television soundtrack', 'original television', 'music from the tv',
+           'music from the series', 'original series', 'musica de la pelicula', 'musica original de la pelicula',
+           'banda sonora original']),
+    ('j', ['video game', 'video games', 'videogame', 'videogames', 'videojuego', 'videojuegos', 'game soundtrack', 'game ost',
+           'game score', 'original game', 'from the game', 'music from the game', 'game music']),
+    ('m', ['original cast', 'cast recording', 'cast album', 'broadway cast', 'original broadway', 'original london cast',
+           'studio cast', 'musical soundtrack', 'the musical', 'a new musical', 'original off broadway', 'highlights from the musical']),
+    ('k', ['karaoke', 'backing track', 'backing tracks', 'sing along', 'singalong']),
+    ('i', ['nursery rhymes', 'nursery rhyme', 'canciones infantiles', 'cancion infantil', 'para ninos', 'for kids', 'kids songs',
+           'children s songs', 'children s music', 'songs for children', 'baby songs', 'musica infantil', 'cantos infantiles', 'kidz bop']),
+    ('d', ['sleep music', 'music for sleep', 'music for sleeping', 'deep sleep', 'sleep sounds', 'sleep aid', 'sleeping music',
+           'sleep meditation', 'meditation', 'meditacion', 'para dormir', 'relaxing music', 'relaxation', 'relajante', 'relajacion',
+           'white noise', 'ruido blanco', 'rain sounds', 'nature sounds', 'sounds of nature', 'sonidos de la naturaleza',
+           'ocean waves', 'binaural', 'mindfulness', 'yoga', 'lullaby', 'lullabies', 'canciones de cuna', 'baby sleep', 'spa music',
+           'healing music', 'asmr']),
+]
+MARCAS_PALABRAS_ARTISTA = [
+    ('s', ['soundtrack', 'ost', 'original cast', 'film score']),
+    ('k', ['karaoke', 'backing tracks', 'sing along']),
+    ('i', ['cocomelon', 'pinkfong', 'baby shark', 'super simple songs', 'little baby bum', 'baby einstein', 'kidz bop', 'nursery rhymes']),
+    ('d', ['sleep music', 'white noise', 'rain sounds', 'nature sounds', 'meditation music', 'relaxing music', 'lullaby']),
+]
+MARCA_POR_GENERO = {'Soundtrack': 's', 'Karaoke': 'k', 'Infantil': 'i', 'Hablado': 'h'}   # el genero del artista saca a todos sus discos
+
 # Red
 AGENTE = 'rocola-catalogo/1'      # User-Agent generico: nada del dueno
 WIKIDATA = 'https://query.wikidata.org/sparql'
@@ -359,6 +394,30 @@ def es_latino(nombre):
 
 def sin_acentos(s):
     return ' '.join(''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn').casefold().split())
+
+
+def _pad_marca(s):
+    """El texto como lo ve la rocola (Normaliza de XP): minusculas, sin acentos, lo que no es letra o cifra, un espacio; con un espacio a
+    cada lado para buscar palabras enteras."""
+    n = ''.join(c for c in unicodedata.normalize('NFD', s or '') if unicodedata.category(c) != 'Mn').lower()
+    n = ' '.join(re.sub(r'[^a-z0-9]+', ' ', n).split())
+    return ' ' + n + ' ' if n else ''
+
+
+def marcas_de(disco, artista, genero, tipo_secundario=''):
+    """Las marcas (letras de LETRAS_MARCA, en su orden, sin repetir) de un disco: ver arriba. tipo_secundario: las que ya dio MusicBrainz."""
+    hay = set(c for c in tipo_secundario if c in LETRAS_MARCA)
+    pd, pa = _pad_marca(disco), _pad_marca(artista)
+    for tabla, texto in ((MARCAS_PALABRAS_DISCO, pd), (MARCAS_PALABRAS_ARTISTA, pa)):
+        if not texto:
+            continue
+        for m, frases in tabla:
+            if m not in hay and any(' %s ' % f in texto for f in frases):
+                hay.add(m)
+    g = MARCA_POR_GENERO.get(genero)
+    if g:
+        hay.add(g)
+    return ''.join(c for c in LETRAS_MARCA if c in hay)
 
 
 def limpio(s):
@@ -808,6 +867,7 @@ def orden_arma(a):
     if tipo_album is None:
         raise SystemExit('No encuentro el tipo principal %s' % TIPO_PRINCIPAL)
     sec_fuera = {int(c[0]) for c in filas(tablas, 'release_group_secondary_type') if c[1] in TIPOS_SECUNDARIOS_FUERA}
+    sec_cine = {int(c[0]) for c in filas(tablas, 'release_group_secondary_type') if c[1] == 'Soundtrack'}   # marca «s»
     if len(sec_fuera) != len(TIPOS_SECUNDARIOS_FUERA):
         raise SystemExit('Faltan tipos secundarios en MusicBrainz: %d de %d' % (len(sec_fuera), len(TIPOS_SECUNDARIOS_FUERA)))
     credito_uno = set()
@@ -838,12 +898,14 @@ def orden_arma(a):
             fuera_disco_nombre += 1
             continue
         discos[int(c[irg])] = {'gid': c[irgid], 'nombre': nombre, 'artista': ar, 'ediciones': 0, 'fecha': None, 'sp': None,
-                               'portada': 0}
+                               'portada': 0, 'tipo_marca': ''}
     del credito
     quita = 0
     for c in filas(tablas, 'release_group_secondary_type_join', crudas=True):
         if int(c[1]) in sec_fuera and discos.pop(int(c[0]), None) is not None:
             quita += 1
+        elif int(c[1]) in sec_cine and int(c[0]) in discos:
+            discos[int(c[0])]['tipo_marca'] = 's'     # tipo secundario Soundtrack (cine, series, juegos, musicales)
     paso('Discos Album de un artista con Spotify: %d (%d por tipo secundario, %d sin nombre latino)'
          % (len(discos), quita, fuera_disco_nombre), t)
 
@@ -1020,8 +1082,10 @@ def orden_arma(a):
             d = discos[g]
             v = c_lbd.d.get(d['gid'])
             d['escuchas'] = _entero(v[0]) if v else 0
+            d['marcas'] = marcas_de(d['nombre'], x['nombre'], x['genero'], d['tipo_marca'])
             lista.append(d)
-        lista.sort(key=lambda d: (-d['escuchas'], -(1 if d['sp'] else 0), -d['portada'], -d['ediciones'],
+        # (27-11-2026) los marcados (bandas sonoras, videojuegos...) van despues de los demas: no gastan el sitio de un disco de la pared
+        lista.sort(key=lambda d: (1 if d['marcas'] else 0, -d['escuchas'], -(1 if d['sp'] else 0), -d['portada'], -d['ediciones'],
                                   d['fecha'] or 99999999, sin_acentos(d['nombre']), d['nombre'], d['gid']))
         vistos, elegidos = set(), []
         for d in lista:
@@ -1188,8 +1252,9 @@ def texto_catalogo(salida, copia):
             out.append('A\t%s\t%s\t%d\t%s\t%s\t%s' % (limpio(x['nombre']), x['genero'], x['fama'], x['sp'] or '', x['pais'] or '',
                                                      x['fuente']))
             for d in x['discos']:
-                out.append('D\t%s\t%s\t%s\t%s\t%d' % (limpio(d['nombre']), str(d['fecha'] // 10000) if d['fecha'] else '',
-                                                      d['sp'] or '', d['gid'], d['portada']))
+                # la columna 7 (marcas: que no va en la pared) solo si hay alguna: un rocola-xp que no la conoce la ignora
+                out.append('D\t%s\t%s\t%s\t%s\t%d%s' % (limpio(d['nombre']), str(d['fecha'] // 10000) if d['fecha'] else '',
+                                                        d['sp'] or '', d['gid'], d['portada'], ('\t' + d['marcas']) if d.get('marcas') else ''))
     return ('\n'.join(out) + '\n').encode('utf-8')
 
 
@@ -1308,10 +1373,13 @@ def valida(ruta, reglas=None, tope=TOPE_DISCOS_LETRA, parte_genero=MAX_GENERO_LE
             if discos_art is None:
                 mal(n, 'D sin su A')
                 continue
-            if len(c) != 6:
+            if len(c) not in (6, 7):
                 mal(n, 'D con %d campos' % len(c))
                 continue
-            nombre, ano, sp, gid, por = c[1:]
+            nombre, ano, sp, gid, por = c[1:6]
+            if len(c) == 7 and (not c[6] or any(ch not in LETRAS_MARCA for ch in c[6]) or len(set(c[6])) != len(c[6])
+                                or ''.join(ch for ch in LETRAS_MARCA if ch in c[6]) != c[6]):
+                mal(n, 'marcas malas: %r' % c[6])
             if not nombre or nombre != nombre.strip():
                 mal(n, 'disco sin nombre o con espacios a los lados')
             if ano and not re.match(r'^\d{4}$', ano):

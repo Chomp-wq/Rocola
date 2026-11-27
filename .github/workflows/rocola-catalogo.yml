@@ -2,6 +2,10 @@
 # popular por genero). Baja la copia completa de MusicBrainz, pregunta a Wikidata y ListenBrainz, arma rocola_catalogo.tsv.gz, lo valida
 # y lo publica en la version de GitHub con etiqueta fija «catalogo» (se reemplazan sus archivos): rocola_catalogo.tsv.gz,
 # rocola_catalogo.txt y rocola_catalogo_informe.txt. La rocola baja el .txt y, si cambio la version, el .tsv.gz (sin llave).
+# (27-11-2026) Y el PAQUETE DE PORTADAS (trabajo «portadas», sistema/catalogo/arma_portadas.py): las miniaturas del Cover Art Archive de los discos que
+# van a la pared de discos (los ~60 000 de los artistas mas famosos), en partes de ~150 MB (rocola_portadas_NN.pak) y su manifiesto
+# (rocola_portadas.txt), publicados en la misma version «catalogo»; rocola-xp los baja una vez, sin llave, y un disco del catalogo solo entra en la
+# pared cuando su portada ya esta a la mano.
 name: Catalogo de la rocola
 
 # SOLO A PEDIDO (como las demas compilaciones): Actions -> «Catalogo de la rocola» -> Run workflow, o cuando el dueno se lo pide a
@@ -14,6 +18,14 @@ on:
         description: 'Sin las etiquetas de MusicBrainz (CC BY-NC-SA): todo el catalogo CC0'
         type: boolean
         default: false
+      portadas:
+        description: 'Despues del catalogo, armar y publicar el paquete de portadas de la pared (600-900 MB; rocola-xp lo baja una vez)'
+        type: boolean
+        default: true
+      max_discos:
+        description: 'Portadas del paquete: cuantos discos como mucho (los de los artistas mas famosos primero)'
+        type: string
+        default: '60000'
   push:
     branches: [claude/modest-carson-fa2v2n]
     paths: ['.github/workflows/rocola-catalogo.yml']
@@ -33,6 +45,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prueba sin red (copia inventada)
         run: sh sistema/catalogo/prueba/prueba.sh
+      - name: Prueba del paquete de portadas sin red (Cover Art Archive falso)
+        run: sh sistema/catalogo/prueba/prueba_portadas.sh
 
   armar:
     needs: prueba
@@ -138,3 +152,54 @@ jobs:
           gh release upload catalogo salida/rocola_catalogo.tsv.gz salida/rocola_catalogo_informe.txt --clobber
           gh release upload catalogo salida/rocola_catalogo.txt --clobber
           gh release edit catalogo --notes-file notas.txt
+
+  # (27-11-2026) EL PAQUETE DE PORTADAS: despues de publicar el catalogo, con ese mismo catalogo. Baja las miniaturas (unas 60 000, 600-900 MB) del
+  # Cover Art Archive con 16 hilos y una cache entre corridas (si se corta o se repite, sigue donde iba), las valida y las publica en la misma version:
+  # primero las partes y al final el manifiesto (la rocola solo mira las partes cuando el manifiesto trae otras). Las partes de una corrida de antes que
+  # ya no estan en el manifiesto se quitan de la version.
+  portadas:
+    needs: armar
+    if: github.event_name == 'workflow_dispatch' && inputs.portadas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: El catalogo recien publicado
+        run: gh release download catalogo -p 'rocola_catalogo.tsv.gz' -p 'rocola_catalogo.txt' --dir catalogo
+      - name: Cache de portadas (entre corridas)
+        uses: actions/cache@v4
+        with:
+          path: portadas-cache
+          key: portadas-${{ github.run_number }}
+          restore-keys: portadas-
+      - name: Cuantos discos entran
+        run: python3 sistema/catalogo/arma_portadas.py lista --catalogo catalogo/rocola_catalogo.tsv.gz --max-discos "${{ inputs.max_discos }}"
+      - name: Bajar las portadas y armar las partes
+        run: |
+          t=$(date +%s)
+          python3 sistema/catalogo/arma_portadas.py arma --catalogo catalogo/rocola_catalogo.tsv.gz --txt catalogo/rocola_catalogo.txt \
+            --salida paquete --cache portadas-cache --max-discos "${{ inputs.max_discos }}" --max-mb 900 --parte-mb 150 --hilos 16
+          echo "portadas: $(( $(date +%s) - t )) s"
+          cat paquete/rocola_portadas.txt
+          du -sh paquete portadas-cache
+      - name: Validar el paquete
+        run: python3 sistema/catalogo/arma_portadas.py valida --salida paquete
+      - name: Guardar el manifiesto (por si hay que revisar)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portadas-${{ github.run_number }}
+          path: paquete/rocola_portadas.txt
+          retention-days: 14
+      - name: Publicar en la version «catalogo» (las partes primero, el manifiesto al final)
+        run: |
+          gh release upload catalogo paquete/rocola_portadas_*.pak --clobber
+          gh release upload catalogo paquete/rocola_portadas.txt --clobber
+          # las partes de antes que el manifiesto nuevo ya no nombra
+          nuevas=$(ls paquete | grep '^rocola_portadas_.*\.pak$')
+          for a in $(gh release view catalogo --json assets --jq '.assets[].name' | grep '^rocola_portadas_.*\.pak$'); do
+            echo "$nuevas" | grep -qx "$a" || gh release delete-asset catalogo "$a" --yes
+          done
+          gh release view catalogo --json assets --jq '.assets[] | "\(.name) \(.size)"'

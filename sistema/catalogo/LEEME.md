@@ -23,7 +23,7 @@ lados).
 #rocola-catalogo	1	<AAAA-MM-DD de la copia de MusicBrainz>	<artistas>	<discos>
 L	<letra>	<artistas de la letra>	<discos de la letra>
 A	<nombre>	<género (etiqueta de XP)>	<fama>	<id de artista de Spotify o vacío>	<país ISO de 2 letras o vacío>	<w|m>
-D	<nombre del disco>	<año o vacío>	<id de disco de Spotify o vacío>	<MBID del grupo de lanzamiento>	<1 si tiene portada, si no 0>
+D	<nombre del disco>	<año o vacío>	<id de disco de Spotify o vacío>	<MBID del grupo de lanzamiento>	<1 si tiene portada, si no 0>[	<marcas>]
 D	...
 A	...
 L	...
@@ -45,6 +45,16 @@ L	...
   del grupo de lanzamiento (`release-group`) de MusicBrainz, en minúsculas con guiones; sirve para la portada del Cover Art Archive
   (`https://coverartarchive.org/release-group/<MBID>/front-250`). Portada: `1` si el Cover Art Archive tiene una de frente para ese
   disco, si no `0` (entonces la casilla de XP de los discos sin carátula).
+- **Marcas** (columna 7 de `D`, desde el 27-11-2026; **solo si hay alguna**, así que un `D` sin marcas es de 6 campos como siempre y un
+  rocola-xp que no conoce la columna la ignora): letras de `sjmkidh` sin repetir y en ese orden, que dicen por qué el disco **no va en la pared
+  de discos** (solo el buscador lo encuentra): `s` cine y series (tipo secundario *Soundtrack* de MusicBrainz o las palabras del nombre:
+  «soundtrack», «OST», «banda sonora», «original motion picture»...), `j` videojuegos, `m` musicales y teatro, `k` karaoke, `i` infantil,
+  `d` para dormir, meditar o relajarse, `h` hablado. El género del artista (`Soundtrack`, `Karaoke`, `Infantil`, `Hablado`) marca todos sus
+  discos y también el nombre del artista («Karaoke Stars»). **El catálogo no los quita: los marca** y los pone después de los demás
+  discos de su artista (no gastan el sitio de uno de la pared); la rocola decide (`RocolaOs.ParedExclusiones.cs`) y, con el catálogo ya
+  publicado, que no trae la columna, usa las mismas palabras por su cuenta. Las frases (`MARCAS_PALABRAS_DISCO` y `MARCAS_PALABRAS_ARTISTA` en
+  `arma_catalogo.py`) son las mismas de la rocola: `prueba/exclusiones.tsv` las comprueba a las dos. Un disco sin portada (columna 6 = 0) tampoco
+  va en la pared.
 - Topes: como mucho **9 000 discos por letra** y ningún género más del **35 % del tope** (3 150 discos) en una letra.
 - Las cuentas de `L` y de la cabecera cuadran con las líneas que siguen.
 
@@ -144,8 +154,8 @@ están en MusicBrainz y Wikidata.
    142 de los géneros de MusicBrainz; en el catálogo cambia el género de un artista solo si cambia su mayoría. Para añadir una trampa: el nombre normalizado en
    `PREMAPEO_EXACTO` (o una frase en `PREMAPEO_FRASE` si es una familia) y un caso en `prueba/comprueba.py`.
 4. **Discos**: grupos de lanzamiento de tipo principal Album, sin los tipos secundarios Spokenword, Interview, Audiobook, Audio drama,
-   Demo, DJ-mix, Mixtape/Street, Remix ni Field recording (en vivo, recopilaciones y bandas sonoras sí), acreditados a ese artista solo.
-   Orden: escuchas de ListenBrainz; a igualdad, primero con id de Spotify, luego con portada, luego más ediciones, luego el más viejo
+   Demo, DJ-mix, Mixtape/Street, Remix ni Field recording (en vivo, recopilaciones y bandas sonoras sí, estas **marcadas**: ver «Marcas»),
+   acreditados a ese artista solo. Orden: primero los que no llevan marcas; luego escuchas de ListenBrainz; a igualdad, primero con id de Spotify, luego con portada, luego más ediciones, luego el más viejo
    (luego nombre y MBID). Los nombres repetidos (sin mayúsculas ni acentos) cuentan una vez. Hasta 6. Año: la primera fecha de sus
    ediciones. Id de Spotify: el de la edición **oficial** más vieja que lo tenga (si ninguna oficial, la más vieja). Portada: si el
    Cover Art Archive tiene una imagen de frente en alguna edición o una elegida para el grupo.
@@ -231,3 +241,32 @@ paso.
   «dancehall» da Electrónica. Con varios géneros por artista casi siempre gana el bueno (pesa 1 cada uno), pero no se cambian las reglas
   aquí: son las de XP (una sola lista).
 - Licencias: lo de fuente `m` es CC BY-NC-SA (no comercial).
+
+## Las portadas por adelantado (`arma_portadas.py`, 27-11-2026)
+
+Petición del dueño: la pared con música de Spotify se quitó el 22-11 porque «cargan muy lento las carátulas»; al devolverla, **un disco del
+catálogo solo entra en la pared cuando su portada ya está a la mano**. Para que casi todos la tengan desde el primer día, la compilación del
+catálogo (`.github/workflows/rocola-catalogo.yml`, trabajo `portadas`, a pedido) baja del Cover Art Archive la miniatura (`front-250`) de los
+discos que van a la pared y las junta en un paquete publicado junto al catálogo en la versión `catalogo`. rocola-xp (`RocolaOs.ParedPortadas.cs`)
+lo baja **una vez** (sin llave, comprobado por bytes y sha256 como el catálogo) al disco de la música y lee de ahí.
+
+- **Qué entra**: los discos con portada y sin marcas, de artistas que no sean de género `Soundtrack`, `Karaoke`, `Infantil` ni `Hablado`, del
+  artista **más famoso al menos** (la fama de la columna 4 de `A`) y, de cada artista, en el orden del archivo; hasta `--max-discos` (60 000) o
+  `--max-mb` (900 MB). Una portada que el Cover Art Archive no da (404) o que no es un JPEG se salta.
+- **Archivos publicados**: `rocola_portadas.txt` (el manifiesto: `formato=1`, `catalogo=` la versión del catálogo con que se armó, `discos=`,
+  `bytes=`, `partes=` y `parteN=NOMBRE,SHA256,BYTES`) y `rocola_portadas_NN.pak`, partes de unos 150 MB (el límite de GitHub es por archivo,
+  2 GiB, y por publicación, 1 000 archivos). Cada parte se sirve sola: `RPK1`, cuántas, y por portada el MBID (16 bytes), el desplazamiento y el
+  largo (enteros de 32 bits little-endian), y los JPEG. Se publican las partes primero y el manifiesto al final.
+- **En la rocola**: carpeta `catalogo/portadas-pack` (junto a `ROCOLA_IA_DATOS`, nunca en los 512 MB de datos), una vez al día como mucho, con 256
+  MB de reserva en el disco; cada parte bien comprobada deja su `.ok` y se usa aunque falten otras; las portadas que se van a ver se sacan del
+  paquete a la caché de portadas (un archivo chico). Lo que el paquete no trae se baja **de fondo**, poco a poco (el «relleno»: 2 hilos, hasta
+  3 000 por sesión, las primeras de cada letra) y entra en la pared al rearmarse la letra.
+- **Órdenes**: `arma --catalogo ARCHIVO.tsv.gz --salida DIR [--txt rocola_catalogo.txt] [--max-discos N] [--max-mb N] [--parte-mb N] [--hilos N]
+  [--cache DIR] [--base URL]`, `valida --salida DIR` y `lista --catalogo ARCHIVO.tsv.gz`. Con `--cache`, una corrida nueva (o repetida tras un
+  corte) no vuelve a pedir lo ya bajado ni los 404. No publica un paquete vacío ni con más del 10 % de fallos de red.
+- **La prueba, sin red**: `sh sistema/catalogo/prueba/prueba_portadas.sh` (un Cover Art Archive falso con 302, 404, un 500 que se reintenta y un
+  cuerpo que no es JPEG): entran solo los discos que van a la pared y en el orden de fama, los topes de discos y de MB, las partes, `valida`
+  atrapa una parte tocada o que falta, la caché evita todas las peticiones de una segunda corrida y una corrida nueva borra las partes que
+  sobran. Corre también en GitHub al cambiar el flujo.
+- **Sin comprobar aquí**: el Cover Art Archive de verdad (el tamaño real del paquete: ~60 000 × 10-25 KB; el tiempo de la corrida; si las dos
+  redirecciones de `coverartarchive.org` aguantan 16 hilos).

@@ -79,6 +79,8 @@ malo "cuenta de la letra" "i=[k for k,x in enumerate(l) if x.startswith('D\t')][
 malo "letra que falta" "l=[x for x in l if not x.startswith('L\tQ\t')]"
 malo "MBID malo" "i=[k for k,x in enumerate(l) if x.startswith('D\t')][0]; c=l[i].split('\t'); c[4]='no-es-mbid'; l[i]='\t'.join(c)"
 malo "siete discos" "i=[k for k,x in enumerate(l) if x.startswith('D\t')][0]; l[i+1:i+1]=[l[i]]*6"
+malo "marcas malas (columna 7)" "i=[k for k,x in enumerate(l) if x.startswith('D\t')][0]; l[i]=l[i]+'\tz'"
+malo "marcas fuera de orden" "i=[k for k,x in enumerate(l) if x.startswith('D\t')][0]; l[i]=l[i]+'\tjs'"
 malo "cabecera" "l[0]=l[0].replace('\t1\t','\t2\t',1)"
 
 paso "extrae: de un tar sale lo mismo"

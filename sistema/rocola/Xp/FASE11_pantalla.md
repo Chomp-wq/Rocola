@@ -1,5 +1,7 @@
 # Fase 11, grupo pantalla-ctrlf4: la ventana de Rocola OS (Ctrl+F4) con la hoja «Pantalla»
 
+*27-11-2026: la hoja «Navegador» y todo lo que cedía y retomaba la pantalla para ella se quitaron (ver `FASE11_navegador-archivos.md`); lo que abajo habla del navegador, de `Retoma` y de `retoma=` es historia.*
+
 15-11-2026 (y 20-11-2026: juntada `junta-spotify` 30c31d4, lo que quedó a medias, el arreglo de los rótulos y la prueba en QEMU). Rama
 `pantalla-ctrlf4`, sobre `junta-spotify`. Es la petición del dueño del 15-11-2026 (AGENTS.md: «en la ventana
 de ctrl f3 (o ... ctrl f4) pon para configurar elementos mas de GPU, como la resolucion, los hertz del monitor, y los colores del

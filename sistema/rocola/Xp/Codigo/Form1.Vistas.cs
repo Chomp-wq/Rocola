@@ -480,7 +480,7 @@ namespace Rocola
             // Una letra con RELIEVE: sombra debajo y filo claro arriba, como grabada en cristal.
             private void Grabada(SKCanvas g, AjusteLetra ajuste, bool copia, bool medio, SKPaint b, string txt, Rocola.Nativo.Letra f, RectangleF r, Color tono, bool hay)   // EN LINUX: el lienzo de Skia, el estado del que llama que pesa en el texto (modo de letra, copia y medio pixel), el pincel (SKPaint) y la Letra
             {
-                b.Color = Color.FromArgb(hay ? 150 : 70, 0, 0, 0).Sk();   // EN LINUX: el color del pincel, en Skia
+                if (RocolaOsLetraIcono(g, txt, r, hay ? 255 : 110, copia, medio)) return; b.Color = Color.FromArgb(hay ? 150 : 70, 0, 0, 0).Sk();   // ROCOLA OS g390: (XP) b.Color = Color.FromArgb(hay ? 150 : 70, 0, 0, 0).Sk(); — la letra ♫ de Spotify va con su icono, no escrita: aqui la letra de la tira, la que se desliza y la de la lupa (RocolaOs/RocolaOs.ParedIcono.cs; en cualquier otra letra, o sin el modo, false: la de XP)   // EN LINUX: el color del pincel, en Skia
                 TextoGdiPlus.Escribe(g, txt, f, ajuste, b, new RectangleF(r.X, r.Y + 1.4f, r.Width, r.Height), sfCen, copia, medio);   // EN LINUX: g.DrawString(texto, letra, pincel, caja, formato) (Nativo/TextoGdiPlus.cs)
                 b.Color = (hay ? Color.FromArgb(66, 190, 215, 255) : Color.FromArgb(26, 150, 170, 210)).Sk();   // EN LINUX: el color del pincel, en Skia
                 TextoGdiPlus.Escribe(g, txt, f, ajuste, b, new RectangleF(r.X, r.Y - 1.1f, r.Width, r.Height), sfCen, copia, medio);   // EN LINUX: g.DrawString(...)
@@ -697,7 +697,7 @@ namespace Rocola
                     pulsePen.Color = Color.FromArgb(215 + (int)(pulse * 40), 225, 242, 255).Sk(); pulsePen.StrokeWidth = 1.1f;   // EN LINUX: el color y el ancho de la pluma
                     Pixel.Traza(g, pulsePath, pulsePen, suave, medio, copia);   // EN LINUX: g.DrawPath
                     whiteB.Color = ((paso >= 1f) ? Color.White : Color.FromArgb((int)(255 * paso), 255, 255, 255)).Sk();   // EN LINUX: el color del pincel, en Skia
-                    TextoGdiPlus.Escribe(g, lbl, useF, ajuste, whiteB, slotRect, sfCen, copia, medio);   // EN LINUX: g.DrawString(texto, letra, pincel, caja, formato) (Nativo/TextoGdiPlus.cs)
+                    if (!RocolaOsLetraIcono(g, lbl, slotRect, (int)(255 * paso), copia, medio)) TextoGdiPlus.Escribe(g, lbl, useF, ajuste, whiteB, slotRect, sfCen, copia, medio);   // ROCOLA OS g391: (XP) TextoGdiPlus.Escribe(g, lbl, useF, ajuste, whiteB, slotRect, sfCen, copia, medio); — la letra ♫ elegida, en su capsula, con su icono (RocolaOs/RocolaOs.ParedIcono.cs; en cualquier otra letra, o sin el modo, la de XP)   // EN LINUX: g.DrawString(texto, letra, pincel, caja, formato) (Nativo/TextoGdiPlus.cs)
                     break;
                 }
 
@@ -873,7 +873,7 @@ namespace Rocola
                     pulsePen.Color = Color.FromArgb(215 + (int)(pulse * 40), 225, 242, 255).Sk(); pulsePen.StrokeWidth = 1.1f;   // EN LINUX: el color y el ancho de la pluma
                     Pixel.Traza(g, pulsePath, pulsePen, suave, medio, copia);   // EN LINUX: g.DrawPath
                     whiteB.Color = ((paso >= 1f) ? Color.White : Color.FromArgb((int)(255 * paso), 255, 255, 255)).Sk();   // EN LINUX: el color del pincel, en Skia
-                    Agrandado(g, slotRect, s, delegate { TextoGdiPlus.Escribe(g, lbl, useF, ajuste, whiteB, slotRect, sfCen, copia, medio); });   // EN LINUX: g.DrawString(texto, letra, pincel, caja, formato) (Nativo/TextoGdiPlus.cs)
+                    Agrandado(g, slotRect, s, delegate { if (!RocolaOsLetraIcono(g, lbl, slotRect, 255, copia, medio, s)) TextoGdiPlus.Escribe(g, lbl, useF, ajuste, whiteB, slotRect, sfCen, copia, medio); });   // ROCOLA OS g392: (XP) Agrandado(g, slotRect, s, delegate { TextoGdiPlus.Escribe(g, lbl, useF, ajuste, whiteB, slotRect, sfCen, copia, medio); }); — la letra ♫ elegida bajo la lupa, con su icono (RocolaOs/RocolaOs.ParedIcono.cs; en cualquier otra letra, o sin el modo, la de XP)   // EN LINUX: g.DrawString(texto, letra, pincel, caja, formato) (Nativo/TextoGdiPlus.cs)
                     break;
                 }
 

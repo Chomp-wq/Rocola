@@ -7,6 +7,11 @@
 # Nunca el Soloist de verdad (el falso del nucleo, como la prueba del catalogo).
 #   bash prueba.sh PROGRAMA [escenas...]      PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
 #   W (trabajo), API, FALSO, CAPTURAS como en Pruebas/RocolaOs/catalogo/prueba.sh
+# (27-11-2026, la pared de Spotify vuelve) Un disco del catalogo solo entra en la pared con su portada A LA MANO (RocolaOs.ParedPortadas.cs): aqui el
+# paquete de portadas lo arma sistema/catalogo/arma_portadas.py contra el Cover Art Archive FALSO de la API falsa (404 a los mbid que acaban en 0) y
+# se siembra en la carpeta de cada escena (SIN_PAQUETE=1: sin paquete); no entran los discos sin portada ni los marcados (bandas sonoras, videojuegos...).
+# Escenas nuevas: exclusiones (lo que no va), nombres (el parecido de nombres), mano (la portada a la mano y el relleno), paquete (la descarga del
+# paquete) y letra (la ♫ con el icono de Spotify a 1024x768).
 # (junta 3, revision) con ROCOLA_OS=1 el cielo pide el lugar y el clima por internet sin llave, y la letra va a LRCLIB: en la prueba,
 # todo eso va al sumidero 127.0.0.1:7 (nada escucha) para no depender de la red ni de lo que conteste un servicio de fuera; una escena
 # que ponga su propio falso lo pone delante y manda
@@ -15,7 +20,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-orden pastilla hojea hojeaxp abre portadas tope descarga contrato real sincatalogo quitallave apagado cero sinllave}"
+escenas="${*:-orden pastilla hojea hojeaxp abre portadas tope descarga contrato real sincatalogo quitallave apagado cero sinllave exclusiones nombres mano paquete letra}"
 T=${T:-/root/rocola-trabajo/fase11/pared-generos}
 API=${API:-$T/api-falsa}
 REAL=${REAL:-$T/catalogo-real}   # el catalogo de verdad (escena real), bajado aparte de la version «catalogo»
@@ -45,7 +50,7 @@ if [ ! -f "$FALSO/soloist-falso.dll" ] || ! cmp -s "$SX/SoloistFalso/Program.cs"
 fi
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
 rm -rf "$W"; mkdir -p "$W"
-python3 "$G/catalogo.py" "$CAT" > "$W/catalogo.txt" || exit 1
+python3 "$G/catalogo.py" "$CAT" 9000 12000 > "$W/catalogo.txt" || exit 1
 cat "$W/catalogo.txt"
 bien=0; mal=0; falta=0
 si() { local d="$1"; shift; if "$@"; then echo "BIEN  $d"; bien=$((bien + 1)); else echo "MAL   $d"; mal=$((mal + 1)); fi; }
@@ -66,6 +71,10 @@ control() { curl -s --noproxy '*' "http://127.0.0.1:$P/control/$1" > /dev/null; 
 abre() {
   local n="$1" d="$2" pulsa="$3" seg="$4"; shift 4
   local o="$W/$n"; mkdir -p "$o/run" "$o/soloist" "$o/disco"
+  # (27-11-2026) el paquete de portadas, sembrado en la carpeta del catalogo de la escena (junto a lo grande de la IA, ROCOLA_IA_DATOS/../catalogo)
+  local ia="$o/disco/ia-xp" x
+  for x in "$@"; do case "$x" in ROCOLA_IA_DATOS=*) ia="${x#ROCOLA_IA_DATOS=}";; esac; done
+  if [ -z "${SIN_PAQUETE:-}" ] && [ -f "$PAQ/rocola_portadas.txt" ]; then siembra "$(dirname "$ia")/catalogo/portadas-pack"; fi
   printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj  file "%s"  registro "%s" }\n' "$AL/libasound_module_pcm_reloj.so" "$o/sonado.raw" "$o/registro.txt" > "$o/alsa.conf"
   ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="$pulsa" \
       ROCOLA_CAPTURA_SALE=0 ROCOLA_TRAZA_VENTANAS="$o/traza.txt" ROCOLA_SPOTIFY_API="http://127.0.0.1:$P/v1" ROCOLA_SPOTIFY_CUENTAS="http://127.0.0.1:$P" \
@@ -89,8 +98,9 @@ datos() {   # NOMBRE MODO(apagado|encendido|sinllave)
   for x in "Angeles Ficticios - Cumbias del Recuerdo" "Alma Nortena - Corridos Bravos" "Amor Inventado - Boleros de Siempre" "Alfa Rockera - Rock de Prueba" \
            "Arena Tropical - Salsa Inventada" "Banda Ejemplar - Banda en Vivo"; do mkdir -p "$m/$x"; cp "$s"/*.mp3 "$m/$x/"; done
   case "$2" in
-    encendido) printf 'spotify=1\n' > "$d/rocola_os.txt"; printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt" ;;
+    encendido) printf 'spotify=1\npared_paginas=%s\n' "${PAGINAS:-500}" > "$d/rocola_os.txt"; printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt" ;;
     sinllave) printf 'spotify=1\n' > "$d/rocola_os.txt" ;;
+    cuenta) printf 'spotify=1\n' > "$d/rocola_os.txt"; printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\nrefresh_token=refresco-1\nusuario=dueno-falso\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt" ;;   # (27-11-2026) con la cuenta: la letra ♫
     apagado) printf 'spotify=0\n' > "$d/rocola_os.txt"; printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt" ;;
   esac
   echo "$d"
@@ -100,8 +110,25 @@ cap() { [ -n "$CAPTURAS" ] && echo "$1:$CAPTURAS/$2.png" || echo "$1:$W/$2.png";
 # N veces la tecla VK desde el segundo S, cada PASO s
 veces() { local s="$1" n="$2" vk="$3" paso="${4:-0.15}" r="" i; for ((i = 0; i < n; i++)); do r="$r,$(echo "$s + $i * $paso" | bc):$vk"; done; echo "${r#,}"; }
 v1() { grep -c ' /v1/' "$1" 2>/dev/null; }
+# EL PAQUETE DE PORTADAS (27-11-2026): empaca CARPETA_DEL_CATALOGO: arma_portadas.py contra el Cover Art Archive FALSO (una API falsa aparte), en la
+# misma carpeta (la API falsa la da en /catalogo/); las portadas bajadas se guardan para las siguientes (W/cache-caa)
+empaca() {
+  local c="$1" n; n=$(basename "$c"); apifalsa "empaca-$n" ""
+  python3 "$XP/../../catalogo/arma_portadas.py" arma --catalogo "$c/rocola_catalogo.tsv.gz" --salida "$c" --cache "$W/cache-caa" --base "http://127.0.0.1:$P" \
+    --max-discos 1000000 --max-mb 3000 --parte-mb 60 --hilos 8 2> "$W/empaca-$n.txt" || { cat "$W/empaca-$n.txt"; exit 1; }
+  kill $APIPID 2>/dev/null; wait $APIPID 2>/dev/null
+  echo "paquete de $n: $(tail -1 "$W/empaca-$n.txt")"
+}
+# SEMBRAR EL PAQUETE en la carpeta de una escena (enlaces a las partes y su «.ok»: la rocola las lee al arrancar, sin red); PAQ: de que catalogo es
+PAQ="$CAT"
+siembra() {   # DESTINO
+  local dst="$1" f; mkdir -p "$dst"
+  for f in "$PAQ"/rocola_portadas_*.pak; do [ -e "$f" ] || continue; ln -sf "$f" "$dst/$(basename "$f")"; sed -n "s/^parte[0-9]*=$(basename "$f"),\([0-9a-f]*\),.*/\1/p" "$PAQ/rocola_portadas.txt" > "$dst/$(basename "$f").ok"; done
+}
 # lo que se hace en todas: moneda a los 7 s
 BASE="7:67"
+# el paquete de portadas del catalogo de prueba, una vez (lo siembran las escenas; solo si alguna lo necesita: son 30 s)
+for e in $escenas; do case $e in orden|pastilla|hojea|hojeaxp|abre|portadas|tope|quitallave|paquete) empaca "$CAT"; break ;; esac; done
 
 for e in $escenas; do
   echo "== $e"
@@ -174,7 +201,7 @@ PY
     # pagina en que se para). hojeaxp: lo mismo con el modo apagado (la pared de XP, que da la vuelta a sus letras de 1 pagina), para comparar
     apifalsa $e "$CAT"
     if [ $e = hojea ]; then d=$(datos $e encendido); M=""; else d=$(datos $e apagado); M="ROCOLA_PARED_MIDE=1"; fi
-    abre $e "$d" "$BASE,12:38~40000" 60 ROCOLA_OS=1 $M ROCOLA_CAPTURA="$(cap 30 pared-generos-hojeando-$e),$(cap 56 pared-generos-tras-hojear-$e)"
+    abre $e "$d" "$BASE,12:38~40000" 60 ROCOLA_OS=1 ROCOLA_PARED_RELLENO=0 $M ROCOLA_CAPTURA="$(cap 30 pared-generos-hojeando-$e),$(cap 56 pared-generos-tras-hojear-$e)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     echo "   $(grep -E '^(paginas_vistas|letra|pagina|hojeo_cuadros|hojeo_p50_ms|hojeo_p95_ms|hojeo_p99_ms|hojeo_max_ms|hojeo_de_mas_de_50ms|hojeo_de_mas_de_100ms|todos_p50_ms|todos_p95_ms|todos_p99_ms|todos_max_ms|memoria_mb_max|gc_mb_max|portadas_pedidas|portadas_dejadas|armadas|armada_ms_max)=' $o/run/rocola-xp/pared/estado | tr '\n' ' ')"
     si "$e: sale con 0" test "$(cat $o/salio)" = 0
@@ -226,7 +253,7 @@ PY
     tc2=$(echo "$t + 1.5" | bc); T="$T,$t:13"; t=$(echo "$t + 4" | bc)
     T="$T,$t:13"; t=$(echo "$t + 4" | bc)
     T="$T,$t:13"; tc3=$(echo "$t + 3" | bc); T="$T,$(echo "$t + 4.5" | bc):27"; t=$(echo "$t + 7" | bc)
-    abre $e "$d" "$T" $(echo "$t + 2" | bc | cut -d. -f1) ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap $tc1 pared-generos-disco-del-catalogo),$(cap $tc2 pared-generos-disco-que-spotify-no-tiene),$(cap $tc3 pared-generos-disco-buscado-por-nombre)"
+    abre $e "$d" "$T" $(echo "$t + 2" | bc | cut -d. -f1) ROCOLA_OS=1 ROCOLA_PARED_RELLENO=0 ROCOLA_CAPTURA="$(cap $tc1 pared-generos-disco-del-catalogo),$(cap $tc2 pared-generos-disco-que-spotify-no-tiene),$(cap $tc3 pared-generos-disco-buscado-por-nombre)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; b="$d/rocola_os_bitacora.txt"
     grep -E 'pared_generos\] (se abre|el disco)' "$b" | sed 's/^.*\] /   /'
     si "abre: sale con 0" test "$(cat $o/salio)" = 0
@@ -238,24 +265,25 @@ PY
     si "abre: dos escondidos y la eleccion en su sitio (casilla $R: $(est $o elegido))" bash -c "[ '$(est $o ocultos)' = 2 ] && [ '$(est $o elegido)' = $R ]"
     si "abre: en total 5 peticiones a /v1 ($(v1 $a))" test "$(v1 $a)" = 5 ;;
   portadas)
-    # LAS PORTADAS DEL CATALOGO: al verse (la pagina 1 y luego la 2), del Cover Art Archive (falso), a su cache en el disco de la rocola; sin
-    # portada (404), la casilla de XP sin caratula; a la 2a vez, del disco (ninguna peticion). (rapido-spotify) Y por adelantado las de las
-    # paginas de al lado y la que sigue hacia donde se va: con la 1 y la 2 vistas, de la 1 a la 4 (72 casillas), y la primera pagina de las
-    # dos letras de al lado (36): 108 como mucho
+    # LAS PORTADAS DEL CATALOGO, A LA MANO (27-11-2026; antes se bajaban del Cover Art Archive al verse): solo entran en la pared los discos cuya
+    # portada ya esta en el PAQUETE (sembrado aqui) o en la cache; al verse una pagina (y por adelantado las de al lado y la que sigue hacia donde se
+    # va) sus portadas se SACAN del paquete a la cache del disco (un archivo chico, sin red): ninguna peticion al Cover Art Archive. Sin portada
+    # no hay disco. A la 2a vez, la cache ya las tiene
     apifalsa $e "$CAT"; d=$(datos $e encendido)
-    abre $e "$d" "$BASE,14:38,18:40" 22 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/disco-portadas/ia-xp"
+    abre $e "$d" "$BASE,14:38,18:40" 22 ROCOLA_OS=1 ROCOLA_PARED_RELLENO=0 ROCOLA_IA_DATOS="$W/disco-portadas/ia-xp"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; n1=$(grep -c 'GET /release-group/' $a)
-    pc="$W/disco-portadas/catalogo/portadas"
-    echo "   portadas: $n1 pedidas ($(grep -c 'release-group.* 404' $a) sin portada), $(ls $pc/*.jpg 2>/dev/null | wc -l) en la cache, $(ls $pc/miniaturas 2>/dev/null | wc -l) miniaturas"
+    pc="$W/disco-portadas/catalogo/portadas"; ex=$(est $o paquete_extraidas)
+    echo "   portadas: $n1 pedidas a la red, $ex sacadas del paquete, $(ls $pc/*.jpg 2>/dev/null | wc -l) en la cache, $(ls $pc/miniaturas 2>/dev/null | wc -l) miniaturas"
     si "portadas: sale con 0" test "$(cat $o/salio)" = 0
-    si "portadas: solo las de 2 paginas vistas, las 2 de al lado y la 1a de las 2 letras de al lado, por adelantado (de 108 casillas): $n1" test "$n1" -le 108 -a "$n1" -ge 20
-    si "portadas: las 404 son las de los mbid que acaban en 0 (el falso) y no se guardan" bash -c "! ls '$pc' | grep -q '0\.jpg$'"
+    si "portadas: ninguna al Cover Art Archive (todo salio del paquete): $n1" test "$n1" = 0
+    si "portadas: solo las de 2 paginas vistas, las 2 de al lado y la 1a de las 2 letras de al lado, por adelantado (de 108 casillas): $ex sacadas" test "$ex" -le 108 -a "$ex" -ge 20
+    si "portadas: la cache del disco tiene las sacadas y ninguna de los mbid que acaban en 0 (sin portada)" bash -c "[ \$(ls '$pc'/*.jpg | wc -l) -ge 20 ] && ! ls '$pc' | grep -q '0\.jpg\$'"
     si "portadas: las miniaturas de XP de estas portadas van a su cache (no a rocola_miniaturas)" bash -c "[ \$(ls '$pc/miniaturas' | wc -l) -ge 1 ]"
     si "portadas: la previa de 32 px no va a previews32 (nada de la cache del catalogo en el indice de XP)" bash -c "! grep -qa 'disco-portadas/catalogo' '$d'/rocola_miniaturas/previews32* 2>/dev/null"
     apifalsa ${e}2 "$CAT"; d=$(datos ${e}2 encendido)
     abre ${e}2 "$d" "$BASE,14:38,18:40" 22 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/disco-portadas/ia-xp"
-    espera ${e}2; a2="$W/${e}2/api/peticiones.txt"
-    si "portadas: la 2a vez, del disco: ninguna pedida de las que ya estaban ($(grep -c 'GET /release-group/.* 200' $a2) pedidas con 200)" test "$(grep -c 'GET /release-group/.* 200' $a2)" = 0 ;;
+    espera ${e}2; o2="$W/${e}2"
+    si "portadas: la 2a vez, de la cache del disco: del paquete solo sacadas las que faltaban ($(est $o2 paquete_extraidas) de $ex)" test "$(est $o2 paquete_extraidas)" -le $((ex / 4)) ;;
   tope)
     # EL TOPE DE LA CACHE DE PORTADAS (1 MB para la prueba; 300 de fabrica): hojeando 10 paginas despacio, se borran las mas viejas y, medida
     # (cada 15 s, con las miniaturas que hace XP), queda debajo
@@ -273,7 +301,7 @@ PY
     apifalsa ${e}1 "$CAT"; d=$(datos ${e}1 encendido); abre ${e}1 "$d" "$BASE" 14 ROCOLA_OS=1 ROCOLA_IA_DATOS="$DD"; espera ${e}1
     si "descarga 1: el .txt y el .tsv.gz una vez cada uno" bash -c "[ \$(grep -c 'GET /catalogo/rocola_catalogo.txt ' '$W/${e}1/api/peticiones.txt') = 1 ] && [ \$(grep -c 'GET /catalogo/rocola_catalogo.tsv.gz ' '$W/${e}1/api/peticiones.txt') = 1 ] && [ '$(est $W/${e}1 catalogo)' = bajado ]"
     apifalsa ${e}2 "$CAT"; d=$(datos ${e}2 encendido); abre ${e}2 "$d" "$BASE" 14 ROCOLA_OS=1 ROCOLA_IA_DATOS="$DD"; espera ${e}2
-    si "descarga 2: el mismo dia, ninguna peticion al catalogo y el del disco ($(est $W/${e}2 catalogo), $(est $W/${e}2 catalogo_discos) discos)" bash -c "! grep -q '/catalogo/' '$W/${e}2/api/peticiones.txt' && [ '$(est $W/${e}2 catalogo)' = guardado ] && [ '$(est $W/${e}2 catalogo_discos)' = 27074 ]"
+    si "descarga 2: el mismo dia, ninguna peticion al catalogo y el del disco ($(est $W/${e}2 catalogo), $(est $W/${e}2 catalogo_discos) discos)" bash -c "! grep -q '/catalogo/' '$W/${e}2/api/peticiones.txt' && [ '$(est $W/${e}2 catalogo)' = guardado ] && [ '$(est $W/${e}2 catalogo_discos)' = 30074 ]"
     C2="$W/catalogo2"; python3 "$G/catalogo.py" "$C2" 8000 > /dev/null
     echo $(( $(date +%s) - 2 * 86400 )) > "$W/disco-descarga/catalogo/rocola_catalogo_mirado.txt"
     apifalsa ${e}3 "$C2"; d=$(datos ${e}3 encendido); abre ${e}3 "$d" "$BASE" 14 ROCOLA_OS=1 ROCOLA_IA_DATOS="$DD"; espera ${e}3
@@ -293,8 +321,10 @@ PY
     read -r _ _ _ NART NDIS < <(zcat "$C4/rocola_catalogo.tsv.gz" | head -1)
     printf 'formato=1\nversion=20261114.1\nfecha=2026-11-15\nsha256=%s\nbytes=%d\nartistas=%s\ndiscos=%s\nfuentes=MusicBrainz, Wikidata, ListenBrainz\nlicencia=CC0 y CC BY-NC-SA 3.0\n' \
       "$(sha256sum "$C4/rocola_catalogo.tsv.gz" | cut -d' ' -f1)" "$(wc -c < "$C4/rocola_catalogo.tsv.gz")" "$NART" "$NDIS" > "$C4/rocola_catalogo.txt"
+    empaca "$C4"; PAQ="$C4"   # (27-11-2026: sus portadas a la mano)
     apifalsa $e "$C4"; d=$(datos $e encendido)
     abre $e "$d" "$BASE,12:27+39" 20 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11 pared-generos-catalogo-del-contrato)"
+    PAQ="$CAT"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     si "contrato: sale con 0" test "$(cat $o/salio)" = 0
     si "contrato: el catalogo del grupo catalogo-datos se bajo y se leyo entero ($(est $o catalogo), $(est $o catalogo_discos) discos)" bash -c "[ '$(est $o catalogo)' = bajado ] && [ '$(est $o catalogo_discos)' = '$NDIS' ]"
@@ -312,8 +342,10 @@ PY
     # falsa, la letra A armada con tus 5 discos: 500 paginas, el orden de XP, los mas famosos primero; lo que tarda y la memoria
     # (sin el, sus 4 comprobaciones cuentan como FALTA y la bateria sale con 2: no se puede dar por buena sin ellas)
     [ -f "$REAL/rocola_catalogo.tsv.gz" ] || { echo "FALTA real: sin el catalogo de verdad en $REAL (REAL=...): sus 4 comprobaciones no se hicieron"; falta=$((falta + 4)); continue; }
+    empaca "$REAL"; PAQ="$REAL"   # (27-11-2026: sus portadas a la mano; con el catalogo de verdad son 180 000 discos con portada del Cover Art Archive falso: tarda)
     apifalsa $e "$REAL"; d=$(datos $e encendido)
     abre $e "$d" "$BASE,14:38,15:38,16:38" 26 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 20 pared-generos-catalogo-real)"
+    PAQ="$CAT"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     echo "   $(grep -E '^(catalogo|catalogo_discos|catalogo_kb|armadas|armada_ms_max|memoria_mb_max|gc_mb_max|pagina_con_pastilla|letra_con_pastilla)=' $o/run/rocola-xp/pared/estado | tr '\n' ' ')"
     si "real: sale con 0" test "$(cat $o/salio)" = 0
@@ -347,9 +379,9 @@ PY
     apifalsa $e "$CAT"
     TT="$BASE,12:38,12.8:38,13.6:39,14.4:39,15.4:13,17:27,18:40,19:27+39,20:27+37"
     case $e in
-      apagado) d=$(datos $e apagado); abre $e "$d" "$TT" 23 ROCOLA_OS= ROCOLA_CAPTURA="$(cap 11 pared-xp-apagado)" ;;
-      cero) d=$(datos $e apagado); abre $e "$d" "$TT" 23 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11 pared-xp-cero)" ;;
-      sinllave) d=$(datos $e sinllave); abre $e "$d" "$TT" 23 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11 pared-xp-sin-llave)" ;;
+      apagado) d=$(datos $e apagado); SIN_PAQUETE=1 abre $e "$d" "$TT" 23 ROCOLA_OS= ROCOLA_CAPTURA="$(cap 11 pared-xp-apagado)" ;;
+      cero) d=$(datos $e apagado); SIN_PAQUETE=1 abre $e "$d" "$TT" 23 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11 pared-xp-cero)" ;;
+      sinllave) d=$(datos $e sinllave); SIN_PAQUETE=1 abre $e "$d" "$TT" 23 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11 pared-xp-sin-llave)" ;;
     esac
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     si "$e: sale con 0" test "$(cat $o/salio)" = 0
@@ -360,6 +392,84 @@ PY
       sed 's/^/   /' "$o/compara.txt" | head -6
       si "$e: la traza igual a la de sin ROCOLA_OS quitando lo de RocolaOs (compara_trazas.py --ignora, holgura 80)" test $r = 0
     fi ;;
+  exclusiones)
+    # LO QUE NO VA EN LA PARED (27-11-2026): un catalogo chico a proposito (especial.py; la columna 7 son las marcas): bandas sonoras (por el nombre, sin
+    # marca, como el catalogo ya publicado; y por el genero del artista), un videojuego (por la marca del archivo), karaoke (por el nombre del artista),
+    # para dormir o meditar, infantil y un disco sin portada. Todas las portadas estan a la mano (sembradas en la cache): si no entran, es por la regla.
+    # Y lo que ya tienes con otra edicion: «Cumbias del Recuerdo (Remastered 2015)» y «Corridos Bravos - Edicion Especial» de «Alma Norteña feat. Invitado»
+    E="$W/catalogo-excl"; python3 "$G/especial.py" "$E" > "$W/$e-catalogo.txt"; cat "$W/$e-catalogo.txt"
+    apifalsa $e "$E"; d=$(datos $e encendido); mkdir -p "$W/$e/disco/catalogo/portadas"
+    while IFS=$'\t' read -r m resto; do curl -s --noproxy '*' -L "http://127.0.0.1:$P/release-group/$m/front-250" -o "$W/$e/disco/catalogo/portadas/$m.jpg"; done < "$E/mbids.txt"
+    SIN_PAQUETE=1 abre $e "$d" "$BASE" 16 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 15 pared-generos-exclusiones)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; V="$o/volcado/letra-A.tsv"
+    si "exclusiones: sale con 0 y ninguna peticion a la API de Spotify (/v1: $(v1 $a))" bash -c "[ '$(cat $o/salio)' = 0 ] && [ $(v1 $a) = 0 ]"
+    si "exclusiones: la letra A armada" test -f "$V"
+    python3 "$G/verifica_excl.py" "$V" "$E/mbids.txt" > "$o/verifica.txt" 2>&1; r=$?
+    sed 's/^/   /' "$o/verifica.txt"
+    si "exclusiones: solo entran los que van a la pared (cine, videojuego, karaoke, dormir, infantil y sin portada, fuera; lo que ya tienes con otra edicion, tampoco)" test $r = 0
+    si "exclusiones: el estado cuenta los 7 excluidos ($(est $o excluidos))" test "$(est $o excluidos)" -ge 7 ;;
+  nombres)
+    # EL PARECIDO DE NOMBRES y las marcas, caso por caso, DENTRO de rocola-xp (ROCOLA_NOMBRES_PRUEBA): los de nombres.tsv (disco y artista) y los de
+    # sistema/catalogo/prueba/exclusiones.tsv (las mismas palabras que usa el armador: marcas)
+    { grep -v '^#' "$G/nombres.tsv"; awk -F'\t' '!/^#/ && NF >= 3 {print "marcas\t" $1 "\t" $2 "\t" $3 "\t" $4}' "$XP/../../catalogo/prueba/exclusiones.tsv"; } > "$W/nombres-casos.tsv"
+    apifalsa $e "$CAT"; d=$(datos $e encendido)
+    abre $e "$d" "$BASE" 10 ROCOLA_OS=1 ROCOLA_NOMBRES_PRUEBA="$W/nombres-casos.tsv"
+    espera $e; o="$W/$e"; S="$W/nombres-casos.tsv.salida"
+    grep -E '^(MAL|TOTAL|ERROR)' "$S" | sed 's/^/   /'
+    si "nombres: sale con 0" test "$(cat $o/salio)" = 0
+    si "nombres: $(grep -c '^BIEN' "$S") casos bien (disco, artista y marcas, las de arma_catalogo.py) y ninguno mal" bash -c "[ \$(grep -c '^MAL' '$S') = 0 ] && [ \$(grep -c '^BIEN' '$S') -ge 70 ]" ;;
+  mano)
+    # LA PORTADA A LA MANO Y EL RELLENO: sin paquete ni cache, un disco del catalogo NO entra (la A es la de XP con tus 5 discos); de fondo, el relleno
+    # baja las primeras portadas de la letra (como mucho 500 de esta sesion, 2 hilos, del Cover Art Archive falso) y la pared se rearma con los discos
+    # que ya tienen la suya (la eleccion no salta). Nunca una casilla esperando la red: lo que no esta, no entra
+    MS="$W/catalogo-sinpaquete"; mkdir -p "$MS"; cp "$CAT"/rocola_catalogo.tsv.gz "$CAT"/rocola_catalogo.txt "$MS/"   # (el catalogo, sin el paquete: la API falsa no lo da)
+    apifalsa $e "$MS"; d=$(datos $e encendido)
+    SIN_PAQUETE=1 abre $e "$d" "$BASE" 48 ROCOLA_OS=1 ROCOLA_PARED_RELLENO=500 ROCOLA_CAPTURA="$(cap 10 pared-generos-sin-portadas),$(cap 44 pared-generos-con-lo-bajado)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; b="$d/rocola_os_bitacora.txt"
+    grep -E 'pared_generos\] letra A:' "$b" | sed 's/^.*\] /   /' | cut -c1-200
+    si "mano: sale con 0 y ninguna peticion a la API de Spotify (/v1: $(v1 $a))" bash -c "[ '$(cat $o/salio)' = 0 ] && [ $(v1 $a) = 0 ]"
+    si "mano: la 1.a vez que se armo la A no traia nada del catalogo (sin portadas a la mano) y esperaba portadas" bash -c "grep -E 'pared_generos\] letra A:' '$b' | head -1 | grep -qE ' 0 del catalogo.* [1-9][0-9]* esperando su portada'"
+    si "mano: despues se armo con discos del catalogo (el relleno: $(est $o relleno_bajadas) bajadas de $(est $o relleno_encargadas) encargadas)" bash -c "grep -E 'pared_generos\] letra A:' '$b' | tail -1 | grep -qvE ' 0 del catalogo' && [ '$(est $o relleno_bajadas)' -ge 25 ]"
+    si "mano: el relleno respeto su tope (500): $(est $o relleno_encargadas) encargadas, $(grep -c 'GET /release-group/' $a) pedidas al Cover Art Archive" bash -c "[ '$(est $o relleno_encargadas)' -le 500 ] && [ \$(grep -c 'GET /release-group/' '$a') -le 520 ]" ;;
+  paquete)
+    # LA DESCARGA DEL PAQUETE DE PORTADAS (sin llave, como el catalogo): el manifiesto (rocola_portadas.txt) y cada parte, comprobadas por bytes y sha256,
+    # al disco de la rocola; se leen al momento (el indice); una vez al dia (la 2.a vez, del disco, sin pedir las partes); una parte que no es la que dice
+    # su sha256 no se usa (y las demas si)
+    DP="$W/disco-paquete/ia-xp"; NP=$(sed -n 's/^partes=//p' "$CAT/rocola_portadas.txt")
+    apifalsa ${e}1 "$CAT"; d=$(datos ${e}1 encendido)
+    SIN_PAQUETE=1 abre ${e}1 "$d" "$BASE" 30 ROCOLA_OS=1 ROCOLA_IA_DATOS="$DP"; espera ${e}1
+    o="$W/${e}1"; a="$o/api/peticiones.txt"; pk="$W/disco-paquete/catalogo/portadas-pack"
+    echo "   el paquete: $(est $o paquete), $(est $o paquete_portadas) portadas en $(est $o paquete_partes) partes (el manifiesto dice $NP); bajadas $(est $o paquete_bajadas)"
+    si "paquete 1: sale con 0" test "$(cat $o/salio)" = 0
+    si "paquete 1: el manifiesto una vez y cada parte una vez" bash -c "[ \$(grep -c 'GET /catalogo/rocola_portadas.txt ' '$a') = 1 ] && [ \$(grep -c 'GET /catalogo/rocola_portadas_[0-9]*.pak ' '$a') = $NP ]"
+    si "paquete 1: al dia, con las $NP partes y sus «.ok» en el disco de la rocola" bash -c "[ '$(est $o paquete)' = 'al dia' ] && [ '$(est $o paquete_partes)' = $NP ] && [ \$(ls '$pk'/*.pak.ok | wc -l) = $NP ] && [ '$(est $o paquete_portadas)' -gt 1000 ]"
+    apifalsa ${e}2 "$CAT"; d=$(datos ${e}2 encendido)
+    SIN_PAQUETE=1 abre ${e}2 "$d" "$BASE" 14 ROCOLA_OS=1 ROCOLA_IA_DATOS="$DP"; espera ${e}2
+    o="$W/${e}2"; a="$o/api/peticiones.txt"
+    si "paquete 2: el mismo dia, ninguna parte pedida y el indice del disco ($(est $o paquete), $(est $o paquete_portadas) portadas)" bash -c "! grep -q 'rocola_portadas' '$a' && [ '$(est $o paquete)' = guardado ] && [ '$(est $o paquete_partes)' = $NP ]"
+    # una parte con otro sha256: la 1.a del manifiesto
+    M="$W/catalogo-malo"; rm -rf "$M"; mkdir -p "$M"; cp "$CAT"/rocola_catalogo.* "$M/"; ln -s "$CAT"/rocola_portadas_*.pak "$M/"
+    awk -F'[=,]' '/^parte1=/ {printf "parte1=%s,%064d,%s\n", $2, 5, $4; next} {print}' "$CAT/rocola_portadas.txt" > "$M/rocola_portadas.txt"
+    apifalsa ${e}3 "$M"; d=$(datos ${e}3 encendido)
+    SIN_PAQUETE=1 abre ${e}3 "$d" "$BASE" 30 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/disco-paquete3/ia-xp"; espera ${e}3
+    o="$W/${e}3"
+    si "paquete 3: una parte que no es la de su sha256 no se usa (la bitacora lo dice) y las demas si ($(est $o paquete_partes) de $NP)" bash -c "grep -q 'no es la que dice su sha256' '$d/rocola_os_bitacora.txt' && [ '$(est $o paquete_partes)' = $((NP - 1)) ]" ;;
+  paginas)
+    # LAS PAGINAS POR LETRA (27-11-2026): de fabrica 100 (sin pared_paginas=), y pared_paginas=1000 se respeta (tope 1000)
+    apifalsa $e "$CAT"; d=$(datos $e encendido); printf 'spotify=1\n' > "$d/rocola_os.txt"
+    abre $e "$d" "$BASE" 20 ROCOLA_OS=1; espera $e; o="$W/$e"
+    si "paginas: de fabrica, 100 paginas en la A ($(est $o paginas))" test "$(est $o paginas)" = 100 ;;
+  letra)
+    # LA LETRA ♫ CON EL ICONO DE SPOTIFY (27-11-2026) a 1024x768: la casilla del final del abecedario lleva el circulo verde de Spotify con sus tres ondas
+    # (no el texto), tambien elegida (en su capsula). Con la cuenta (la letra sale con «Tus favoritas»); REGRESAR+IZQUIERDA dos veces desde la A (#, y la vuelta a la ♫)
+    apifalsa $e "$CAT"; d=$(datos $e cuenta)
+    abre $e "$d" "7:67,10:27+37,11.4:27+37" 17 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 9 pared-generos-letra-spotify),$(cap 14 pared-generos-letra-spotify-elegida)"
+    espera $e; o="$W/$e"
+    C1=$( [ -n "$CAPTURAS" ] && echo "$CAPTURAS" || echo "$W")
+    si "letra: sale con 0" test "$(cat $o/salio)" = 0
+    python3 "$G/icono.py" "$C1/pared-generos-letra-spotify.png" "$C1/pared-generos-letra-spotify-elegida.png" > "$o/icono.txt" 2>&1; r=$?
+    sed 's/^/   /' "$o/icono.txt"
+    si "letra: la casilla ♫ lleva el icono de Spotify (verde #1DB954 y tres ondas negras, de 15 px o mas), sin elegir y elegida, en 1024x768" test $r = 0 ;;
   *) echo "(escena desconocida: $e)" ;;
   esac
 done

@@ -3,7 +3,7 @@
 # disco, clave, el artista con que se ordena) con SU archivo de prueba (contrato/rocola_catalogo_prueba.tsv.gz) trae los discos del archivo,
 # con sus nombres (acentos) y la pastilla del genero de su artista (o ninguna si es «Otros»), en el orden de XP. El resto lo mira verifica.py.
 #   contrato.py VOLCADO CATALOGO.tsv.gz LETRA TUYOS
-import gzip, sys, unicodedata
+import gzip, os, sys, unicodedata
 
 vol, catgz, letra, tuyos = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 def norma(s):
@@ -14,7 +14,11 @@ for l in gzip.open(catgz, "rt", encoding="utf-8"):
     c = l.rstrip("\n").split("\t")
     if c[0] == "L": dentro = c[1] == letra
     elif dentro and c[0] == "A": art = c
-    elif dentro and c[0] == "D": cat.append((art[1], "-" if art[2] == "Otros" else art[2], c[1]))
+    elif dentro and c[0] == "D":
+        # (27-11-2026) solo los que van a la pared: con portada, sin marcas, de un artista que no sea de cine, karaoke, infantil u hablado y con la portada
+        # a la mano (en la prueba, los mbid que acaban en 0 no tienen: el Cover Art Archive falso les da 404; ver verifica.py)
+        if art[2] in ("Soundtrack", "Karaoke", "Infantil", "Hablado") or c[5] != "1" or (len(c) > 6 and c[6]) or (os.environ.get("PARED_MANO", "falso") == "falso" and c[4].endswith("0")): continue
+        cat.append((art[1], "-" if art[2] == "Otros" else art[2], c[1]))
 tuyas = [f for f in filas if f[2] == "xp"]
 tuyo = set(norma(f[3]) for f in tuyas)
 suyo = [(f[3], f[1], f[4]) for f in filas if f[2] == "catalogo"]

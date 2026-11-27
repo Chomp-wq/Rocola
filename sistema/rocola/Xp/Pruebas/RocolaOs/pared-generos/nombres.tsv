@@ -1,0 +1,43 @@
+# El parecido de nombres (RocolaOs.ParedNombres.cs): tipo<TAB>a<TAB>b<TAB>1 si son el mismo (0 si no). Con ROCOLA_NOMBRES_PRUEBA la rocola dice cuales no coinciden.
+disco	Bad	Bad	1
+disco	Bad	bad (Remastered 2015)	1
+disco	Bad	Bad (Deluxe Edition)	1
+disco	Bad	Bad - 25th Anniversary Edition	1
+disco	Bad	BAD [Special Edition]	1
+disco	Bad	Bad (Live)	0
+disco	Bad	Badder	0
+disco	Thriller	Thriller 25th Anniversary Edition	1
+disco	Abbey Road	Abbey Road (Remastered 2019)	1
+disco	Abbey Road	Abbey Road Super Deluxe Edition	1
+disco	Abbey Road	Abbey Road (Super Deluxe Edition)	1
+disco	Corazón de Desierto	corazon de desierto (edición especial)	1
+disco	Corazón de Desierto	CORAZÓN DE DESIERTO	1
+disco	Nevermind	Nevermind (Deluxe Edition) [Remastered]	1
+disco	Nevermind	Nevermind - Remastered	1
+disco	Nevermind	Nevermind: 20th Anniversary Edition	1
+disco	Greatest Hits	Greatest Hits (Vol. 2)	0
+disco	Greatest Hits	Greatest Hits II	0
+disco	1989	1989 (Deluxe)	1
+disco	1989	1989 (Taylor's Version)	0
+disco	Songs of 2020	Songs of	0
+disco	Songs of 2020	Songs of 2020 (Deluxe)	1
+disco	Dangerous	Dangerous: The Short Films	0
+disco	Éxitos	Exitos	1
+disco	Mi Gran Noche	Mi Gran Noche (Deluxe)	1
+disco	Mi Gran Noche	Mi Gran Noche (Remasterizado 2012)	1
+disco	Mono	Stereo	0
+disco	Mono	Mono (Remastered)	1
+disco	Sinatra at the Sands	Sinatra at the Sands (Live)	0
+disco	Amor	Amor (Edición Aniversario)	1
+disco		Bad	0
+artista	Michael Jackson	Michael Jackson feat. Siedah Garrett	1
+artista	Michael Jackson	MICHAEL JACKSON	1
+artista	Beyoncé	Beyonce	1
+artista	The Beatles	Beatles	1
+artista	Maná	Mana	1
+artista	Los Tigres del Norte	Los Tigres del Norte con Julieta Venegas	1
+artista	Simon & Garfunkel	Simon	0
+artista	Queen	Queen + Adam Lambert	0
+artista	Alma Nortena	Alma Norteña feat. Invitado	1
+artista	Ángeles Ficticios	Angeles Ficticios	1
+artista	Los Ángeles Azules	Los Angeles Negros	0

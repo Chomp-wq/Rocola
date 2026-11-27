@@ -1,10 +1,10 @@
 // ROCOLA OS (fase 11): LA PAPELERA DEL GESTOR DE ARCHIVOS DE CTRL+F4 (peticion del dueno del 21-11-2026: el gestor con un apartado de
-// DESCARGAS y una PAPELERA; FASE11_navegador-archivos.md, «La papelera»). Solo con ROCOLA_OS. Lo que se ve esta en RocolaOs.ArchivosHoja.cs.
+// DESCARGAS y una PAPELERA; FASE11_navegador-archivos.md, «La papelera»; las descargas se quitaron con el navegador el 27-11-2026). Solo con ROCOLA_OS. Lo que se ve esta en RocolaOs.ArchivosHoja.cs.
 //
-// BORRAR en los datos de la rocola o en las descargas MANDA A LA PAPELERA (nada se borra de un golpe): la papelera es la carpeta «papelera» de
+// BORRAR en los datos de la rocola MANDA A LA PAPELERA (nada se borra de un golpe): la papelera es la carpeta «papelera» de
 // los datos de rocola-xp (/rocola/datos/xp/papelera, 0700; no sale en la lista de los datos: es su propio apartado). Cada cosa tirada va en
 // su carpeta (papelera/<id>/, 0700) con:
-//   info.txt   de=datos|descargas, ruta=<de donde vino, relativa a su apartado, escapada>, cuando=<ms desde 1970, UTC>, bytes=, carpeta=0|1
+//   info.txt   de=datos, ruta=<de donde vino, relativa a su apartado, escapada>, cuando=<ms desde 1970, UTC>, bytes=, carpeta=0|1
 //   c/<nombre> la cosa misma, MOVIDA (rename: misma carpeta de datos, mismo disco; conserva sus permisos: una llave sigue 0600)
 // «Devolver» la pone donde estaba; si ya hay algo con ese nombre NO lo pisa: «nombre (devuelto).ext», «nombre (devuelto 2).ext»...; si su
 // carpeta ya no esta, va a la raiz de su apartado (y se dice). «Borrar ya» (una) y «Vaciar papelera» (todo) piden confirmar.
@@ -28,13 +28,13 @@ namespace Rocola
         internal string Id, Dir, Cosa, Nombre, De, Ruta;
         internal long Cuando, Bytes;
         internal bool Carpeta, Llave;
-        internal string DeNombre { get { return De == RocolaOsPapelera.DeDescargas ? "Descargas" : "Datos de la rocola"; } }
+        internal string DeNombre { get { return "Datos de la rocola"; } }
     }
 
     internal static class RocolaOsPapelera
     {
         internal const string Carpeta = "papelera", ClaveTope = "papelera_tope_mb";
-        internal const string DeDatos = "datos", DeDescargas = "descargas";
+        internal const string DeDatos = "datos";
         internal const int Dias = 30;
         internal const long DiaMs = 24L * 3600 * 1000;
         private static readonly object cerrojo = new object();
@@ -71,11 +71,11 @@ namespace Rocola
         }
 
         // ---------- tirar ----------
-        // MANDA A LA PAPELERA lo elegido en los datos o en las descargas. null si se hizo (t: lo tirado), o por que no.
+        // MANDA A LA PAPELERA lo elegido en los datos. null si se hizo (t: lo tirado), o por que no.
         internal static string Manda(RocolaOsRaiz raiz, string ruta, out RocolaOsTirado t)
         {
             t = null;
-            if (raiz == null || !raiz.Escribe || (raiz.Tipo != RocolaOsArchivos.TDatos && raiz.Tipo != RocolaOsArchivos.TDescargas)) return "Ahí no se borra.";
+            if (raiz == null || !raiz.Escribe || raiz.Tipo != RocolaOsArchivos.TDatos) return "Ahí no se borra.";
             string nombre = Path.GetFileName(ruta.TrimEnd('/'));
             string dir = Path.GetDirectoryName(ruta.TrimEnd('/'));
             string dirReal = RocolaOsArchivos.Real(dir);
@@ -84,8 +84,7 @@ namespace Rocola
             string cual = dirReal.TrimEnd('/') + "/" + nombre;
             string pap = Prepara();
             if (pap == null) return "La papelera no se pudo preparar: no se borra nada.";
-            string desc = RocolaOsArchivos.Real(RocolaOsArchivos.DirDescargas);
-            if (cual == pap || cual.StartsWith(pap + "/", StringComparison.Ordinal) || (desc != null && cual == desc)) return "Eso no se borra.";
+            if (cual == pap || cual.StartsWith(pap + "/", StringComparison.Ordinal)) return "Eso no se borra.";
             lock (cerrojo)
             {
                 FileAttributes a;
@@ -108,7 +107,7 @@ namespace Rocola
                     Directory.CreateDirectory(c, Solo700);
                     try { File.SetUnixFileMode(idDir, Solo700); File.SetUnixFileMode(c, Solo700); } catch { }
                     long cuando = AhoraMs;
-                    string de = raiz.Tipo == RocolaOsArchivos.TDescargas ? DeDescargas : DeDatos;
+                    string de = DeDatos;
                     EscribeInfo(idDir, de, rel, cuando, bytes, carpeta);
                     string dest = Path.Combine(c, nombre);
                     Mueve(cual, dest);
@@ -202,7 +201,7 @@ namespace Rocola
                 Dictionary<string, string> v = new Dictionary<string, string>(StringComparer.Ordinal);
                 foreach (string ln in File.ReadAllLines(info)) { int i = ln.IndexOf('='); if (i > 0) v[ln.Substring(0, i)] = ln.Substring(i + 1); }
                 string de, ruta, s;
-                if (!v.TryGetValue("de", out de) || (de != DeDatos && de != DeDescargas)) return null;
+                if (!v.TryGetValue("de", out de) || de != DeDatos) return null;
                 if (!v.TryGetValue("ruta", out ruta)) return null;
                 ruta = Uri.UnescapeDataString(ruta);
                 long cuando = 0, bytes = 0;
@@ -215,7 +214,7 @@ namespace Rocola
                 if (cs.Length != 1) return null;
                 string cosa = cs[0], nombre = Path.GetFileName(cosa);
                 if (nombre != Path.GetFileName(ruta)) return null;
-                string raiz = de == DeDescargas ? Path.Combine(datos, RocolaOsArchivos.CarpetaDescargas) : datos;
+                string raiz = datos;
                 return new RocolaOsTirado { Id = id, Dir = d, Cosa = cosa, Nombre = nombre, De = de, Ruta = ruta, Cuando = cuando, Bytes = Math.Max(0, bytes), Carpeta = carpeta,
                     Llave = !carpeta && RocolaOsArchivos.EsLlave(Path.Combine(raiz, ruta), raiz) };
             }
@@ -230,7 +229,7 @@ namespace Rocola
             if (t == null) return "Elige algo de la papelera.";
             string pap = Prepara();
             if (pap == null) return "La papelera no se pudo preparar.";
-            RocolaOsRaiz raiz = t.De == DeDescargas ? RocolaOsArchivos.Descargas() : RocolaOsArchivos.Datos();
+            RocolaOsRaiz raiz = RocolaOsArchivos.Datos();
             lock (cerrojo)
             {
                 string datos = RocolaOsArchivos.Real(Form1.CarpetaDatos) ?? Form1.CarpetaDatos;

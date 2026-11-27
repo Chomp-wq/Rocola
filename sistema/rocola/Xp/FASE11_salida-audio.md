@@ -6,8 +6,8 @@ Rocola OS (`rocola-xp` con `ROCOLA_OS`); sin `ROCOLA_OS`, XP tal cual (Ctrl+F4 n
 
 ## Lo que hay
 
-- `RocolaOs/RocolaOs.VentanaSalida.cs`: la pestaña **Sonido** de Ctrl+F4 (orden 15, entre Pantalla y Navegador; las pestañas van pegadas
-  a la derecha, así que Navegador y Archivos no se mueven). Dos tarjetas con el aspecto de Ctrl+F3:
+- `RocolaOs/RocolaOs.VentanaSalida.cs`: la pestaña **Sonido** de Ctrl+F4 (orden 15, entre Pantalla y Archivos; las pestañas van pegadas
+  a la derecha. El 27-11-2026 el navegador se quitó: antes iba entre Sonido y Archivos y Sonido estaba en (712,54), ahora en (818,54)). Dos tarjetas con el aspecto de Ctrl+F3:
   - **SALIDAS DE SONIDO**: una fila por salida, numerada como `rocola-sonido usar N` (el orden de `aplay -l`), con **HDMI (pantalla)** en
     ámbar o **Placa** en verde, su nombre, «(suena ahora)» con borde verde, y debajo tarjeta, salida, `plughw:T,S`, el nombre de la
     tarjeta y «la automática». Hasta 8 filas.

@@ -27,10 +27,6 @@
 #                                  defconfig- pide la completa, como todo paquete; con «rapida_ya» se pone igual, por aqui.)
 # y lo que no va dentro del sistema: los .md, casa/ (Rocola en casa), el resto de rocola/ (rocola-consola, retirado) y todo lo de fuera de
 # sistema/.
-# EL NAVEGADOR DE CTRL+F4 (20-11-2026; rocola/Xp/FASE11_navegador-archivos.md) son PAQUETES (WPE WebKit, cog, libsoup3 con HTTPS,
-# xkeyboard-config: configs/rocola_a4_defconfig): piden la COMPLETA, y WebKit es lo mas largo de compilar. Con «rapida_ya» entran su guion
-# (rocola-navegador) y su pagina de inicio (rootfs_overlay) y el programa, pero no cog: la hoja Navegador lo dice («llega con la
-# compilacion completa») y el boton queda en gris; nada se rompe.
 set -e
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 B=sistema/board/rocola
