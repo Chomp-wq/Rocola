@@ -321,7 +321,7 @@ namespace Rocola
             {
                 case RocolaOsPasoAbre: titulo = "Abre el buscador"; texto = "Mantén el botón ROJO y pulsa la flecha de ARRIBA. Ahí salen también las canciones de Spotify."; teclas = "B+U"; break;
                 case RocolaOsPasoAbreArtista: titulo = "Abre el buscador"; texto = "Mantén el botón ROJO y pulsa la flecha de ARRIBA para buscar al artista."; teclas = "B+U"; break;
-                case RocolaOsPasoSinLetra: titulo = RocolaOsSpotifyLetraEnLaPared ? "Aún no hay letra ♫" : "Spotify, en el buscador"; texto = RocolaOsSpotifyLetraEnLaPared ? "Sale con tu cuenta o al abrir un disco de Spotify. Mientras, búscalas: ROJO + ARRIBA." : "Los discos y listas de Spotify se buscan: ROJO + ARRIBA."; teclas = "B+U"; break;
+                case RocolaOsPasoSinLetra: titulo = "Aún no hay letra ♫"; texto = "Sale con tu cuenta o al abrir un disco de Spotify. Mientras, búscalas: ROJO + ARRIBA."; teclas = "B+U"; break;
                 case RocolaOsPasoEscribe: titulo = "Escribe el nombre"; texto = "Elige las letras con las flechas y VERDE. Luego ve con las flechas a las de Spotify."; teclas = "L/R U/D V"; break;
                 case RocolaOsPasoEscribeArtista: titulo = "Escribe el artista"; texto = "Sale su tarjeta, esté en la rocola o solo en Spotify."; teclas = "L/R U/D V"; break;
                 case RocolaOsPasoBuscaSpotify: titulo = "Busca las de Spotify"; texto = "Esa es de la rocola. Muévete con las flechas hasta una canción de Spotify."; teclas = "L/R U/D"; break;

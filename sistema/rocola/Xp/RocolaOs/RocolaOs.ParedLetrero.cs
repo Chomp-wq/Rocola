@@ -121,18 +121,22 @@ namespace Rocola
         }
 
         // EL ICONO DE SPOTIFY: el circulo verde y las tres ondas negras (de mas ancha arriba a mas angosta abajo, combadas hacia arriba)
-        internal static void RocolaOsIconoSpotify(SKCanvas g, float cx, float cy, float r, bool copia, bool medio)
+        // (27-11-2026) alfa: 255 entero; menos, apagado (la letra ♫ de la barra, cuando no esta disponible o aparece con un fundido)
+        internal static void RocolaOsIconoSpotify(SKCanvas g, float cx, float cy, float r, bool copia, bool medio, int alfa = 255)
         {
-            if (r < 2f) return;
+            if (r < 2f || alfa <= 0) return;
             bool suave = true;
-            using (SKPaint verde = new SKPaint { Color = RocolaOsSpotifyVerde.Sk() })
+            using (SKPaint verde = new SKPaint { Color = Color.FromArgb(alfa, RocolaOsSpotifyVerde).Sk() })
                 Pixel.RellenaOvalo(g, new RectangleF(cx - r, cy - r, 2 * r, 2 * r), verde, suave, medio, copia);
             float[] dy = { -0.30f, 0.02f, 0.31f }, ancho = { 1.18f, 1.00f, 0.80f }, grueso = { 0.19f, 0.16f, 0.13f };
+            // (27-11-2026) CHICO (la casilla de la letra ♫ de la barra, ~22 px en 1024x768, y la cabecera de las paredes del buscador): las ondas mas
+            // separadas y mas gruesas, para que cada una se vea como una onda y no como una mancha
+            if (r < 14f) { dy = new[] { -0.36f, 0.0f, 0.36f }; ancho = new[] { 1.30f, 1.10f, 0.88f }; grueso = new[] { 0.215f, 0.19f, 0.16f }; }
             for (int i = 0; i < 3; i++)
             {
                 float y = cy + dy[i] * r, mitad = ancho[i] * r / 2f, comba = 0.20f * r;
                 using (SKPath p = new SKPath())
-                using (SKPaint negro = new SKPaint { Color = Color.FromArgb(255, 0, 0, 0).Sk(), StrokeWidth = grueso[i] * r, StrokeCap = SKStrokeCap.Round })
+                using (SKPaint negro = new SKPaint { Color = Color.FromArgb(alfa, 0, 0, 0).Sk(), StrokeWidth = grueso[i] * r, StrokeCap = SKStrokeCap.Round })
                 {
                     p.MoveTo(cx - mitad, y + comba * 0.55f);
                     p.QuadTo(cx, y - comba, cx + mitad, y + comba * 0.75f);

@@ -143,10 +143,8 @@ for e in $escenas; do
     si "letra: sale con 0" test "$(cat $o/salio)" = 0
     si "letra: la guia 2 empezo" contiene "$(bit $d)" "guia de Spotify 5 (La letra ♫ de Spotify)"
     p=$(pasos $d); echo "   pasos: $p"
-    # (22-11-2026, decision del dueno: la musica de Spotify ya no esta en la pared, sin letra ♫: RocolaOsSpotifyLetraEnLaPared = false)
-    # aun con la cuenta la guia manda al buscador, y con estas teclas (las de la letra) no se pide nada
-    si "letra: sin letra ♫ en la pared, la guia manda al buscador («Spotify, en el buscador»)" bash -c "echo '$p' | grep -q '^Spotify, en el buscador'"
-    si "letra: nada cobrado sin buscar (COBRADA: $(cobradas $d))" test "$(cobradas $d)" = 0 ;;
+    si "letra: los pasos en orden (la letra, un disco, la moneda, la cancion)" test "$p" = "Ve a la letra ♫|Elige un disco o lista|Mete una moneda|Elige tu canción"
+    si "letra: una pedida (COBRADA: $(cobradas $d)) y lo logro" bash -c "[ $(cobradas $d) = 1 ] && grep -q 'guia de Spotify 5: lo logro (pidio una de Spotify)' '$(bit $d)'" ;;
   sinletra)
     # (revision) GUIA 2 SIN LA LETRA ♫ (el modo y la llave de la API, sin la cuenta: no hay letra ♫): «Aun no hay letra ♫» manda al buscador
     # con ROJO+ARRIBA y sigue como la guia 1 (con su numero de paso, no «SIGAMOS»): «inventad», una cancion de Spotify, la moneda, VERDE
@@ -156,7 +154,7 @@ for e in $escenas; do
     espera $e; o="$W/$e"
     si "sinletra: sale con 0" test "$(cat $o/salio)" = 0
     p=$(pasos $d); echo "   pasos: $p"
-    si "sinletra: «Spotify, en el buscador», el buscador, la moneda y «Pidela con VERDE»" bash -c "echo '$p' | grep -q '^Spotify, en el buscador|Escribe el nombre|.*Mete una moneda|Pídela con VERDE$'"
+    si "sinletra: «Aun no hay letra ♫», el buscador, la moneda y «Pidela con VERDE»" bash -c "echo '$p' | grep -q '^Aún no hay letra ♫|Escribe el nombre|.*Mete una moneda|Pídela con VERDE$'"
     si "sinletra: una pedida (COBRADA: $(cobradas $d)) y lo logro" bash -c "[ $(cobradas $d) = 1 ] && grep -q 'guia de Spotify 5: lo logro (pidio una de Spotify)' '$(bit $d)'" ;;
   artista)
     # GUIA 3, «Los discos de un artista»: el buscador, «interminable», la tarjeta de Banda Interminable (solo en Spotify), su pared («Canciones

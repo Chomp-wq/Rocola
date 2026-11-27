@@ -7,7 +7,9 @@
 //   #rocola-catalogo	1	fecha	artistas	discos
 //   L	letra	artistas	discos                                   (las letras: # y de la A a la Z)
 //   A	nombre	genero	fama	id_spotify	pais	w|m          (los artistas de la letra, del mas al menos famoso)
-//   D	nombre	ano	id_spotify	mbid_grupo	portada(1|0)          (tras cada A, sus discos, del mas al menos escuchado)
+//   D	nombre	ano	id_spotify	mbid_grupo	portada(1|0)	[marcas]   (tras cada A, sus discos, del mas al menos escuchado; la columna 7, desde el
+//                                                              27-11-2026, dice por que no va en la pared: letras de RocolaOs.ParedExclusiones.cs; un
+//                                                              rocola-xp viejo la ignora, y este lee tambien el catalogo sin ella)
 // Y a su lado rocola_catalogo.txt, con su sha256 y sus bytes («sha256=HEX» y «bytes=N»; vale tambien la salida de sha256sum).
 // En memoria: los bytes sin comprimir y un indice por letra (donde empieza y acaba); los discos de una letra se leen al armarla.
 using System;
@@ -28,6 +30,7 @@ namespace Rocola
         internal sealed class RocolaOsPgArtista
         {
             internal string Nombre = "", Genero = "Otros", IdSpotify = "";
+            internal string Marcas = "";                     // (27-11-2026) lo que saca de la pared a todos sus discos (genero o nombre: RocolaOs.ParedExclusiones.cs)
             internal int Fama;
             internal readonly List<RocolaOsPgDisco> Discos = new List<RocolaOsPgDisco>();
         }
@@ -35,7 +38,10 @@ namespace Rocola
         {
             internal RocolaOsPgArtista Art;
             internal string Nombre = "", Anio = "", IdSpotify = "", Mbid = "", Clave = "";
+            internal string Marcas = "";                     // (27-11-2026) s j m k i d h: la columna 7 del archivo y lo que dice su nombre (RocolaOs.ParedExclusiones.cs)
             internal bool Portada;
+            // (27-11-2026) NO VA EN LA PARED: bandas sonoras, videojuegos y cosas asi (el suyo o el de su artista) y los discos sin portada; solo el buscador
+            internal bool Excluido { get { return Marcas.Length > 0 || Art.Marcas.Length > 0 || !Portada; } }
         }
         internal sealed class RocolaOsPgCatalogo
         {
@@ -143,7 +149,7 @@ namespace Rocola
                         if (!etiquetas.TryGetValue(g, out et)) { et = GenreLabel(g); etiquetas[g] = et; }
                         int fama; int.TryParse(RocolaOsPgTexto(d, lim, 3, k), NumberStyles.Integer, CultureInfo.InvariantCulture, out fama);
                         ar = new RocolaOsPgArtista { Nombre = RocolaOsPgTexto(d, lim, 1, k).Trim(), Genero = et, Fama = fama, IdSpotify = RocolaOsPgTexto(d, lim, 4, k).Trim() };
-                        if (ar.Nombre.Length > 0) l.Add(ar); else ar = null;
+                        if (ar.Nombre.Length > 0) { ar.Marcas = RocolaOsPgExclusiones.MarcasArtista(ar.Nombre, et); l.Add(ar); } else ar = null;
                     }
                     else if (d[pos] == (byte)'D' && ar != null)
                     {
@@ -154,6 +160,7 @@ namespace Rocola
                         };
                         if (x.Nombre.Length == 0) { pos = fin + 1; continue; }
                         if (!RocolaOsPgMbidValido(x.Mbid)) { x.Mbid = ""; x.Portada = false; }
+                        x.Marcas = RocolaOsPgExclusiones.Junta(RocolaOsPgTexto(d, lim, 6, k), RocolaOsPgExclusiones.Marcas(x.Nombre, null, null));
                         x.Clave = x.Mbid.Length > 0 ? x.Mbid : x.IdSpotify.Length > 0 ? "sp-" + x.IdSpotify : "n-" + MotorBusqueda.Normaliza(ar.Nombre) + "|" + MotorBusqueda.Normaliza(x.Nombre);
                         ar.Discos.Add(x);
                     }
@@ -407,7 +414,7 @@ namespace Rocola
         // sin caratula. Nada de esto es de Spotify ni gasta su cuota.
         internal static class RocolaOsPgPortadas
         {
-            private sealed class Pedido { internal string Mbid; internal char Letra; internal int Pagina; }
+            private sealed class Pedido { internal string Mbid; internal char Letra; internal int Pagina; internal bool Pack; }
             private static readonly object cerrojo = new object();
             private static readonly List<Pedido> cola = new List<Pedido>();
             private static readonly HashSet<string> enCola = new HashSet<string>(StringComparer.Ordinal);
@@ -419,6 +426,21 @@ namespace Rocola
             private static int visDir = 1;                 // (rapido-spotify) hacia donde se va: +1 (ARRIBA, la siguiente) o -1
             private static char visVecinaDespues, visVecinaAntes;   // (rapido-spotify) las letras de al lado (su primera pagina, al final)
             internal const int Hilos = 12;                 // (rapido-spotify; antes 4) esperan a la red, con nice 19
+            // (27-11-2026) LO QUE YA ESTA A LA MANO (RocolaOs.ParedPortadas.cs): una portada del paquete solo hay que sacarla de el (un archivo
+            // chico del disco): su pagina espera 40 ms (que no sea un tiron al hojear), no los 300 de las que van a la red
+            internal const int AsientaPaqueteMs = 40;
+            internal static long ManoSigValor;
+            // (27-11-2026) ¿se cambio de pagina hace menos de 3 s? (el relleno espera: hojear no compite con la red de fondo)
+            internal static bool Hojeando { get { lock (cerrojo) return Environment.TickCount64 - visDesde < 3000; } }
+            // lo que cambia cuando hay mas portadas a la mano (llego una parte del paquete, el relleno bajo otras): la pared rearma sus letras
+            internal static long ManoSig { get { return Interlocked.Read(ref ManoSigValor); } }
+            // ¿LA PORTADA ESTA A LA MANO? En la cache del disco o en el paquete. Solo con esto un disco del catalogo entra en la pared.
+            internal static bool ALaMano(string mbid)
+            {
+                if (string.IsNullOrEmpty(mbid)) return false;
+                lock (cerrojo) { if (enDisco.Contains(mbid)) return true; }
+                return RocolaOsPgPaquete.Tiene(mbid);
+            }
             // AL VERSE: una pagina se pide cuando lleva 300 ms a la vista (como el asentamiento de las portadas de XP); al hojear deprisa
             // (mantener ARRIBA: unas 15-30 paginas por segundo) no se pide ninguna de las que pasan
             internal const int AsientaMs = 300;
@@ -475,6 +497,7 @@ namespace Rocola
                     Volatile.Write(ref carpetaBarra, carpeta.TrimEnd('/') + "/");
                 }
                 RocolaOs.Hilo("pared_portadas_indice", Indexa);
+                RocolaOsPgPaquete.Arranca(dir);
                 for (int i = 0; i < Hilos; i++) RocolaOs.Hilo("pared_portadas_" + i.ToString(CultureInfo.InvariantCulture), Corre);
             }
             // LO QUE YA HAY EN EL DISCO (en su hilo, al arrancar): sus nombres y cuanto ocupan, con las miniaturas
@@ -493,6 +516,7 @@ namespace Rocola
                     }
                     lock (cerrojo) { foreach (string n in nombres) enDisco.Add(n); }
                     Interlocked.Exchange(ref bytesEnDisco, total);
+                    if (nombres.Count > 0) Interlocked.Increment(ref ManoSigValor);   // (27-11-2026) las de la cache ya cuentan como a la mano: la pared se rearma
                     if (total > TopeBytes) Recorta();
                 }
                 catch (Exception ex) { RocolaOs.Falla("pared_generos", "al mirar la cache de portadas", ex); }
@@ -542,7 +566,7 @@ namespace Rocola
                     if (carpeta == null || enDisco.Contains(mbid) || sinPortada.Contains(mbid) || enCola.Contains(mbid)) return;
                     long hasta;
                     if (fallo.TryGetValue(mbid, out hasta) && Environment.TickCount64 < hasta) return;
-                    cola.Add(new Pedido { Mbid = mbid, Letra = letra, Pagina = pagina });
+                    cola.Add(new Pedido { Mbid = mbid, Letra = letra, Pagina = pagina, Pack = RocolaOsPgPaquete.Tiene(mbid) });
                     enCola.Add(mbid);
                     Monitor.PulseAll(cerrojo);
                 }
@@ -556,7 +580,9 @@ namespace Rocola
                     {
                         while (p == null)
                         {
-                            long falta = visDesde + AsientaMs - Environment.TickCount64;
+                            bool hayPaquete = false;
+                            for (int i = 0; i < cola.Count && !hayPaquete; i++) hayPaquete = cola[i].Pack;
+                            long falta = visDesde + (hayPaquete ? AsientaPaqueteMs : AsientaMs) - Environment.TickCount64;
                             if (falta > 0 && cola.Count > 0) { Monitor.Wait(cerrojo, (int)falta + 1); continue; }
                             // la de la pagina que se mira primero y, si no queda ninguna de ella, la de su turno (rapido-spotify: las de al lado, por
                             // adelantado); en cada turno, en el orden en que se pidieron
@@ -578,13 +604,24 @@ namespace Rocola
                     Baja(p);
                 }
             }
+            // (27-11-2026) EL RELLENO (RocolaOs.ParedPortadas.cs): bajar una portada a la cache sin que nadie la espere; true si quedo a la mano
+            internal static bool BajaRelleno(string mbid)
+            {
+                if (carpeta == null || EnDisco(mbid) || RocolaOsPgPaquete.Tiene(mbid)) return false;
+                lock (cerrojo) { long hasta; if (sinPortada.Contains(mbid) || (fallo.TryGetValue(mbid, out hasta) && Environment.TickCount64 < hasta)) return false; }
+                if (BytesEnDisco > TopeBytes * 9 / 10) return false;   // (la cache ya esta casi llena: no se rellena para que Recorta la vacie)
+                Baja(new Pedido { Mbid = mbid });
+                return EnDisco(mbid);
+            }
             private static void Baja(Pedido p)
             {
                 string ruta = Ruta(p.Mbid);
                 bool bien = false;
                 try
                 {
+                    long delPaquete;
                     if (File.Exists(ruta)) bien = true;
+                    else if ((delPaquete = RocolaOsPgPaquete.Extrae(p.Mbid, ruta)) > 0) { Interlocked.Add(ref bytesEnDisco, delPaquete); bien = true; }   // (27-11-2026) sacada del paquete: sin red
                     else
                     {
                         Interlocked.Increment(ref Pedidas);

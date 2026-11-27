@@ -35,7 +35,8 @@ def lee(ruta):
                 letras[letra].append(a)
                 art.setdefault(c[1], a)
             elif c[0] == 'D':
-                letras[letra][-1]['discos'].append({'nombre': c[1], 'ano': c[2], 'sp': c[3], 'gid': c[4], 'portada': c[5]})
+                letras[letra][-1]['discos'].append({'nombre': c[1], 'ano': c[2], 'sp': c[3], 'gid': c[4], 'portada': c[5],
+                                                    'marcas': c[6] if len(c) > 6 else ''})
     return letras, art
 
 
@@ -69,6 +70,21 @@ def main():
         ok('Juntos' not in [d['nombre'] for a in art.values() for d in a['discos']], 'discos de dos artistas: fuera')
         ok([d['nombre'] for d in art['Dueto Uno']['discos']] == ['Solo Uno'], 'Dueto Uno solo con lo suyo')
         ok([d['nombre'] for d in art['Sokol Vetra']['discos']] == ['Viento Norte'], 'disco sin letras latinas: fuera')
+        # lo que no va en la pared: marcados (columna 7) y al final de los discos de su artista
+        nd = art['Ñandú Sonoro']['discos']
+        ok([(d['nombre'], d['marcas']) for d in nd] == [('Ñandú: la Lost Edition', ''), ('Ñandú Salsero', ''),
+                                                          ('Ñandú en el Cine', 's'), ('Ñandú Quest (Original Game Soundtrack)', 'sj'),
+                                                          ('Ñandú Karaoke Hits', 'k')],
+           'marcas: cine, juego y karaoke al final y marcados (sj: la letra s va antes de la j); «Lost» sin marca (%s)' % [(d['nombre'], d['marcas']) for d in nd])
+        ok(all(d['marcas'] == '' for d in art['Los Ángeles del Desierto']['discos']), 'sin marcas donde no hay')
+        ok(all(d['marcas'] == 's' for d in art['Bandas Sonoras Inventadas']['discos']), 'el genero Soundtrack del artista marca todos sus discos')
+        # las tablas de palabras de la rocola y las de aqui dicen lo mismo (prueba/exclusiones.tsv: disco, artista, genero, marcas)
+        with open(os.path.join(AQUI, 'exclusiones.tsv'), encoding='utf-8') as f:
+            for l in f:
+                if not l.strip() or l.startswith('#'):
+                    continue
+                dis, aut, gen, esp = (l.rstrip('\n').split('\t') + ['', '', '', ''])[:4]
+                ok(ac.marcas_de(dis, aut, gen) == esp, 'exclusiones.tsv: %r de %r (%s) debe dar %r y da %r' % (dis, aut, gen, esp, ac.marcas_de(dis, aut, gen)))
         pl = art['Ángeles de Plata']['discos']
         ok([d['nombre'] for d in pl] == ['Plata Pura', 'Plata Fina', 'Plata Vieja', 'Plata Sin Fecha'],
            'a igualdad de escuchas: Spotify, portada, ediciones (%s)' % [d['nombre'] for d in pl])
