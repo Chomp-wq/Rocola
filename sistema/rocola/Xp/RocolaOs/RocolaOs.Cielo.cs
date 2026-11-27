@@ -110,7 +110,7 @@ namespace Rocola
                     RocolaOsClave.SiNo("horizonte_fiesta", true, true, "FI2: una fila baja de adornos sobre la raya del horizonte"),
                     RocolaOsClave.SiNo("fugaz_fiesta", true, true, "FI3: la fugaz dorada de XP con la estela de la fecha"),
                     RocolaOsClave.SiNo("fuegos", true, true, "FI4: fuegos artificiales en el Grito y en Ano Nuevo"),
-                    RocolaOsClave.SiNo("escaparate_fiesta", true, true, "FI5: papel picado y el mensaje de la fecha en el escaparate"),
+                    RocolaOsClave.SiNo("escaparate_fiesta", true, true, "FI5: papel picado, lo que flota de cada fiesta y el mensaje de la fecha (escaparate y reposo; la pared, mas tenue)"),
                     RocolaOsClave.SiNo("fechas_propias", true, true, "FI6: tus fechas (cumpleanos y aniversarios de rocola_fechas.txt)"),
                 },
                 Arranca = f => Arranca(f),

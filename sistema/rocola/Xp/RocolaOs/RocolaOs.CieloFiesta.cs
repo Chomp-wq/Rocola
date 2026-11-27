@@ -25,7 +25,7 @@ namespace Rocola
             RocolaOsCielo.PonMensajero(new RocolaOsFiestaMensajero());
             RocolaOsCielo.PonPintor(RocolaOsCieloCapa.TrasAurora, new RocolaOsFiestaHorizonte());
             RocolaOsCielo.PonPintor(RocolaOsCieloCapa.TrasFondo, new RocolaOsFiestaFuegos());
-            RocolaOsCielo.PonPintor(RocolaOsCieloCapa.Escaparate, new RocolaOsFiestaEscaparate());
+            RocolaOsCielo.PonPintor(RocolaOsCieloCapa.TrasFondo, new RocolaOsFiestaAmbiente());
             RocolaOsCieloDia.RayaTinte = RocolaOsFiestaAurora.TineRaya;
         }
 
@@ -76,12 +76,27 @@ namespace Rocola
         internal static float LumLineal(float r, float g, float b) { return 0.2126f * Lin(r) + 0.7152f * Lin(g) + 0.0722f * Lin(b); }
 
         // ---------- la ultima fecha vista por la aurora: si cambia (o FI1 se apaga) la aurora se rehace (FirmaAuroraExtra, g129)
+        internal static float AuroraLib;
+        // (pruebas: ROCOLA_FIESTAS_TRIS=archivo) lo mas que llego a pintar cada pintor de las fiestas en un cuadro: triangulos y resplandores
+        private static readonly string trisArchivo = Environment.GetEnvironmentVariable("ROCOLA_FIESTAS_TRIS");
+        private static int maxAmb, maxHor, maxGAmb, maxGHor;
+        internal static void ApuntaTris(bool ambiente, int tris, int glows)
+        {
+            if (trisArchivo == null) return;
+            bool cambia = false;
+            if (ambiente) { if (tris > maxAmb) { maxAmb = tris; cambia = true; } if (glows > maxGAmb) { maxGAmb = glows; cambia = true; } }
+            else { if (tris > maxHor) { maxHor = tris; cambia = true; } if (glows > maxGHor) { maxGHor = glows; cambia = true; } }
+            if (cambia) try { System.IO.File.WriteAllText(trisArchivo, "ambiente " + maxAmb + " triangulos, " + maxGAmb + " resplandores; horizonte " + maxHor + " triangulos, " + maxGHor + " resplandores\n"); } catch { }
+        }
         private static int claveAurora = -1;
         internal static void AlCuadro()
         {
             RocolaOsCieloFoto f = RocolaOsCielo.Foto;
             int k = 0;
-            if (AuroraActiva(f)) { uint[] c = Colores(f); unchecked { k = 17; for (int i = 0; i < c.Length; i++) k = k * 31 + (int)c[i]; } }
+            RocolaOsCieloEscena e = RocolaOsCielo.Escena;
+            float lib = e.Modo == 4 ? 1f : (e.Modo == 1 ? Math.Max(0f, Math.Min(1f, e.Reposo)) : 0f);
+            AuroraLib = lib > 0.5f ? 1f : 0f;   // (el escaparate y el reposo, o la pared: la aurora se rehace al cambiar de uno al otro)
+            if (AuroraActiva(f)) { uint[] c = Colores(f); unchecked { k = 17 + (int)AuroraLib * 7919; for (int i = 0; i < c.Length; i++) k = k * 31 + (int)c[i]; } }
             if (k != claveAurora) { claveAurora = k; unchecked { RocolaOsCieloDia.FirmaAuroraExtra += 4099; } }
         }
 
@@ -192,7 +207,13 @@ namespace Rocola
         }
         private static uint RocolaOsFiestaConLuz(float r, float g, float b, uint deXp)
         {
+            // 27-11-2026 («que se note mas»): en dia de fiesta la aurora lleva mas luz que la de XP (la de XP siempre sigue a la musica: lo que XP le da
+            // se multiplica y se le suma un piso), mas en el escaparate y el reposo que en la pared, donde queda detras de los titulos de la ultima fila
             float m = Math.Max((deXp >> 16) & 255, Math.Max((deXp >> 8) & 255, deXp & 255)) / 255f;
+            float lib = RocolaOsCieloFiestas.AuroraLib;
+            float nc = RocolaOsCielo.NocheCuadro;
+            // (de dia, con el cielo claro de la hora, mas luz en la aurora no se lee: pasa de 0,17; entonces va a un 60 % de la de XP)
+            m = Math.Min(1f, (0.08f + 0.06f * lib + m * (1.3f + 0.4f * lib)) * nc + m * 0.6f * (1f - nc));
             return ((uint)(int)(r * m + 0.5f) << 16) | ((uint)(int)(g * m + 0.5f) << 8) | (uint)(int)(b * m + 0.5f);
         }
         // FI4, FI5 y FI6: lo que ensena el escaparate de XP ahora (la ficha de las canciones: «vitrina»; o la lista de lo mas pedido, «top»), y que

@@ -28,8 +28,9 @@ print(f'el sol: {n} salidas y puestas (cdmx y monterrey, 7 fechas), lo mas lejos
 esperado = {'2026-01-01': 'anio_nuevo', '2026-01-06': 'reyes', '2026-02-02': 'candelaria', '2026-02-14': 'amor', '2026-02-24': 'bandera',
             '2026-03-08': 'mujer', '2026-04-30': 'nino', '2026-05-10': 'madres', '2026-06-21': 'padre', '2026-09-15': 'independencia',
             '2026-09-16': 'independencia', '2026-10-31': 'muertos', '2026-11-01': 'muertos', '2026-11-02': 'muertos', '2026-11-20': 'revolucion',
-            '2026-11-22': 'santa_cecilia', '2026-12-12': 'guadalupana', '2026-12-24': 'posadas, navidad', '2026-12-25': 'navidad', '2026-12-31': 'anio_nuevo'}
-for d in range(16, 24): esperado[f'2026-12-{d}'] = 'posadas'
+            '2026-11-22': 'santa_cecilia'}
+# diciembre (27-11-2026): Guadalupana solo el 12, posadas del 16 al 23, Navidad todos los demas dias
+for d in range(1, 32): esperado[f'2026-12-{d}'] = 'guadalupana' if d == 12 else ('posadas' if 16 <= d <= 23 else 'navidad')
 for k in sorted(set(esperado) | set(fiestas)):
     if esperado.get(k) != fiestas.get(k): mal += 1; print(f'MAL calendario {k}: «{fiestas.get(k)}» y §6 dice «{esperado.get(k)}»')
 print(f'el calendario de 2026: {len(fiestas)} dias con fiesta, {"iguales a §6" if all(esperado.get(k) == fiestas.get(k) for k in set(esperado) | set(fiestas)) else "DISTINTOS"}')

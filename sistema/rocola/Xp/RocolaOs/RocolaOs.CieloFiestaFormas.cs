@@ -6,14 +6,18 @@ using System;
 
 namespace Rocola
 {
-    internal sealed class RocolaOsFiestaMalla
+    internal sealed partial class RocolaOsFiestaMalla
     {
         internal Tarjeta.Vtx[] V = new Tarjeta.Vtx[6144];
         internal int N;                                // vertices escritos
         internal int Tris { get { return N / 3; } }
         internal void Limpia() { N = 0; }
         private void Hay(int n) { if (N + n > V.Length) Array.Resize(ref V, Math.Max(V.Length * 2, N + n)); }
-        private void P(float x, float y, uint c) { V[N].X = x; V[N].Y = y; V[N].Z = 0f; V[N].Rhw = 1f; V[N].Color = c; V[N].U = 0f; V[N].V = 0f; N++; }
+        // 27-11-2026: de dia los adornos del horizonte se oscurecen (Tono < 1) para que lo que haya encima de la raya siga leyendose (regla 3, 4,5 a 1)
+        internal float Tono = 1f;
+        private uint Dim(uint c)
+        { return (c & 0xFF000000u) | ((uint)(((c >> 16) & 255) * Tono) << 16) | ((uint)(((c >> 8) & 255) * Tono) << 8) | (uint)((c & 255) * Tono); }
+        private void P(float x, float y, uint c) { if (Tono < 1f) c = Dim(c); V[N].X = x; V[N].Y = y; V[N].Z = 0f; V[N].Rhw = 1f; V[N].Color = c; V[N].U = 0f; V[N].V = 0f; N++; }
 
         // ---- el color
         internal static uint Con(uint rgb, float alfa)
@@ -62,13 +66,14 @@ namespace Rocola
         internal void Elipse(float cx, float cy, float rx, float ry, uint c, int seg, float suave)
         {
             if (rx < 0.2f || ry < 0.2f) return;
-            if (seg < 6) seg = 6;
+            if (seg < 6) seg = 6; else if (seg > 32) seg = 32;
             Hay(seg * 3 + (suave > 0f ? seg * 6 : 0));
             uint c0 = c & 0x00FFFFFFu;
+            float[] ct = CosT[seg], sn = SinT[seg];   // (tablas fijas: nada de seno ni coseno por vertice)
             float px = cx + rx, py = cy, fx = cx + rx + suave, fy = cy;
             for (int i = 1; i <= seg; i++)
             {
-                float a = (float)(i * 2 * Math.PI / seg), co = (float)Math.Cos(a), si = (float)Math.Sin(a);
+                float co = ct[i], si = sn[i];
                 float x = cx + rx * co, y = cy + ry * si;
                 P(cx, cy, c); P(px, py, c); P(x, y, c);
                 if (suave > 0f)
@@ -141,19 +146,6 @@ namespace Rocola
                 float nx = cx + (float)Math.Sin(fase + i * 1.3f) * rx * 0.28f * i, ny = cy + ry * 1.16f + i * ry * 0.34f;
                 Linea(x, y, nx, ny, 0.9f, h); x = nx; y = ny;
             }
-        }
-        // un banderin de papel picado: colgado de (cx, y0), ancho w, alto h, con los dientes de abajo y su calado (rombo y dos puntos mas claros)
-        internal void Banderin(float cx, float y0, float w, float h, uint rgb, float alfa, float sway)
-        {
-            uint c = Con(rgb, alfa), calado = Con(Mezcla(rgb, 0xFFFFFF, 0.55f), 0.4f * alfa);
-            float x0 = cx - w * 0.5f, x1 = cx + w * 0.5f, d = h * 0.2f, yb = y0 + h - d, s = sway;
-            Cuadro4(x0, y0, x1, y0, x1 + s, yb, x0 + s, yb, c);
-            float tw = w / 4f;
-            for (int i = 0; i < 4; i++) Tri(x0 + s + i * tw, yb, x0 + s + (i + 1) * tw, yb, x0 + s + (i + 0.5f) * tw + s * 0.2f, y0 + h, c);
-            float mx = cx + s * 0.6f, my = y0 + h * 0.45f;
-            Cuadro4(mx, my - h * 0.2f, mx + w * 0.2f, my, mx, my + h * 0.2f, mx - w * 0.2f, my, calado);
-            Elipse(mx - w * 0.3f, my - h * 0.1f, w * 0.06f, w * 0.06f, calado, 6, 0.5f);
-            Elipse(mx + w * 0.3f, my - h * 0.1f, w * 0.06f, w * 0.06f, calado, 6, 0.5f);
         }
         // un farolito de papel (centro cx, cy; ancho 2*rx): cuerpo, tapas y borlita
         internal void Farolito(float cx, float cy, float rx, float ry, uint rgb, float alfa)
