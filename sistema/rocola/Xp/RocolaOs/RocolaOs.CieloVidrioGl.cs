@@ -111,11 +111,10 @@ namespace Rocola
             if (rocolaOsVidrioSinSoporte) return false;
             if (CintaTarjeta.Graba && CintaTarjeta.Fuera) return false;   // (pruebas: ROCOLA_CINTA: la cinta no sabe de esto)
             if (dev == IntPtr.Zero || lost || !inScene || enMedia || fondoFbo == 0 || sombreadores == null || VinetaPuntos) return false;
-            if (x < 0) { w += x; x = 0; }
-            if (y < 0) { h += y; y = 0; }
-            if (x + w > fondoAncho) w = fondoAncho - x;
-            if (y + h > fondoAlto) h = fondoAlto - y;
-            if (w < 16 || h < 16) return false;
+            // la ranura se pide con la zona SIN recortar (un aviso que se desliza cortado por el borde no la rehace en cada cuadro: su medida no cambia);
+            // lo que cae fuera de la pantalla se lee con CLAMP (el borde se repite) y el pintor recorta solo lo que dibuja. Solo se mira que asome >= 16 px.
+            if (Math.Min(x + w, fondoAncho) - Math.Max(x, 0) < 16 || Math.Min(y + h, fondoAlto) - Math.Max(y, 0) < 16) return false;
+            if (w > 2 * fondoAncho || h > 2 * fondoAlto) return false;
             int hw = (w + 1) / 2, hh = (h + 1) / 2, qw = (hw + 1) / 2, qh = (hh + 1) / 2;
             RocolaOsRanura r = RocolaOsDaRanura(n, qw, qh);
             if (r == null) { rocolaOsVidrioSinSoporte = true; return false; }

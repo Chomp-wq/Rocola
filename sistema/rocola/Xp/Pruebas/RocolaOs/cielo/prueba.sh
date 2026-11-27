@@ -143,6 +143,15 @@ if [[ " $partes " == *" clima "* ]]; then
   # E: ROCOLA_CLIMA forzado: sin pedir nada
   corre clima-forzado "$prog" 12 "$DATOS0" ROCOLA_OS=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA="tormenta,90,12,30,180,15" ROCOLA_CLIMA_API=$SINRED ROCOLA_CIUDAD="$CIUDAD"; espera clima-forzado
   si "ROCOLA_CLIMA=tormenta: el clima del cielo forzado y sin pedirlo" bash -c "grep -q 'el clima del cielo: tormenta (forzado)' '$(bit clima-forzado)' && ! grep -q 'no se pudo pedir el clima' '$(bit clima-forzado)'"
+  # G: ciudad_bar=0, sin ROCOLA_CIUDAD y sin red (el lugar por internet falla) pero con un clima guardado de hace 1 h (vale): el lugar no se sabe, asi
+  # que NO se pide el clima ni se ensena el guardado (el sol sigue con la Ciudad de Mexico) y la hoja Imagen lo dice (repaso del 27-11-2026)
+  n=clima-sinlugar-ciudad; mkdir -p "$W/$n"; copia "$DATOS0" "$W/$n/datos"
+  printf '# prueba\nmedida=%s\ncodigo=63\nnubes=95\nlluvia=2\nviento=10\ndireccion=90\ntemperatura=12\nvisibilidad=NaN\nde_dia=1\nlat=19.43\nlon=-99.13\n' \
+    "$(date -u -d "-1 hours" +%Y-%m-%dT%H:%M:%SZ)" > "$W/$n/datos/rocola_clima.txt"
+  corre $n "$prog" 14 "=$W/$n/datos" ROCOLA_OS=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA_API=$SINRED ROCOLA_LUGAR_API=$SINRED; espera $n
+  si "lugar sin saber: el clima guardado vale pero no se ensena («sin saber (despejado)», nunca «lluvia (de afuera»)" \
+     bash -c "grep -q 'el clima guardado: .*(vale)' '$(bit $n)' && grep -q 'el clima del cielo: sin saber (despejado)' '$(bit $n)' && ! grep -q 'el clima del cielo: lluvia' '$(bit $n)'"
+  si "lugar sin saber: no se pide el clima de la Ciudad de Mexico («no se pudo pedir el clima» no sale)" bash -c "! grep -q 'no se pudo pedir el clima' '$(bit $n)'"
   # F: la funcion «cielo» encendida pero sin ninguna idea que use el sol (DN1-DN6 y VI5 en 0) y sin el clima, con ciudad_bar=0: no se pide el
   # lugar por internet (nadie lo usaria)
   falso clima-sinlugar --codigo 3 --nubes 50

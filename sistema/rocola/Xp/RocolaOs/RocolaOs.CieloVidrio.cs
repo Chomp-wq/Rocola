@@ -4,7 +4,7 @@
 //   VI1 la ficha rapida del disco (clave vidrio_ficha), VI2 la franja «AHORA SUENA» del reposo (vidrio_franja), VI4 la lista del disco, tenida por la
 //   portada (vidrio_lista) y VI6 los avisos y el buscador (vidrio_buscador): DESENFOCAN lo de detras (RocolaOs.CieloVidrioGl.cs) y por eso van APAGADAS
 //   de fabrica, hasta medirlas en el A4. VI3 las pastillas (BUSCAR, AYUDA, la barra de letras, En cola, creditos; vidrio_pastillas) y VI5 el filo de luz
-//   que sigue al cielo (vidrio_luz): no desenfocan; encendidas dentro de la funcion «vidrio» (que sigue APAGADA de fabrica: DeFabrica = false).
+//   que sigue al cielo (vidrio_luz): no desenfocan; encendidas dentro de la funcion «vidrio», que desde el 27-11-2026 va ENCENDIDA de fabrica (DeFabrica = true; VI1, VI2, VI4 y VI6 siguen apagadas).
 //
 // COMO SE HACE (sin tocar el dibujo de las piezas, que sigue siendo el de XP):
 //   - Debajo de la pieza, en su capa (AntesDeLaFicha, AntesDelEstado, AntesDeLaInterfaz, antes del aviso), el pintor deja lo de detras desenfocado y
@@ -177,9 +177,9 @@ namespace Rocola
             IntPtr tex;
             if (!st.RocolaOsVidrioDesenfoca(ranura, zx, zy, zw, zh, AhoraMs(), RocolaOsVidrio.CadaMs, out tex))
             { if (st.RocolaOsVidrioNoPuede) RocolaOsVidrio.SinDesenfoque = true; return false; }
-            // el rectangulo realmente desenfocado (recortado a la pantalla): el que mide la textura
-            float fx0 = Math.Max(0, zx), fy0 = Math.Max(0, zy), fx1 = Math.Min(Width, zx + zw), fy1 = Math.Min(Height, zy + zh);
-            float zW = fx1 - fx0, zH = fy1 - fy0;
+            // la zona entera SIN recortar es la que mide la textura (U, V de 0 a 1); el contorno que se dibuja se recorta con las coordenadas (VidrioVtx
+            // sujeta U, V) y lo de fuera de la pantalla no se ve
+            float fx0 = zx, fy0 = zy, zW = zw, zH = zh;
             if (zW < 2f || zH < 2f) return false;
             float ins = 1.5f;
             int n = RocolaOsVidrio.Contorno(x + ins, y + ins, w - 2 * ins, h - 2 * ins, Math.Max(0f, r - ins), RocolaOsVidrioX, RocolaOsVidrioY);

@@ -37,6 +37,7 @@ namespace Rocola
         internal bool VerComo;                // «Ver como se veria» puesto (hora, fecha o clima forzados 30 s)
         internal bool Salto;                  // esta foto salta (empieza o acaba «Ver como se veria»): el cuadro la funde en 1,5 s y no en 1 s
         internal double Lat, Lon; internal string Lugar = ""; internal int Ciudad;   // Ciudad: ciudad_bar (0 automatica)
+        internal bool LugarSabido = true;     // false: automatico y sin respuesta (el sol usa la Ciudad de Mexico y NO hay clima)
         internal double SolAlt, SolAz;        // grados (la altura del centro, sin refraccion)
         internal bool SolSube;                // por la manana (la altura crece)
         internal double LunaAlt, LunaAz, LunaFase, LunaLuz;   // fase 0 nueva, 0,5 llena; luz 0 a 1 (lo iluminado)
@@ -252,6 +253,9 @@ namespace Rocola
             lat = RocolaOsCiudades.Lat[0]; lon = RocolaOsCiudades.Lon[0]; nombre = "Ciudad de México (aún no se sabe el lugar)";
         }
 
+        // SI SE SABE DONDE ESTA EL BAR (forzado, ciudad elegida o la de internet); si no, el sol y la luna usan la Ciudad de Mexico pero NO hay clima
+        internal static bool LugarSabido { get { return CiudadForzada != null || CiudadElegida > 0 || Lugar != null; } }
+
         private static int version;
         // HACE UNA FOTO (en la pantalla: cuentas y lo que el hilo ya dejo en memoria)
         internal static RocolaOsCieloFoto HazFoto(bool salto)
@@ -263,6 +267,7 @@ namespace Rocola
             f.Utc = f.Local.ToUniversalTime();
             f.VerComo = verHasta > 0;
             f.Ciudad = CiudadElegida;
+            f.LugarSabido = LugarSabido;
             LugarDelBar(out f.Lat, out f.Lon, out f.Lugar);
             RocolaOsAstro.Sol(f.Utc, f.Lat, f.Lon, out f.SolAlt, out f.SolAz);
             double a2, z2; RocolaOsAstro.Sol(f.Utc.AddMinutes(10), f.Lat, f.Lon, out a2, out z2);
@@ -285,7 +290,9 @@ namespace Rocola
             f.VI4 = f.Vidrio && RocolaOs.AjusteSiNo("vidrio_lista"); f.VI5 = f.Vidrio && RocolaOs.AjusteSiNo("vidrio_luz"); f.VI6 = f.Vidrio && RocolaOs.AjusteSiNo("vidrio_buscador");
             // el clima: el de «Ver como se veria», el de ROCOLA_CLIMA o el de afuera si aun vale (3 h); si no, despejado
             RocolaOsClima c = verHasta > 0 && verClima != null ? verClima : (climaForzado ?? ClimaGuardado);
-            if (c != null && c.Vigente(DateTime.UtcNow)) { f.Clima = c; f.ClimaSabido = true; }
+            // (sin saber el lugar no se ensena el clima de la Ciudad de Mexico; el de ROCOLA_CLIMA y el de «Ver como se veria» si)
+            bool lugarOk = f.LugarSabido || climaForzado != null || (verHasta > 0 && verClima != null);
+            if (c != null && lugarOk && c.Vigente(DateTime.UtcNow)) { f.Clima = c; f.ClimaSabido = true; }
             // el calendario (lo de hoy, con rocola_fechas.txt ya leido por el hilo)
             f.Hoy = RocolaOsCalendario.De(f.Local, Fechas);
             return f;
@@ -332,7 +339,12 @@ namespace Rocola
             // la calma (regla 5): baja a 0,35 en 0,4 s y vuelve a 1 en 3 s
             Form1 r = RocolaOs.LaRocola;
             bool eligiendo = r != null && r.RocolaOsCieloEligiendo();
-            if (r != null && verHasta > 0 && !verDesdeLaHoja && r.RocolaOsUltimaTecla() != verTecla) QuitaVerComo("se toco un boton");
+            if (r != null && verHasta > 0 && !verDesdeLaHoja && r.RocolaOsUltimaTecla() != verTecla)
+            {
+                // (2 s de gracia tras ponerlo: lo que la hoja y su cierre mueven no lo quita; el raton que solo se mueve nunca, g438)
+                if (Environment.TickCount64 - verInicio < VerComoGraciaMs) verTecla = r.RocolaOsUltimaTecla();
+                else QuitaVerComo("se toco un boton");
+            }
             escena.Calma = PasoCalma(ref calmaPaso, eligiendo, dt);
             if (calmaLog != null && ms - calmaLogMs >= 100) { calmaLogMs = ms; calmaLog.Append((ms / 1000).ToString("0.00", CultureInfo.InvariantCulture)).Append(' ').Append(escena.Calma.ToString("0.000", CultureInfo.InvariantCulture)).Append(eligiendo ? " elige\n" : "\n"); }
             escena.Eligiendo = eligiendo;
@@ -369,7 +381,10 @@ namespace Rocola
 
         // ---------- «Ver como se veria» (§3): fecha, hora y clima forzados 30 s; no se guarda ----------
         private static long verHasta;          // (TickCount64; 0 = no)
-        private static DateTime? verLocal; private static DateTime verDesde; private static RocolaOsClima verClima; private static DateTime verTecla; private static bool verDesdeLaHoja;
+        private static DateTime? verLocal; private static DateTime verDesde; private static RocolaOsClima verClima; private static DateTime verTecla; private static bool verDesdeLaHoja; private static long verInicio;
+        internal const int VerComoGraciaMs = 2000;
+        // (gancho g438, el raton se mueve mas de 4 px) lastInput lo pone el raton como una tecla; si antes de moverse no habia otra cosa nueva, se absorbe
+        internal static void RatonMueve(DateTime antes, DateTime ahora) { if (verHasta > 0 && !verDesdeLaHoja && antes == verTecla) verTecla = ahora; }
         internal const int VerComoSegundos = 30;
         // LO LLAMA la hoja «Imagen» de Ctrl+F4 (y el buzon, abajo): en la pantalla. local: la hora y fecha que se quiere ver (null: la de ahora);
         // clima: un tipo (RocolaOsClima.TipoDe; null o «»: el de ahora). Se quita solo a los 30 s, al tocar un boton (que no sea de la hoja) o con
@@ -386,7 +401,7 @@ namespace Rocola
             Form1 r = RocolaOs.LaRocola;
             verTecla = r != null ? r.RocolaOsUltimaTecla() : DateTime.MinValue;
             verDesdeLaHoja = desdeLaHoja;
-            verHasta = Environment.TickCount64 + VerComoSegundos * 1000L;
+            verInicio = Environment.TickCount64; verHasta = verInicio + VerComoSegundos * 1000L;
             RocolaOsCieloFoto f = HazFoto(true);
             PonFoto(f);
             string que = (verLocal.HasValue ? verLocal.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "la hora de ahora")
@@ -487,5 +502,6 @@ namespace Rocola
                 || Volatile.Read(ref RocolaOsCielo.HojasAbiertas) > 0;
         }
         internal DateTime RocolaOsUltimaTecla() { return lastInput; }
+        internal void RocolaOsRatonMueve(DateTime antes, DateTime ahora) { RocolaOsCielo.RatonMueve(antes, ahora); }   // (g438)
     }
 }

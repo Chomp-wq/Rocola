@@ -147,10 +147,17 @@ namespace Rocola
             bool msgs = true; int largo = 0;
             foreach (RocolaOsClimaTipo t in new RocolaOsClimaTipo[] { RocolaOsClimaTipo.Despejado, RocolaOsClimaTipo.PocoNublado, RocolaOsClimaTipo.Nublado, RocolaOsClimaTipo.Neblina, RocolaOsClimaTipo.Llovizna, RocolaOsClimaTipo.Lluvia, RocolaOsClimaTipo.Aguacero, RocolaOsClimaTipo.Tormenta, RocolaOsClimaTipo.Nieve })
             {
-                string m = RocolaOsCieloClimaTextos.Mensaje(new RocolaOsClima(t, -1, 0.5f, 1f, 10f, 270f, 18f, float.NaN, true, DateTime.UtcNow, true));
-                if (string.IsNullOrEmpty(m) || m.Length > 52) msgs = false; largo = Math.Max(largo, m == null ? 0 : m.Length);
+                RocolaOsClima ct = new RocolaOsClima(t, -1, 0.5f, 1f, 10f, 270f, 18f, float.NaN, true, DateTime.UtcNow, true);
+                foreach (bool dd in new[] { true, false })
+                {
+                    string m = RocolaOsCieloClimaTextos.Mensaje(ct, dd);
+                    if (string.IsNullOrEmpty(m) || m.Length > 52) msgs = false; largo = Math.Max(largo, m == null ? 0 : m.Length);
+                }
             }
             Si("un mensaje por cada tipo de clima, de 52 letras como mucho (el mas largo, " + largo + ")", msgs && RocolaOsCieloClimaTextos.Mensaje(RocolaOsClima.Despejado0).Contains("despejado"));
+            RocolaOsClima desp = new RocolaOsClima(RocolaOsClimaTipo.Despejado, 0, 0.1f, 0f, 5f, 0f, 24f, float.NaN, true, DateTime.UtcNow, true);
+            string mDia = RocolaOsCieloClimaTextos.Mensaje(desp, true), mNoche = RocolaOsCieloClimaTextos.Mensaje(desp, false);
+            Si("el despejado de noche no pide «sol» («" + mNoche + "»); el de dia si («" + mDia + "»)", mDia.Contains("sol") && !mNoche.Contains("sol") && mNoche.Contains("noche"));
             System.Collections.Generic.List<string> lista = new System.Collections.Generic.List<string> { "a", "b", "c", "d" };
             RocolaOsCieloFoto fm = Foto(RocolaOsClimaTipo.Lluvia, 0.9f, true); fm.CL5 = true;
             new RocolaOsCieloClimaMensajero().Pon(lista, fm);
