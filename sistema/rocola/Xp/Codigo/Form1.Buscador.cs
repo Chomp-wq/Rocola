@@ -633,7 +633,7 @@ namespace Rocola
             {
 #if ROCOLA_GPU
                 if (Nuevo) MarcaTecla('\b');
-                if (Nuevo && ModoAtajo != null && Escrito.Length == 0) { SalDeAtajo(); return; }   // borrar sin nada escrito: se sale del atajo
+                if (Nuevo && RocolaOsQuitaPrefijo()) return; if (Nuevo && ModoAtajo != null && Escrito.Length == 0) { SalDeAtajo(); return; }   // ROCOLA OS g405: (XP) if (Nuevo && ModoAtajo != null && Escrito.Length == 0) { SalDeAtajo(); return; } — REGRESAR (o borrar del teclado fisico) con nada escrito y el prefijo «LAS MEJORES CANCIONES DE» puesto lo quita (RocolaOs/RocolaOs.MejoresCaja.cs; sin prefijo, lo de XP)   // borrar sin nada escrito: se sale del atajo
 #endif
                 if (Escrito.Length > 0) Escrito = Escrito.Substring(0, Escrito.Length - 1);
                 Tecleo();
@@ -777,7 +777,7 @@ namespace Rocola
             {
                 if (k.Kind == KKind.Char) TypeChar(k.Ch);
                 else if (k.Kind == KKind.Space) TypeChar(' ');
-                else if (k.Kind == KKind.Back) Backspace();
+                else if (k.Kind == KKind.Back) { if (!RocolaOsBorrarNoQuita()) Backspace(); }   // ROCOLA OS g406: (XP) else if (k.Kind == KKind.Back) Backspace(); — la tecla BORRAR del teclado en pantalla no quita el prefijo (con nada escrito no hace nada; RocolaOs/RocolaOs.MejoresCaja.cs; sin prefijo, Backspace de XP)
                 else if (k.Kind == KKind.Choose) { if (Results != null && Results.Count > 0 && OnChoose != null) OnChoose(Results[0]); }
             }
 

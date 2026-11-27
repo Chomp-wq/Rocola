@@ -8,7 +8,7 @@
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
 #   W: la carpeta de trabajo (por defecto /root/rocola-trabajo/fase11/asistente/prueba; se rehace)
 #   CAPTURAS: si se pone, las capturas (PNG) van ahi
-# escenas: menu pide letra sinletra artista tarjetas mas xp sinllave ayuda1024 (todas, de fabrica)
+# escenas: menu pide letra sinletra artista tarjetas mas mejores xp sinllave ayuda1024 (todas, de fabrica)
 # (junta 3, revision) con ROCOLA_OS=1 el cielo pide el lugar y el clima por internet sin llave, y la letra va a LRCLIB: en la prueba,
 # todo eso va al sumidero 127.0.0.1:7 (nada escucha) para no depender de la red ni de lo que conteste un servicio de fuera; una escena
 # que ponga su propio falso lo pone delante y manda
@@ -17,7 +17,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-menu pide letra sinletra artista tarjetas mas xp sinllave ayuda1024}"
+escenas="${*:-menu pide letra sinletra artista tarjetas mas mejores xp sinllave ayuda1024}"
 T0=/root/rocola-trabajo/fase11/asistente
 API=${API:-$T0/api-falsa}
 W=${W:-$T0/prueba}
@@ -189,6 +189,17 @@ for e in $escenas; do
     si "mas: sale con 0" test "$(cat $o/salio)" = 0
     p=$(pasos $d); echo "   pasos: $p"
     si "mas: en tu tarjeta, «Sus discos» (la pared unida), y otra vez al volver; nada de «Más en Spotify»" bash -c "echo '$p' | grep -q 'Sus discos|[^|]*|Sus discos' && ! echo '$p' | grep -q 'Más en Spotify'" ;;
+  mejores)
+    # GUIA 3 con «LAS MEJORES CANCIONES DE…» (27-11-2026; RocolaOs.Mejores.cs): el buscador, «Escribe el artista» (su texto habla del atajo de
+    # arriba), ARRIBA dos veces y VERDE ponen el prefijo, se escribe «otra» y, en la tarjeta de primera, el paso «Sus mejores canciones»
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$(guia 6 2),12:27+38,14:38,14.5:38,16:13,$(escribe 17.5 otra),$(derechas 22 9)" 30 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 13.2 guia3-mejores-escribe-el-artista),$(cap 20.5 guia3-mejores-con-el-prefijo),$(cap 25.5 guia3-mejores-su-tarjeta)"
+    espera $e; o="$W/$e"
+    si "mejores: sale con 0" test "$(cat $o/salio)" = 0
+    p=$(pasos $d); echo "   pasos: $p"
+    si "mejores: «Escribe el artista» y, en la tarjeta de las mejores canciones, «Sus mejores canciones»" bash -c "echo '$p' | grep -q 'Escribe el artista' && echo '$p' | grep -q 'Sus mejores canciones$'"
+    si "mejores: nada cobrado (solo se llego a la tarjeta)" test "$(cobradas $d)" = 0 ;;
   xp|sinllave)
     # SIN SPOTIFY = EL ASISTENTE DE XP TAL CUAL: sin ROCOLA_OS (xp) y con ROCOLA_OS=1 (spotify encendido de fabrica) sin la llave de la API
     # (sinllave), lo mismo: la pregunta de tres (ABAJO x4 se queda en la 3a), «Aprender a moverme» con sus pasos, ROJO+ABAJO la guarda; otra

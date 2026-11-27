@@ -98,6 +98,7 @@ namespace Rocola
             if (abierto && !rocolaOsSpBuscadorAntes && RocolaOsSpotifyCatalogoVa && RocolaOsSpotifyCatalogoApi.HayLlave) RocolaOsSpotifyCatalogoApi.Calienta();
             if (abierto && !rocolaOsSpBuscadorAntes && RocolaOsSpotifyCatalogoVa) RocolaOsSpotifyCatalogoRecorta();   // (A8: como mucho una vez por hora)
             rocolaOsSpBuscadorAntes = abierto;
+            RocolaOsMejoresLatido(abierto);   // («LAS MEJORES CANCIONES DE...»: el prefijo no sobrevive al buscador; RocolaOs.Mejores.cs)
             RocolaOsSpotifyCatalogoMiraTarjeta(abierto);
             RocolaOsParedCasillasAlDia();   // (BUSCAR y AYUDA fuera de las paredes del buscador: RocolaOs.ParedLetrero.cs)
         }
@@ -220,6 +221,7 @@ namespace Rocola
         // lo que se ensena ahora en el buscador (para seguir ensenandolo mientras se espera a Spotify)
         private List<SearchItem> RocolaOsSpotifyCatalogoVisto(List<SearchItem> lista, string consulta)
         {
+            lista = RocolaOsMejoresPrimera(lista, consulta);   // («LAS MEJORES CANCIONES DE ARTISTA» de primera con el prefijo puesto: RocolaOs.Mejores.cs; sin prefijo, la misma)
             rocolaOsSpVisto = lista; rocolaOsSpVistoConsulta = consulta;
             rocolaOsSpVistoCuenta = searchOverlay != null ? searchOverlay.TotalResultados : 0;   // (la cuenta ya puesta por XP; la de lo mezclado se pone antes de llamar)
             return lista;
@@ -235,6 +237,7 @@ namespace Rocola
         // cambia la lista del buscador sin perder la tarjeta elegida si alguien andaba entre los resultados
         private void RocolaOsSpotifyCatalogoPoneResultados(List<SearchItem> m, int cuenta)
         {
+            m = RocolaOsMejoresPrimera(m, rocolaOsSpEscrito);   // («LAS MEJORES CANCIONES DE ARTISTA» de primera con el prefijo puesto: RocolaOs.Mejores.cs; sin prefijo, la misma)
             List<SearchItem> antes = searchOverlay.Results;
             if (searchOverlay.FocusResults && antes != null && searchOverlay.SelResult >= 0 && searchOverlay.SelResult < antes.Count)
             {
@@ -332,6 +335,7 @@ namespace Rocola
             // (23-11-2026, el dueno: «siempre si se escoge la opcion de artista o album en el buscador, se abra ya sea una pared de discos
             // temporal, o el disco dentro del buscador») un artista tuyo: SIEMPRE una pared del buscador (la unida si Spotify lo tiene, si no
             // solo con tus discos); un disco tuyo: dentro del buscador (REGRESAR vuelve a el). Nunca la pared de verdad.
+            if (RocolaOsMejoresElige(it)) return true;   // («LAS MEJORES CANCIONES DE ARTISTA»: RocolaOs.Mejores.cs)
             if (it != null && (RocolaOsSpotifyArtistaTuyoElige(it) || RocolaOsSpotifyDiscoTuyoElige(it))) return true;
             if (it == null || !RocolaOsEsSpotify(it.AlbumRef) || !RocolaOsSpotifyCatalogoVa) return false;
             MarkSearchActivity();
