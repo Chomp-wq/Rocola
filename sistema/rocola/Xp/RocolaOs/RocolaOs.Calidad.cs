@@ -87,6 +87,9 @@ namespace Rocola
         // EQ, el bajo, el margen del ecualizador del dueno, el des-recorte, la duracion y el volumen parejo del billar) se mira en tu MP3
         private static readonly ConcurrentDictionary<string, string> sombraDe = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         internal static void PonSombra(string uri, string ruta) { if (sombraDe.Count > 4000) sombraDe.Clear(); sombraDe[uri] = ruta; }
+        // (27-11-2026, revision) la uri se abre como pedida directa de Spotify (el buscador): ya no es la sombra de ningun MP3 tuyo, y no debe usar su EQ,
+        // su duracion, su volumen parejo ni su bajo (RocolaOsSpotifyAbre)
+        internal static bool QuitaSombra(string uri, out string mp3) { mp3 = null; return uri != null && sombraDe.TryRemove(uri, out mp3); }
         internal static string Mp3DeSombra(string uri) { string r; return uri != null && sombraDe.TryGetValue(uri, out r) ? r : null; }
         internal static long Vistas_, Peores, Buenas, Pedidas, Parejas, SinPareja, DesdeSpotify, AlMp3, Confirmadas, Descartadas, Medidas;
 

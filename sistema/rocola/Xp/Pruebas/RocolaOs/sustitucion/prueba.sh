@@ -7,7 +7,7 @@
 # volumen (la 1 o la 2 de RocolaOsCalidad.Envolvente, para la forma). Las canciones se piden con el doble «calidad-prueba» (AddSong de XP).
 #   bash prueba.sh PROGRAMA [escenas...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   escenas (de fabrica todas): reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde nivelmp3
+#   escenas (de fabrica todas): reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde nivelmp3 sombra
 #   W (/root/rocola-trabajo/fase11/sustitucion/prueba; se rehace), API y FALSO (la API falsa y el Soloist falso compilados; se compilan si
 #   faltan o cambiaron, con el candado de lo pesado)
 # Cada comprobacion: BIEN o MAL en una linea; al final «TODO BIEN (N comprobaciones)» o cuantas MAL (y sale con 1).
@@ -19,7 +19,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SX="$G/../spotify-xp"; CA="$G/../catalogo"
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde nivelmp3}"
+partes="${*:-reglas isrc titulo sinpareja nx corte forma frena apagado sinllave sinsesion caida atasca seguida apagon tarde nivelmp3 sombra}"
 W=${W:-/root/rocola-trabajo/fase11/sustitucion/prueba}
 API=${API:-/root/rocola-trabajo/fase11/sustitucion/api-falsa}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/sustitucion/falso}
@@ -119,6 +119,7 @@ abre() {
         copia) cp "$o/run/rocola-xp/spotify/estado" "$o/estado.txt" 2>/dev/null; cp "$o/run/rocola-xp/spotify/calidad" "$o/calidad.txt" 2>/dev/null ;;
         429) control "429?seg=120" ;;
         5xx) control "5xx?n=1000" ;;
+        pide\ *) echo "$l" >> "$o/run/rocola-xp/spotify/prueba-pide" ;;   # (la escena sombra: el doble de spotify-prueba pide como el buscador)
         *) echo "$l" >> "$o/run/rocola-xp/spotify/prueba-xp" ;;
       esac; done ) &
   local q=$!
@@ -458,6 +459,25 @@ if [[ " $partes " == *" nivelmp3 "* ]]; then
   # el billar: la duracion (la de tu MP3: 50 s deja el EQ del billar; 32 s no: menos de 45 s) y el volumen parejo
   si "nivelmp3 billar: la de 50 s (larga): con su duracion y EQ automatico con correccion" bash -c "grep -F 'la cadena de 07 larga.mp3 con spotify:track:f640d050: con lo de tu MP3: EQ automatico [' '$bb' | grep -q 'duracion 50 s; parejo'"
   si "nivelmp3 billar: la de 32 s (bolero): con su duracion y, como una tuya de menos de 45 s, sin EQ del billar" bash -c "grep -F 'la cadena de 01 bolero.mp3 con spotify:track:f440d032: con lo de tu MP3: EQ automatico sin correccion' '$bb' | grep -q 'duracion 32 s; parejo'"
+fi
+
+# ---------------------------------------------------------------- sombra (27-11-2026, revision): la uri de una sustituida, pedida despues como pedida directa de Spotify
+# La sombra de tu «01 bolero.mp3» es spotify:track:f440d032 y lo de tu MP3 (EQ, duracion, parejo del billar, bajo) se mira por esa uri. Si despues alguien
+# pide ESA MISMA uri desde el buscador (pedida normal de Spotify) ya no debe usar lo de tu MP3: RocolaOsSpotifyAbre le quita la asociacion y lo apunta
+if [[ " $partes " == *" sombra "* ]]; then
+  sec "sombra (la uri de una sustituida, pedida despues directamente: ya no es la sombra de tu MP3)"
+  n=sombra; d=$(datos $n); apifalsa $n
+  { for k in $(seq 1 60); do printf -- '-8;0.5;0;-1.5;-2;-1;-3.5;-6;20000;0;30;2|/musica/inventada/huella%s.mp3\r\n' $k; done
+    printf -- '-6;1.5;0.5;-1;-2;-2;-4;-9;15000;0;30;2|%s/musica/Trio Calidad/Joyas de Prueba/01 bolero.mp3\r\n' "$d"; } >> "$d/rocola_eq.txt"
+  T=$'\t'; now=$(date +%s)
+  siembra "$d" "MP3:01 bolero.mp3${T}0${T}0${T}f440d032${T}-${T}32000${T}32000${T}1${T}$now${T}-3.0${T}-5.0${T}-12.0${T}0.95${T}isrc"
+  abre $n "$d" "7:67,7.5:67,8:67" "9:pon relleno.mp3;9.4:pon 01 bolero.mp3;70:pide spotify:track:f440d032|Directa|Otro Artista|Otro Disco|20000;100:copia" 101 TERM "$ROS,spotify-prueba"
+  fin
+  b=$(bit "$d")
+  grep -F 'f440d032' "$b" | sed 's/^[^ ]* [0-9-]* [0-9:]*  /   /' | head -8
+  si "sombra: sale con 0" test "$(cat $W/$n/salio)" = 0
+  si "sombra: la 1.a suena como sombra de tu MP3 (con lo de tu MP3)" bash -c "grep -qF 'la cadena de 01 bolero.mp3 con spotify:track:f440d032: con lo de tu MP3' '$b'"
+  si "sombra: la pedida directa de la misma uri le quita la asociacion (y lo apunta)" bash -c "grep -qF 'pedida directa de spotify:track:f440d032: ya no es la sombra de 01 bolero.mp3' '$b'"
 fi
 
 echo

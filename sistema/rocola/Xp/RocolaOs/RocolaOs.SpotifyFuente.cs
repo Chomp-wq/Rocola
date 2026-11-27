@@ -231,7 +231,9 @@ namespace Rocola
             private int RecortaSilencioInicial(RocolaOsSpotifyAnillo a, Span<float> d, int n, int pedidos, long hasta, bool paraEnVaciado, ref long leidoDespues)
             {
                 long tope = (long)hz * RocolaOsSpotifyArranque.TopeSilencioMs / 1000;
-                for (int vuelta = 0; vuelta < 16 && n > 0 && recortaSilencio; vuelta++)
+                // (27-11-2026, revision) 16 vueltas de ANALISIS (la 17.a solo mira lo ya tomado, sin tomar mas): antes la ultima toma, sin mirar, se
+                // devolvia como si fuera sonido (silencio contado como sonido, o musica sin recortar); ahora lo que no se pudo mirar no se entrega
+                for (int vuelta = 0; vuelta <= 16 && n > 0 && recortaSilencio; vuelta++)
                 {
                     int k = 0;
                     float u = RocolaOsSpotifyArranque.UmbralSilencio;
@@ -268,7 +270,8 @@ namespace Rocola
                         return n;
                     }
                     if (recortados >= tope) { recortaSilencio = false; RocolaOsSpotifyArranque.Recortado(uri, recortados * 1000.0 / hz, true, Environment.TickCount64 - inicioMs, Interlocked.Read(ref cuadrosEntregados) * 1000.0 / hz); return 0; }
-                    // todo era silencio: lo siguiente que haya en el anillo
+                    // todo era silencio: lo siguiente que haya en el anillo (en la vuelta 17 no se toma mas: no se podria mirar)
+                    if (vuelta == 16) return 0;
                     bool vac;
                     n = TomaConvertida(a, d, pedidos, hasta, paraEnVaciado, out leidoDespues, out vac);
                 }

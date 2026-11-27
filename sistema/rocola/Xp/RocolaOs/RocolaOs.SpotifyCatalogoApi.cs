@@ -99,6 +99,8 @@ namespace Rocola
             internal string Clave;            // la consulta o el id
             internal bool Alguien;            // lo espera alguien (va antes que lo de la cuenta)
             internal long NoAntesDe;          // (las busquedas: a los 300 ms de la ultima tecla)
+            internal bool Perezosa;           // (27-11-2026, revision) una busqueda cuyo NoAntesDe aun no se decide: si su respuesta esta en el disco de la
+                                              // rocola no espera; eso lo mira el HILO DEL CATALOGO (CorreUna), nunca el de la pantalla (que llama a Busca en cada tecla)
             internal Action<object, string> Listo;   // (resultado o null, error o null), en ESTE hilo: quien lo pide lo encarga a la pantalla
             internal int Reintentos;          // (23-11-2026) lo de la cuenta: cuantas veces se volvio a intentar solo (la espera crece)
             internal Func<bool> Sigue;        // (revision cuota-hilos-y-fallos; las paginas de las paredes) null = siempre; si no, se pregunta en
@@ -211,8 +213,9 @@ namespace Rocola
         }
         internal static void Busca(string consulta, Action<object, string> listo)
         {
-            bool sabida = RocolaOsSpotifyMemoria.TieneBusqueda(ClaveCache(consulta));
-            Pedido p = new Pedido { Que = "busca", Clave = consulta, Alguien = true, NoAntesDe = Environment.TickCount64 + (sabida ? 0 : EsperaBusquedaMs), Listo = listo };
+            // (27-11-2026, revision) Busca corre en el hilo de la pantalla, en cada tecla: nada de disco aqui. Se pone la espera entera y el hilo del
+            // catalogo, al ir a tomarla, la quita si lo escrito ya esta guardado en el disco (CorreUna, DecideBusqueda)
+            Pedido p = new Pedido { Que = "busca", Clave = consulta, Alguien = true, NoAntesDe = Environment.TickCount64 + EsperaBusquedaMs, Perezosa = true, Listo = listo };
             lock (cerrojo) { busquedaPendiente = p; }
             Despierta();
         }
@@ -332,10 +335,27 @@ namespace Rocola
                 catch (Exception ex) { RocolaOs.Falla("spotify_catalogo", "vuelta del hilo", ex); Thread.Sleep(1000); }
             }
         }
+        // (27-11-2026, revision) la busqueda pendiente que aun no se miro: si Spotify ya contesto eso y esta en el disco, no espera los 650 ms.
+        // La consulta al disco (SHA1, ruta, FileInfo) va aqui, en el hilo del catalogo, y no en el de la pantalla
+        private static void DecideBusqueda()
+        {
+            Pedido b;
+            lock (cerrojo) { b = busquedaPendiente; }
+            if (b == null || !b.Perezosa) return;
+            bool sabida = false;
+            try { sabida = RocolaOsSpotifyMemoria.TieneBusqueda(ClaveCache(b.Clave)); } catch { }
+            lock (cerrojo)
+            {
+                if (!b.Perezosa) return;
+                b.Perezosa = false;
+                if (sabida) b.NoAntesDe = 0;   // (un pedido ya reemplazado por otro: no importa, lo decide el suyo)
+            }
+        }
         private static void CorreUna()
         {
             {
                 Pedido p = null; int espera = 5000;
+                DecideBusqueda();
                 lock (cerrojo)
                 {
                     long ahora = Environment.TickCount64;

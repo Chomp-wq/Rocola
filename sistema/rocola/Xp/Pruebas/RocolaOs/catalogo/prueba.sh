@@ -26,7 +26,7 @@
 #   cuenta (A1) ya NO espera las peticiones de la cuenta (la letra ♫ no esta en la pared: ni se piden), y sinred prueba el «sin red» recordado
 # (27-11-2026, las seis mejoras de Spotify que el dueno eligio: FASE11_paredes-buscador.md, ultima seccion, y FASE11_hoja-spotify.md) las escenas
 #   repetidas (la misma cancion en tu musica y en Spotify sale una vez), ediciones (sin ediciones repetidas en la pared y «Canciones de» filtrado),
-#   teclea (esperar mas tras la ultima letra), memoria (lo que contesto Spotify, en disco: 3 arranques) y hoja (la hoja «Spotify» de Ctrl+F4,
+#   teclea (esperar mas tras la ultima letra), memoria (lo que contesto Spotify, en disco: 4 arranques, el 4.o con los archivos truncados) y hoja (la hoja «Spotify» de Ctrl+F4,
 #   con su captura a 1024x768 y el mando de paginas por letra); usan /control/nuevas de la API falsa
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
@@ -745,9 +745,13 @@ PY
     # (las otras escenas): nada en la carpeta de datos
     d=$(datos $e encendido); G1="$W/grande-memoria"; mkdir -p "$G1"
     T="$BASE,$(escribe 9.5 quinteto),$(derechas 13.5 14),16:37,17:13,21:13"
-    for r in 1 2 3; do
+    for r in 1 2 3 4; do
       n="$e$r"; apifalsa $n; control nuevas
       [ $r = 3 ] && find "$G1/rocola_spotify_cache" -name 'busqueda-*' -exec touch -d '30 hours ago' {} +
+      if [ $r = 4 ]; then   # (revision 27-11-2026) un apagon tras el cambio de nombre deja archivos TRUNCADOS: a todos se les quita la ultima linea
+        c4="$G1/rocola_spotify_cache"; cierre=$(for f in "$c4"/*.txt; do tail -n1 "$f" | cut -f1; done | sort | uniq -c | tr -s ' ' | tr '\n' ';')
+        for f in "$c4"/*.txt; do sed -i '$d' "$f"; done
+      fi
       abre $n "$d" "$T" 27 ROCOLA_OS=1 ROCOLA_IA_DATOS="$G1"
       espera $n
       echo "   arranque $r: $(grep -c ' /v1/' "$W/$n/api/peticiones.txt") peticiones a /v1 ($(grep -c '/v1/search' "$W/$n/api/peticiones.txt") busquedas); $(ls "$G1/rocola_spotify_cache" 2>/dev/null | wc -l) archivos en la memoria"
@@ -758,6 +762,8 @@ PY
     si "memoria: 2.o arranque: NINGUNA peticion a /v1 (todo del disco)" test "$(grep -c ' /v1/' $W/${e}2/api/peticiones.txt)" = 0
     si "memoria: 2.o arranque: el estado dice los aciertos del disco" bash -c "grep -E '^cache_aciertos=[1-9]' '$W/${e}2/run/rocola-xp/spotify/catalogo'"
     si "memoria: 3.er arranque: solo la busqueda vencida se volvio a preguntar (ninguna pagina de pared)" bash -c "[ \$(grep -c '/v1/search' '$W/${e}3/api/peticiones.txt') -ge 1 ] && ! grep -q '/v1/artists/' '$W/${e}3/api/peticiones.txt'"
+    si "memoria: todos los archivos guardados terminan con su linea de cierre «fin» (antes de truncarlos: $cierre)" bash -c "[ -n '$cierre' ] && [ \$(echo '$cierre' | tr ';' '\n' | grep -v '^\$' | grep -vc ' fin\$' ) = 0 ]"
+    si "memoria: 4.o arranque con los archivos truncados: NINGUNO se acepta, todo se vuelve a preguntar ($(grep -c ' /v1/' $W/${e}4/api/peticiones.txt) peticiones) y se vuelve a guardar completo" bash -c "[ \$(grep -c ' /v1/' '$W/${e}4/api/peticiones.txt') -ge 4 ] && [ \$(cat $W/${e}4/salio) = 0 ] && [ -z \"\$(for f in '$c'/*.txt; do tail -n1 \"\$f\" | grep -v '^fin' ; done)\" ]"
     si "memoria: la memoria solo lleva datos publicos (sin el secreto, ni refresco, ni llaves)" bash -c "! grep -rlE 'secreto-de-prueba|refresco-|app-[0-9]+|cuenta-[0-9]+' '$c'"
     si "memoria: sin disco aparte, nada en la carpeta de datos" test ! -e "$d/rocola_spotify_cache" ;;
   hoja)

@@ -147,7 +147,11 @@ namespace Rocola
                 if (carpeta == null) return;
                 Directory.CreateDirectory(carpeta);
                 string ruta = Archivo(carpeta, tipo, clave), t = ruta + ".n";
-                string texto = "v1\t" + Esc(clave) + "\n" + cuerpo;
+                // (27-11-2026, revision) linea de cierre «fin<TAB>numero de lineas»: un archivo truncado por un apagon tras el cambio de nombre (sin fsync)
+                // no la trae y Lee lo descarta; con ella sabe tambien que no falto ninguna linea
+                int lineas = 0;
+                for (int k = 0; k < cuerpo.Length; k++) if (cuerpo[k] == '\n') lineas++;
+                string texto = "v1\t" + Esc(clave) + "\n" + cuerpo + "fin\t" + I(lineas) + "\n";
                 long antes = File.Exists(ruta) ? new FileInfo(ruta).Length : 0;
                 File.WriteAllText(t, texto, new UTF8Encoding(false));
                 File.Move(t, ruta, true);
@@ -174,8 +178,13 @@ namespace Rocola
                 if (horas > vale && (!viejo || horas > vale * VencidoVecesMax)) { lock (cerrojo) fallos++; return null; }
                 string[] ls = File.ReadAllLines(ruta, Encoding.UTF8);
                 if (ls.Length < 1 || ls[0] != "v1\t" + Esc(clave)) { lock (cerrojo) fallos++; if (ls.Length < 1 || !ls[0].StartsWith("v1\t", StringComparison.Ordinal)) TryBorra(ruta); return null; }
+                // el cierre: ultima linea «fin<TAB>N» con N = las lineas de datos; sin el (archivo viejo o truncado) o con otra cuenta, no vale y se borra
+                int cuerpoN = ls.Length - 2, cierre;
+                if (ls.Length < 2 || !ls[ls.Length - 1].StartsWith("fin\t", StringComparison.Ordinal)
+                    || !int.TryParse(ls[ls.Length - 1].Substring(4), NumberStyles.Integer, CultureInfo.InvariantCulture, out cierre) || cierre != cuerpoN)
+                { lock (cerrojo) fallos++; TryBorra(ruta); return null; }
                 List<string[]> r = new List<string[]>(ls.Length);
-                for (int i = 1; i < ls.Length; i++)
+                for (int i = 1; i < ls.Length - 1; i++)
                 {
                     if (ls[i].Length == 0) continue;
                     string[] f = ls[i].Split('\t');
