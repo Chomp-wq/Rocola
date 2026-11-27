@@ -98,7 +98,7 @@ datos() {   # NOMBRE MODO(apagado|encendido|sinllave)
   for x in "Angeles Ficticios - Cumbias del Recuerdo" "Alma Nortena - Corridos Bravos" "Amor Inventado - Boleros de Siempre" "Alfa Rockera - Rock de Prueba" \
            "Arena Tropical - Salsa Inventada" "Banda Ejemplar - Banda en Vivo"; do mkdir -p "$m/$x"; cp "$s"/*.mp3 "$m/$x/"; done
   case "$2" in
-    encendido) printf 'spotify=1\n' > "$d/rocola_os.txt"; printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt" ;;
+    encendido) printf 'spotify=1\npared_paginas=%s\n' "${PAGINAS:-500}" > "$d/rocola_os.txt"; printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt" ;;
     sinllave) printf 'spotify=1\n' > "$d/rocola_os.txt" ;;
     cuenta) printf 'spotify=1\n' > "$d/rocola_os.txt"; printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\nrefresh_token=refresco-1\nusuario=dueno-falso\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt" ;;   # (27-11-2026) con la cuenta: la letra ♫
     apagado) printf 'spotify=0\n' > "$d/rocola_os.txt"; printf 'client_id=id-de-prueba\nclient_secret=secreto-de-prueba\n' > "$d/rocola_spotify_api.txt"; chmod 600 "$d/rocola_spotify_api.txt" ;;
@@ -454,6 +454,11 @@ PY
     SIN_PAQUETE=1 abre ${e}3 "$d" "$BASE" 30 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/disco-paquete3/ia-xp"; espera ${e}3
     o="$W/${e}3"
     si "paquete 3: una parte que no es la de su sha256 no se usa (la bitacora lo dice) y las demas si ($(est $o paquete_partes) de $NP)" bash -c "grep -q 'no es la que dice su sha256' '$d/rocola_os_bitacora.txt' && [ '$(est $o paquete_partes)' = $((NP - 1)) ]" ;;
+  paginas)
+    # LAS PAGINAS POR LETRA (27-11-2026): de fabrica 100 (sin pared_paginas=), y pared_paginas=1000 se respeta (tope 1000)
+    apifalsa $e "$CAT"; d=$(datos $e encendido); printf 'spotify=1\n' > "$d/rocola_os.txt"
+    abre $e "$d" "$BASE" 20 ROCOLA_OS=1; espera $e; o="$W/$e"
+    si "paginas: de fabrica, 100 paginas en la A ($(est $o paginas))" test "$(est $o paginas)" = 100 ;;
   letra)
     # LA LETRA ♫ CON EL ICONO DE SPOTIFY (27-11-2026) a 1024x768: la casilla del final del abecedario lleva el circulo verde de Spotify con sus tres ondas
     # (no el texto), tambien elegida (en su capsula). Con la cuenta (la letra sale con «Tus favoritas»); REGRESAR+IZQUIERDA dos veces desde la A (#, y la vuelta a la ♫)

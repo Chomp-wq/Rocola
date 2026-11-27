@@ -20,8 +20,7 @@
 #   en el buscador abre siempre el disco dentro del buscador o una pared del buscador, nunca la pared de verdad); todas, de fabrica
 #   y colgada y recorte (24-11-2026, revision de mejoras: A3 la API que no contesta se recuerda «sin red» y no ocupa el hilo; A8 el recorte de /run); la escena
 #   y sinanidar (26-11-2026: ni otro buscador ni la estrella dentro de lo del buscador: g279, g280); la escena
-#   cuenta (A1) no esperaba las peticiones de la cuenta (la letra ♫ no estaba en la pared: ni se pedian) y sinred prueba el «sin red» recordado;
-#   (27-11-2026) la letra ♫ vuelve a la pared: la escena cuenta espera otra vez sus peticiones
+#   cuenta (A1) ya NO espera las peticiones de la cuenta (la letra ♫ no esta en la pared: ni se piden), y sinred prueba el «sin red» recordado
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
@@ -219,20 +218,16 @@ for e in $escenas; do
     si "fallos: el estado dice api=frena (y frena_s con la cuota)" bash -c "grep -qx 'api=frena' '$o/run/rocola-xp/spotify/catalogo' && grep -qE '^frena_s=[0-9]+ cuota$' '$o/run/rocola-xp/spotify/catalogo'"
     si "fallos: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
   cuenta)
-    # LA CUENTA (refresh_token): la letra de Spotify desde el arranque con «Tus favoritas», tus discos y tu lista (la de otro no); REGRESAR+
-    # IZQUIERDA desde la primera letra da la vuelta hasta ella. (27-11-2026) La letra ♫ vuelve a la pared (RocolaOsSpotifyLetraEnLaPared = true),
-    # asi que lo de la cuenta se vuelve a pedir; su casilla lleva el icono de Spotify (la captura pared-cuenta; la escena «letra» de pared-generos lo mide)
+    # LA CUENTA (refresh_token) SIN LA LETRA ♫ EN LA PARED (24-11-2026, revision de mejoras, A1): lo de la cuenta (/me/tracks, /me/albums,
+    # /me/playlists) solo alimenta esa letra, que no sale (RocolaOsSpotifyLetraEnLaPared = false): ni se pide. Antes esta escena esperaba las tres
+    # peticiones, la lista propia y la renovacion de la llave de la cuenta; ahora nada de eso (los atajos de SP9, que si usan la cuenta, tienen su escena)
     apifalsa $e; d=$(datos $e cuenta)
-    abre $e "$d" "7:67,10:27+37,12:39,12.6:39,13.2:39,14:13,16.5:13,18:27" 22 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11.5 pared-cuenta),$(cap 16 disco-lista-propia)"
+    abre $e "$d" "7:67,10:27+37,12:39,12.6:39,13.2:39,14:13,16.5:13,18:27" 22 ROCOLA_OS=1 ROCOLA_CAPTURA="$(cap 11.5 pared-cuenta)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
     sed 's/^/   /' "$a" | grep -v '/img/' | head -12
     si "cuenta: sale con 0" test "$(cat $o/salio)" = 0
-    si "cuenta: tres peticiones de la cuenta (me/tracks, me/albums, me/playlists) con la llave de la cuenta" bash -c "[ \$(grep -cE 'GET /v1/me/(tracks|albums|playlists) cuenta 200' '$a') = 3 ]"
-    si "cuenta: la lista propia se abrio con UNA peticion (/v1/playlists/lis001/items)" bash -c "[ \$(grep -c 'GET /v1/playlists/lis001/items cuenta 200' '$a') = 1 ]"
-    si "cuenta: la de otro no se pide nunca" nocontiene "$a" "lis002"
-    si "cuenta: Spotify roto la llave de refresco y se guardo encima (0600, sin la vieja)" bash -c "grep -qE '^refresh_token=refresco-[0-9]+$' '$d/rocola_spotify_api.txt' && ! grep -qx 'refresh_token=refresco-1' '$d/rocola_spotify_api.txt' && [ \"\$(find '$d/rocola_spotify_api.txt' -perm 600 | wc -l)\" = 1 ]"
-    si "cuenta: un pedido desde la lista propia ($(pedidos $o))" test "$(pedidos $o)" = 1
-    si "cuenta: la llave de la cuenta se renovo como PKCE (client_id en el cuerpo, sin el secreto)" bash -c "grep -q '^POST /api/token nada 200' '$a' && ! grep -q '^POST /api/token nada 400' '$a'"
+    si "cuenta: ninguna peticion de la cuenta (nada de /v1/me/)" bash -c "! grep -q '/v1/me/' '$a'"
+    si "cuenta: ninguna peticion a /v1 ni a la llave (la letra no sale: nada que pedir)" test "$(wc -l < $a)" = 0
     si "cuenta: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
   suena)
     # LO QUE SUENA CON UNA DE SPOTIFY: se pide la 1a de «inventad», se cierra el buscador y la barra de abajo de XP dice lo que suena. Con la
@@ -291,7 +286,7 @@ for e in $escenas; do
     si "sinred: sin red, el renglon «sin red: Spotify no contesta» UNA vez en la bitacora aunque se busco varias veces ($(grep -c 'sin red: Spotify no contesta' $d/rocola_os_bitacora.txt))" test "$(grep -c 'sin red: Spotify no contesta' $d/rocola_os_bitacora.txt)" = 1
     si "sinred: la API que volvio a los 12 s NO recibio nada hasta pasar el plazo (nada de lo escrito entre 12,5 s y 25 s llego a ella: solo la prueba de los 28 s)" bash -c "[ \$(grep -c '/v1/search' '$a') = 1 ] && grep '/v1/search' '$a' | grep -q ' 200 q=inventad\$'"
     si "sinred: la prueba pidio una llave y salio bien (una sola)" bash -c "[ \$(grep -c '^POST /api/token' '$a') = 1 ]"
-    si "sinred: lo de la cuenta (la letra ♫, de vuelta el 27-11-2026) se vuelve a intentar solo y la bitacora lo dice" contiene "$d/rocola_os_bitacora.txt" "se vuelve a intentar solo"
+    si "sinred: la cuenta no se pide (A1: ni /v1/me ni reintentos de la cuenta)" bash -c "! grep -q '/v1/me/' '$a' && ! grep -q 'se vuelve a intentar solo' '$d/rocola_os_bitacora.txt'"
     si "sinred: al salir bien, el estado dice api=bien y con la hora del ultimo exito" bash -c "grep -qx 'api=bien' '$o/run/rocola-xp/spotify/catalogo' && grep -qE '^ultimo_exito=20[0-9-]+T[0-9:]+Z\$' '$o/run/rocola-xp/spotify/catalogo'" ;;
   colgada)
     # LA API QUE NO CONTESTA (24-11-2026, A3): un puerto que acepta la conexion y se queda callado. Lo que alguien espera (busqueda, la llave) vale 6 s

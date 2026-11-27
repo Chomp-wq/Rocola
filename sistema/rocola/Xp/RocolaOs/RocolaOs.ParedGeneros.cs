@@ -41,7 +41,24 @@ namespace Rocola
     public partial class Form1
     {
         internal const string RocolaOsPgFuncion = "pared";
-        internal const int RocolaOsPgPaginasMax = 500;
+        // (27-11-2026, el dueno: «500 paginas por letra en la pared de discos se me hace algo excesivo, y apuesto a que las caratulas me
+        // llenarian el disco» y «Que yo pueda elegir en la configuracion cuantas paginas por letra, hasta un tope de mil»): 100 paginas por
+        // letra de fabrica (unos 48 000 discos del catalogo como mucho en las 27 letras, ~700 MB de portadas, dentro del paquete: al instante y
+        // sin seguir llenando el disco); pared_paginas= en rocola_os.txt (de 10 a 1000; la hoja Spotify de Ctrl+F4 la cambia) se relee cada
+        // minuto y vale al rearmar las letras. Mas paginas = mas portadas de fondo (cerca de 15 KB cada una).
+        internal const int RocolaOsPgPaginasFabrica = 100, RocolaOsPgPaginasMin = 10, RocolaOsPgPaginasTope = 1000;
+        private static int rocolaOsPgPaginas, rocolaOsPgPaginasLeidoMs;
+        internal static int RocolaOsPgPaginasMax
+        {
+            get
+            {
+                int ahora = Environment.TickCount;
+                if (rocolaOsPgPaginas > 0 && unchecked(ahora - rocolaOsPgPaginasLeidoMs) < 60000) return rocolaOsPgPaginas;
+                int v = RocolaOsPgPaginasFabrica;
+                try { string a = RocolaOs.Ajuste("pared_paginas"); int x; if (a != null && int.TryParse(a.Trim(), out x)) v = Math.Max(RocolaOsPgPaginasMin, Math.Min(RocolaOsPgPaginasTope, x)); } catch { }
+                rocolaOsPgPaginas = v; rocolaOsPgPaginasLeidoMs = ahora; return v;
+            }
+        }
         private const int RocolaOsPgListasEnMemoria = 4;
         private const string RocolaOsPgCarpeta = RocolaOsSpotifyCarpeta + "catalogo:";
 
@@ -53,7 +70,7 @@ namespace Rocola
             RocolaOs.Registra(new RocolaOsFuncion
             {
                 Nombre = RocolaOsPgFuncion,
-                Que = "las letras con el catalogo (solo con el modo Spotify): los discos de Spotify intercalados en el orden de XP, hasta 500 paginas por letra, y la pastilla del genero en cada disco",
+                Que = "las letras con el catalogo (solo con el modo Spotify): los discos de Spotify intercalados en el orden de XP, hasta 100 paginas por letra (pared_paginas=, de 10 a 1000), y la pastilla del genero en cada disco",
                 // ENCENDIDA DE FABRICA otra vez (27-11-2026): el dueno la apago el 22-11 («cargan muy lento las caratulas») y la devuelve («voy a
                 // regresar la pared de discos de spotify la proxima semana») con lo que pidio: sin bandas sonoras, videojuegos y cosas asi, sin
                 // repetir lo que ya tiene y con las portadas a la mano (RocolaOs.ParedExclusiones.cs, RocolaOs.ParedNombres.cs, RocolaOs.ParedPortadas.cs).
@@ -373,7 +390,7 @@ namespace Rocola
                 foreach (KeyValuePair<string, int> g in kv.Value) if (g.Value > mejorN || (g.Value == mejorN && string.CompareOrdinal(g.Key, mejor) < 0)) { mejor = g.Key; mejorN = g.Value; }
                 generoTuyo[kv.Key] = mejor;
             }
-            // LO QUE ENTRA DEL CATALOGO: los primeros del archivo (del artista mas famoso al menos) hasta llenar las 500 paginas con los tuyos
+            // LO QUE ENTRA DEL CATALOGO: los primeros del archivo (del artista mas famoso al menos) hasta llenar las paginas de la letra (pared_paginas=) con los tuyos
             int tope = RocolaOsPgPaginasMax * PageSize;
             int quedan = Math.Max(0, tope - e.Locales.Count);
             List<RocolaOsPgEntrada> entran = new List<RocolaOsPgEntrada>(Math.Min(quedan, e.Cat.Discos));

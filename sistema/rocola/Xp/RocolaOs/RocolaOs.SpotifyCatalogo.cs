@@ -631,7 +631,7 @@ namespace Rocola
         // discos de spotify la proxima semana»; vuelve el 27-11-2026 con las portadas a la mano, RocolaOs.ParedPortadas.cs): lo de la cuenta (tus
         // favoritas, tus discos, tus listas) y lo reciente al final del abecedario, con el icono de Spotify en su casilla
         // (RocolaOs.ParedIcono.cs). false la vuelve a quitar (un disco de Spotify abierto desde el buscador vuelve al buscador con REGRESAR).
-        internal const bool RocolaOsSpotifyLetraEnLaPared = true;
+        internal const bool RocolaOsSpotifyLetraEnLaPared = false;   // (27-11-2026, el dueno: «Lo de la casilla final con icono de Spotify quitala, esa casilla no tiene utilidad realmente»)
         // LA LETRA: lo de la cuenta y despues lo reciente. Si alguien esta mirando la letra, su disco sigue elegido.
         private void RocolaOsSpotifyCatalogoRehaceLetra()
         {
