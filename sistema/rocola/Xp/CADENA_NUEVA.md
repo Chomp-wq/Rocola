@@ -92,4 +92,23 @@ el PROZOR primero · D13 botones de volumen a 1 dB por toque.
 | Piezas de la cadena B (mono, paso alto, curva del billar, bajo virtual, afinacion de varios puntos) | RocolaOs.Billar2*.cs | g480-g489 |
 | Comparacion ciega, ABX y medidas (despues) | RocolaOs.Compara*.cs | g490-g499 |
 
+### 8.1 El contrato de las piezas (marco comun; RocolaOs/RocolaOs.CadenaNuevaPieza.cs) — lo siguen las piezas de la B
+
+- UNA PIEZA es un `ISampleProvider` de NAudio 3 (como las etapas de hoy: `Read(Span<float>)` con `Puente.Lee` y `Read(float[], int, int)`), en
+  coma flotante, DOS canales, a la tasa de la cancion, armada con sus parametros FIJOS antes de sonar (nada que siga a la musica). SIN RETARDO:
+  cada cuadro sale en su sitio (si necesita lo que viene, lee por delante, como el grave en mono de hoy). Y ademas `IRocolaOsPieza`:
+  `void Sigue(IRocolaOsPieza anterior)` para el DISCO CONTINUO: la misma pieza (mismo tipo, mismo puesto en la receta) de la cancion que acaba
+  entera; se llama en el hilo de la pantalla antes de la primera lectura y la pieza la toma en su primera lectura (hilo del sonido) solo si
+  cuadra (tasa, canales, parametros), como `Sigue/Hereda` de `GraveMono` o `EcualizadorDueno`. `RocolaOsPiezaDePaso` es la identidad.
+- LA RECETA `RocolaOsReceta`: `Cadena` ('A'/'B'), `Ruta`, `Tasa`, `Midiendo` (true en la medida: hilo de fondo, NADA del estado de XP),
+  `Medida` (`RocolaOsMedidaNueva`: Lufs, TpDb, PicoDb, Lra, Tercios, arreglos), los arreglos fijos ya decididos, `GananciaDb`, y `Piezas`
+  (cada pieza se anota en orden con `r.Anota(p)`).
+- LA B: el agente del billar asigna, en el `[ModuleInitializer]` de su archivo, `RocolaOsCadenaB.Arma = (receta, entrada) => salida` y
+  `RocolaOsCadenaB.Huella = () => "texto corto con sus parametros"`. `entrada` es lo que sale de los arreglos fijos (canal mudo copiado,
+  invertido volteado, continua y zumbido quitados); `salida` va al ecualizador del dueno (memoria del billar), la ganancia, la noche y la salida,
+  que pone el marco. Sus piezas: mono (L+R)/2, el paso alto, la curva del billar, el bajo virtual fijo... cada una `IRocolaOsPieza` y anotada.
+  `Arma` corre en el hilo de la pantalla o en el de la medida (`r.Midiendo`): nada pesado y, midiendo, nada de XP (lo suyo, de una foto).
+  Mientras `Arma` sea null la B lleva una pieza de paso. Si `Huella` cambia, lo medido con la B se vuelve a medir. La medida de la B (L, TP,
+  tercios) la hace el marco pasando la cancion por `Arma` con `Midiendo = true`.
+
 Estado: EN CURSO desde el 27-11-2026. Nada probado en el A4 ni oido.
