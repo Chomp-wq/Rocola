@@ -30,6 +30,7 @@
 //                                            de la variable API_CATALOGO (sin ella o sin el archivo, 404)
 //   (pared-generos) GET /release-group/MBID/front-250   el Cover Art Archive: una portada dibujada; los MBID que acaban en 0, 404 (sin portada)
 //   (pared-generos) GET /control/caalento?ms=N   cada portada del Cover Art Archive tarda N ms mas
+//   (27-11-2026, revision) GET /control/caa404?n=N   las siguientes N portadas del Cover Art Archive dan 404 (aunque su MBID no acabe en 0)
 //   (pared-generos) GET /v1/albums/catID         un disco del catalogo (4 canciones inventadas); los «catno...», 404 (Spotify no lo tiene)
 //   (pared-generos) search con q=album:"NOMBRE" artist:"ARTISTA" (type=album): un disco con ese nombre (id «catb...»); si el nombre dice
 //                                            «Sin Spotify», ninguno
@@ -67,7 +68,7 @@ internal static class ApiFalsa
     static string baseUrl, carpeta, clientId = "id-de-prueba", secreto = "secreto-de-prueba", refresco = "refresco-1";
     static readonly HashSet<string> llavesApp = new HashSet<string>(), llavesCuenta = new HashSet<string>();
     static int n429, seg429 = 30, n5xx, nLlave; static bool cuota429, fecha429;
-    static int lento, miente, nImg, caaLento; static bool muchos; static readonly List<Disco> extraInter = new List<Disco>();   // (revision cuota-hilos-y-fallos; caaLento: pared-generos)
+    static int lento, miente, nImg, caaLento, caa404; static bool muchos; static readonly List<Disco> extraInter = new List<Disco>();   // (revision cuota-hilos-y-fallos; caaLento: pared-generos)
     static readonly Dictionary<string, Disco> delCatalogo = new Dictionary<string, Disco>();   // (pared-generos) los discos del catalogo inventados
     static readonly object cerrojo = new object();
     // (rapido-spotify) la latencia de las portadas de Spotify, de las llaves y de abrir una conexion; y cuando llego cada peticion
@@ -238,6 +239,7 @@ internal static class ApiFalsa
                 else if (ruta == "/control/nuevas") InventaNuevas();
                 else if (ruta == "/control/miente") miente = int.Parse(q["total"] ?? "1000", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/imgfalla") nImg = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
+                else if (ruta == "/control/caa404") caa404 = int.Parse(q["n"] ?? "1", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/caalento") caaLento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/imglento") imgLento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
                 else if (ruta == "/control/llavelento") llaveLento = int.Parse(q["ms"] ?? "0", CultureInfo.InvariantCulture);
@@ -266,7 +268,8 @@ internal static class ApiFalsa
             string mbid = r.Length > 2 ? r[2] : "";
             int ms; lock (cerrojo) ms = caaLento;
             if (ms > 0) Thread.Sleep(ms);
-            if (mbid.Length == 0 || mbid.EndsWith("0", StringComparison.Ordinal)) { Apunta(c, ruta, "caa", 404); Contesta(c, 404, "Not Found", "text/plain", null, extra); return; }
+            bool de404; lock (cerrojo) { de404 = caa404 > 0; if (de404) caa404--; }
+            if (de404 || mbid.Length == 0 || mbid.EndsWith("0", StringComparison.Ordinal)) { Apunta(c, ruta, "caa", 404); Contesta(c, 404, "Not Found", "text/plain", null, extra); return; }
             Apunta(c, ruta, "caa", 200); Contesta(c, 200, null, "image/jpeg", Portada("caa-" + mbid), extra); return;
         }
         if (ruta == "/api/token" && c.Request.HttpMethod == "POST")

@@ -301,7 +301,7 @@ namespace Rocola
                 int n = SpotifyPasosPaginas[pasoPar];
                 valPar.Text = n + (n == 100 ? " · de fábrica" : "");
                 infoPar.Text = hayClave
-                    ? "Portadas: como mucho " + RocolaOsSpotifyPesoPaginas(n) + "; el paquete trae unas 60 000. Vale en un minuto o al reabrir la letra."
+                    ? "Portadas: como mucho " + RocolaOsSpotifyPesoPaginas(n) + "; el paquete trae unas 60 000. Vale en unos segundos."
                     : "Este programa no declara «" + SpotifyClavePaginas + "» (se declara con la pared por género): aquí no se puede cambiar.";
             };
             barPar.Value = pasoPar; barPar.Enabled = hayClave;

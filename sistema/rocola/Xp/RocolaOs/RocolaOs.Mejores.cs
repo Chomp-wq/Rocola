@@ -142,6 +142,9 @@ namespace Rocola
             }
             if (nombre == null) nombre = CultureInfo.InvariantCulture.TextInfo.ToTitleCase(escrito.ToLowerInvariant());
             string norm = MotorBusqueda.Normaliza(nombre);
+            // (revision 27-11-2026) un artista de solo simbolos («!!!») normaliza a nada: todas esas tarjetas compartian clave y abrian el artista equivocado; su
+            // clave es entonces su nombre en minusculas (con un signo delante que no puede ser el de uno normalizado)
+            if (norm.Length == 0) norm = "!" + nombre.Trim().ToLowerInvariant();
             if (rocolaOsMejoresTarjetas == null)
             {
                 rocolaOsMejoresTarjetas = new Dictionary<string, SearchItem>(StringComparer.Ordinal);
@@ -166,6 +169,12 @@ namespace Rocola
             t = new SearchItem { Kind = 1, Display = a.Name, Key = "", AlbumRef = a };
             rocolaOsMejoresTarjetas[norm] = t;
             return t;
+        }
+        // la clave de un artista (la de la tarjeta): sin acentos ni mayusculas; si no le queda nada (solo simbolos), su nombre en minusculas con «!» delante
+        private static string RocolaOsMejoresClaveArtista(string artista)
+        {
+            string n = MotorBusqueda.Normaliza(artista ?? "");
+            return n.Length > 0 ? n : "!" + (artista ?? "").Trim().ToLowerInvariant();
         }
         // su portada: la del artista en Spotify (si se conoce) o la de tu disco
         private void RocolaOsMejoresPortada(Album a, string id, string url, string propia)
@@ -246,7 +255,7 @@ namespace Rocola
             if (!libBuilding)
                 foreach (Album x in albums)
                 {
-                    if (x == null || x.IsTop || RocolaOsEsSpotify(x) || MotorBusqueda.Normaliza(x.Artist ?? "") != d.Norm) continue;
+                    if (x == null || x.IsTop || RocolaOsEsSpotify(x) || RocolaOsMejoresClaveArtista(x.Artist) != d.Norm) continue;
                     foreach (Track t in x.Tracks)
                     {
                         if (t == null || string.IsNullOrEmpty(t.Path)) continue;

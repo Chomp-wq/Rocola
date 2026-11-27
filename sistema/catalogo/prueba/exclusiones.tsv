@@ -21,7 +21,7 @@ Meditation Music for Mindfulness	Zen Master	Chill	d
 Sleep Well Beast	The National	Rock	
 Lost	Coldplay	Rock	
 Lost in Translation (Original Score)	Varios	Pop	s
-Yoga Flow	Bella	Chill	d
+Yoga Flow	Bella	Chill	
 Lullabies for Babies	Varios	Pop	d
 Stand-Up Comedy Special	Un Cómico	Hablado	h
 Maestro de Ceremonias	Locutor	Karaoke	k
@@ -29,5 +29,36 @@ Biggest Hits of the Decade	Un Niño Famoso	Infantil	i
 Hans Zimmer Greatest	Hans Zimmer	Soundtrack	s
 Abbey Road	The Beatles	Rock	
 Original Pirate Material	The Streets	Hip-Hop	
-My Ost Collection	Alguien	Pop	s
+My Ost Collection	Alguien	Pop	
 Hostile	Pantera	Metal	
+# (27-11-2026, revision) falsos positivos: una palabra suelta ambigua no marca un disco normal ni un artista normal
+The Soundtrack of Our Lives Live	The Soundtrack of Our Lives	Rock	
+Lullaby for the Working Class	Lullaby Records	Rock	
+Soundtrack of My Life	Un Cantante	Pop	
+Binaural	Pearl Jam	Rock	
+Lullaby	Billy Joel	Rock	
+Yoga	Un Cantante	Pop	
+Meditation	Un Cantante	Pop	
+Songs from the Game	Un Cantante	Pop	
+Relaxation	Un Cantante	Pop	
+Mindfulness	Un Cantante	Pop	
+Original Game	Un Cantante	Pop	
+Live in the Studio	The Soundtrack of Our Lives	Rock	
+Bad	Ost Fuego	Rock	
+Greatest Hits	Lullaby Boys	Rock	
+Soundtrack	Un Cantante	Pop	s
+OST	Un Cantante	Pop	s
+O.S.T.	Un Cantante	Pop	s
+Bad (OST)	Un Cantante	Pop	s
+Amelie - OST	Varios	Pop	s
+Pop Songs [Soundtrack]	Varios	Pop	s
+The Hunger Games: Original Game Soundtrack	Varios	Pop	sj
+Yoga Music for Beginners	Zen Master	Chill	d
+Lullabies for Babies	Varios	Pop	d
+Soundtrack	Un Cantante	Pop	s
+Hits	Soundtrack	Pop	s
+Hits	The Soundtrack	Pop	s
+Hits	Karaoke Band	Pop	k
+Hits	Kidz Bop Kids	Pop	i
+Hits	Baby Einstein Music Box Orchestra	Pop	i
+Hits	Sleep Music Academy	Pop	d

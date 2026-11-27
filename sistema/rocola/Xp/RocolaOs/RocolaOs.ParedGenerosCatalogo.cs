@@ -604,12 +604,23 @@ namespace Rocola
                     Baja(p);
                 }
             }
-            // (27-11-2026) EL RELLENO (RocolaOs.ParedPortadas.cs): bajar una portada a la cache sin que nadie la espere; true si quedo a la mano
-            internal static bool BajaRelleno(string mbid)
+            // (revision 27-11-2026) ¿SE SABE YA QUE NO VALE LA PENA PEDIRLA? El Cover Art Archive dijo 404 o fallo hace menos de un minuto: ni entra en lo que
+            // el relleno espera (RocolaOs.ParedGeneros.cs, «faltan») ni gasta su tope
+            internal static bool NoVale(string mbid)
             {
+                if (string.IsNullOrEmpty(mbid)) return true;
+                lock (cerrojo) { long hasta; return sinPortada.Contains(mbid) || (fallo.TryGetValue(mbid, out hasta) && Environment.TickCount64 < hasta); }
+            }
+            internal static bool SinPortada(string mbid) { lock (cerrojo) return sinPortada.Contains(mbid); }
+            // (27-11-2026) EL RELLENO (RocolaOs.ParedPortadas.cs): bajar una portada a la cache sin que nadie la espere; true si quedo a la mano.
+            // fueALaRed: hubo una peticion de verdad (si no, no hace falta esperar entre una y otra)
+            internal static bool BajaRelleno(string mbid, out bool fueALaRed)
+            {
+                fueALaRed = false;
                 if (carpeta == null || EnDisco(mbid) || RocolaOsPgPaquete.Tiene(mbid)) return false;
-                lock (cerrojo) { long hasta; if (sinPortada.Contains(mbid) || (fallo.TryGetValue(mbid, out hasta) && Environment.TickCount64 < hasta)) return false; }
+                if (NoVale(mbid)) return false;
                 if (BytesEnDisco > TopeBytes * 9 / 10) return false;   // (la cache ya esta casi llena: no se rellena para que Recorta la vacie)
+                fueALaRed = true;
                 Baja(new Pedido { Mbid = mbid });
                 return EnDisco(mbid);
             }

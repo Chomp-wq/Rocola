@@ -27,7 +27,7 @@ ARTISTAS = [
         ("Corridos Bravos - Edición Especial", 1, "", 0, "es el tuyo con la edicion y el artista principal"),
         ("Corridos Nuevos", 1, "", 1, "")]),
     ("Orquesta del Cine", "Soundtrack", 99997, [("Gran Estreno", 1, "", 0, "genero del artista: Soundtrack")]),
-    ("Karaoke Stars", "Pop", 99996, [("Exitos del Momento", 1, "", 0, "nombre del artista: karaoke")]),
+    ("Karaoke Hits", "Pop", 99996, [("Exitos del Momento", 1, "", 0, "nombre del artista: karaoke")]),
     ("Voces Dormidas", "Chill", 99995, [("Meditation Music", 1, "", 0, "por el nombre: para dormir o meditar"), ("Olas Tranquilas", 1, "", 1, "")]),
     ("Normal Banda", "Regional", 99994, [("Disco Bueno", 1, "", 1, ""), ("Disco Bueno Dos", 1, "", 1, "")]),
     ("Niños Cantores", "Infantil", 99993, [("Cantos", 1, "", 0, "genero del artista: Infantil")]),

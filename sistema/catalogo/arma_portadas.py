@@ -12,6 +12,9 @@ Ordenes:
   arma    --catalogo ARCHIVO.tsv.gz --salida DIR   baja las portadas y escribe rocola_portadas.txt (el manifiesto) y rocola_portadas_NN.pak
           [--txt rocola_catalogo.txt]              (la version del catalogo con que se armo va en el manifiesto)
           [--max-discos 60000] [--max-mb 900] [--parte-mb 150] [--hilos 16] [--base URL] [--cache DIR]
+          [--max-minutos N]                        (27-11-2026) para con gracia a los N minutos (antes del limite del trabajo de GitHub): cierra la
+                                                   parte en curso y publica lo que tiene, un paquete PARCIAL valido (los discos de los artistas mas
+                                                   famosos primero; el resto, en otra corrida con --cache); 0 = sin tope
   valida  --salida DIR                             comprueba el manifiesto (sha256, bytes) y el indice de cada parte; sale con 1 si algo falla
   lista   --catalogo ARCHIVO.tsv.gz [--max-discos N]   dice cuantos discos entran en el paquete y no baja nada
 
@@ -176,6 +179,7 @@ def orden_arma(a):
     # en bloques (en el orden de fama), con varios hilos dentro de cada bloque: el paquete queda en el orden del catalogo
     BLOQUE = max(a.hilos * 8, 64)
     parar = False
+    por_tiempo = False
     with concurrent.futures.ThreadPoolExecutor(max_workers=a.hilos) as ex:
         for ini in range(0, len(lista), BLOQUE):
             bloque = lista[ini:ini + BLOQUE]
@@ -194,11 +198,18 @@ def orden_arma(a):
                     cierra()
             if parar:
                 break
+            # (27-11-2026) el tope de tiempo: se mira al acabar cada bloque (un bloque son unos segundos; con la red mal, unos minutos); siempre hay al
+            # menos un bloque
+            if a.max_minutos and time.time() - t0 >= a.max_minutos * 60 and ini + BLOQUE < len(lista):
+                parar = por_tiempo = True
+                dice('TOPE DE TIEMPO (%.0f min): se para en el disco %d de %d y se publica lo que hay' % (a.max_minutos, ini + BLOQUE, len(lista)))
+                break
             if (ini // BLOQUE) % 50 == 49:
                 dice('  %d de %d, %d portadas (%.0f MB), %d sin portada, %d fallidas (%.0f s)'
                      % (ini + len(bloque), len(lista), n_ok, total / 1048576, cuentas['404'] + cuentas['mal'], cuentas['error'],
                         time.time() - t0))
     cierra()
+    pedidas = sum(cuentas.values())
     version = ''
     if a.txt and os.path.exists(a.txt):
         for l in open(a.txt, encoding='utf-8'):
@@ -216,13 +227,13 @@ def orden_arma(a):
     for n in os.listdir(a.salida):
         if re.match(r'^rocola_portadas_\d+\.pak$', n) and n not in {p[0] for p in partes}:
             os.remove(os.path.join(a.salida, n))
-    dice('Listo: %d portadas en %d partes, %.1f MB (pedidas %d: %d bien, %d sin portada en el Cover Art Archive, %d no eran un JPEG, '
-         '%d con la red mal) en %.0f s' % (n_ok, len(partes), total / 1048576, len(lista), cuentas['ok'], cuentas['404'], cuentas['mal'],
-                                           cuentas['error'], time.time() - t0))
+    dice('Listo%s: %d portadas en %d partes, %.1f MB (pedidas %d: %d bien, %d sin portada en el Cover Art Archive, %d no eran un JPEG, '
+         '%d con la red mal) en %.0f s' % (' (PARCIAL, por el tope de tiempo)' if por_tiempo else '', n_ok, len(partes), total / 1048576, pedidas,
+                                           cuentas['ok'], cuentas['404'], cuentas['mal'], cuentas['error'], time.time() - t0))
     if n_ok == 0:
         raise SystemExit('Ninguna portada: no se publica un paquete vacio')
-    if len(lista) and cuentas['error'] * 10 > len(lista):
-        raise SystemExit('Mas del 10 %% de las portadas fallaron por la red (%d de %d): no se publica' % (cuentas['error'], len(lista)))
+    if pedidas and cuentas['error'] * 10 > pedidas:
+        raise SystemExit('Mas del 10 %% de las portadas fallaron por la red (%d de %d): no se publica' % (cuentas['error'], pedidas))
 
 
 def lee_manifiesto(ruta):
@@ -316,6 +327,8 @@ def main(argv=None):
     r.add_argument('--base', default=BASE_CAA, help='el Cover Art Archive (otro solo para probar)')
     r.add_argument('--cache', help='carpeta donde guardar lo bajado (otra corrida lo reusa)')
     r.add_argument('--reintentos', type=int, default=4)
+    r.add_argument('--max-minutos', type=float, default=0,
+                   help='para con gracia pasados estos minutos y deja lo que lleva (un paquete parcial valido); 0 = sin tope')
     v = s.add_parser('valida')
     v.add_argument('--salida', required=True)
     l = s.add_parser('lista')

@@ -638,7 +638,7 @@ namespace Rocola
             string off = "&limit=" + PorPaginaPared.ToString(CultureInfo.InvariantCulture) + "&offset=" + desde.ToString(CultureInfo.InvariantCulture) + "&market=" + m;
             string ruta = p.Que == ParedArtista ? "/artists/" + Uri.EscapeDataString(de) + "/albums?include_groups=album,single" + off
                 : p.Que == ParedTodos ? "/search?q=" + Uri.EscapeDataString(de) + "&type=album" + off
-                : "/search?q=" + Uri.EscapeDataString("artist:\"" + de + "\"") + "&type=track" + off;
+                : "/search?q=" + Uri.EscapeDataString("artist:\"" + de.Replace('"', ' ') + "\"") + "&type=track" + off;   // (revision 27-11-2026: sin comillas dentro, como los demas usos)
             // (27-11-2026) la pagina que Spotify ya contesto (en el disco de la rocola; aun vencida si no hay red): sin peticion
             RocolaOsSpotifyCatalogoPagina pg = RocolaOsSpotifyMemoria.Pagina(clave, false);
             bool deMemoria = pg != null;

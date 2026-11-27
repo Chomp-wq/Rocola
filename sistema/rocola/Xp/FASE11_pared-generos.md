@@ -263,3 +263,44 @@ catálogo, la pared es la de XP tal cual (sin pastillas, sin hilos, sin archivos
 - Lo que **no** se pudo comprobar: el catálogo de verdad (`real`: no estaba `catalogo-real`; ahora además necesita armar un paquete de 180 000 portadas falsas), NativeAOT, el Cover Art Archive de verdad (tamaño real y tiempo del paquete; si 16 hilos aguantan las dos redirecciones), el Soloist ni Spotify reales y **nada en el A4**. Las escenas de `catalogo/prueba.sh` que dependen de las teclas y los datos reales de XP (`pared`, `canciones`…) tampoco se pudieron dar por buenas con el `datos0` mínimo.
 
 **Números finales de la sección 9** (JIT, máquina a carga 20+ con otros agentes): `pared-generos` `orden abre` **17 de 17**; las demás escenas en dos corridas: todo BIEN salvo lo ya corregido (`hojea` con el relleno apagado en la escena, `portadas` sin peticiones al Cover Art Archive, `apagado/cero/sinllave` sin sembrar el paquete, `mano` con un catálogo sin paquete, `paquete` con la parte mala saltada y las demás bajadas) y `real` (FALTA, sin el catálogo de verdad). `nombres` 73/73; `exclusiones` y `letra` BIEN; `catalogo/prueba.sh` del armador y `prueba_portadas.sh` BIEN; `ganchos.py` TODO BIEN. `asistente/prueba.sh`: **27 de 29**: fallan `menu` y `xp-sinllave`, dos comparaciones de capturas punto por punto (10 puntos distintos), con la máquina cargada y sin las letras de Windows; no se comprobó si ya fallaban antes. Arreglo hallado probando: una letra armada antes de esconder un disco podía llegar después y devolverlo (`OcultosN`).
+
+## 10. Revisión de lo de la sección 9 (27-11-2026): falsos positivos, claves y descargas
+
+Unos revisores de solo lectura encontraron fallos en lo hecho desde `e759e3f`; cada uno se comprobó antes de arreglarlo (los casos nuevos de
+`nombres.tsv` y de `sistema/catalogo/prueba/exclusiones.tsv` fallaban con el código de antes: 27 de 123 en la escena `nombres`).
+
+1. **Exclusiones** (`RocolaOs.ParedExclusiones.cs` y su espejo `sistema/catalogo/arma_catalogo.py`, `MARCAS_PALABRAS_*`): las palabras sueltas
+   ambiguas (`soundtrack`, `ost`, `bso`, `lullaby`, `yoga`, `meditation`, `binaural`, `relaxation`, `mindfulness`, `asmr`, y «from the game»,
+   «original game», «motion picture» a secas) ya no valen en cualquier parte del nombre: «Binaural» de Pearl Jam, «Lullaby for the Working Class»,
+   «Soundtrack of My Life», «Songs from the Game», «Yoga» o «Meditation» de un artista normal entran en la pared. Las de cine (`soundtrack`, `ost`,
+   `bso`) valen si son TODO el nombre, van entre paréntesis o corchetes («Bad (OST)») o son lo único tras « - » o «: »; las demás, solo con frases que
+   dicen la cosa por sí solas («original soundtrack», «yoga music», «meditation music», «lullabies for babies», «music from the motion picture»...).
+   Un ARTISTA solo se marca por su nombre entero (sin «the») o por una frase de la tabla seguida únicamente de palabras de relleno («Karaoke Band»,
+   «Sleep Music Academy»), y los canales infantiles de marca (Cocomelon, Pinkfong, Baby Einstein, Kidz Bop...) valen con lo que sigan: «The Soundtrack
+   of Our Lives» ya no saca todos sus discos. Las dos tablas (C# y Python) siguen diciendo lo mismo (`exclusiones.tsv`, 30 casos más; comprueba.py y la
+   escena `nombres`). Cambios en las pruebas: «My Ost Collection» y «Yoga Flow» ya no marcan; el artista de `especial.py` pasa de «Karaoke Stars» a
+   «Karaoke Hits» (nombre casi exacto).
+2. **`ClaveDisco`** (`RocolaOs.ParedNombres.cs`): quitar la cola de edición exige al menos una palabra FUERTE (deluxe, remaster, edición de
+   aniversario...); las demás solo extienden la corrida. «Live Sessions» ya no es «Live», «Ten Years» no es «Ten» («years»/«anos» solo son de edición
+   tras un número) y «Greatest Hits Gold» no es «Greatest Hits» (sí lo es «Greatest Hits Gold Edition»); «sessions» sale de las palabras de edición.
+3. **`ClaveArtista`**: ya no corta en «,» ni «/» (solo en feat./ft./featuring/con/with/vs./«;»): «Earth, Wind & Fire», «Crosby, Stills & Nash», «Tyler,
+   The Creator» y «AC/DC» son lo que son. El corte es solo para comparar: el nombre con que se ordena un disco del catálogo (el de tu artista) y el que
+   se muestra no cambian de lugar.
+4. **`pared_paginas` en caliente**: `RocolaOsPgGenSig` incluye `RocolaOsPgPaginasMax`, la letra guarda con cuántas páginas se armó y una
+   diferencia de páginas se rearma sin esperar los 30 s de los géneros; `RocolaOsPgPaginasMax` se vuelve a leer cada 2 s (antes 60). Si el disco
+   elegido ya no está (de 1000 a 10 páginas estando en la 900), la elección se queda en el último disco que queda y no cae a la página 0.
+   Escena `paginascaliente` (`ROCOLA_PARED_PAGINAS_PRUEBA=SEG:N` hace lo que la hoja Spotify: `PonAjuste`).
+5. **Descarga del paquete de portadas** (`RocolaOs.ParedPortadas.cs`, `BajaParte`): tope de 20 minutos por parte que cubre también la lectura
+   (`CancellationTokenSource` que rompe la conexión colgada; `ROCOLA_PAQUETE_TOPE_S` en las pruebas), se borra lo bajado a medias y se vuelve a
+   intentar a la hora; y la bajada va a unos **1 MB/s** (`ROCOLA_PAQUETE_KBS`, 0 = sin límite; ~900 MB en unos 15 minutos) para no competir con
+   Soloist. Escenas `cuelga` (un servidor que deja la parte 1 a medias) y `ritmo` (a 2 MB/s la parte 1 va a medias a los 22 s); las demás escenas ponen
+   `ROCOLA_PAQUETE_KBS=0`.
+6. **El relleno ya no se atasca con los 404**: lo que ya se sabe que no tiene portada (404) o falló hace menos de un minuto
+   (`RocolaOsPgPortadas.NoVale`) no entra en lo que se le da al relleno («faltan», 400 por armada; `ROCOLA_PARED_FALTAN` en las pruebas), no gasta
+   su tope de 3000 (`Encargadas` se descuenta; los 404 tienen su propio tope, `relleno_sin_portada` en el estado) y, al vaciarse la cola habiendo
+   aprendido 404, la pared se rearma para darle la siguiente tanda del archivo. Escena `relleno404` (`/control/caa404?n=20` de la API falsa).
+7. **Workflow del catálogo** (`.github/workflows/rocola-catalogo.yml`, `sistema/catalogo/arma_portadas.py`): la caché de portadas se guarda también
+   si el trabajo falla o se corta (`actions/cache/restore` y `actions/cache/save` con `if: always()`, clave única por corrida y `restore-keys` para
+   tomar la última; antes `actions/cache@v4` solo guardaba al acabar bien); `arma_portadas.py arma --max-minutos N` para con gracia al acabar el bloque
+   en que se pasa el tope, cierra la parte en curso y publica un paquete parcial válido (el workflow usa 270 de los 330 minutos del trabajo); y la
+   entrada `solo_portadas` lanza solo el trabajo de portadas sobre el último catálogo publicado (salta «armar»).
