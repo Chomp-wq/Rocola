@@ -597,7 +597,7 @@ namespace Rocola
                 Color filo = Color.FromArgb(150, Mezcla(colGenero, Color.White, .45f));
                 using (SKPath p = RutaRedonda(caja, 16f * u))   // EN LINUX: GraphicsPath de Redondo: el SKPath de RutaRedonda (abajo)
                 {
-                    using (SKPaint b = new SKPaint { Color = Color.FromArgb(232, 12, 18, 42).Sk() }) Pixel.Rellena(g, p, b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)
+                    using (SKPaint b = new SKPaint { Color = Color.FromArgb(RocolaOsVidrio.Alfa(RocolaOsVidrio.Ficha, 232), 12, 18, 42).Sk() }) Pixel.Rellena(g, p, b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs)   // ROCOLA OS g361: (XP) using (SKPaint b = new SKPaint { Color = Color.FromArgb(232, 12, 18, 42).Sk() }) Pixel.Rellena(g, p, b, suave);   // EN LINUX: SolidBrush y g.FillPath (Nativo/Pixel.cs) — VI1: el relleno de la ficha baja a 0,82 de su alfa para dejar ver lo de detras desenfocado (RocolaOs/RocolaOs.CieloVidrio.cs); apagado o sin ROCOLA_OS, 232
                     using (SKPaint pe = new SKPaint { Color = filo.Sk(), StrokeWidth = 1.5f }) Pixel.Traza(g, p, pe, suave);   // EN LINUX: Pen(filo, 1.5) y g.DrawPath
                 }
                 float pad = 16f * u, lado = 64f * u;

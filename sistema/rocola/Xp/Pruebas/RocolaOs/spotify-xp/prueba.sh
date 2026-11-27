@@ -29,7 +29,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche copiauri nivela portadatarde repetida vacia cortada speq volumen cierraws sordo adelantoviejo diag repetidad cortadalarga}"
+partes="${*:-apagado fabrica dos adelanto adelantoxp adelantoreloj mezcla celular carrera fallos lento fuera frecuencia apagon portada pulso vigilante noche copiauri nivela portadatarde repetida vacia cortada speq volumen cierraws sordo adelantoviejo diag repetidad cortadalarga arranque sordopide mitad}"
 PULSO=${PULSO:-/root/rocola-trabajo/fase11/spotify-xp/pulso/libpulse.so.0}
 VIGILANTE=${VIGILANTE:-$XP/../../board/rocola/rootfs_overlay/usr/bin/rocola-soloist}
 W=${W:-/root/rocola-trabajo/fase11/spotify-xp/prueba}
@@ -849,7 +849,7 @@ fi
 # devolvio el credito): con 10 s o mas sonados, un corte se intenta seguir UNA vez desde donde iba (play y seek); si no se puede, acaba SIN
 # devolver. Tres corridas: (1) deja de mandar sonido 6 s a los ~15 s y vuelve; (2) deja de mandar sonido y no vuelve; (3) se pausa sola.
 if [[ " $partes " == *" cortada "* ]]; then
-  echo "== cortada (un corte a media cancion sigue desde donde iba; si no se puede, acaba sin devolver)"
+  echo "== cortada (un corte a media cancion sigue desde donde iba; si no se puede, acaba y el credito vuelve solo si no llego a la mitad)"
   d=$(datos cortada1); T0=$(date +%s.%N)
   abre cortada1 "$d" "7:67" "9:pide spotify:track:f440d030ca|$P|30000;58:copia" 59 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="25:corta;31:sigue"
   o="$W/cortada1"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
@@ -863,13 +863,13 @@ if [[ " $partes " == *" cortada "* ]]; then
   si "cortada1: sin DEVUELTA (cobradas=1 devueltas=0)" bash -c "! grep -q DEVUELTA '$b' && [ '$(estado $o cobradas)$(estado $o devueltas)' = 10 ]"
 
   d=$(datos cortada2); T0=$(date +%s.%N)
-  abre cortada2 "$d" "7:67" "9:pide spotify:track:f550d030cb|$P|30000;45:copia" 46 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="25:corta"
+  abre cortada2 "$d" "7:67" "9:pide spotify:track:f550d060cb|$P|60000;45:copia" 46 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="25:corta"
   o="$W/cortada2"; f="$o/frec.txt"; b="$d/rocola_spotify.txt"
   grep -E 'play|suena|acaba|acabo|corto|sigue|seguir|DEVUELTA' "$b" | sed 's/^/   /'
   si "cortada2: sale con 0" test "$(cat $o/salio)" = 0
-  si "cortada2: se intenta seguir una vez" contiene "$b" "sigue spotify:track:f550d030cb: activate, play y seek a"
-  si "cortada2: no se pudo: acaba sin devolver y la bitacora dice el motivo y lo sonado" bash -c "grep -qE 'se corto otra vez spotify:track:f550d030cb|no se pudo seguir spotify:track:f550d030cb' '$b' && grep -qE 'acabo spotify:track:f550d030cb \(Prueba\): el anillo sin sonido mas de 5 s, sono 1[0-9].[0-9] s' '$b'"
-  si "cortada2: sin DEVUELTA (cobradas=1 devueltas=0)" bash -c "! grep -q DEVUELTA '$b' && [ '$(estado $o cobradas)$(estado $o devueltas)' = 10 ]"
+  si "cortada2: se intenta seguir una vez" contiene "$b" "sigue spotify:track:f550d060cb: activate, play y seek a"
+  si "cortada2: no se pudo seguir y sono menos de la mitad (27-11-2026): la bitacora dice el motivo, lo sonado y que no llego a la mitad" bash -c "grep -qE 'se corto otra vez spotify:track:f550d060cb|no se pudo seguir spotify:track:f550d060cb' '$b' && grep -qE 'DEVUELTA spotify:track:f550d060cb \(Prueba\): el anillo sin sonido mas de 5 s, sono 1[0-9].[0-9] s.*NO LLEGO A LA MITAD' '$b'"
+  si "cortada2: el credito vuelve (cobradas=1 devueltas=1)" bash -c "grep -q DEVUELTA '$b' && [ '$(estado $o cobradas)$(estado $o devueltas)' = 11 ]"
 
   d=$(datos cortada3); T0=$(date +%s.%N)
   abre cortada3 "$d" "7:67" "9:pide spotify:track:f660d030cc|$P|30000;50:copia" 51 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="25:pausa"
@@ -1066,21 +1066,123 @@ fi
 if [[ " $partes " == *" cortadalarga "* ]]; then
   echo "== cortadalarga (con Soloist reiniciandose, seguir una cortada tiene 60 s y no 15)"
   for v in esperando corriendo; do
-    n=cortadalarga-$v; d=$(datos $n); o="$W/$n"; mkdir -p "$o/run/rocola-soloist"; echo "fase=$v" > "$o/run/rocola-soloist/estado"; T0=$(date +%s.%N)
-    abre $n "$d" "7:67" "9:pide spotify:track:f770d030cd|$P|30000;88:copia" 89 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="25:cae" VIGILANTE_FALSO_ESPERA=30
+    n=cortadalarga-$v; id=f770d030cd; [ $v = corriendo ] && id=f770d040cd; d=$(datos $n); o="$W/$n"; mkdir -p "$o/run/rocola-soloist"; echo "fase=corriendo" > "$o/run/rocola-soloist/estado"; T0=$(date +%s.%N)
+    # (27-11-2026: con el vigilante reiniciando a Soloist ya no se deja pedir: «esperando» se pone a los 15 s, con la cancion sonando, antes del corte de los 25 s)
+    if [ $v = esperando ]; then ( sleep 15; echo "fase=esperando" > "$o/run/rocola-soloist/estado" ) & fi
+    abre $n "$d" "7:67" "9:pide spotify:track:$id|$P|$([ $v = corriendo ] && echo 40000 || echo 30000);88:copia" 89 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="25:cae" VIGILANTE_FALSO_ESPERA=30
     f="$o/frec.txt"; b="$d/rocola_spotify.txt"
     grep -E 'play|suena|acaba|acabo|corto|sigue|seguir|reiniciando|DEVUELTA|desconect' "$b" | sed 's/^/   /'
     t770=$(oye "$f" 770)
     si "$n: sale con 0" test "$(cat $o/salio)" = 0
-    si "$n: se corto por el WebSocket caido y se intento seguir" contiene "$b" "se corto spotify:track:f770d030cd (Prueba) a los 1"
+    si "$n: se corto por el WebSocket caido y se intento seguir" contiene "$b" "se corto spotify:track:$id (Prueba) a los 1"
     if [ $v = esperando ]; then
       si "$n: se apunta que seguir tiene 60 s en vez de 15" contiene "$b" "Soloist se esta reiniciando (vigilante esperando): seguir tiene 60 s en vez de 15"
       si "$n: no se rindio a los 15 s" nocontiene "$b" "no se pudo seguir"
-      si "$n: cuando Soloist volvio siguio desde donde iba y acabo de verdad, sin devolver" bash -c "grep -q 'acabo spotify:track:f770d030cd (Prueba): termino, sono .* (siguio tras un corte' '$b' && ! grep -q DEVUELTA '$b'"
+      si "$n: cuando Soloist volvio siguio desde donde iba y acabo de verdad, sin devolver" bash -c "grep -q 'acabo spotify:track:$id (Prueba): termino, sono .* (siguio tras un corte' '$b' && ! grep -q DEVUELTA '$b'"
     else
-      si "$n: con el vigilante «corriendo» se rinde a los 15 s, sin devolver el credito (ya habia sonado)" bash -c "grep -q 'no se pudo seguir spotify:track:f770d030cd en 15 s' '$b' && ! grep -q DEVUELTA '$b' && ! grep -q 'se esta reiniciando' '$b'"
+      si "$n: con el vigilante «corriendo» se rinde a los 15 s y, como no llego a la mitad, el credito vuelve (27-11-2026)" bash -c "grep -q 'no se pudo seguir spotify:track:$id en 15 s' '$b' && grep -q 'DEVUELTA spotify:track:$id' '$b' && ! grep -q 'se esta reiniciando' '$b'"
     fi
   done
+fi
+
+# ---------------------------------------------------------------- arranque (27-11-2026, spotify_arranque): sin el silencio digital del principio
+# El Soloist falso entrega ceros al empezar cada cancion (SOLOIST_FALSO_SILENCIO=MS; el silencio SUSTITUYE los primeros MS ms de la cancion). Se mide
+# cuando empieza a oirse el tono (frec.txt de la tarjeta con reloj) contra la misma cancion sin silencio: sin la funcion el silencio se oye; con
+# ella el principio vuelve a donde estaba; con 3000 ms (mas que el tope de 1500) se quitan 1500 y suena el resto; un principio suave de verdad (el
+# tono a -40 dBFS 600 ms) NO se toca. El arranque de una cancion varia unos 0,4 s de una corrida a otra (cuando abre la tarjeta contra el play de
+# Soloist), asi que se usan silencios grandes y se comparan con ese margen.
+if [[ " $partes " == *" arranque "* ]]; then
+  echo "== arranque (sin el silencio digital del principio, con tope, sin comerse la musica suave ni chasquido)"
+  paso() {   # paso NOMBRE LISTA_DE_FUNCIONES [VAR=valor...]: una de 440 Hz de 8 s
+    local n="$1" fu="$2"; shift 2; local d; d=$(datos $n); T0=$(date +%s.%N)
+    abre $n "$d" "7:67" "9:pide spotify:track:f440d008aa|$P|8000;24:copia" 25 TERM ROCOLA_OS=$fu "$@"
+  }
+  paso arranque0 spotify,spotify-prueba,spotify_arranque
+  paso arranque1 spotify,spotify-prueba SOLOIST_FALSO_SILENCIO=1400
+  paso arranque2 spotify,spotify-prueba,spotify_arranque SOLOIST_FALSO_SILENCIO=1400
+  paso arranque3 spotify,spotify-prueba,spotify_arranque SOLOIST_FALSO_SILENCIO=3000
+  paso arranque4 spotify,spotify-prueba,spotify_arranque SOLOIST_FALSO_INTRO_SUAVE=600
+  paso arranque5 spotify,spotify-prueba SOLOIST_FALSO_INTRO_SUAVE=600
+  t0=$(primero "$W/arranque0/frec.txt" 440); t1=$(primero "$W/arranque1/frec.txt" 440); t2=$(primero "$W/arranque2/frec.txt" 440); t3=$(primero "$W/arranque3/frec.txt" 440)
+  echo "   primer tono: sin silencio $t0 s; 1400 ms de ceros sin la funcion $t1 s, con ella $t2 s; 3000 ms con ella $t3 s"
+  for n in arranque0 arranque1 arranque2 arranque3 arranque4 arranque5; do si "$n: sale con 0" test "$(cat $W/$n/salio)" = 0; done
+  si "arranque: sin la funcion, el silencio de 1400 ms se oye (diferencia $(echo "$t1 - $t0" | bc) s: 0,9 a 2)" entre "$(echo "$t1 - $t0" | bc)" 0.9 2.0
+  si "arranque: con la funcion, el principio llega bastante antes que sin ella ($(echo "$t1 - $t2" | bc) s antes: 0,6 o mas; la diferencia con la cancion sin silencio, $(echo "$t2 - $t0" | bc) s)" entre "$(echo "$t1 - $t2" | bc)" 0.6 3
+  si "arranque: con 3000 ms de ceros se quitan solo 1500 (tope): quedan 1500 de silencio (diferencia con la cancion sin silencio $(echo "$t3 - $t0" | bc) s: 1 a 2,4)" entre "$(echo "$t3 - $t0" | bc)" 1.0 2.4
+  b2="$W/datos-arranque2/rocola_spotify.txt"; b3="$W/datos-arranque3/rocola_spotify.txt"; b4="$W/datos-arranque4/rocola_spotify.txt"
+  grep -h 'arranque de' "$b2" "$b3" | sed 's/^/   /'
+  si "arranque: la bitacora dice cuantos ms quito (1400 -> entre 1350 y 1450)" bash -c "grep -qE 'arranque de spotify:track:f440d008aa: (13[5-9][0-9]|14[0-4][0-9]) ms de silencio digital al principio quitados' '$b2'"
+  si "arranque: con 3000 la bitacora dice 1500 y el tope" contiene "$b3" "arranque de spotify:track:f440d008aa: 1500 ms de silencio digital al principio quitados (el tope: 1500 ms; lo que sigue es de la grabacion)"
+  si "arranque: sin la funcion no apunta nada (como antes)" nocontiene "$W/datos-arranque1/rocola_spotify.txt" "silencio digital al principio quitados"
+  # el principio suave (el tono a -40 dBFS, 600 ms) no se come: no se apunta nada y se oye la cancion entera (8 s) con y sin la funcion
+  e4=$(oye "$W/arranque4/frec.txt" 440); e5=$(oye "$W/arranque5/frec.txt" 440)
+  si "arranque: el principio suave no apunta nada (nada quitado)" nocontiene "$b4" "silencio digital al principio quitados"
+  si "arranque: y se oye entero, con la funcion ($e4 s) y sin ella ($e5 s), de 8 s" bash -c "python3 -c 'import sys; sys.exit(0 if 7.75 <= $e4 <= 8.4 and 7.75 <= $e5 <= 8.4 else 1)'"
+  # la cancion, entera menos lo que el falso puso de ceros en lugar de tono (la funcion no se come musica: lo que se quita es de los ceros)
+  for p in "arranque0 8" "arranque2 6.6" "arranque3 5"; do
+    set -- $p; n=$1; esp=$2; f="$W/$n/frec.txt"; t440=$(oye "$f" 440)
+    si "$n: el tono se oye entero ($t440 s de $esp)" bash -c "python3 -c 'import sys; sys.exit(0 if $esp - 0.4 <= $t440 <= $esp + 0.3 else 1)'"
+  done
+  # (los huecos a media cancion de la bitacora no se comparan: con la maquina cargada salen al azar en todas las corridas, tambien en las que no quitan nada)
+  # sin chasquido en el primer sonido: el falso pone el tono a media fase tras sus ceros (un escalon de hasta la amplitud entera sin la funcion); con
+  # ella, el fundido de 1 ms lo hace rampa. De 50 ms antes del primer tono a 100 ms despues, ningun salto entre dos muestras seguidas mayor que 0,03
+  # (el de un seno de 440 Hz de esa amplitud es 0,009)
+  salto() { python3 - "$W/$1/sonado.raw" "$2" <<'EOP'
+import sys, numpy as np
+a = np.fromfile(sys.argv[1], dtype='<i2').astype(np.float64) / 32768.0; x = a[0::2]
+i = int(float(sys.argv[2]) * 44100); d = np.abs(np.diff(x[max(0, i - 2205):i + 4410]))
+print("%.4f" % d.max())
+EOP
+  }
+  s0=$(salto arranque0 "$t0"); s2=$(salto arranque2 "$t2"); s3=$(salto arranque3 "$t3")
+  s1=$(salto arranque1 "$t1")
+  si "arranque: sin chasquido en el primer sonido (mayor salto entre muestras: con 1400 ms $s2, con 3000 ms $s3; 0,03 como mucho; sin la funcion, con el escalon del falso: $s1)" bash -c "python3 -c 'import sys; sys.exit(0 if max($s2, $s3) <= 0.03 else 1)'"
+fi
+
+# ---------------------------------------------------------------- sordopide (27-11-2026): con Soloist sordo no se cobra
+# El nucleo no deja pedir una de Spotify si Soloist no responde: sin sesion, sordo (conectado y sin contestar a get_auth_state), reiniciandose (el
+# vigilante «esperando») o con el reinicio ya pedido (el archivo «reinicia»). Entonces no se cobra ni entra en la cola y sale el aviso de XP
+# («Espera un momento y vuelve a intentarlo»). Antes, con el vigilante reiniciando a Soloist (que seguia con su sesion) se cobraba y se devolvia despues.
+if [[ " $partes " == *" sordopide "* ]]; then
+  echo "== sordopide (con Soloist sordo, reiniciandose o con el reinicio pedido: no se cobra ni entra)"
+  sp() {   # sp NOMBRE FASE_DEL_VIGILANTE [REINICIA] [VAR=valor...]
+    local n="$1" fase="$2" rei="$3"; shift 3; local o="$W/$n" d; d=$(datos $n); mkdir -p "$o/run/rocola-soloist" "$o/soloist"
+    echo "fase=$fase" > "$o/run/rocola-soloist/estado"; [ "$rei" = reinicia ] && echo "rocola-xp: prueba" > "$o/soloist/reinicia"
+    T0=$(date +%s.%N); abre $n "$d" "7:67" "14:pide spotify:track:f440d010aa|$P|10000;16:copia" 17 TERM ROCOLA_OS=spotify,spotify-prueba "$@"
+  }
+  sp sordopide-a corriendo no SOLOIST_FALSO_SORDO=1
+  sp sordopide-b esperando no
+  sp sordopide-c corriendo reinicia
+  sp sordopide-d corriendo no
+  for v in a b c d; do o="$W/sordopide-$v"; b="$W/datos-sordopide-$v/rocola_spotify.txt"; sed 's/^/   /' "$(log $o)" | head -3; grep -E "no se pide|COBRADA" "$b" | sed 's/^/   /'; done
+  si "sordopide-a: Soloist sordo (conectado, sin contestar): no entra ni se cobra (4->4)" contiene "$(log $W/sordopide-a)" "pide spotify:track:f440d010aa listo=0 entro=0 creditos 4->4"
+  si "sordopide-b: Soloist con sesion pero el vigilante lo esta reiniciando: no entra ni se cobra (4->4)" contiene "$(log $W/sordopide-b)" "pide spotify:track:f440d010aa listo=0 entro=0 creditos 4->4"
+  si "sordopide-c: con el reinicio ya pedido (archivo reinicia): no entra ni se cobra (4->4)" contiene "$(log $W/sordopide-c)" "pide spotify:track:f440d010aa listo=0 entro=0 creditos 4->4"
+  si "sordopide-d: un Soloist que oye y un vigilante corriendo: entra y cobra (4->3), como siempre" contiene "$(log $W/sordopide-d)" "pide spotify:track:f440d010aa listo=1 entro=1 creditos 4->3"
+  for v in a b c; do
+    si "sordopide-$v: sale con 0, sin COBRADA ni DEVUELTA y nada sono (el cobro nunca ocurrio)" bash -c "[ \"\$(cat $W/sordopide-$v/salio)\" = 0 ] && ! grep -qE 'COBRADA|DEVUELTA' '$W/datos-sordopide-$v/rocola_spotify.txt' && [ '$(oye "$W/sordopide-$v/frec.txt" 440)' = 0.00 ]"
+  done
+  si "sordopide: la bitacora dice por que no se pidio (sordo / reiniciandose / reinicio pedido)" bash -c "grep -q 'no se pide spotify:track:f440d010aa: Soloist .*sordo.* (no se cobra)' '$W/datos-sordopide-a/rocola_spotify.txt' || grep -q 'no se pide spotify:track:f440d010aa: Soloist sin sesion (no se cobra)' '$W/datos-sordopide-a/rocola_spotify.txt'; grep -q 'Soloist reiniciandose (vigilante esperando) (no se cobra)' '$W/datos-sordopide-b/rocola_spotify.txt' && grep -q 'Soloist sordo, con el reinicio pedido (no se cobra)' '$W/datos-sordopide-c/rocola_spotify.txt'"
+fi
+
+# ---------------------------------------------------------------- mitad (27-11-2026): una que se corta y no se puede seguir devuelve el credito si no llego a la mitad
+# Cuarenta segundos de cancion: cortada a los ~14 s (antes de la mitad, 20 s) y sin poder seguirla (el Soloist falso no vuelve a mandar sonido): el
+# credito vuelve y la bitacora dice que no llego a la mitad; cortada a los ~25 s (pasada la mitad): acaba sin devolver, como desde el 22-11.
+if [[ " $partes " == *" mitad "* ]]; then
+  echo "== mitad (cortada sin poder seguirla: el credito vuelve si sono menos de la mitad; desde la mitad, no)"
+  d=$(datos mitada); T0=$(date +%s.%N)
+  abre mitada "$d" "7:67" "9:pide spotify:track:f440d040aa|$P|40000;48:copia" 49 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="25:corta"
+  o="$W/mitada"; b="$d/rocola_spotify.txt"; grep -E 'play|suena|corto|seguir|DEVUELTA|acabo' "$b" | sed 's/^/   /'
+  si "mitada: sale con 0" test "$(cat $o/salio)" = 0
+  si "mitada: se corto con mas de 10 s y se intento seguir una vez, sin poder" bash -c "grep -q 'se corto spotify:track:f440d040aa (Prueba) a los 1[0-9].[0-9] s' '$b' && grep -qE 'no se pudo seguir spotify:track:f440d040aa en 15 s|se corto otra vez spotify:track:f440d040aa' '$b'"
+  si "mitada: antes de la mitad: DEVUELTA y la bitacora lo dice (iba en el s 1x de 40)" bash -c "grep -qE 'DEVUELTA spotify:track:f440d040aa \(Prueba\): .*NO LLEGO A LA MITAD \(iba en el s 1[0-9]\.[0-9] de 40\.0\): se devuelve el credito' '$b' && ! grep -q 'acabo spotify:track:f440d040aa' '$b'"
+  si "mitada: el estado: cobradas=1 devueltas=1" bash -c "[ '$(estado $o cobradas)$(estado $o devueltas)' = 11 ]"
+  d=$(datos mitadb); T0=$(date +%s.%N)
+  abre mitadb "$d" "7:67" "9:pide spotify:track:f550d040bb|$P|40000;58:copia" 59 TERM ROCOLA_OS=spotify,spotify-prueba SOLOIST_FALSO_GUION="36:corta"
+  o="$W/mitadb"; b="$d/rocola_spotify.txt"; grep -E 'play|suena|corto|seguir|DEVUELTA|acabo' "$b" | sed 's/^/   /'
+  si "mitadb: sale con 0" test "$(cat $o/salio)" = 0
+  si "mitadb: cortada pasada la mitad (a los 2x s de 40): no se pudo seguir y acaba SIN devolver (como desde el 22-11)" bash -c "grep -q 'se corto spotify:track:f550d040bb (Prueba) a los 2[0-9].[0-9] s' '$b' && grep -qE 'acabo spotify:track:f550d040bb \(Prueba\): el anillo sin sonido mas de 5 s, sono 2[0-9].[0-9] s' '$b' && ! grep -q DEVUELTA '$b'"
+  si "mitadb: el estado: cobradas=1 devueltas=0" bash -c "[ '$(estado $o cobradas)$(estado $o devueltas)' = 10 ]"
 fi
 
 echo

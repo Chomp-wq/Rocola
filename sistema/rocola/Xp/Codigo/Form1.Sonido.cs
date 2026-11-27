@@ -393,7 +393,7 @@ namespace Rocola
         private float BassFactorFor(string path)
         {
             float[] c = null;
-            if (path != null) eqCache.TryGetValue(path, out c);
+            if (path != null) if (!eqCache.TryGetValue(path, out c)) RocolaOsSpotifyEqHuella(path, false, out c);   // ROCOLA OS g430: (XP) if (path != null) eqCache.TryGetValue(path, out c); — el bajo psicoacustico de una de Spotify con su huella (la pedida con la suya, la sombra de una tuya con la de tu MP3; RocolaOs/RocolaOs.Calidad.cs y RocolaOs.SpotifyEq.cs)
             float f = 1f;
             // I1 (A la medida, Form1.Datos.cs): con el interruptor y el modelo del EQ, la vara es el objetivo de ESTA
             // cancion (cuanto grave tendria una bien grabada como ella) en vez del promedio de la biblioteca.
@@ -1571,7 +1571,7 @@ namespace Rocola
             // con su dither de un bit.
             // EN EL BILLAR, lo que le llega al limitador se mide para el volumen parejo (VolumenParejo.cs). Pasa tal cual.
             NAudio.Wave.ISampleProvider alLimitador = c.EqDueno;
-            if (localAuto) { c.Margen = new MideMargen(c.EqDueno, TechoPicoReal, saltadoSeg < 0.5, ParejoAplicado(t), SegundosDe(t.Path)); alLimitador = c.Margen; }
+            if (localAuto) { c.Margen = new MideMargen(c.EqDueno, TechoPicoReal, saltadoSeg < 0.5, ParejoAplicado(t), RocolaOsSegundosDe(t.Path)); alLimitador = c.Margen; }   // ROCOLA OS g435: (XP) if (localAuto) { c.Margen = new MideMargen(c.EqDueno, TechoPicoReal, saltadoSeg < 0.5, ParejoAplicado(t), SegundosDe(t.Path)); alLimitador = c.Margen; } — el volumen parejo del billar mide con la duracion de una de Spotify (la de su pista, o la de tu MP3 si es la sombra de una tuya)
             LimitadorPicoReal lim = new LimitadorPicoReal(alLimitador, TechoPicoReal, 3.0, localAuto);   // en el billar, respira menos (PicoReal.cs)
             lim.Cebado = audioTailDelay;   // disco continuo: el cebado de delante no entra en el limitador heredado (PicoReal.cs)
             audioTailDelay += lim.DelayFrames; c.Limitador = lim;

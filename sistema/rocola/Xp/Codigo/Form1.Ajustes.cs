@@ -2041,7 +2041,7 @@ namespace Rocola
                 int x0 = (ToastW - tw) / 2;
                 using (SKPath gp = RoundRect(new Rectangle(x0, 0, tw, ToastH), 16))   // EN LINUX: RoundRect (abajo) da el SKPath (lo que era el GraphicsPath: par-impar y con la figura cerrada), soltado como en XP
                 {
-                    using (SKPaint b = PinturaXp.Pincel(back)) Pixel.Rellena(g, gp, b, suave);   // EN LINUX: SolidBrush -> SKPaint con su color (Nativo/PinturaXp.cs) y FillPath (Nativo/Pixel.cs) con ese SKPath, directo
+                    using (SKPaint b = PinturaXp.Pincel(RocolaOsVidrio.Con(RocolaOsVidrio.Buscador, back))) Pixel.Rellena(g, gp, b, suave);   // EN LINUX: SolidBrush -> SKPaint con su color (Nativo/PinturaXp.cs) y FillPath (Nativo/Pixel.cs) con ese SKPath, directo   // ROCOLA OS g365: (XP) using (SKPaint b = PinturaXp.Pincel(back)) Pixel.Rellena(g, gp, b, suave);   // EN LINUX: SolidBrush -> SKPaint con su color (Nativo/PinturaXp.cs) y FillPath (Nativo/Pixel.cs) con ese SKPath, directo — VI6: el relleno del aviso de color baja a 0,82 de su alfa para dejar ver lo de detras desenfocado (RocolaOs/RocolaOs.CieloVidrio.cs); apagado o sin ROCOLA_OS, el color tal cual
                     using (SKPaint pe = PinturaXp.Pluma(Color.FromArgb(70, 255, 255, 255), 1.5f)) Pixel.Traza(g, gp, pe, suave);   // filo claro: lo despega del fondo; EN LINUX: Pen -> SKPaint de trazo (inglete y puntas planas, Nativo/PinturaXp.cs) y DrawPath (Nativo/Pixel.cs) con ese SKPath, directo
                 }
                 using (SKPaint b = PinturaXp.Pincel(Color.White))   // EN LINUX: SolidBrush -> SKPaint

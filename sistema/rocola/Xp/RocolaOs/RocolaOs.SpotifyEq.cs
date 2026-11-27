@@ -13,8 +13,9 @@
 //      por cancion de la IA del EQ, la cancion rara, las reglas del modo billar con la afinacion del local, el corte para no tocar lo que el
 //      codec borro; el realce con su corte, la mitad del extra con el DSEE y lo de «a la medida»). spotify_eq decide el EQ (y lo flaco del
 //      billar); spotify_brillo, el realce.
-// La sustitucion invisible (la sombra de una tuya, RocolaOs.Calidad*.cs, g61) NO cambia: su uri nunca se mide aqui (su lector es otro) y una
-// uri que es pareja de una de tus canciones no se lee de esta tabla. Sin Rocola OS, sin el modo Spotify o con las dos funciones apagadas: como
+// La sustitucion invisible (la sombra de una tuya, RocolaOs.Calidad*.cs, g61): su uri nunca se mide aqui (su lector es otro) y una uri que es
+// pareja de una de tus canciones no se lee de esta tabla. Desde el 27-11-2026 la sombra usa la huella de TU MP3 (RocolaOsMp3EqDeSombra,
+// RocolaOs.Calidad.cs): su EQ automatico, su realce y lo demas de la cadena (FASE11_spotify-nivela.md, seccion 8). Sin Rocola OS, sin el modo Spotify o con las dos funciones apagadas: como
 // antes, bit a bit (ningun gancho cambia nada con una ruta que no es «spotify:»).
 using System;
 using System.Collections.Concurrent;
@@ -227,6 +228,9 @@ namespace Rocola
         {
             c = null;
             if (!RocolaOs.Activo || path == null || !path.StartsWith("spotify:track:", StringComparison.Ordinal)) return false;
+            // (27-11-2026) LA SOMBRA DE UNA TUYA (la sustitucion invisible, g61) suena con la huella de TU MP3: su EQ automatico y su realce, como
+            // si sonara tu archivo. La misma huella de eqCache (lo de XP, con su ficha de version); sin ella, como antes (sin EQ).
+            if (RocolaOsMp3EqDeSombra(path, out c)) return true;
             if (paraRealce ? !RocolaOsSpotifyEq.VaBrillo : !RocolaOsSpotifyEq.VaEq) return false;
             string id = RocolaOsSpotifyEq.IdDe(path);
             RocolaOsSpotifyEq.Huella h;

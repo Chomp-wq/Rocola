@@ -54,11 +54,11 @@ abre() {
 }
 datos() { local d="$W/datos-$1"; rm -rf "$d"; mkdir -p "$d"; cp -r "$DATOS0"/. "$d"/; printf 'spotify=0\n' > "$d/rocola_os.txt"; echo "$d"; }
 # 1024x768@75 (lo automatico del monitor simulado): la hoja de 966x764 en (29,2), su cliente en (32,31). Las pestanas (pegadas a la
-# derecha): Pantalla (712,54), Sonido (818,54), Archivos (924,54) (el 27-11-2026 el navegador se quito: las pestanas de antes se corren una a la derecha). Los renglones de la lista: x 276, y 188 + 58 i. Los botones
+# derecha): Pantalla (606,54), Sonido (712,54), Spotify (818,54), Archivos (924,54) (el 27-11-2026 el navegador se quito: las pestanas de antes se corren una a la derecha). Los renglones de la lista: x 276, y 188 + 58 i. Los botones
 # de la derecha: «Usar» (748,286), «Probar» (748,332), «Automatica» (748,378).
 FILA0=188; FILA2=304
 # una moneda (C) a los 4 y 4,3 s; Ctrl+F4 a los 6; la pestana Sonido a los 8
-INICIO="4:67,4.3:67,6:17+115,8:clic:818:54"
+INICIO="4:67,4.3:67,6:17+115,8:clic:712:54"
 
 if [[ " $partes " == *" lista "* ]]; then
   echo "== lista (la hoja con las salidas del A4 simulado)"

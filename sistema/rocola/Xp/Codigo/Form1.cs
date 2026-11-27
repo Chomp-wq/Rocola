@@ -1016,7 +1016,7 @@ namespace Rocola
         {
             float bas = 0.30f;   // punto de partida: el mismo que traia la perilla de fabrica
             float[] c = null;
-            if (path != null) eqCache.TryGetValue(path, out c);
+            if (path != null) if (!eqCache.TryGetValue(path, out c)) RocolaOsSpotifyEqHuella(path, false, out c);   // ROCOLA OS g431: (XP) if (path != null) eqCache.TryGetValue(path, out c); — el bajo automatico de una de Spotify con su huella (la de la pedida, o la de tu MP3 si es la sombra de una tuya)
             if (c != null && c.Length >= EqLen)
             {
                 if (c[EqClip] > 0.0015f) bas *= 0.75f;                          // picos aplastados: menos
@@ -2276,7 +2276,7 @@ namespace Rocola
         private void AddSong(Track t, Album disc)
         {
             if (t == null || RocolaOsSpotifyCatalogoPone(t, disc)) return;   // ROCOLA OS g42: (XP) if (t == null) return; — PONER en un disco de Spotify la pide por I6 (RocolaOs/RocolaOs.SpotifyCatalogo.cs; sin el modo, false)
-            PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disc;
+            PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = RocolaOsMejoresDisco(t, disc);   // ROCOLA OS g407: (XP) PlayItem it = new PlayItem(); it.IsVideo = false; it.Song = t; it.Disc = disc; — una cancion tuya dentro de «LAS MEJORES CANCIONES DE ARTISTA» se pide con su disco de verdad, no con el de la lista (RocolaOs/RocolaOs.Mejores.cs; las demas, disc)
             AddResult r = AddItem(it);
             if (r == AddResult.Added) ShowSongAddedToast(false);
             else if (r == AddResult.NoCredit) { if (!InvitaSinCredito(it)) ShowToast("Inserta una moneda", Color.FromArgb(200, 130, 35)); }

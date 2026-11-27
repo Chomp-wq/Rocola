@@ -20,7 +20,14 @@
 #   en el buscador abre siempre el disco dentro del buscador o una pared del buscador, nunca la pared de verdad); todas, de fabrica
 #   y colgada y recorte (24-11-2026, revision de mejoras: A3 la API que no contesta se recuerda «sin red» y no ocupa el hilo; A8 el recorte de /run); la escena
 #   y sinanidar (26-11-2026: ni otro buscador ni la estrella dentro de lo del buscador: g279, g280); la escena
+#   y mejores mejoresn mejoresteclas sinmejores (27-11-2026: «LAS MEJORES CANCIONES DE...» en el buscador: el atajo, el prefijo fijo de la casilla,
+#   la tarjeta grande y el disco con tus canciones primero; g400-g410; RocolaOs.Mejores.cs; con el atajo nuevo de PRIMERO, la escena atajos lleva una
+#   flecha derecha mas en cada recorrido de la fila); la escena
 #   cuenta (A1) ya NO espera las peticiones de la cuenta (la letra ♫ no esta en la pared: ni se piden), y sinred prueba el «sin red» recordado
+# (27-11-2026, las seis mejoras de Spotify que el dueno eligio: FASE11_paredes-buscador.md, ultima seccion, y FASE11_hoja-spotify.md) las escenas
+#   repetidas (la misma cancion en tu musica y en Spotify sale una vez), ediciones (sin ediciones repetidas en la pared y «Canciones de» filtrado),
+#   teclea (esperar mas tras la ultima letra), memoria (lo que contesto Spotify, en disco: 3 arranques) y hoja (la hoja «Spotify» de Ctrl+F4,
+#   con su captura a 1024x768 y el mando de paginas por letra); usan /control/nuevas de la API falsa
 # I6 es el NUCLEO de verdad (grupo spotify-xp, juntado: RocolaOs/RocolaOs.SpotifyPide.cs): las pedidas se cuentan por sus lineas «COBRADA» en
 # su bitacora (rocola_spotify.txt) y por los «play» que le llegan al Soloist FALSO del nucleo (Pruebas/RocolaOs/spotify-xp/SoloistFalso, abierto
 # por su vigilante falso; NUNCA el Soloist de verdad). FALSO: la carpeta del Soloist falso compilado (se compila si falta, con el candado).
@@ -32,7 +39,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [escenas]}"; shift
-escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo cargando siempre colgada recorte sinanidar}"
+escenas="${*:-apagado cero busca mezcla disco artista fallos cuenta sinsesion suena llavemala reabre sinred pared canciones todos unida atajos pared429 mantenido tiempo hojea atajos503 sinllave ayuda miente portadas inactivo cargando siempre colgada recorte sinanidar mejores mejoresn mejoresteclas sinmejores repetidas ediciones teclea memoria hoja}"
 API=${API:-/root/rocola-trabajo/fase11/catalogo/api-falsa}
 W=${W:-/root/rocola-trabajo/fase11/catalogo/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
@@ -123,6 +130,8 @@ sinsecretos() {   # ninguna llave ni el secreto en lo que escribe la rocola (dat
 BASE="7:67,8:27+38"
 # (paredes) LA CUOTA DE LA ESCENA: cuantas peticiones vio la API falsa, por clase (sin las portadas, que no son de la API)
 cuota() { local a="$1"; echo "   cuota: $(grep -c ' /v1/' "$a") a /v1 = $(grep -c '/v1/search app [0-9]* q=[^ ]*$' "$a") busquedas, $(grep -c '/v1/search.* off=' "$a") paginas de busqueda, $(grep -c '/v1/artists/' "$a") de artista, $(grep -c '/v1/albums/' "$a") discos, $(grep -c '/v1/me/' "$a") de la cuenta; $(grep -c '/api/token' "$a") llaves"; }
+# (27-11-2026) como «escribe», pero con espacios y cifras (sus teclas son las de Windows: letras = ASCII - 32, el resto igual)
+escribe2() { local s="$1" pal="$2" r="" i ch c; for ((i = 0; i < ${#pal}; i++)); do ch="${pal:$i:1}"; c=$(printf '%d' "'$ch"); case "$ch" in [a-z]) c=$((c - 32)) ;; esac; r="$r,$(echo "$s + $i * 0.25" | bc):$c"; done; echo "${r#,}"; }
 # una sola vez cada pagina (PATRON), y ninguna otra de esa clase
 una() { [ "$(grep -c -- "$2" "$1")" = 1 ]; }
 
@@ -443,7 +452,7 @@ PY
     # sus canciones; PONER pide la 1a. REGRESAR sale del atajo; otra vez a los atajos y «Escuchado hace poco» (sin repetidas): PONER pide la 1a.
     # Se cierra y se abre el buscador: no se pide nada mas
     apifalsa $e; d=$(datos $e cuenta)
-    abre $e "$d" "7:67,8:27+38,10:38,10.5:38,12:39,12.5:13,14.5:13,16:27,16.8:38,17.4:39,17.9:39,18.5:13,20.5:13,22:27+38,23.5:27+38" 27 ROCOLA_OS=1 \
+    abre $e "$d" "7:67,8:27+38,10:38,10.5:38,11.7:39,12:39,12.5:13,14.5:13,16:27,16.8:38,17.1:39,17.4:39,17.9:39,18.5:13,20.5:13,22:27+38,23.5:27+38" 27 ROCOLA_OS=1 \
       ROCOLA_CAPTURA="$(cap 11.5 buscador-atajos-spotify),$(cap 14 buscador-tus-mas-escuchadas),$(cap 20 buscador-escuchado-hace-poco)"
     espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
     si "atajos: sale con 0" test "$(cat $o/salio)" = 0
@@ -686,6 +695,168 @@ PY
     si "sinanidar d: en la pared de XP, ROJO+ARRIBA abrio el buscador ($(dif pared-de-xp buscador-abierto-en-xp) puntos distintos) y otro ROJO+ARRIBA lo cerro (vuelve la pared: $(dif pared-de-xp pared-de-xp-otra-vez))" bash -c "[ $(dif pared-de-xp buscador-abierto-en-xp) -gt 20000 ] && [ $(dif pared-de-xp pared-de-xp-otra-vez) -lt 20000 ]"
     si "sinanidar d: en la pared de XP, ROJO+ABAJO abrio la estrella (circulo verde) y el rojo la cerro" bash -c "$(declare -f verde); ca='$ca'; verde sinanidar-estrella-en-xp 1 && verde sinanidar-estrella-cerrada 0"
     si "sinanidar: nada pedido" test "$(pedidos $o)" = 0 ;;
+  repetidas)
+    # SIN REPETIDAS EN EL BUSCADOR (27-11-2026): «cancion 2» (tus dos «Cancion 2» de XP; la API falsa: la de «Disco Uno» (el artista de tu cancion sin etiquetas), de 3,239 s como la tuya, y otra
+    # de «Grupo Distinto»): la de Los Ejemplos es la MISMA grabacion de la tuya y no sale; la de otro artista si. Despues «cancion 3» (la de Spotify dice
+    # «- Remastered 2012»: la misma) y «cancion 1» (la de Spotify es «(En Vivo)»: otra grabacion, sale)
+    apifalsa $e; control nuevas; d=$(datos $e encendido)
+    sed -i 's/moneda=67/moneda=90/' "$d/rocola_teclas.txt"   # (la moneda en la Z: la «c» de «cancion» era la moneda)
+    abre $e "$d" "7:90,8:27+38,$(escribe2 9.5 'cancion 2'),15:8,15.1:8,15.2:8,15.3:8,15.4:8,15.5:8,15.6:8,15.7:8,15.8:8,$(escribe2 16.5 'cancion 3'),24:8,24.1:8,24.2:8,24.3:8,24.4:8,24.5:8,24.6:8,24.7:8,24.8:8,$(escribe2 25.5 'cancion 1')" 36 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 14 repetidas-cancion-2),$(cap 22 repetidas-cancion-3),$(cap 33 repetidas-cancion-1)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; b="$d/rocola_os_bitacora.txt"
+    grep 'ya estan en tu musica' "$b" | sort -u | sed 's/^/   /'
+    si "repetidas: sale con 0" test "$(cat $o/salio)" = 0
+    si "repetidas: «cancion 2»: la de Los Ejemplos no sale (la tuya si)" contiene "$b" "«Cancion 2» de Disco Uno"
+    si "repetidas: «cancion 2»: la de Grupo Distinto se queda (otro artista)" nocontiene "$b" "«Cancion 2» de Grupo Distinto"
+    si "repetidas: «cancion 3»: la «- Remastered 2012» tampoco sale (la remasterizada es la misma grabacion)" contiene "$b" "«Cancion 3 - Remastered 2012» de Disco Uno"
+    si "repetidas: «cancion 1»: la «(En Vivo)» si sale (otra grabacion)" nocontiene "$b" "«Cancion 1 (En Vivo)»"
+    si "repetidas: nada pedido" test "$(pedidos $o)" = 0 ;;
+  ediciones)
+    # SIN EDICIONES REPETIDAS Y «CANCIONES DE» FILTRADO (27-11-2026): «quinteto» da el artista «Quinteto Eco» (solo esta en Spotify: 7 discos, de ellos
+    # Eco Total x3 -original, Remastered 2011 y Deluxe-, Eco Segundo x2 -Deluxe de 9 y 25th Anniversary de 5-, Eco En Vivo y Eco Total (Taylor's Version),
+    # que son otros). Su pared: «Canciones de» y 4 discos (queda el original de Eco Total y, de Eco Segundo, el de mas canciones). Entrando a «Canciones
+    # de Quinteto Eco» (21 s): la busqueda por artista trae 27 (24 suyas, dos versiones de otro grupo con su nombre en el titulo y un dueto donde
+    # canta con otro): las 2 de otros se quitan y el dueto se queda
+    apifalsa $e; control nuevas; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 quinteto),$(derechas 13.5 14),16:37,17:13,21:13" 28 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 19 ediciones-pared),$(cap 25 ediciones-canciones-de)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; b="$d/rocola_os_bitacora.txt"; cuota "$a"
+    grep 'edicion repetida\|no son de' "$b" | sed 's/^.*  //' | sort -u | sed 's/^/   /'
+    si "ediciones: sale con 0" test "$(cat $o/salio)" = 0
+    si "ediciones: la pared del artista: 5 casillas (Canciones de + 4 discos)" contiene "$b" "pared del buscador: pared_artista (5 casillas)"
+    si "ediciones: Eco Total (Remastered 2011) y (Deluxe Edition) no salen: queda «Eco Total»" bash -c "grep -q 'edicion repetida: «Eco Total (Remastered 2011)» no sale (queda «Eco Total»)' '$b' && grep -q 'edicion repetida: «Eco Total (Deluxe Edition)» no sale (queda «Eco Total»)' '$b'"
+    si "ediciones: de Eco Segundo queda la Deluxe (9 canciones) y no sale la 25th Anniversary (5)" contiene "$b" "edicion repetida: «Eco Segundo - 25th Anniversary Edition» no sale (queda «Eco Segundo (Deluxe Edition)»)"
+    si "ediciones: Eco En Vivo y Eco Total (Taylor's Version) SI salen (otros discos)" bash -c "! grep -q 'edicion repetida: «Eco En Vivo' '$b' && ! grep -q \"edicion repetida: «Eco Total (Taylor's\" '$b'"
+    si "ediciones: «Canciones de Quinteto Eco» sin las 2 de otro grupo (la pagina 3; el dueto se queda)" contiene "$b" "2 canciones de la pagina 3 no son de Quinteto Eco (se quitan)"
+    si "ediciones: nada pedido" test "$(pedidos $o)" = 0 ;;
+  teclea)
+    # ESPERAR MAS AL TECLEAR (27-11-2026): «inve» y, 0,5 s despues de la ultima letra, «ntad»: antes de esa pausa (300 ms) se preguntaba a Spotify por
+    # «inve» y otra vez por «inventad» (2 busquedas); ahora (650 ms) la pausa de medio segundo no alcanza: UNA sola busqueda, con todo lo escrito
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "$BASE,$(escribe 9.5 inve),$(escribe 10.75 ntad)" 16 ROCOLA_OS=1
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
+    echo "   busquedas: $(grep -c '/v1/search' "$a")"
+    si "teclea: sale con 0" test "$(cat $o/salio)" = 0
+    si "teclea: una sola busqueda, con todo lo escrito (q=inventad)" bash -c "[ \$(grep -c '/v1/search' '$a') = 1 ] && grep '/v1/search' '$a' | grep -q ' q=inventad\$'" ;;
+  memoria)
+    # LA MEMORIA EN DISCO (27-11-2026): tres arranques con el mismo disco aparte (ROCOLA_IA_DATOS) y una API falsa nueva cada vez: abrir «quinteto», su
+    # pared y «Canciones de». (1) todo se pregunta y se guarda; (2) apagar y volver: la API NO ve ninguna peticion a /v1 (todo del disco); (3) con las
+    # busquedas guardadas hace 30 h (vencen a las 12 h) se vuelven a preguntar, pero la pared (3 dias) y sus paginas siguen del disco. Sin disco aparte
+    # (las otras escenas): nada en la carpeta de datos
+    d=$(datos $e encendido); G1="$W/grande-memoria"; mkdir -p "$G1"
+    T="$BASE,$(escribe 9.5 quinteto),$(derechas 13.5 14),16:37,17:13,21:13"
+    for r in 1 2 3; do
+      n="$e$r"; apifalsa $n; control nuevas
+      [ $r = 3 ] && find "$G1/rocola_spotify_cache" -name 'busqueda-*' -exec touch -d '30 hours ago' {} +
+      abre $n "$d" "$T" 27 ROCOLA_OS=1 ROCOLA_IA_DATOS="$G1"
+      espera $n
+      echo "   arranque $r: $(grep -c ' /v1/' "$W/$n/api/peticiones.txt") peticiones a /v1 ($(grep -c '/v1/search' "$W/$n/api/peticiones.txt") busquedas); $(ls "$G1/rocola_spotify_cache" 2>/dev/null | wc -l) archivos en la memoria"
+    done
+    c="$G1/rocola_spotify_cache"
+    si "memoria: los tres arranques salieron con 0" bash -c "[ \$(cat $W/${e}1/salio) = 0 ] && [ \$(cat $W/${e}2/salio) = 0 ] && [ \$(cat $W/${e}3/salio) = 0 ]"
+    si "memoria: 1.er arranque: pregunto a Spotify ($(grep -c ' /v1/' $W/${e}1/api/peticiones.txt)) y guardo ($(ls $c | wc -l) archivos)" bash -c "[ \$(grep -c ' /v1/' '$W/${e}1/api/peticiones.txt') -ge 4 ] && [ \$(ls '$c' | wc -l) -ge 4 ]"
+    si "memoria: 2.o arranque: NINGUNA peticion a /v1 (todo del disco)" test "$(grep -c ' /v1/' $W/${e}2/api/peticiones.txt)" = 0
+    si "memoria: 2.o arranque: el estado dice los aciertos del disco" bash -c "grep -E '^cache_aciertos=[1-9]' '$W/${e}2/run/rocola-xp/spotify/catalogo'"
+    si "memoria: 3.er arranque: solo la busqueda vencida se volvio a preguntar (ninguna pagina de pared)" bash -c "[ \$(grep -c '/v1/search' '$W/${e}3/api/peticiones.txt') -ge 1 ] && ! grep -q '/v1/artists/' '$W/${e}3/api/peticiones.txt'"
+    si "memoria: la memoria solo lleva datos publicos (sin el secreto, ni refresco, ni llaves)" bash -c "! grep -rlE 'secreto-de-prueba|refresco-|app-[0-9]+|cuenta-[0-9]+' '$c'"
+    si "memoria: sin disco aparte, nada en la carpeta de datos" test ! -e "$d/rocola_spotify_cache" ;;
+  hoja)
+    # LA HOJA «SPOTIFY» DE CTRL+F4 (27-11-2026): Ctrl+F4, Tab, Tab (la pestana Spotify) e Intro: la hoja con el vigilante sembrado (corriendo, caduca en 82
+    # dias), la API, las ultimas de la bitacora y la cache; despues, con Tab x3 (Archivos, Listo y el slider: «Vaciar la cache» esta en gris sin archivos), el mando de paginas por letra: dos veces la flecha derecha (100 -> 200)
+    # y Escape: guardado pared_paginas=200
+    apifalsa $e; d=$(datos $e encendido); mkdir -p "$W/$e/run/rocola-soloist"
+    printf 'fase=corriendo\nversion=1.3.10.86 build 20261119\ncaduca=2027-02-17\ndias=82\npid=1234\nreinicios=0\n' > "$W/$e/run/rocola-soloist/estado"
+    printf '2026-11-27 21:02:11  acabo spotify:track:can0001 (Tema de Mentira): termino, sono 187.4 s [huecos]\n2026-11-27 21:08:40  DEVUELTA spotify:track:can0002 (Otra Tonada 2): Soloist no la empezo, sono 0.0 s [huecos]: se devuelve el credito\n2026-11-27 21:15:02  acabo spotify:track:can0003 (Cancion Inventada 3): termino, sono 201.0 s [huecos]\n' > "$d/rocola_spotify.txt"
+    abre $e "$d" "6:17+115,7:9,7.3:9,7.6:13,8.6:9,8.8:9,9:9,10.2:39,10.5:39,12:27" 15 ROCOLA_OS=1 ROCOLA_IA_DATOS="$W/grande-hoja" ROCOLA_CAPTURA="$(cap 8.3 hoja-spotify),$(cap 11 hoja-spotify-ajustada)"
+    espera $e; o="$W/$e"; b="$d/rocola_os_bitacora.txt"
+    si "hoja: sale con 0" test "$(cat $o/salio)" = 0
+    si "hoja: Ctrl+F4 abierta y sin fallos de Rocola OS en rocola_error.txt" bash -c "grep -q 'Ctrl+F4 abierta' '$b' && ! grep -q 'Rocola OS' '$d/rocola_error.txt' 2>/dev/null"
+    si "hoja: la captura mide 1024x768" bash -c "python3 -c \"from PIL import Image;import sys;sys.exit(0 if Image.open('${CAPTURAS:-$W}/hoja-spotify.png').size==(1024,768) else 1)\""
+    si "hoja: el mando guardo pared_paginas=200 y lo apunto" bash -c "grep -qx 'pared_paginas=200' '$d/rocola_os.txt' && grep -q 'paginas por letra de la pared: 200' '$b'"
+    si "hoja: ni una llave en lo que se escribio" sinsecretos "$d" "$o/run" ;;
+  mejores)
+    # «LAS MEJORES CANCIONES DE...» (22-11-2026, rehecho el 27-11-2026; RocolaOs.Mejores.cs y RocolaOs.MejoresCaja.cs; g400-g410): el atajo
+    # del buscador, el prefijo fijo de la casilla, la tarjeta grande de primera y el disco con TUS canciones de ese artista primero.
+    # Datos: tu «Otra Banda» (Primer Disco, mas una cancion tuya de 150 s, «04 Cancion Lejana 2», que se llama como la 2a de Spotify). Spotify
+    # (la API falsa) tiene de Otra Banda 9 canciones («Cancion Lejana 1» a «3» en tres discos): 3 distintas. ROJO+ARRIBA abre el buscador (8 s);
+    # ARRIBA y ARRIBA (12 s: la 1a no mueve la fila de teclas) van a los atajos (el primero es el nuevo, en ambar) y PONER (13,5 s) pone el
+    # prefijo; se escribe «otra» (15 s): la tarjeta grande de primera, y las de siempre detras. Nueve a la derecha llegan a ella (20,5 s);
+    # PONER (24 s) abre el disco dentro del buscador (la tuya, «Cancion Lejana 2», primero, y despues las de Spotify 1 y 3); PONER (29 s) pide
+    # la tuya (1 credito, suena de tu MP3: no es una pedida de Spotify), ABAJO y PONER (33 s) pide la 2a (de Spotify: 1 credito, 1 pedida);
+    # REGRESAR (38 s): el buscador con lo escrito y el prefijo
+    apifalsa $e; d=$(datos $e encendido)
+    mkdir -p "$d/musica/Otra Banda/Primer Disco"; ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=440:duration=150" -ac 2 -ar 44100 -b:a 48k "$d/musica/Otra Banda/Primer Disco/04 Cancion Lejana 2.mp3"
+    abre $e "$d" "7:67,7.4:67,8:27+38,12:38,12.5:38,13.5:13,$(escribe 15 otra),$(derechas 20.5 9),24:13,29:13,33:40,34:13,38:27" 44 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 11 mejores-atajo),$(cap 14.5 mejores-prefijo),$(cap 19 mejores-tarjeta),$(cap 23 mejores-tarjeta-elegida),$(cap 27 mejores-disco),$(cap 31 mejores-pedida-tuya),$(cap 36 mejores-pedida-spotify),$(cap 41 mejores-de-vuelta)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    ca="${CAPTURAS:-$W}"; b="$d/rocola_os_bitacora.txt"
+    si "mejores: sale con 0" test "$(cat $o/salio)" = 0
+    ambar=$(colores "$ca/mejores-atajo.png" 255 198 104 20 90 230 36)
+    si "mejores: el atajo «LAS MEJORES CANCIONES DE…» es el primero de la fila y se ve (ambar: $ambar puntos)" test "$ambar" -gt 150
+    pastilla=$(distintos "$ca/mejores-atajo.png" "$ca/mejores-prefijo.png" 80 30 290 40 40)
+    si "mejores: con el prefijo, la casilla lleva su pastilla delante ($pastilla puntos distintos de la casilla sin ella)" test "$pastilla" -gt 1500
+    tag=$(colores "$ca/mejores-tarjeta.png" 255 198 104 524 153 235 40)
+    si "mejores: la tarjeta de primera lleva su etiqueta «LO MEJOR» ($tag puntos ambar en la 1a tarjeta)" test "$tag" -gt 30
+    si "mejores: UNA pagina de canciones del artista (artist:\"Otra Banda\" off=0: son 9, no hay 2a) y ni un disco ni una pared ($(v1 $a) a /v1: la busqueda, la pagina y la pareja de tu cancion para la sustitucion)" bash -c "[ \$(grep -c 'q=artist:' '$a') = 1 ] && grep -q 'q=artist:\"Otra Banda\" t=track off=0\$' '$a' && ! grep -q '/v1/artists/\|/v1/albums/' '$a'"
+    si "mejores: el disco con 3 canciones (las de Spotify sin repetir por edicion), tu «Cancion Lejana 2» primero" contiene "$b" "«LAS MEJORES CANCIONES DE Otra Banda»: 3 canciones (1 tuyas primero"
+    si "mejores: el prefijo se puso una vez" test "$(cuenta $b 'el prefijo puesto')" = 1
+    np=$(pedidos $o); p1=$(pedido $o 1)
+    si "mejores: la tuya se pidio de su MP3 (no es una pedida de Spotify) y la 2a, de Spotify (can6491, 1 sola pedida: $np)" test "$np" = 1 -a "$p1" = "$(printf 'pedida\tspotify:track:can6491')"
+    si "mejores: las dos cobraron 1 credito cada una (la de Spotify: quedan 6 de 8)" bash -c "cobradas $o | sed -n 1p | grep -qF 'quedan 6 creditos'"
+    si "mejores: REGRESAR volvio al buscador con lo escrito («otra»)" contiene "$b" "REGRESAR: de vuelta al buscador con «otra»"
+    tag2=$(colores "$ca/mejores-de-vuelta.png" 255 198 104 524 153 235 40); pil2=$(distintos "$ca/mejores-atajo.png" "$ca/mejores-de-vuelta.png" 80 30 290 40 40)
+    si "mejores: al volver, el prefijo sigue (su pastilla: $pil2 puntos distintos de la casilla sin ella) y la tarjeta de primera tambien ($tag2 puntos ambar)" bash -c "[ $tag2 -gt 30 ] && [ $pil2 -gt 1500 ]"
+    si "mejores: ni el secreto ni las llaves en los datos ni en /run" sinsecretos "$d" "$o/run" ;;
+  mejoresn)
+    # «LAS MEJORES CANCIONES DE...» CON UN ARTISTA QUE SOLO ESTA EN SPOTIFY (Orquesta Interminable: 60 canciones): 3 peticiones (off=0, 10 y 20:
+    # las 30 mejores), una vez cada una aunque se abra otra vez; la 1a de la lista es la 1a de la busqueda; REGRESAR y PONER otra vez abre de
+    # memoria (0 peticiones)
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "7:67,8:27+38,12:38,12.5:38,13.5:13,$(escribe 15 orquesta),$(derechas 20 9),26:13,34:13,38:27,40:13" 46 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 24 mejoresn-tarjeta),$(cap 31 mejoresn-disco),$(cap 36 mejoresn-pedida),$(cap 43 mejoresn-otra-vez)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"; cuota "$a"
+    b="$d/rocola_os_bitacora.txt"
+    si "mejoresn: sale con 0" test "$(cat $o/salio)" = 0
+    si "mejoresn: las tres paginas de canciones (off=0, 10 y 20), una vez cada una, y ninguna mas" bash -c "for n in 0 10 20; do [ \$(grep -c 'q=artist:\"Orquesta Interminable\" t=track off='\$n'\$' '$a') = 1 ] || exit 1; done; [ \$(grep -c 'q=artist:' '$a') = 3 ]"
+    si "mejoresn: 30 canciones y ninguna tuya (se armo una sola vez: la 2a, de memoria)" bash -c "[ \$(grep -c 'LAS MEJORES CANCIONES DE Orquesta Interminable»: 30 canciones (0 tuyas primero' '$b') = 1 ]"
+    si "mejoresn: la 1a pedida es la 1a de la busqueda por artista (can9001)" test "$(pedido $o 1)" = "$(printf 'pedida\tspotify:track:can9001')"
+    si "mejoresn: solo esa pedida ($(pedidos $o))" test "$(pedidos $o)" = 1
+    si "mejoresn: REGRESAR volvio al buscador y PONER abrio el disco otra vez" bash -c "[ \$(grep -c 'REGRESAR: de vuelta al buscador con «orquesta»' '$b') = 1 ]" ;;
+  mejoresteclas)
+    # EL PREFIJO Y SUS TECLAS: se pone con el atajo (13,5 s), se escribe «ab» (15 s) y REGRESAR (18 y 19 s) borra las dos letras sin quitar el
+    # prefijo; la tecla BORRAR del teclado en pantalla (ABAJO tres veces, DERECHA y PONER: 21 a 23 s) con nada escrito NO lo quita; REGRESAR
+    # (26 s) con nada escrito lo quita; el atajo (ARRIBA cinco veces desde BORRAR: 29 s, y PONER: 33 s) lo pone otra vez; ARRIBA dos veces
+    # (36 s: del teclado a los atajos) y PONER (37,5 s) lo quita (el mismo atajo, que dice «× Quitar»)
+    apifalsa $e; d=$(datos $e encendido)
+    abre $e "$d" "7:67,8:27+38,12:38,12.5:38,13.5:13,$(escribe 15 ab),18:27,19:27,21:40,21.3:40,21.6:40,22:39,23:13,26:27,29:38,29.3:38,29.6:38,29.9:38,30.2:38,33:13,36:38,36.5:38,37.5:13" 44 ROCOLA_OS=1 \
+      ROCOLA_CAPTURA="$(cap 11 teclas-antes),$(cap 14.5 teclas-prefijo),$(cap 16.5 teclas-ab),$(cap 20.5 teclas-sin-letras),$(cap 24.5 teclas-borrar-no-lo-quita),$(cap 28 teclas-quitado-con-regresar),$(cap 35 teclas-puesto-con-el-atajo),$(cap 41 teclas-quitado-con-el-atajo)"
+    espera $e; o="$W/$e"; a="$o/api/peticiones.txt"
+    ca="${CAPTURAS:-$W}"; b="$d/rocola_os_bitacora.txt"
+    pil() { distintos "$ca/teclas-$1.png" "$ca/teclas-$2.png" 80 30 290 40 40; }
+    letras=$(distintos "$ca/teclas-ab.png" "$ca/teclas-sin-letras.png" 380 30 80 40 40)
+    si "mejoresteclas: sale con 0" test "$(cat $o/salio)" = 0
+    si "mejoresteclas: con el prefijo la pastilla esta ($(pil antes prefijo) puntos distintos de antes)" test "$(pil antes prefijo)" -gt 1500
+    si "mejoresteclas: REGRESAR borra las letras y deja el prefijo (la pastilla igual que con ellas, $(pil prefijo sin-letras) distintos; y sin «ab»: $letras puntos distintos de donde estaban)" bash -c "[ $(pil prefijo sin-letras) -lt 300 ] && [ $letras -gt 200 ]"
+    si "mejoresteclas: BORRAR del teclado con nada escrito no quita el prefijo ($(pil sin-letras borrar-no-lo-quita) puntos distintos)" test "$(pil sin-letras borrar-no-lo-quita)" -lt 300
+    si "mejoresteclas: REGRESAR con nada escrito lo quita (igual que antes de ponerlo: $(pil antes quitado-con-regresar) distintos)" test "$(pil antes quitado-con-regresar)" -lt 300
+    si "mejoresteclas: el atajo lo pone otra vez ($(pil antes puesto-con-el-atajo) distintos de antes)" test "$(pil antes puesto-con-el-atajo)" -gt 1500
+    si "mejoresteclas: y el mismo atajo lo quita ($(pil antes quitado-con-el-atajo) distintos de antes)" test "$(pil antes quitado-con-el-atajo)" -lt 300
+    si "mejoresteclas: en la bitacora: puesto 2 veces, quitado 1 vez con REGRESAR y 1 con el atajo" bash -c "[ \$(grep -c 'el prefijo puesto' '$b') = 2 ] && [ \$(grep -c 'el prefijo quitado (REGRESAR)' '$b') = 1 ] && [ \$(grep -c 'el prefijo quitado (el atajo)' '$b') = 1 ]"
+    si "mejoresteclas: ninguna peticion de canciones ni de pared (solo busquedas)" bash -c "[ \$(grep -c ' /v1/' '$a') = \$(grep -c '/v1/search' '$a') ] && ! grep -q 'q=artist:' '$a'" ;;
+  sinmejores)
+    # SIN EL MODO (sin ROCOLA_OS, y con ROCOLA_OS=1 y spotify=0): ningun atajo «LAS MEJORES...» (ni ambar, ni en la bitacora), ARRIBA y PONER
+    # en la fila de atajos hacen lo de XP, y lo escrito se ve como siempre
+    for m in apagado cero; do
+      apifalsa $e-$m; d=$(datos $e-$m apagado)
+      if [ $m = cero ]; then printf 'spotify=0\n' > "$d/rocola_os.txt"; V=1; else V=; fi
+      abre $e-$m "$d" "7:67,8:27+38,12:38,12.5:38,13.5:13,$(escribe 15 otra)" 21 ROCOLA_OS=$V ROCOLA_CAPTURA="$(cap 19 sinmejores-$m)"
+      espera $e-$m; o="$W/$e-$m"; ca="${CAPTURAS:-$W}"
+      ambar=$(colores "$ca/sinmejores-$m.png" 255 198 104 20 90 230 36)
+      si "sinmejores $m: sale con 0" test "$(cat $o/salio)" = 0
+      si "sinmejores $m: sin el atajo ni su ambar en la fila de atajos ($ambar puntos)" test "$ambar" -lt 20
+      si "sinmejores $m: nada de «LAS MEJORES» en la bitacora ni en la traza" bash -c "! grep -q 'MEJORES' '$d/rocola_os_bitacora.txt' 2>/dev/null && ! grep -q 'Mejores' '$o/traza.txt' 2>/dev/null"
+      si "sinmejores $m: ninguna peticion a la API falsa" test "$(wc -l < $o/api/peticiones.txt)" = 0
+    done ;;
   esac
 done
 

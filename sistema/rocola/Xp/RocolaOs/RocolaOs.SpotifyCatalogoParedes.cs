@@ -56,6 +56,8 @@ namespace Rocola
             internal string Cabecera;
             internal Album Canciones;                // «Canciones de ARTISTA» (null en la de todos los discos)
             internal HashSet<string> Excluir;        // (la pared unida) los nombres de tus discos, sin acentos ni mayusculas
+            internal readonly HashSet<Album> EdicionesDichas = new HashSet<Album>();   // (27-11-2026) las ediciones quitadas ya apuntadas en la bitacora
+            internal HashSet<string> ExcluirClaves;  // (27-11-2026) lo mismo sin lo que dice «edicion» (RocolaOs.SpotifyEdiciones.cs): tu «Abbey Road» y su «(Remastered)» son uno
             internal List<Album> Tuyos;              // (la pared unida) tus discos de ese artista, en el orden de XP: van primero
             internal int Total = -1;                 // lo que dice Spotify (-1: aun no se sabe)
             internal readonly Dictionary<int, List<Album>> Bloques = new Dictionary<int, List<Album>>();   // de 10 en 10
@@ -462,7 +464,7 @@ namespace Rocola
             List<Album> l = new List<Album>();
             foreach (RocolaOsSpotifyCatalogoDisco d in pg.Discos)
             {
-                if (p.Excluir != null && p.Excluir.Contains(MotorBusqueda.Normaliza(d.Nombre ?? ""))) continue;   // (la pared unida: los que ya tienes no, ya van arriba)
+                if (p.Excluir != null && (p.Excluir.Contains(MotorBusqueda.Normaliza(d.Nombre ?? "")) || RocolaOsSpotifyEsEdicionDeTuyo(p, d))) continue;   // (la pared unida: los que ya tienes no, ya van arriba; ni sus ediciones)
                 Album a = RocolaOsSpotifyCatalogoAlbum(d);
                 if (!l.Contains(a)) l.Add(a);
             }
@@ -501,6 +503,18 @@ namespace Rocola
                 AbortDiscTrans();
             }
         }
+        // (27-11-2026) ¿el disco de Spotify es una edicion de uno TUYO (la pared unida)?
+        private static bool RocolaOsSpotifyEsEdicionDeTuyo(RocolaOsSpotifyPared p, RocolaOsSpotifyCatalogoDisco d)
+        {
+            if (p.ExcluirClaves == null)
+            {
+                HashSet<string> k = new HashSet<string>(StringComparer.Ordinal);
+                foreach (string x in p.Excluir) k.Add(RocolaOsSpotifyEdiciones.Clave(x));
+                p.ExcluirClaves = k;
+            }
+            string c = RocolaOsSpotifyEdiciones.Clave(d.Nombre ?? "");
+            return c.Length > 0 && p.ExcluirClaves.Contains(c);
+        }
         // la lista de la pared: tus discos (la unida), «Canciones de», y cada bloque de 10 como llego, o sus casillas por llenar
         private void RocolaOsSpotifyRecompone(RocolaOsSpotifyPared p)
         {
@@ -508,6 +522,29 @@ namespace Rocola
             if (p.Tuyos != null) l.AddRange(p.Tuyos);
             if (p.Canciones != null) l.Add(p.Canciones);
             HashSet<Album> vistos = new HashSet<Album>(l);
+            // (27-11-2026) de las ediciones de un mismo disco que ya llegaron (Remastered, Deluxe...) queda UNA: el original, si no la de mas canciones
+            Dictionary<string, Album> mejorEdicion = new Dictionary<string, Album>(StringComparer.Ordinal);
+            List<int> orden = new List<int>(p.Bloques.Keys); orden.Sort();   // (en el orden de Spotify: a igualdad, la primera)
+            foreach (int bq in orden)
+                foreach (Album x in p.Bloques[bq])
+                {
+                    RocolaOsSpotifyCatalogoDisco dx;
+                    if (!rocolaOsSpDeDisco.TryGetValue(x, out dx)) continue;
+                    string clave = RocolaOsSpotifyEdiciones.Clave(dx.Nombre);
+                    if (clave.Length == 0) continue;
+                    Album y; RocolaOsSpotifyCatalogoDisco dy;
+                    if (!mejorEdicion.TryGetValue(clave, out y) || !rocolaOsSpDeDisco.TryGetValue(y, out dy) || RocolaOsSpotifyEdiciones.Mejor(dx, dy)) mejorEdicion[clave] = x;
+                }
+            Func<Album, bool> esLaElegida = delegate (Album x)
+            {
+                RocolaOsSpotifyCatalogoDisco dx;
+                if (!rocolaOsSpDeDisco.TryGetValue(x, out dx)) return true;
+                string clave = RocolaOsSpotifyEdiciones.Clave(dx.Nombre);
+                Album y;
+                if (clave.Length == 0 || !mejorEdicion.TryGetValue(clave, out y) || ReferenceEquals(x, y)) return true;
+                if (p.EdicionesDichas.Add(x)) RocolaOs.Apunta("spotify_catalogo", "edicion repetida: «" + dx.Nombre + "» no sale (queda «" + y.Name + "»)" + " - " + dx.NumCanciones.ToString(CultureInfo.InvariantCulture) + " canciones contra " + (rocolaOsSpDeDisco.TryGetValue(y, out RocolaOsSpotifyCatalogoDisco dy2) ? dy2.NumCanciones : -1).ToString(CultureInfo.InvariantCulture));
+                return false;
+            };
             int por = RocolaOsSpotifyCatalogoApi.PorPaginaPared;
             int nb = p.Total < 0 ? 0 : (p.Total + por - 1) / por;
             p.Inicio.Clear(); p.Fin.Clear();
@@ -515,7 +552,7 @@ namespace Rocola
             {
                 List<Album> ya;
                 // (23-11-2026, revision) el mismo disco en dos bloques (Spotify corrio su lista entre dos paginas) va una sola vez
-                if (p.Bloques.TryGetValue(b, out ya)) { foreach (Album x in ya) if (vistos.Add(x)) l.Add(x); continue; }
+                if (p.Bloques.TryGetValue(b, out ya)) { foreach (Album x in ya) if (esLaElegida(x) && vistos.Add(x)) l.Add(x); continue; }
                 p.Inicio[b] = l.Count;
                 List<Album> h;
                 if (!p.Huecos.TryGetValue(b, out h))
@@ -604,10 +641,12 @@ namespace Rocola
             }
             if (desde != c.Siguiente) return;   // (ya estaba)
             c.Total = pg.Total;
-            int n = a.Tracks.Count;
+            int n = a.Tracks.Count, filtradas = 0;
             foreach (RocolaOsSpotifyCatalogoCancion t in pg.Canciones)
             {
                 if (n >= RocolaOsSpotifyCatalogoApi.TopeCanciones) break;
+                // (27-11-2026) solo las canciones donde el artista esta entre los de la pista: sin versiones de otros ni lo que la busqueda de texto trae de mas
+                if (!RocolaOsSpotifyEdiciones.EsDeArtista(t, c.ArtistaId, c.Nombre)) { filtradas++; continue; }
                 n++;
                 // la misma cancion puede estar en su disco con otro numero: aqui va con la ruta «spotify:track:ID#artista» (su Uri de I6 no
                 // cambia: PONER la pide igual) para que la lista diga su lugar en «Canciones de» («NN Titulo»)
@@ -616,6 +655,7 @@ namespace Rocola
                 lock (RocolaOsSpotifyCatalogoNombres.PorRuta) RocolaOsSpotifyCatalogoNombres.PorRuta[ruta] = n.ToString("00", CultureInfo.InvariantCulture) + " " + t.Titulo;
                 a.Tracks.Add(new Track { Path = ruta, Artist = t.Artista ?? "", Title = t.Titulo ?? "", Album = t.Disco ?? "", Genre = "" });
             }
+            if (filtradas > 0) RocolaOs.Apunta("spotify_catalogo", "«" + a.Name + "»: " + filtradas.ToString(CultureInfo.InvariantCulture) + " canciones de la pagina " + (desde / RocolaOsSpotifyCatalogoApi.PorPaginaPared + 1).ToString(CultureInfo.InvariantCulture) + " no son de " + c.Nombre + " (se quitan)");
             c.Siguiente = desde + RocolaOsSpotifyCatalogoApi.PorPaginaPared;
             if (pg.Crudos < RocolaOsSpotifyCatalogoApi.PorPaginaPared || c.Siguiente >= Math.Min(c.Total, RocolaOsSpotifyCatalogoApi.TopeCanciones)) c.Acabado = true;
             generoVer++; duracionesVer++;   // (la ficha y el letrero de XP se rehacen con lo que ya vigilan)

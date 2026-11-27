@@ -64,6 +64,9 @@ namespace Rocola
                 }
             }
         }
+        // (27-11-2026, la memoria de lo que contesta Spotify) lo grande esta de verdad en el disco aparte de la rocola (ROCOLA_IA_DATOS puesta y
+        // usable), no en la carpeta de datos de 512 MB: lo que solo debe ir al disco de la musica pregunta esto antes de escribir nada.
+        internal static bool EnDiscoAparte { get { return Carpeta != null; } }
         // (rapido-caratulas) Lo grande tenia que ir al disco de la rocola y cayo en la carpeta de datos: lo que ahorra tiempo a costa de mas
         // disco (las miniaturas PNG de g220, un 20 % mas grandes) vuelve a lo de XP.
         internal static bool CayoEnDatos { get { _ = Carpeta; lock (cerrojo) return fallo; } }

@@ -81,7 +81,7 @@ namespace Rocola
         {
             TexturasGl.AlBorrar -= OlvidaTextura;
             PantallaTarjeta.Olvida(ventana);
-            if (sombreadores != null) { sombreadores.Suelta(); sombreadores = null; }
+            RocolaOsVidrioSuelta(); if (sombreadores != null) { sombreadores.Suelta(); sombreadores = null; }   // ROCOLA OS g369: (XP) if (sombreadores != null) { sombreadores.Suelta(); sombreadores = null; } — VI1-VI6: las texturas de lo de detras desenfocado se sueltan con el dispositivo (RocolaOs/RocolaOs.CieloVidrioGl.cs); sin vidrio no hay ninguna que soltar
             if (fondoFbo != 0) TexturasGl.BorraFramebuffer(fondoFbo);
             if (fondoTex != 0) TexturasGl.Borra(fondoTex);
             fondoTex = fondoFbo = destinoFbo = 0;

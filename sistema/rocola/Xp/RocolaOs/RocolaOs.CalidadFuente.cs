@@ -27,6 +27,7 @@ namespace Rocola
             internal readonly string Ruta, Uri;
             internal readonly RocolaOsCalidad.Pareja Par;
             internal Track Sombra;                      // la copia de tu cancion con la ruta de Spotify (la pone g61)
+            internal Track Original;                    // (27-11-2026) tu cancion tal cual (la que ve XP): su nivel, su disco y su parejo (g61)
             private readonly Form1 rocola;
             private readonly RocolaOsFuenteSpotify sp;
             private readonly int hz;

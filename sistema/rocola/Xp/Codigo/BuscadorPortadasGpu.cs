@@ -131,7 +131,7 @@ namespace Rocola
 
         private void ArmaAtajos()
         {
-            atajosBusca.Clear();
+            atajosBusca.Clear(); RocolaOsMejoresAtajo();   // ROCOLA OS g400: (XP) atajosBusca.Clear(); — con el modo Spotify y la llave, el atajo «LAS MEJORES CANCIONES DE…» va el primero de la fila (RocolaOs/RocolaOs.Mejores.cs; sin el modo, nada)
             if (searchOverlay == null) return;
             DateTime ahora = DateTime.Now;
             if (!libBuilding)
@@ -187,7 +187,7 @@ namespace Rocola
         {
             if (searchOverlay == null || k < 0 || k >= atajosBusca.Count) return;
             MarkSearchActivity();
-            AtajoBusca a = atajosBusca[k];
+            AtajoBusca a = atajosBusca[k]; if (a.Tipo == RocolaOsAtajoMejores) { RocolaOsMejoresAlterna(); return; }   // ROCOLA OS g401: (XP) AtajoBusca a = atajosBusca[k]; — pulsar ese atajo pone o quita el prefijo fijo de la casilla (RocolaOs/RocolaOs.Mejores.cs; los de XP, nada)
             if (a.Tipo == AtajoVideos)
             {
                 if (videoAlbums == null || videoAlbums.Count == 0 || letterBar == null || letterBar.OnPick == null) return;
@@ -756,8 +756,8 @@ namespace Rocola
                 else
                     using (SKPath gp = ContornoRedondo(cr, Math.Max(2, cr.Height / 2)))   // EN LINUX: RoundedPath da un GraphicsPath: aqui su SKPath (ContornoRedondo, Form1.Fondo.cs: el mismo trazo) y se suelta como en XP
                     {
-                        pincelS.Color = FondoAtajo.Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
-                        plumaS.Color = BordeAtajo.Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, gp, plumaS, suave, medio, copia);   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
+                        pincelS.Color = RocolaOsColorAtajo(i, FondoAtajo, 0).Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia);   // ROCOLA OS g409: (XP) pincelS.Color = FondoAtajo.Sk(); Pixel.Rellena(g, gp, pincelS, suave, medio, copia); — el atajo «LAS MEJORES CANCIONES DE…» va en ambar para que se vea (RocolaOs/RocolaOs.MejoresCaja.cs; los demas, el de XP)   // EN LINUX: sbS.Color y g.FillPath (Nativo/Pixel.cs)
+                        plumaS.Color = RocolaOsColorAtajo(i, BordeAtajo, 1).Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, gp, plumaS, suave, medio, copia);   // ROCOLA OS g410: (XP) plumaS.Color = BordeAtajo.Sk(); plumaS.StrokeWidth = 1f; Pixel.Traza(g, gp, plumaS, suave, medio, copia); — su borde, igual (RocolaOs/RocolaOs.MejoresCaja.cs; los demas, el de XP)   // EN LINUX: pnS.Color, pnS.Width y g.DrawPath (Nativo/Pixel.cs)
                     }
                 pincelS.Color = (sel ? Color.White : TextoAtajo).Sk();   // EN LINUX: sbS.Color
                 TextoGdiPlus.Escribe(g, atajos[i], fnAtajo, ajuste, pincelS, cr, sfCentro, copia, medio);   // EN LINUX: g.DrawString(texto, fnAtajo, sbS, cr, sfCentro) (Nativo/TextoGdiPlus.cs)
@@ -858,7 +858,7 @@ namespace Rocola
                     h = Mix(h, EnChips); h = Mix(h, FocusResults); h = Mix(h, SelRow); h = Mix(h, SelCol); h = Mix(h, SelChip);
                     if (EnChips && SelChip >= 0 && SelChip < atajos.Count) h = Mix(h, atajos[SelChip]);
                 }
-                else if (cual == PiezaEscrito) { h = Mix(h, Escrito); h = Mix(h, ModoAtajo); h = Mix(h, TextoCuenta()); }
+                else if (cual == PiezaEscrito) { h = Mix(h, Escrito); h = Mix(h, ModoAtajo); h = Mix(h, Prefijo); h = Mix(h, TextoCuenta()); }   // ROCOLA OS g404: (XP) else if (cual == PiezaEscrito) { h = Mix(h, Escrito); h = Mix(h, ModoAtajo); h = Mix(h, TextoCuenta()); } — la imagen de la casilla se rehace al poner o quitar el prefijo (RocolaOs/RocolaOs.MejoresCaja.cs)
                 else if (cual == 2) { h = Mix(h, FocusResults); h = Mix(h, SelResult); h = Mix(h, VersionCartas()); }
                 else if (cual == PiezaCartas) h = Mix(h, VersionCartas()); else if (cual == 3) h = Mix(h, RocolaOsAnilloCuadro());   // ROCOLA OS g268: (XP) else if (cual == PiezaCartas) h = Mix(h, VersionCartas()); — el anillo se rehace con su cuadro de giro (30 por segundo) (RocolaOs/RocolaOs.BuscadorCargando.cs; de XP, nada)
                 return h;
@@ -882,7 +882,7 @@ namespace Rocola
                 Color v = Vivo(Accent);
                 PegaQuieto(g, suave, copia, filtro, medio, QuietoCaja, qb, v, v);   // el resplandor, el fondo, el borde y la lupa, horneados (EN LINUX: con el estado del lienzo)
                 int pad = Px(26, s), cy = qb.Y + qb.Height / 2, lupa = Px(30, s);
-                float x = qb.X + pad + lupa + Px(14, s);
+                float x = RocolaOsPintaPrefijo(g, suave, ajuste, copia, medio, qb, cy, qb.X + pad + lupa + Px(14, s), v);   // ROCOLA OS g402: (XP) float x = qb.X + pad + lupa + Px(14, s); — con el prefijo puesto se dibuja su pastilla delante de lo escrito y lo escrito empieza despues (RocolaOs/RocolaOs.MejoresCaja.cs; sin prefijo, el mismo x)
                 string cuenta = TextoCuenta();
                 float wc = Mide(ajuste, cuenta, fnCuenta);   // EN LINUX: con el modo de letra del lienzo
                 if (wc > 0f)
@@ -904,7 +904,7 @@ namespace Rocola
                 if (Escrito.Length == 0)
                 {
                     pincelS.Color = caret.Sk(); TextoGdiPlus.Escribe(g, "|", fnCaja, ajuste, pincelS, linea, sfIzq, copia, medio);   // EN LINUX: sbS.Color y g.DrawString("|", fnCaja, sbS, linea, sfIzq) (Nativo/TextoGdiPlus.cs)
-                    Renglon(g, ajuste, copia, medio, "Escribe un artista, un disco o una canci\u00f3n", fnCuenta, Invita, x + wcar + Px(6, s), cy, Math.Max(10f, disp - wcar - Px(6, s)));   // EN LINUX: con el estado del lienzo
+                    Renglon(g, ajuste, copia, medio, RocolaOsInvita("Escribe un artista, un disco o una canci\u00f3n"), fnCuenta, Invita, x + wcar + Px(6, s), cy, Math.Max(10f, disp - wcar - Px(6, s)));   // ROCOLA OS g403: (XP) Renglon(g, ajuste, copia, medio, "Escribe un artista, un disco o una canci\u00f3n", fnCuenta, Invita, x + wcar + Px(6, s), cy, Math.Max(10f, disp - wcar - Px(6, s))); — con el prefijo puesto la casilla pide solo el artista (RocolaOs/RocolaOs.MejoresCaja.cs; sin prefijo, el mismo texto)   // EN LINUX: con el estado del lienzo
                     return;
                 }
                 // Si lo escrito no cabe se ve el FINAL, que es lo que se esta tecleando.
@@ -1250,7 +1250,7 @@ namespace Rocola
                 }
                 else if (it.Kind == 1)
                 {
-                    tipo = "\u00c1LBUM"; ctipo = SonAmbar;
+                    tipo = RocolaOsMejoresTipo(it) ?? "\u00c1LBUM"; ctipo = SonAmbar;   // ROCOLA OS g408: (XP) tipo = "\u00c1LBUM"; ctipo = SonAmbar; — la tarjeta «LAS MEJORES CANCIONES DE ARTISTA» dice «LO MEJOR» en vez de ÁLBUM (RocolaOs/RocolaOs.MejoresCaja.cs; las demas, ÁLBUM)
                     Album a = it.AlbumRef;
                     titulo = (a != null && !string.IsNullOrEmpty(a.Name)) ? a.Name : (it.Display ?? "");
                     if (a != null)

@@ -2918,18 +2918,18 @@ namespace Rocola
                 }
                 stars.DrawCube(transTex, transU, transV, tr.X, tr.Y, tr.W, tr.H, tr.Angle, tr.Alpha, tr.Tilt);
             }
-            DibujaBoleto();   // la cancion pedida volando de su fila a la cola: tambien encima de todo, menos los avisos
+            RocolaOsVidrioEncima(); DibujaBoleto();   // la cancion pedida volando de su fila a la cola: tambien encima de todo, menos los avisos   // ROCOLA OS g360: (XP) DibujaBoleto();   // la cancion pedida volando de su fila a la cola: tambien encima de todo, menos los avisos — el brillo de luz y el filo de luz (VI5) de las piezas de vidrio de este cuadro, encima de ellas y de la ficha (RocolaOs/RocolaOs.CieloVidrio.cs); sin ROCOLA_OS o con el vidrio apagado no hace nada
             DibujaMoneda();   // la moneda que cae en la capsula de creditos y su "+4 creditos"
             DibujaInvita();   // sin creditos: la tarjeta que invita a meter una moneda
             // AVISO flotante (moneda, cancion agregada...) por ENCIMA de todo menos el contador de FPS.
-            if (tt.Has && toastTex != IntPtr.Zero && tt.Alpha > 0.004f && tt.Bmp != null)
+            RocolaOsVidrioToast(tt); if (tt.Has && toastTex != IntPtr.Zero && tt.Alpha > 0.004f && tt.Bmp != null)   // ROCOLA OS g367: (XP) if (tt.Has && toastTex != IntPtr.Zero && tt.Alpha > 0.004f && tt.Bmp != null) — VI6: lo de detras de la pastilla del aviso, desenfocado, antes de pintarla (RocolaOs/RocolaOs.CieloVidrio.cs); sin ROCOLA_OS o con el vidrio apagado no hace nada
             {
                 int ta = (int)(tt.Alpha * 255f + 0.5f); if (ta > 255) ta = 255;
                 SetTexQuadA(toastQuad, tt.X, tt.Y, tt.X + tt.Bmp.Width, tt.Y + tt.Bmp.Height,
                             toastU, toastV, ((uint)ta << 24) | 0x00FFFFFFu);
                 stars.DrawQuad(toastTex, toastQuad);
             }
-            DibujaAviso();   // el aviso claro (SuenaVivoGpu.cs): en el sitio del de siempre, encima de todo
+            RocolaOsVidrioAviso(); DibujaAviso(); RocolaOsVidrioFiloAviso();   // el aviso claro (SuenaVivoGpu.cs): en el sitio del de siempre, encima de todo   // ROCOLA OS g368: (XP) DibujaAviso();   // el aviso claro (SuenaVivoGpu.cs): en el sitio del de siempre, encima de todo — VI6: lo de detras del aviso claro, desenfocado, antes de pintarlo, y despues el filo de luz del aviso y de la pastilla (RocolaOs/RocolaOs.CieloVidrio.cs); sin ROCOLA_OS o con el vidrio apagado no hace nada
             DibujaAsistente(); // personaje y ayuda delante de todas las vistas; musica sigue intacta
             // Contador de FPS (diagnostico) encima de todo, en su textura pequeña. Oculto por defecto (Ctrl+F1).
             if (ShowFps && fpsTex != IntPtr.Zero) { SetTexQuadA(fpsQuad, Width - fpsTW - 10, 6, Width - 10, 6 + fpsTH, fpsU, fpsV, 0xFFFFFFFFu); stars.DrawQuad(fpsTex, fpsQuad); }

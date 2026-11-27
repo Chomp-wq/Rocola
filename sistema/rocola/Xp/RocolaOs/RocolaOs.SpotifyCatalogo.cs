@@ -98,6 +98,7 @@ namespace Rocola
             if (abierto && !rocolaOsSpBuscadorAntes && RocolaOsSpotifyCatalogoVa && RocolaOsSpotifyCatalogoApi.HayLlave) RocolaOsSpotifyCatalogoApi.Calienta();
             if (abierto && !rocolaOsSpBuscadorAntes && RocolaOsSpotifyCatalogoVa) RocolaOsSpotifyCatalogoRecorta();   // (A8: como mucho una vez por hora)
             rocolaOsSpBuscadorAntes = abierto;
+            RocolaOsMejoresLatido(abierto);   // («LAS MEJORES CANCIONES DE...»: el prefijo no sobrevive al buscador; RocolaOs.Mejores.cs)
             RocolaOsSpotifyCatalogoMiraTarjeta(abierto);
             RocolaOsParedCasillasAlDia();   // (BUSCAR y AYUDA fuera de las paredes del buscador: RocolaOs.ParedLetrero.cs)
         }
@@ -220,6 +221,7 @@ namespace Rocola
         // lo que se ensena ahora en el buscador (para seguir ensenandolo mientras se espera a Spotify)
         private List<SearchItem> RocolaOsSpotifyCatalogoVisto(List<SearchItem> lista, string consulta)
         {
+            lista = RocolaOsMejoresPrimera(lista, consulta);   // («LAS MEJORES CANCIONES DE ARTISTA» de primera con el prefijo puesto: RocolaOs.Mejores.cs; sin prefijo, la misma)
             rocolaOsSpVisto = lista; rocolaOsSpVistoConsulta = consulta;
             rocolaOsSpVistoCuenta = searchOverlay != null ? searchOverlay.TotalResultados : 0;   // (la cuenta ya puesta por XP; la de lo mezclado se pone antes de llamar)
             return lista;
@@ -235,6 +237,7 @@ namespace Rocola
         // cambia la lista del buscador sin perder la tarjeta elegida si alguien andaba entre los resultados
         private void RocolaOsSpotifyCatalogoPoneResultados(List<SearchItem> m, int cuenta)
         {
+            m = RocolaOsMejoresPrimera(m, rocolaOsSpEscrito);   // («LAS MEJORES CANCIONES DE ARTISTA» de primera con el prefijo puesto: RocolaOs.Mejores.cs; sin prefijo, la misma)
             List<SearchItem> antes = searchOverlay.Results;
             if (searchOverlay.FocusResults && antes != null && searchOverlay.SelResult >= 0 && searchOverlay.SelResult < antes.Count)
             {
@@ -277,6 +280,35 @@ namespace Rocola
             RocolaOsSpotifyCatalogoPoneResultados(m, (lastMatches != null ? lastMatches.Count : 0) + rocolaOsLetrasMetidas + m.Count - rocolaOsSpXp.Count);   // (la casilla dice cuantos hay, con los de Spotify)
             RocolaOsSpotifyCatalogoApi.PideEstado();
         }
+        // (27-11-2026, «sin repetidas en el buscador») ¿la cancion de Spotify es la MISMA GRABACION de alguna TUYA que XP ya puso en los resultados?
+        // Entonces sale una sola vez, la tuya. La misma idea que el «no repetir» de la cola (RocolaOs.SpotifyRepetida.cs): la pareja de la sustitucion
+        // invisible, o titulo base, marcas de version, artista principal y duracion a 3 s. Solo se miran las tuyas que ya estan en la lista de XP.
+        private bool RocolaOsSpotifyYaEstaEnLocal(List<SearchItem> xp, RocolaOsSpotifyCatalogoCancion c)
+        {
+            foreach (SearchItem it in xp)
+            {
+                if (it == null || it.Kind != 2 || it.TrackRef == null || it.TrackRef.Path == null || it.TrackRef.Path.StartsWith("spotify:", StringComparison.Ordinal)) continue;
+                Track local = it.TrackRef;
+                RocolaOsCalidad.Pareja par;
+                string porQue;
+                if (RocolaOsCalidad.Pares.TryGetValue(local.Path, out par) && par != null && par.Id != null)
+                {
+                    if (string.Equals(par.Uri, c.Uri, StringComparison.Ordinal)) { if (par.Verif >= 0) return true; continue; }   // su pareja (salvo medida de que es otra grabacion)
+                    if (par.Verif < 0) continue;
+                }
+                // (un MP3 sin etiquetas se llama como su archivo, «02 Cancion 2»: sin el numero de pista del principio, si el de Spotify no lo trae)
+                string t = local.Title ?? "";
+                int k = 0;
+                while (k < t.Length && char.IsDigit(t[k])) k++;
+                if (k > 0 && k <= 3 && k < t.Length && (t[k] == ' ' || t[k] == '.' || t[k] == '-') && !(c.Titulo ?? "").StartsWith(t.Substring(0, k), StringComparison.Ordinal))
+                {
+                    while (k < t.Length && (t[k] == ' ' || t[k] == '.' || t[k] == '-')) k++;
+                    local = new Track { Path = local.Path, Artist = local.Artist, Title = t.Substring(k), Album = local.Album, Genre = local.Genre };
+                }
+                if (RocolaOsMismaPorDatos(local, c.Titulo ?? "", c.Artista ?? "", c.DuracionMs, out porQue)) return true;
+            }
+            return false;
+        }
         private List<SearchItem> RocolaOsSpotifyCatalogoMezcla(List<SearchItem> xp, RocolaOsSpotifyCatalogoBusqueda b)
         {
             List<SearchItem> artistas;
@@ -287,16 +319,18 @@ namespace Rocola
             foreach (SearchItem it in xp)
                 if (it != null && it.Kind == 2 && it.TrackRef != null && it.TrackRef.Path != null && it.TrackRef.Path.StartsWith("spotify:", StringComparison.Ordinal))
                     (yaVan ?? (yaVan = new HashSet<string>(StringComparer.Ordinal))).Add(it.TrackRef.Path);
-            int n = 0;
+            int n = 0, repetidas = 0; StringBuilder nombresRep = new StringBuilder();
             foreach (RocolaOsSpotifyCatalogoCancion c in b.Canciones)
             {
                 if (n >= 8) break;
                 if (yaVan != null && c != null && c.Uri != null && yaVan.Contains(c.Uri)) continue;
+                if (c != null && RocolaOsSpotifyYaEstaEnLocal(xp, c)) { repetidas++; if (nombresRep.Length < 300) nombresRep.Append(nombresRep.Length > 0 ? ", " : "").Append('«').Append(c.Titulo).Append("» de ").Append(c.Artista); continue; }   // (27-11-2026) la misma grabacion ya sale, la tuya: una sola vez
                 Album a = RocolaOsSpotifyCatalogoDiscoDe(c);
                 Track t = RocolaOsSpotifyCatalogoPista(c);
                 sp.Add(new SearchItem { Kind = 2, Display = (c.Artista.Length > 0 ? c.Artista + " - " : "") + c.Titulo, Key = "", AlbumRef = a, TrackRef = t });
                 n++;
             }
+            if (repetidas > 0) RocolaOs.Apunta("spotify_catalogo", "buscador: " + repetidas.ToString(CultureInfo.InvariantCulture) + " cancion(es) de Spotify no salen: " + nombresRep + " (ya estan en tu musica)");
             n = 0;
             foreach (RocolaOsSpotifyCatalogoDisco d in b.Discos)
             {
@@ -332,6 +366,7 @@ namespace Rocola
             // (23-11-2026, el dueno: «siempre si se escoge la opcion de artista o album en el buscador, se abra ya sea una pared de discos
             // temporal, o el disco dentro del buscador») un artista tuyo: SIEMPRE una pared del buscador (la unida si Spotify lo tiene, si no
             // solo con tus discos); un disco tuyo: dentro del buscador (REGRESAR vuelve a el). Nunca la pared de verdad.
+            if (RocolaOsMejoresElige(it)) return true;   // («LAS MEJORES CANCIONES DE ARTISTA»: RocolaOs.Mejores.cs)
             if (it != null && (RocolaOsSpotifyArtistaTuyoElige(it) || RocolaOsSpotifyDiscoTuyoElige(it))) return true;
             if (it == null || !RocolaOsEsSpotify(it.AlbumRef) || !RocolaOsSpotifyCatalogoVa) return false;
             MarkSearchActivity();
@@ -668,6 +703,8 @@ namespace Rocola
                 RocolaOsSpotifyCatalogoPortada(a, d.Id, d.PortadaUrl);
             }
             else if (d.Canciones != null && rocolaOsSpDeDisco.TryGetValue(a, out RocolaOsSpotifyCatalogoDisco viejo) && viejo.Canciones == null) rocolaOsSpDeDisco[a] = d;
+            // (27-11-2026) el disco que se armo de una cancion de la busqueda no trae cuantas canciones tiene: se completa con el que si lo dice (las ediciones)
+            if (d.NumCanciones > 0 && rocolaOsSpDeDisco.TryGetValue(a, out RocolaOsSpotifyCatalogoDisco v2) && v2.NumCanciones <= 0) v2.NumCanciones = d.NumCanciones;
             RocolaOsSpotifyCatalogoPortadaPerdida(a);
             RocolaOsSpotifyCatalogoDisco este = rocolaOsSpDeDisco[a];
             if (este.Canciones != null && a.Tracks.Count == 0) RocolaOsSpotifyCatalogoLlena(a, este);

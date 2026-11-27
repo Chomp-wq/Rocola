@@ -68,7 +68,7 @@ namespace Rocola
         // Lo suyo si ya lo aprendio; si no, la mitad de lo que predice la recta (+-1 dB), o 0.
         internal float ParejoEstimado(string path)
         {
-            if (path == null) return 0f;
+            if (path == null) return 0f; path = RocolaOsRutaParejo(path);   // ROCOLA OS g436: (XP) if (path == null) return 0f; — el volumen parejo del billar de la sombra de una cancion tuya que suena desde Spotify es el de tu MP3 (RocolaOs/RocolaOs.Calidad.cs)
             float v;
             lock (parejoCerrojo) if (parejoDb.TryGetValue(path, out v)) return v;
             RehaceParejoSiToca();
@@ -84,7 +84,7 @@ namespace Rocola
         {
             x1 = x2 = x3 = double.NaN;
             float[] c, avg = eqAvg;
-            if (path == null || avg == null || eqCache == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen
+            if (path == null || avg == null || eqCache == null || !(eqCache.TryGetValue(path, out c) || RocolaOsSpotifyEqHuella(path, false, out c)) || c == null || c.Length < EqLen   // ROCOLA OS g437: (XP) if (path == null || avg == null || eqCache == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen — los rasgos del volumen parejo estimado del billar tambien con la huella de una de Spotify (RocolaOs/RocolaOs.SpotifyEq.cs)
                 || c[EqFingerprint] != EqVersionOriginal || c[0] <= -25f || c[1] <= -25f) return false;
             x1 = c[0] - avg[0]; x2 = c[1] - avg[1];
             float lra = LraDeCancion(path);
