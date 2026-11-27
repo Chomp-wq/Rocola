@@ -1448,9 +1448,9 @@ namespace Rocola
                 float nx = (len > 0.001f) ? s.VX / len : 1f, ny = (len > 0.001f) ? s.VY / len : 0f;
                 float ox = -ny * s.Wdt, oy = nx * s.Wdt;   // perpendicular (medio ancho variado)
                 uint rgb = s.Col & 0x00FFFFFF;
-                uint headC = (la << 24) | rgb, tailC = rgb;   // estela: brillante en cabeza -> transparente en cola
+                uint headC = (la << 24) | rgb, tailC = RocolaOsColaFugaz(s.Col, rgb, 0), tailD = RocolaOsColaFugaz(s.Col, rgb, 1);   // estela: brillante en cabeza -> transparente en cola   // ROCOLA OS g340: (XP) uint headC = (la << 24) | rgb, tailC = rgb;   // estela: brillante en cabeza -> transparente en cola — la estela de la fugaz de festejo parte de la cabeza (su color) y se abre hacia dos colores de la fecha (FI3, RocolaOs.CieloFiesta.cs); sin ROCOLA_OS o sin marca, el mismo color
                 VShoot(shootV, vi + 0, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 1, s.X - ox, s.Y - oy, headC); VShoot(shootV, vi + 2, tailX - ox, tailY - oy, tailC);
-                VShoot(shootV, vi + 3, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 4, tailX - ox, tailY - oy, tailC); VShoot(shootV, vi + 5, tailX + ox, tailY + oy, tailC);
+                VShoot(shootV, vi + 3, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 4, tailX - ox, tailY - oy, tailC); VShoot(shootV, vi + 5, tailX + ox, tailY + oy, tailD);   // ROCOLA OS g341: (XP) VShoot(shootV, vi + 3, s.X + ox, s.Y + oy, headC); VShoot(shootV, vi + 4, tailX - ox, tailY - oy, tailC); VShoot(shootV, vi + 5, tailX + ox, tailY + oy, tailC); — el otro lado de la estela lleva el segundo color de la fecha (FI3); sin ROCOLA_OS o sin marca, tailD es tailC
                 vi += 6;
                 uint hc = (Math.Min(255u, la + (uint)(40f * RocolaOsFugazAzar(s.Col))) << 24) | rgb; float hs = 0.9f + s.Wdt;   // cabeza brillante, tamaño segun grosor   // ROCOLA OS g303: (XP) uint hc = (Math.Min(255u, la + 40u) << 24) | rgb; float hs = 0.9f + s.Wdt;   // cabeza brillante, tamaño segun grosor — DN4: el punto de la cabeza de la fugaz (alfa +40) tambien baja con la luz de estrellas; con 1f, 40u exacto
                 VShoot(shootV, vi + 0, s.X - hs, s.Y - hs, hc); VShoot(shootV, vi + 1, s.X + hs, s.Y - hs, hc); VShoot(shootV, vi + 2, s.X + hs, s.Y + hs, hc);
