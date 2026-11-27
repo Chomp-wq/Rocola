@@ -2591,7 +2591,7 @@ namespace Rocola
             }
             LM(LibroDeCuadros.FEstado);
             if (libroOn) { if (IdleExpandTarget) libro.Banderas |= LibroDeCuadros.BReposo; if (idleBlend > 0f && idleBlend < 1f) libro.Banderas |= LibroDeCuadros.BTransicion; libro.Modo = sceneMode; }
-            idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt);
+            idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt); RocolaOsLetraPrepara();   // ROCOLA OS g381: (XP) idleBlend = StepIdle(idleBlend, IdleExpandTarget && idleTex != IntPtr.Zero, idleDt); — la letra de lo que suena en el cielo del reposo (K6): su estado, sus horneados y su posicion, antes de abrir el cuadro (RocolaOs/RocolaOs.LetraCielo.cs; sin ROCOLA_OS o con letra_cielo=0 no hace nada)
             // ANIMACIONES: sus texturas TAMBIEN se aseguran AQUI, antes de Begin. Crear o bloquear una textura
             // con la escena ya abierta no es valido en Direct3D 9: fallaba en silencio y la portada que viajaba
             // entre cubos no llegaba a dibujarse NUNCA (la del buscador al abrir si, porque esa reusa la textura
@@ -2864,7 +2864,7 @@ namespace Rocola
                     stars.DrawQuad(wt, winQuad);
                 }
             }
-            PiezasConLaVentana(gw, uiPropia);   // el buscador con portadas: su casilla, lo elegido y sus tarjetas van con la ventana (BuscadorPortadasGpu.cs)
+            PiezasConLaVentana(gw, uiPropia); RocolaOsLetraPinta();   // ROCOLA OS g380: (XP) PiezasConLaVentana(gw, uiPropia); — la letra de lo que suena en el cielo del reposo (K6): dos renglones sobre la raya del horizonte, bajo el panel del reposo y los textos de XP (RocolaOs/RocolaOs.LetraCielo.cs; sin ROCOLA_OS o con letra_cielo=0 no hace nada)   // el buscador con portadas: su casilla, lo elegido y sus tarjetas van con la ventana (BuscadorPortadasGpu.cs)
             if (uiBotTex != IntPtr.Zero && uiBotW > 0 && uiBotH > 0)
             {
                 uint botAlfa = (uint)((1-idleBlend)*255);   // con el reposo del todo abierto va a opacidad cero: no se manda
