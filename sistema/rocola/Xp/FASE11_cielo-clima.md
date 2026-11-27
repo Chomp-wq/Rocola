@@ -105,3 +105,60 @@ en la pared y una hoja con la pastilla de cada tiempo de dia y de noche.
 - **Un numero obligatorio que no se lee descarta el archivo.** `rocola_clima.txt` (`codigo=`, `medida=`) y `rocola_clima_lugar.txt` (`lat=`, `lon=`): un `TryParse` que falla deja 0 en el `out`, y `lat=0` es una latitud valida (el bar quedaba en el golfo de Guinea 7 dias) y `codigo=0` es «despejado». Ahora se lee con una bandera (`NaN` / `-1`) y, si falta o no se lee, `DeTexto` devuelve `null` como si no hubiera archivo (`lat=0` escrito de verdad sigue valiendo). Prueba: `--prueba-cielo` (4 comprobaciones nuevas).
 - **Lugar sin saber = sin clima.** Con `ciudad_bar=0` y las APIs de IP sin respuesta (y sin `ROCOLA_CIUDAD`), el sol y la luna siguen con la Ciudad de Mexico, pero NO se pide el clima (el hilo salta `PideClima`) ni se ensena el guardado (`HazFoto` lo deja en «sin saber», asi CL1-CL5 quedan como sin clima). `ROCOLA_CLIMA` y «Ver como se veria» con clima siguen valiendo. `RocolaOsCielo.LugarSabido` y `RocolaOsCieloFoto.LugarSabido`; en cuanto se sabe el lugar, todo normal (el cambio de coordenadas pide el clima al momento). La hoja Imagen lo dice: «Lugar sin saber: elige la ciudad» (hojitas Dia y noche y Clima). Prueba: `cielo/prueba.sh clima`, escena G (antes 2 MAL de 16, ahora 16/16).
 - **El mensaje del despejado de noche.** «¡Pon algo para el sol!» salia tambien de noche; ahora `RocolaOsCieloClimaTextos.Mensaje(c, deDia)` (de dia por el sol del lugar, `SolAlt > 0`) dice de noche «Afuera: 24 °C y noche despejada. ¡Pon tu favorita!» (cabe en los 52 de siempre). Prueba: `--prueba-cielo-clima` (una comprobacion nueva y los mensajes de dia y de noche de cada tipo).
+
+## 9. Un clima mas exacto: las coordenadas del bar y el METAR del aeropuerto (27-11-2026)
+
+Peticion del dueno: «de donde toma los datos del clima y que tan preciso es? Me gustaria que sea lo mas preciso posible». Sin dibujo: el cielo sigue pidiendo el mismo
+`RocolaOsClima` (codigo de la OMM, nubes, lluvia, viento, visibilidad, temperatura); solo cambia de donde sale. Archivos: `RocolaOs/RocolaOs.CieloMetar.cs`
+(la traduccion y la busqueda de la estacion), `RocolaOs.CieloMetarPrueba.cs` (`--prueba-cielo-metar`) y retoques chicos en `RocolaOs.CieloClima.cs` y
+`RocolaOs.Cielo.cs` (sin tocar fiestas, letra ni dibujo; sin ganchos nuevos).
+
+**De donde salia antes y que tan preciso era.** El lugar: la IP (ipapi.co, ipwho.is o get.geojs.io; aproximado, con CGNAT puede caer en otra ciudad) o el centro de una de
+las 41 ciudades. El clima: el `current` de Open-Meteo, que es un **pronostico de modelo** (rejillas de 9 a 25 km), no una observacion.
+
+### El lugar exacto (`bar_lat=` y `bar_lon=`)
+Dos claves de `rocola_os.txt` (texto, vacias de fabrica; validas de -90 a 90 y de -180 a 180; las dos o ninguna; (0, 0) no vale). Con ellas **mandan sobre la ciudad
+elegida y sobre internet** (solo `ROCOLA_CIUDAD`, de pruebas, va antes); con coordenadas no se pide el lugar por internet. Orden: `ROCOLA_CIUDAD` > coordenadas > `ciudad_bar` > internet >
+Ciudad de Mexico. `RocolaOsCielo.CoordenadasDelBar`, `LugarDelBar` y `LugarSabido` (Cielo.cs, 3 lineas). Si una no vale, se avisa una vez («no vale») y manda lo demas.
+Cambiar las coordenadas pide el clima al momento (el hilo ya lo hacia al moverse mas de 0,01 grados).
+
+### El METAR (lo observado)
+Fuente: **aviationweather.gov** (NOAA/NWS, publica, sin llave). Verificado el 27-11-2026 con la API de verdad:
+- `GET https://aviationweather.gov/api/data/metar?bbox=lat0,lon0,lat1,lon1&format=json&hours=2` (orden latitud primero, comprobado: `bbox=20,-104,21,-103` dio
+  Guadalajara MMGL) y `...?ids=MMGL&format=json&hours=2`. 204 = ninguno. Respuesta: arreglo de `{icaoId, obsTime (epoca en segundos), temp (C), wdir (grados o
+  «VRB»), wspd (nudos), visib (millas terrestres; numero o texto «10+»), wxString (tiempo presente, o null), clouds [{cover, base}], cover, lat, lon, ...}`.
+- Limites de su documentacion (https://aviationweather.gov/data/api/): 100 peticiones por minuto, 400 resultados, un `User-Agent` propio (`rocola-xp/1`), parametros no documentados dan error.
+  Lo nuestro: 1 peticion cada 15 min (por id) y una busqueda por semana.
+- **Estacion**: se busca la mas cercana **con un METAR fresco** dentro de un cuadro de ±0,45 grados (~50 km) y a 40 km o menos (haversine); se recuerda en
+  `rocola_clima_estacion.txt` una semana (se vuelve a buscar si el bar se mueve ~1 km, si queda a mas de 40 km, o tras 3 intentos seguidos sin METAR fresco; «ninguna cerca»
+  se vuelve a mirar a las 6 h). Cada 15 min se pide el METAR de esa estacion por su id.
+- **Traduccion al estado de siempre**: nubes por la capa que mas cubre (FEW 0,19, SCT 0,44, BKN 0,75, OVC y VV 1, CLR/SKC/NSC/CAVOK 0); tiempo presente a codigo de la
+  OMM (tormenta TS 95/96/99 manda sobre todo; nieve SN 71-75 y chubasco 85-86; lluvia helada 66-67; chubasco SHRA 80-82; lluvia RA 61-65 segun -/ /+; llovizna DZ 51-55 y 56-57;
+  UP 61; niebla FG 45 y FZFG 48; neblina BR 45; HZ, FU, DU, VC y RE no cuentan); lluvia en mm/h por la intensidad (RA 0,5/2,5/8; chubasco 1,5/5/10; DZ 0,2-0,6; TS 10); viento
+  nudos x 1,852 km/h; visibilidad millas x 1609,34 m; `is_day` por la altura del sol; sin tiempo presente, el codigo sale de las nubes (0-3).
+- **REGLA**: METAR de **90 min o menos** (y no del futuro) = manda para lo de ahora; Open-Meteo **rellena** lo que el METAR no trae (direccion con viento variable, viento o
+  visibilidad ausentes; temperatura) si es de hace 90 min o menos, y es el clima cuando no hay estacion cerca o el METAR es viejo. `Medida` = la hora del METAR (se ve «hace N min»).
+  Sin red: el ultimo vale 3 h como siempre (`rocola_clima.txt` guarda ahora `fuente=metar`, `estacion=` y `km=` si vino de un METAR; los archivos de antes se leen igual).
+- **Privacidad**: a aviationweather.gov solo van el cuadro de busqueda (coordenadas) o el id de la estacion; a Open-Meteo, las coordenadas (ahora con hasta 4 decimales en vez
+  de 2). Ninguna llave. Para las pruebas: `ROCOLA_METAR_API` (servidor falso; `off` apaga); **con `ROCOLA_CLIMA_API` puesta y sin `ROCOLA_METAR_API` no se pide ningun METAR** (las pruebas viejas no tocan la red).
+
+### Open-Meteo mas fino
+Revisado en https://open-meteo.com/en/docs: `current` ya sale de datos de 15 minutos del modelo y `minutely_15` solo tiene datos reales en Europa central y Norteamerica
+(RRFS de NOAA), y en el resto del mundo es el horario interpolado: **no mejora lo de «ahora»** y se descarto. Se queda `best_match` (el modelo por defecto), cada 15 min, y lo unico que
+cambia es que se piden las coordenadas con hasta 4 decimales. El METAR cubre lo que el modelo no sabe (lo que pasa de verdad en el aeropuerto). No se pidio `elevation` (no se
+conoce la altura del bar).
+
+### La hoja
+`RocolaOsCielo.FuenteLugar()` y `FuenteClima()`: la hojita Dia y noche dice «De donde sale: coordenadas del bar / ciudad de la lista: X (el centro de la ciudad) / por internet: X
+(aproximado)»; la de Clima, «Observado en el aeropuerto MMGL (12 km) hace 18 min.», «Pronostico de Open-Meteo para tus coordenadas (no hay aeropuerto cerca con observacion reciente).»
+o «Sin internet: el de hace 1 h.». Ver `FASE11_hoja-imagen.md`.
+
+### Pruebas (sin red real)
+- `rocola-xp --prueba-cielo-metar`: **41 de 41** (el METAR real de MMGL del 27-11-2026 con `-RA`/BKN/OVC, cada codigo de tiempo presente, `10+` y `VRB`, el relleno, la frescura de 89/95 min, la
+  estacion mas cercana, el cuadro, la estacion recordada, las coordenadas, los textos de la hoja).
+- `Pruebas/RocolaOs/cielo/prueba.sh PROGRAMA metar` (con `metar_falso.py`, un aviationweather.gov, un Open-Meteo y un lugar falsos en un puerto, y `metar_json.py`): **15 de 15**:
+  estacion a 11 km con `-RA` y BKN -> lluvia, nubes 75 %, 12 C y viento del METAR aunque Open-Meteo diga despejado y 25 C; METAR de 120 min -> Open-Meteo; sin estacion a 40 km ->
+  Open-Meteo y se recuerda; FG -> neblina 45 con 402 m; +TSRA -> tormenta; sin red -> el ultimo (de un METAR de hace 1 h); estacion recordada -> se pide por `ids=`, sin buscar; solo
+  salen coordenadas o el id (privacidad); sin `ROCOLA_METAR_API` no hay METAR; coordenadas malas (95) -> se ignoran y manda la ciudad. La parte `clima` de siempre sigue 16/16 (una espera
+  ahora 4 decimales: `25.6866`) y `apagado`/`noche` 11/11 (todo apagado = XP, la noche igual a la de antes).
+- Nada probado con el aviationweather.gov ni el Open-Meteo de verdad desde la rocola (la API de verdad se miro a mano: `bbox` y `ids` dan los campos de arriba) ni en el A4.

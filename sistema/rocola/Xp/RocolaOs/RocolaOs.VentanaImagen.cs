@@ -166,17 +166,22 @@ namespace Rocola
             Rotulo ciuNom = new Rotulo(); ciuNom.SetBounds(16, 40, ancho, 22); ciuNom.BackColor = Color.Transparent; ciuNom.ForeColor = cCielo; ciuNom.Font = x.FVal; ciuNom.UseMnemonic = false;
             Deslizador ciuBar = new Deslizador(); ciuBar.SetBounds(16, 68, ancho, 22); ciuBar.Minimum = 0; ciuBar.Maximum = RocolaOsCiudades.Maxima; ciuBar.Acento = cCielo;
             Rotulo ciuInfo = rot(tCiu, 98, "", 52);
-            Rotulo ciuAhora = rot(tCiu, 158, "", 130);
+            Rotulo ciuAhora = rot(tCiu, 150, "", 112);
+            BotonPlano bCoo = new BotonPlano(); bCoo.SetBounds(16, 268, 206, 40); bCoo.Font = x.FBot; bCoo.Text = "Poner latitud y longitud";
+            BotonPlano bCooNo = new BotonPlano(); bCooNo.SetBounds(234, 268, 206, 40); bCooNo.Font = x.FBot; bCooNo.Text = "Quitar las coordenadas";
+            tCiu.Controls.Add(bCoo); tCiu.Controls.Add(bCooNo);
             tCiu.Controls.Add(ciuNom); tCiu.Controls.Add(ciuBar);
             int ciu = RocolaOsCielo.CiudadElegida;
             ciuBar.Value = ciu;
             bool ciuSucia = false;
             Action pintaCiu = delegate
             {
-                ciuNom.Text = ciuBar.Value == 0 ? "Automática (por internet)" : RocolaOsCiudades.Nombres[ciuBar.Value];
-                ciuInfo.Text = ciuBar.Value == 0
-                    ? "El lugar sale de internet una vez por semana; mientras no se sepa, vale la Ciudad de México. Mueve la barra para fijar una de las 41 ciudades."
-                    : "Fija la ciudad: el sol, la luna y el clima son los de allí. Vuelve a la izquierda del todo para la automática.";
+                double cla, clo; bool coo = RocolaOsCielo.CoordenadasDelBar(out cla, out clo);
+                ciuNom.Text = coo ? "Coordenadas exactas del bar" : ciuBar.Value == 0 ? "Automática (por internet)" : RocolaOsCiudades.Nombres[ciuBar.Value];
+                ciuInfo.Text = coo ? "Las coordenadas del bar mandan sobre la ciudad y sobre internet. Quítalas para volver a la ciudad de la barra."
+                    : ciuBar.Value == 0
+                    ? "El lugar sale de internet una vez por semana (aproximado: puede caer en otra ciudad). Para lo exacto, pon las coordenadas del bar."
+                    : "Fija la ciudad (su centro): el sol, la luna y el clima son los de allí. Para lo exacto, pon las coordenadas del bar.";
             };
             ciuBar.Scroll += delegate { ciuSucia = true; pintaCiu(); };
             pintaCiu();
@@ -191,11 +196,37 @@ namespace Rocola
                 RocolaOsCieloFoto f = RocolaOsCielo.Foto;
                 string t;
                 if (f == null) t = "El cielo vivo no va en esta sesión (sus cuatro funciones están apagadas): aquí no hay hora del sol que ver.";
-                else t = (f.LugarSabido ? "" : "Lugar sin saber: elige la ciudad.\n") + "Ahora: " + f.Lugar.Replace('\n', ' ') + " (" + f.Lat.ToString("0.00", CultureInfo.InvariantCulture) + ", " + f.Lon.ToString("0.00", CultureInfo.InvariantCulture) + ")\n"
+                else t = (f.LugarSabido ? "" : "Lugar sin saber: elige la ciudad.\n") + "De dónde sale: " + RocolaOsCielo.FuenteLugar() + "\nAhora: " + f.Lugar.Replace('\n', ' ') + " (" + f.Lat.ToString("0.00", CultureInfo.InvariantCulture) + ", " + f.Lon.ToString("0.00", CultureInfo.InvariantCulture) + ")\n"
                     + "Hora del cielo " + f.Local.ToString("HH:mm", CultureInfo.InvariantCulture) + ", sol a " + f.SolAlt.ToString("0", CultureInfo.InvariantCulture) + "° ("
                     + (f.SolSube ? "sube" : "baja") + "), fase «" + f.Fase + "»." + (f.VerComo ? "\nSe está viendo «Ver cómo se vería»." : "");
                 if (ciuAhora.Text != t) ciuAhora.Text = t;
             });
+            Action pidePosicion = delegate
+            {
+                double la0, lo0; bool hay = RocolaOsCielo.CoordenadasDelBar(out la0, out lo0);
+                string sa = RocolaOsImagenPideTexto(x, "Latitud y longitud del bar", "Latitud (norte +, sur -; de -90 a 90, como 20.6597). Puedes pegar las dos: 20.6597, -103.3496.",
+                    hay ? la0.ToString("0.####", CultureInfo.InvariantCulture) : "", "Seguir", delegate (string s0) { double a, b; return RocolaOsMetar.Coordenada(s0, 90, out a) || RocolaOsMetar.Pareja(s0, out a, out b) ? null : "No es una latitud: un número de -90 a 90, como 20.6597."; });
+                if (sa == null) return;
+                double la, lo;
+                if (!RocolaOsMetar.Pareja(sa, out la, out lo))
+                {
+                    RocolaOsMetar.Coordenada(sa, 90, out la);
+                    string so = RocolaOsImagenPideTexto(x, "Latitud y longitud del bar", "Longitud (este +, oeste -; de -180 a 180, como -103.3496). En México es negativa.",
+                        hay ? lo0.ToString("0.####", CultureInfo.InvariantCulture) : "", "Guardar", delegate (string s0) { double b; return RocolaOsMetar.Coordenada(s0, 180, out b) ? null : "No es una longitud: un número de -180 a 180, como -103.3496."; });
+                    if (so == null) return;
+                    RocolaOsMetar.Coordenada(so, 180, out lo);
+                }
+                if (la == 0 && lo == 0) return;
+                if (RocolaOs.PonAjuste("bar_lat", la.ToString("0.####", CultureInfo.InvariantCulture)) && RocolaOs.PonAjuste("bar_lon", lo.ToString("0.####", CultureInfo.InvariantCulture)))
+                    RocolaOs.Apunta("ventana", "Imagen: bar_lat=" + la.ToString("0.####", CultureInfo.InvariantCulture) + " bar_lon=" + lo.ToString("0.####", CultureInfo.InvariantCulture));
+                pintaCiu();
+            };
+            bCoo.Click += delegate { pidePosicion(); };
+            bCooNo.Click += delegate
+            {
+                if (RocolaOs.PonAjuste("bar_lat", "") && RocolaOs.PonAjuste("bar_lon", "")) RocolaOs.Apunta("ventana", "Imagen: bar_lat y bar_lon quitadas");
+                pintaCiu();
+            };
             Tarjeta tLet = armaInterruptoresUno(x, ImagenLetra, "LA LETRA EN EL CIELO", Color.FromArgb(255, 206, 120), alMedioSegundo, () => poniendo, v => poniendo = v, cBien);
             tLet.SetBounds(488, 380, 456, 190);
 
@@ -207,8 +238,8 @@ namespace Rocola
             Tarjeta tCli = armaInterruptores(ImagenClima, "EL CLIMA", cClima);
             Tarjeta tCli2 = new Tarjeta(); tCli2.SetBounds(488, 40, 456, altoTar); tCli2.Titulo = "EL CLIMA DE AFUERA, AHORA"; tCli2.Acento = cClima;
             Rotulo cliAhora = rot(tCli2, 40, "", 150);
-            rot(tCli2, 200, "Se pide a Open-Meteo cada 15 minutos, para la ciudad del bar (hoja «Día y noche»). Sin internet el último dato vale 3 horas y después el cielo "
-                + "vuelve a lo normal. Nada se pide mientras la función «clima» está apagada.\n\nPara ver cómo quedaría un clima que hoy no hace, usa «Ver cómo se vería».", 170);
+            rot(tCli2, 220, "Cada 15 minutos: si hay un aeropuerto a 40 km o menos con un reporte (METAR) de menos de 90 minutos, se ve lo que midió ese aeropuerto; si no, el pronóstico de Open-Meteo "
+                + "para las coordenadas del bar (hoja «Día y noche»). Sin internet el último dato vale 3 horas y después el cielo vuelve a lo normal. Nada se pide mientras la función «clima» está apagada.\n\nPara ver cómo quedaría un clima que hoy no hace, usa «Ver cómo se vería».", 170);
             alMedioSegundo.Add(delegate
             {
                 RocolaOsCieloFoto f = RocolaOsCielo.Foto;
@@ -222,7 +253,8 @@ namespace Rocola
                     t = c.Nombre + (c.Forzado ? " (forzado: «Ver cómo se vería» o prueba)" : "") + "\nNubes " + (int)Math.Round(c.Nubes * 100) + " %, lluvia " + c.Lluvia.ToString("0.#", CultureInfo.InvariantCulture)
                         + " mm/h, viento " + c.Viento.ToString("0", CultureInfo.InvariantCulture) + " km/h"
                         + (float.IsNaN(c.Temperatura) ? "" : ", " + c.Temperatura.ToString("0", CultureInfo.InvariantCulture) + " °C")
-                        + (c.Forzado ? "" : "\nMedido " + c.Medida.ToLocalTime().ToString("dd-MM HH:mm", CultureInfo.InvariantCulture));
+                        + (c.Forzado ? "" : "\nMedido " + c.Medida.ToLocalTime().ToString("dd-MM HH:mm", CultureInfo.InvariantCulture))
+                        + "\n" + RocolaOsCielo.FuenteClima(c, DateTime.UtcNow);
                 }
                 if (cliAhora.Text != t) cliAhora.Text = t;
                 cliAhora.ForeColor = x.CTexto;

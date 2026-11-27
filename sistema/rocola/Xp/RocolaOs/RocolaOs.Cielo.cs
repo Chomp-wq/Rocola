@@ -91,6 +91,8 @@ namespace Rocola
                     RocolaOsClave.SiNo("estrellas_anochecer", true, true, "DN4: las estrellas se encienden de una en una al anochecer"),
                     RocolaOsClave.SiNo("horizonte_hora", true, true, "DN5: la raya del horizonte con la luz de la hora"),
                     RocolaOsClave.SiNo("nubes", true, true, "DN6: nubes pintadas con la luz del sol o de la luna"),
+                    RocolaOsClave.Texto("bar_lat", "", v => RocolaOsMetar.Coordenada(v, 90, out _) || v.Length == 0, true, "la latitud exacta del bar (con bar_lon manda sobre la ciudad y la de internet); vacia: no hay"),
+                    RocolaOsClave.Texto("bar_lon", "", v => RocolaOsMetar.Coordenada(v, 180, out _) || v.Length == 0, true, "la longitud exacta del bar (con bar_lat)"),
                     RocolaOsClave.Entero("ciudad_bar", 0, 0, RocolaOsCiudades.Maxima, true, "la ciudad del bar: 0 automatica por internet (una vez por semana), o una de la lista (1 a 41)"),
                 },
                 Arranca = f => Arranca(f),
@@ -246,6 +248,7 @@ namespace Rocola
         {
             RocolaOsLugar p = CiudadForzada;
             if (p != null) { lat = p.Lat; lon = p.Lon; nombre = p.Ciudad; return; }
+            if (CoordenadasDelBar(out lat, out lon)) { nombre = "coordenadas del bar"; return; }
             int c = CiudadElegida;
             if (c > 0) { lat = RocolaOsCiudades.Lat[c]; lon = RocolaOsCiudades.Lon[c]; nombre = RocolaOsCiudades.Nombres[c]; return; }
             RocolaOsLugar g = Lugar;
@@ -254,7 +257,7 @@ namespace Rocola
         }
 
         // SI SE SABE DONDE ESTA EL BAR (forzado, ciudad elegida o la de internet); si no, el sol y la luna usan la Ciudad de Mexico pero NO hay clima
-        internal static bool LugarSabido { get { return CiudadForzada != null || CiudadElegida > 0 || Lugar != null; } }
+        internal static bool LugarSabido { get { double a, o; return CiudadForzada != null || CoordenadasDelBar(out a, out o) || CiudadElegida > 0 || Lugar != null; } }
 
         private static int version;
         // HACE UNA FOTO (en la pantalla: cuentas y lo que el hilo ya dejo en memoria)

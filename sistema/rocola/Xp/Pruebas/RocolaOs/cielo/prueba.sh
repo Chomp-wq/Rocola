@@ -10,12 +10,14 @@
 #   AOTMIO:   el programa en NativeAOT, para «reloj» (aot:CARPETA; de fabrica /root/rocola-trabajo/fase11/cielo-nucleo/aot)
 #   W:        la carpeta de trabajo (de fabrica /root/rocola-trabajo/fase11/cielo-nucleo/prueba; se rehace); CAPTURAS (de fabrica $W/capturas)
 #   PY:       donde estan brotli y astral (pip install --target PY brotli astral==3.2; de fabrica /root/rocola-trabajo/fase11/cielo-nucleo/py)
-# partes (de fabrica todas): ganchos orden clima apagado noche calma escenas medio reloj
+# partes (de fabrica todas): ganchos orden clima metar apagado noche calma escenas medio reloj
 #   ganchos  ganchos.py TODO BIEN y diff-xp.py --sin-ganchos con las cuentas de la base (5147 / 4880 / 229 desde la junta 3, con noche-nv; antes 5135 / 4868 / 229)
 #   orden    `rocola-xp --prueba-cielo` (las cuentas: TODO BIEN), las salidas y puestas del sol contra la NOAA (astral) a +-3 min, el calendario
 #            de §6 dia por dia (2026) y el tercer domingo de junio
 #   clima    el lugar y el clima con los servidores falsos (y lo que se guarda); ciudad_bar sin pedir el lugar; sin red con un clima de hace 2 h
 #            (vale) y de hace 4 h (no vale: despejado)
+#   metar    el METAR del aeropuerto mas cercano (aviationweather.gov falso, metar_falso.py) y las coordenadas del bar (bar_lat=, bar_lon=): lluvia,
+#            niebla y tormenta de un METAR, uno viejo, ninguna estacion cerca, sin red, la estacion recordada, la privacidad de lo que se pide
 #   apagado  APAGADO = XP: las cintas de la tarjeta (cinta.py) de la pared sin ROCOLA_OS, con ROCOLA_OS=1 y las cuatro funciones en 0, y con
 #            ROCOLA_OS=1 y todas sus claves en 0: los degradados del cielo byte a byte y la forma de los cuadros, iguales a los de BASE; y el
 #            control (DN1 a las 13:00): distintas. Sin ROCOLA_OS no se escribe nada de Rocola OS.
@@ -28,7 +30,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-ganchos orden clima apagado noche calma escenas medio reloj}"
+partes="${*:-ganchos orden clima metar apagado noche calma escenas medio reloj}"
 T0=/root/rocola-trabajo/fase11/cielo-nucleo
 W=${W:-$T0/prueba}
 BASE=${BASE:-$T0/base-jit}
@@ -110,8 +112,8 @@ if [[ " $partes " == *" clima "* ]]; then
   kill $FALSO 2>/dev/null; wait $FALSO 2>/dev/null
   o=$W/clima-red; b=$(bit clima-red)
   si "con red: se pidio el lugar una vez (/lugar)" test "$(grep -c '^/lugar' "$o/peticiones.txt")" = 1
-  si "con red: el clima se pidio para el lugar de internet (latitude=25.69&longitude=-100.32) con lo de §3" \
-     contiene "$o/peticiones.txt" "/v1/forecast?latitude=25.69&longitude=-100.32&current=weather_code,cloud_cover,precipitation,rain,showers,snowfall,wind_speed_10m,wind_direction_10m,temperature_2m,visibility,is_day"
+  si "con red: el clima se pidio para el lugar de internet (latitude=25.6866&longitude=-100.3161, 4 decimales) con lo de §3" \
+     contiene "$o/peticiones.txt" "/v1/forecast?latitude=25.6866&longitude=-100.3161&current=weather_code,cloud_cover,precipitation,rain,showers,snowfall,wind_speed_10m,wind_direction_10m,temperature_2m,visibility,is_day"
   si "con red: rocola_clima_lugar.txt (ciudad=Monterrey)" contiene "$o/datos/rocola_clima_lugar.txt" "ciudad=Monterrey"
   si "con red: rocola_clima.txt (codigo=63, nubes=90, lat=25.69)" bash -c "grep -q '^codigo=63$' '$o/datos/rocola_clima.txt' && grep -q '^nubes=90$' '$o/datos/rocola_clima.txt' && grep -q '^lat=25.69$' '$o/datos/rocola_clima.txt'"
   si "con red: la bitacora dice el lugar y el clima («el lugar por internet (127.0.0.1): Monterrey», «el clima del cielo: lluvia (de afuera»)" \
@@ -161,6 +163,95 @@ if [[ " $partes " == *" clima "* ]]; then
   kill $FALSO 2>/dev/null; wait $FALSO 2>/dev/null
   si "sin ideas que usen el sol ni el clima: el cielo arranca y no se pide el lugar ni el clima" \
      bash -c "grep -q '\\[cielo\\] arranca' '$(bit clima-sinlugar)' && ! grep -q . '$W/clima-sinlugar/peticiones.txt'"
+fi
+
+# ---------------------------------------------------------------- metar (la observacion del aeropuerto y las coordenadas del bar; FASE11_cielo-clima.md §9)
+if [[ " $partes " == *" metar "* ]]; then
+  echo "== metar"
+  P=$((21000 + $$ % 20000))
+  # las cuentas puras (METAR de verdad, tiempo presente, estacion mas cercana, el relleno, las coordenadas, los textos de la hoja)
+  mkdir -p "$W/metar-orden"
+  ( cd "$W/metar-orden" && TZ=America/Mexico_City ROCOLA_PANTALLA=fuera:320x240 ROCOLA_DATOS="$W/metar-orden" timeout 120 $(rx "$prog") --prueba-cielo-metar ) > "$W/metar-orden/salida.txt" 2>&1; r=$?
+  grep -E '^(MAL) ' "$W/metar-orden/salida.txt" | sed 's/^/   /'
+  si "--prueba-cielo-metar: $(tail -1 "$W/metar-orden/salida.txt")" test $r = 0
+  # metar_json ARCHIVO ID LAT LON EDAD_MIN WX NUBES(json) TEMP VIS WSPD: un reporte con la forma de la API de verdad (obsTime en minutos de edad)
+  metar_json() { python3 "$G/metar_json.py" "$@"; }
+  falsom() { local n="$1"; shift; mkdir -p "$W/$n"; : > "$W/$n/peticiones.txt"; : > "$W/$n/listo"; : > "$W/$n/listo.txt"
+    python3 "$G/metar_falso.py" $P --registro "$W/$n/peticiones.txt" --listo "$W/$n/listo" "$@" > "$W/$n/falso.txt" 2>&1 & FALSO=$!
+    for i in $(seq 1 50); do [ -s "$W/$n/listo" ] && break; sleep 0.1; done; }
+  # escena N ARCHIVO_METAR [claves de rocola_os.txt] [opciones del falso...]: la rocola 18 s con el bar en 20.60,-103.30 (bar_lat=, bar_lon=), el Open-Meteo falso
+  # (codigo 0, nubes 5: despejado, 25,4 C) y el METAR falso en el mismo puerto
+  escena() {
+    local n="$1" mj="$2" extra="$3"; shift 3
+    mkdir -p "$W/$n"; copia "$DATOS0" "$W/$n/datos"; printf 'bar_lat=20.6\nbar_lon=-103.3\n%b' "$extra" > "$W/$n/datos/rocola_os.txt"
+    cp "$mj" "$W/$n/metar.json"
+    falsom $n --metar "$W/$n/metar.json" --codigo 0 --nubes 5 "$@"
+    corre $n "$prog" 18 "=$W/$n/datos" ROCOLA_OS=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA_API=http://127.0.0.1:$P ROCOLA_METAR_API=http://127.0.0.1:$P ROCOLA_LUGAR_API=http://127.0.0.1:$P/lugar; espera $n
+    kill $FALSO 2>/dev/null; wait $FALSO 2>/dev/null
+  }
+  mj=$W/m.json
+  # A: estacion a 11 km con -RA y BKN de hace 18 min; Open-Meteo dice despejado y 25 C: manda el METAR (lluvia, 75 % de nubes, 12 C)
+  metar_json $mj MMXA 20.70 -103.30 18 "-RA" '[{"cover":"FEW","base":800},{"cover":"BKN","base":1000}]' 12 2 9
+  escena metar-lluvia $mj ""
+  o=$W/metar-lluvia; b=$(bit metar-lluvia)
+  si "A: estacion a 11 km con -RA y BKN: rocola_clima.txt dice lluvia (61), nubes 75, 12 C, fuente metar, estacion MMXA (no el despejado de 25 C de Open-Meteo)" \
+     bash -c "grep -q '^codigo=61$' '$o/datos/rocola_clima.txt' && grep -q '^nubes=75$' '$o/datos/rocola_clima.txt' && grep -q '^temperatura=12$' '$o/datos/rocola_clima.txt' && grep -q '^fuente=metar$' '$o/datos/rocola_clima.txt' && grep -q '^estacion=MMXA$' '$o/datos/rocola_clima.txt'"
+  si "A: el viento es el del METAR (9 kt = 16,67 km/h, 150 grados), no el de Open-Meteo (18,5 y 240)" bash -c "grep -q '^viento=16.67$' '$o/datos/rocola_clima.txt' && grep -q '^direccion=150$' '$o/datos/rocola_clima.txt'"
+  si "A: la bitacora dice el lugar («coordenadas del bar»), la estacion y el clima observado" \
+     bash -c "grep -q 'lugar coordenadas del bar (20.60, -103.30)' '$b' && grep -q 'la estacion de METAR mas cercana: MMXA a 11.1 km' '$b' && grep -q 'el clima del cielo: lluvia (de afuera' '$b'"
+  si "A: las coordenadas exactas mandan: el clima se pide para latitude=20.6&longitude=-103.3 y NO se pide el lugar por internet" \
+     bash -c "grep -q 'latitude=20.6&longitude=-103.3&current=' '$o/peticiones.txt' && ! grep -q '^/lugar' '$o/peticiones.txt'"
+  si "A: la estacion se recuerda (rocola_clima_estacion.txt: id=MMXA)" contiene "$o/datos/rocola_clima_estacion.txt" "id=MMXA"
+  si "A (privacidad): a aviationweather solo van el cuadro de busqueda o el id de la estacion; a Open-Meteo, coordenadas y lo que se pide del clima; nada mas" \
+     bash -c "! grep '^/api/data/metar' '$o/peticiones.txt' | grep -vqE '^/api/data/metar\\?(bbox=[-0-9.,]+|ids=[A-Z0-9]+)&format=json&hours=2\$' && ! grep '^/v1/forecast' '$o/peticiones.txt' | grep -vqE '^/v1/forecast\\?latitude=[-0-9.]+&longitude=[-0-9.]+&current=[a-z_0-9,]+\$' && grep -q '^/api/data/metar?bbox=' '$o/peticiones.txt'"
+  # B: el mismo METAR pero de hace 120 min: ya no manda; el clima es el de Open-Meteo
+  metar_json $mj MMXA 20.70 -103.30 120 "-RA" '[{"cover":"BKN","base":1000}]' 12 2 9
+  escena metar-viejo $mj ""
+  o=$W/metar-viejo
+  si "B: METAR de hace 120 min: manda Open-Meteo (codigo 0, 25,4 C), sin fuente de aeropuerto" bash -c "grep -q '^codigo=0$' '$o/datos/rocola_clima.txt' && grep -q '^temperatura=25.4$' '$o/datos/rocola_clima.txt' && ! grep -q '^fuente=' '$o/datos/rocola_clima.txt'"
+  # C: la unica estacion esta a 150 km: ninguna cerca; Open-Meteo, y se recuerda que no habia (no se vuelve a buscar en 6 h)
+  metar_json $mj MMLE 22.0 -103.30 10 "" '[]' 15 10+ 3
+  escena metar-lejos $mj ""
+  o=$W/metar-lejos; b=$(bit metar-lejos)
+  si "C: ninguna estacion en el cuadro: Open-Meteo, bitacora «ninguna estacion de METAR fresca» y rocola_clima_estacion.txt sin id" \
+     bash -c "grep -q '^codigo=0$' '$o/datos/rocola_clima.txt' && ! grep -q '^fuente=' '$o/datos/rocola_clima.txt' && grep -q 'ninguna estacion de METAR fresca' '$b' && grep -q '^id=$' '$o/datos/rocola_clima_estacion.txt'"
+  # D: niebla: FG con 0,25 SM de visibilidad y VV
+  metar_json $mj MMXA 20.70 -103.30 12 "FG" '[{"cover":"VV","base":100}]' 4 0.25 2
+  escena metar-niebla $mj ""
+  si "D: FG: neblina (codigo 45) con visibilidad de 402 m, de un METAR" bash -c "grep -q '^codigo=45$' '$W/metar-niebla/datos/rocola_clima.txt' && grep -q '^visibilidad=402.34$' '$W/metar-niebla/datos/rocola_clima.txt' && grep -q '^fuente=metar$' '$W/metar-niebla/datos/rocola_clima.txt'"
+  # E: tormenta: +TSRA
+  metar_json $mj MMXA 20.70 -103.30 25 "+TSRA" '[{"cover":"BKN","base":2000},{"cover":"OVC","base":3500}]' 19 3 14
+  escena metar-tormenta $mj ""
+  si "E: +TSRA: tormenta (codigo 95 o mas) de un METAR" bash -c "grep -Eq '^codigo=(95|96|99)$' '$W/metar-tormenta/datos/rocola_clima.txt' && grep -q '^nubes=100$' '$W/metar-tormenta/datos/rocola_clima.txt'"
+  # F: sin red (ni Open-Meteo ni METAR): vale el ultimo, que era de un METAR de hace 1 h
+  n=metar-sinred; mkdir -p "$W/$n"; copia "$DATOS0" "$W/$n/datos"; printf 'bar_lat=20.6\nbar_lon=-103.3\n' > "$W/$n/datos/rocola_os.txt"
+  printf '# prueba\nmedida=%s\ncodigo=63\nnubes=100\nlluvia=2.5\nviento=10\ndireccion=150\ntemperatura=12\nvisibilidad=3219\nde_dia=1\nfuente=metar\nestacion=MMXA\nkm=11.1\nlat=20.60\nlon=-103.30\n' \
+    "$(date -u -d "-1 hours" +%Y-%m-%dT%H:%M:%SZ)" > "$W/$n/datos/rocola_clima.txt"
+  corre $n "$prog" 14 "=$W/$n/datos" ROCOLA_OS=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA_API=$SINRED ROCOLA_METAR_API=$SINRED ROCOLA_LUGAR_API=$SINRED; espera $n
+  si "F: sin internet: vale el ultimo (lluvia, de un METAR de hace 1 h) y se dice" \
+     bash -c "grep -q 'el clima guardado: lluvia .*(vale)' '$(bit $n)' && grep -q 'el clima del cielo: lluvia (de afuera' '$(bit $n)' && grep -q 'no se pudo pedir el clima: sin red' '$(bit $n)'"
+  # G: con la estacion ya recordada (una semana): se pide solo por su id, sin buscar en el cuadro
+  metar_json $mj MMXA 20.70 -103.30 18 "-DZ" '[{"cover":"OVC","base":900}]' 11 3 5
+  n=metar-recordada; mkdir -p "$W/$n"; copia "$DATOS0" "$W/$n/datos"; printf 'bar_lat=20.6\nbar_lon=-103.3\n' > "$W/$n/datos/rocola_os.txt"
+  printf 'id=MMXA\nlat=20.70\nlon=-103.30\nbar_lat=20.6\nbar_lon=-103.3\nbuscada=%s\n' "$(date -u -d '-2 days' +%Y-%m-%dT%H:%M:%SZ)" > "$W/$n/datos/rocola_clima_estacion.txt"
+  cp $mj "$W/$n/metar.json"; falsom $n --metar "$W/$n/metar.json" --codigo 0 --nubes 5
+  corre $n "$prog" 18 "=$W/$n/datos" ROCOLA_OS=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA_API=http://127.0.0.1:$P ROCOLA_METAR_API=http://127.0.0.1:$P; espera $n
+  kill $FALSO 2>/dev/null; wait $FALSO 2>/dev/null
+  si "G: estacion recordada de hace 2 dias: se pide por su id (ids=MMXA), sin buscar en el cuadro; llovizna (51-55)" \
+     bash -c "grep -q '^/api/data/metar?ids=MMXA&' '$W/$n/peticiones.txt' && ! grep -q 'bbox=' '$W/$n/peticiones.txt' && grep -Eq '^codigo=5[1-5]$' '$W/$n/datos/rocola_clima.txt'"
+  # H: sin METAR_API y con un Open-Meteo falso: no se pide ningun METAR (las pruebas de antes no tocan la red)
+  n=metar-sin-api; mkdir -p "$W/$n"; copia "$DATOS0" "$W/$n/datos"; printf 'bar_lat=20.6\nbar_lon=-103.3\n' > "$W/$n/datos/rocola_os.txt"
+  falsom $n --codigo 3 --nubes 90
+  corre $n "$prog" 14 "=$W/$n/datos" ROCOLA_OS=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA_API=http://127.0.0.1:$P; espera $n
+  kill $FALSO 2>/dev/null; wait $FALSO 2>/dev/null
+  si "H: con ROCOLA_CLIMA_API y sin ROCOLA_METAR_API no se pide ningun METAR (y el clima es el de Open-Meteo)" bash -c "! grep -q '/api/data/metar' '$W/$n/peticiones.txt' && grep -q '^codigo=3$' '$W/$n/datos/rocola_clima.txt'"
+  # I: coordenadas que no valen (latitud 95): se ignoran con aviso y manda la ciudad de la lista (23 = Monterrey), sin pedir el lugar por internet
+  n=metar-malas; mkdir -p "$W/$n"; copia "$DATOS0" "$W/$n/datos"; printf 'bar_lat=95\nbar_lon=-103.3\nciudad_bar=23\n' > "$W/$n/datos/rocola_os.txt"
+  falsom $n --codigo 3 --nubes 90
+  corre $n "$prog" 14 "=$W/$n/datos" ROCOLA_OS=1 ROCOLA_CLIMA_YA=1 ROCOLA_CLIMA_API=http://127.0.0.1:$P ROCOLA_LUGAR_API=http://127.0.0.1:$P/lugar; espera $n
+  kill $FALSO 2>/dev/null; wait $FALSO 2>/dev/null
+  si "I: bar_lat=95 no vale: se avisa y manda la ciudad de la lista (Monterrey 25.69,-100.32); no se pide el lugar por internet" \
+     bash -c "grep -q 'bar_lat=95' '$(bit $n)' && grep -q 'latitude=25.69&longitude=-100.32' '$W/$n/peticiones.txt' && ! grep -q '^/lugar' '$W/$n/peticiones.txt'"
 fi
 
 # ---------------------------------------------------------------- apagado y noche (las cintas)
