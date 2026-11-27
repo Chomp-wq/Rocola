@@ -21,6 +21,10 @@ Los archivos:
 - `apagones/prueba.sh`: la auditoría de apagones (`FASE11_apagones.md`): `kill -9`, caída, `SIGTERM`, `SIGUSR1`, `SIGHUP`, cortes justo
   al guardar (strace), `dirsync` y el importador; el corte de luz de verdad está en `sistema/rocola/Pruebas/Qemu/apagones.py`.
   Sus datos de partida (los tres tonos) los arma `apagones/datos.sh`; `prueba.sh` lo llama solo si faltan.
+- `billar-nuevo/prueba.sh`: las piezas de la cadena nueva del billar (B; `CADENA_NUEVA_B.md`): la FFT, el mono, el paso alto en fase lineal,
+  la curva, la noche en la misma curva, el bajo virtual homogeneo, la ganancia constante (escalones de +-10 dB), el disco continuo, la
+  afinacion de varios puntos, `rocola_os.txt`, el costo y la hojita «Billar» de Ctrl+F4 con la rocola de verdad (casi todo con la orden
+  `rocola-xp --prueba-billar2`).
 
 ## Cómo se corre
 
