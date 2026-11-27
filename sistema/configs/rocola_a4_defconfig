@@ -1,5 +1,5 @@
-# ROCOLA OS para la rocola del billar: AMD A4-6300 (Piledriver, Radeon HD 8370D), 3,5 GB, SSD, 1024x768.
-# Etapa 1: el sistema minimo que arranca, prueba el sonido (ALSA) y la grafica (Mesa r600 / softpipe en QEMU).
+# ROCOLA OS para la rocola del billar: AMD A4-6300 (Piledriver, Radeon HD 8370D) o AMD A10-7870K (Godavari, Radeon R7; mismo sistema), 3,5 GB, SSD, 1024x768.
+# Etapa 1: el sistema minimo que arranca, prueba el sonido (ALSA) y la grafica (Mesa r600 en el A4, radeonsi en el A10-7870K, softpipe en QEMU).
 # Se compila con sistema/compila.sh. Detalle en sistema/LEEME.md.
 
 # El procesador del A4: x86-64, Piledriver (gcc -march=bdver2)
@@ -37,7 +37,7 @@ BR2_LINUX_KERNEL_INSTALL_TARGET=y
 BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
 BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
 
-# Firmware: la Radeon (ARUBA), el microcodigo AMD y la red Realtek
+# Firmware: la Radeon (ARUBA del A4 y KAVERI del A10-7870K: el paquete RADEON trae toda la carpeta radeon/), el microcodigo AMD y la red Realtek
 BR2_PACKAGE_LINUX_FIRMWARE=y
 BR2_PACKAGE_LINUX_FIRMWARE_RADEON=y
 BR2_PACKAGE_LINUX_FIRMWARE_AMD_UCODE=y
@@ -50,9 +50,17 @@ BR2_PACKAGE_ALSA_UTILS_AMIXER=y
 BR2_PACKAGE_ALSA_UTILS_APLAY=y
 BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST=y
 
-# Grafica: Mesa con r600 (la Radeon HD 8370D del A4) y softpipe (QEMU, sin tarjeta), por KMS/GBM/EGL, sin X ni Wayland
+# Grafica: Mesa con r600 (la Radeon HD 8370D del A4, TeraScale), radeonsi (la Radeon R7 del A10-7870K, GCN 1.1 «Sea Islands/CIK»; 27-11-2026,
+# el MISMO sistema sirve con los dos procesadores: Mesa escoge el controlador por la tarjeta que encuentra) y softpipe (QEMU, sin tarjeta),
+# por KMS/GBM/EGL, sin X ni Wayland. radeonsi necesita LLVM con el destino AMDGPU (Buildroot lo selecciona solo; se pone todo explicito
+# para que se vea y para comprobarlo en el .config) y libdrm con amdgpu y radeon (tambien los selecciona radeonsi).
 BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_LLVM=y
+BR2_PACKAGE_LLVM_AMDGPU=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_R600=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_RADEONSI=y
+BR2_PACKAGE_LIBDRM_RADEON=y
+BR2_PACKAGE_LIBDRM_AMDGPU=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE=y
 BR2_PACKAGE_MESA3D_GBM=y
 BR2_PACKAGE_MESA3D_OPENGL_EGL=y

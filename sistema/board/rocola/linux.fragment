@@ -17,10 +17,15 @@ CONFIG_HID_GENERIC=y
 CONFIG_USB_HID=y
 CONFIG_INPUT_EVDEV=y
 
-# La grafica del A4 (Radeon HD 8370D, ARUBA): como modulo, para que su firmware ya este en el disco al cargarla
+# La grafica: como modulo, para que su firmware ya este en el disco al cargarla. Un solo controlador del nucleo para las dos Radeon:
+# radeon (6.12) maneja la del A4 (Radeon HD 8370D, ARUBA, TeraScale) y la del A10-7870K (Radeon R7, KAVERI/Godavari, GCN 1.1 «CIK»; su
+# firmware radeon/kaveri_*.bin lo trae el paquete RADEON de linux-firmware). radeon trae CIK activado de fabrica (radeon.cik_support=1);
+# amdgpu NO se compila: tendria CIK apagado (CONFIG_DRM_AMDGPU_CIK) y no habria dos controladores peleando por la misma tarjeta. Ademas
+# rocola-xp lee la memoria de la tarjeta con el ioctl de radeon (Nativo/MemoriaTarjeta.cs). Mesa usa radeonsi sobre radeon (libdrm_radeon).
 CONFIG_MODULES=y
 CONFIG_DRM=y
 CONFIG_DRM_RADEON=m
+# CONFIG_DRM_AMDGPU is not set
 CONFIG_DRM_BOCHS=y
 CONFIG_DRM_VIRTIO_GPU=y
 CONFIG_DRM_FBDEV_EMULATION=y

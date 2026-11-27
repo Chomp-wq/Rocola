@@ -8,7 +8,7 @@
 //     es «~MHz» (la velocidad de fabrica que Windows mide al arrancar): la mayor que da el nucleo (cpufreq, cpuinfo_max_freq; sin cpufreq,
 //     «cpu MHz» de /proc/cpuinfo).
 //   - Adaptador: lo que en XP es la cadena del controlador de la tarjeta (la del Administrador de dispositivos): el nombre que da OpenGL
-//     (GL_RENDERER: «AMD ARUBA (DRM 2.50.0 / 6.12...)» con r600, «llvmpipe (...)» sin tarjeta) y, entre parentesis, el controlador del
+//     (GL_RENDERER: «AMD ARUBA (DRM 2.50.0 / 6.12...)» con r600 en el A4, «AMD KAVERI (radeonsi, LLVM ...)» en el A10-7870K, «llvmpipe (...)» sin tarjeta) y, entre parentesis, el controlador del
 //     nucleo y el numero PCI de la tarjeta (/sys/class/drm).
 using System;
 using System.IO;

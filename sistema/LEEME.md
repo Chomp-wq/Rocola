@@ -65,9 +65,9 @@ UEFI, pantalla por KMS, sonido grabado de la tarjeta emulada, vídeo, botones po
 | Núcleo | Linux 6.12 (soporte largo), la base de PC de Buildroot y `board/rocola/linux.fragment` | |
 | Respuesta | expropiación completa y 1000 Hz | menos latencia para el sonido y la pantalla |
 | Procesador a toda velocidad | gobernador «performance» | una rocola no ahorra batería |
-| Gráfica | Mesa: r600 (la Radeon HD 8370D del A4) y softpipe (QEMU), por KMS/GBM/EGL, sin X ni Wayland | |
+| Gráfica | Mesa: r600 (la Radeon HD 8370D del A4), radeonsi con LLVM (la Radeon R7 del A10-7870K, 27-11-2026; ver ACT_a10-7870k.md) y softpipe (QEMU), por KMS/GBM/EGL, sin X ni Wayland | |
 | Sonido | ALSA directo, sin mezcladores intermedios | |
-| Firmware | Radeon (ARUBA), microcódigo AMD y la red Realtek | |
+| Firmware | Radeon (ARUBA y KAVERI), microcódigo AMD y la red Realtek | |
 | Arranque | GRUB de BIOS y de UEFI: un solo `disk.img` (sistema en la partición 1, EFI en la 2) para grabar en una memoria USB o en el SSD | |
 | Arranque por la partición | `PARTUUID=524f4341-01` | arranca igual desde la USB que desde el SSD |
 | Consolas | tty1, la rocola; tty2, mantenimiento (Ctrl+Alt+F2, usuario `root`) | |
