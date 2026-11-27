@@ -1401,7 +1401,7 @@ namespace Rocola
             if (fuerza <= 0.001f || path == null || eqAvg == null) return null;
             float[] c;
             if (!(eqCache.TryGetValue(path, out c) || RocolaOsSpotifyEqHuella(path, false, out c)) || c[EqFingerprint] != EqVersionOriginal) return null;   // ROCOLA OS g252: (XP) if (!eqCache.TryGetValue(path, out c) || c[EqFingerprint] != EqVersionOriginal) return null; — una de Spotify pedida con su huella aprendida recibe el EQ automatico como una tuya, con el mismo calculo (RocolaOs/RocolaOs.SpotifyEq.cs; de XP, false)
-            if (billar) { float dur = SegundosDe(path); if (dur > 0.01f && dur < BillarEqMinSeg) return null; }
+            if (billar) { float dur = RocolaOsSegundosDe(path); if (dur > 0.01f && dur < BillarEqMinSeg) return null; }   // ROCOLA OS g434: (XP) if (billar) { float dur = SegundosDe(path); if (dur > 0.01f && dur < BillarEqMinSeg) return null; } — la duracion minima del EQ del billar tambien para una de Spotify (la de su pista, o la de tu MP3 si es la sombra de una tuya; RocolaOs/RocolaOs.Calidad.cs)
             // Banda por ENCIMA del acantilado de esta cancion: NUNCA se corrige, y por dos razones distintas
             // segun el caso. Con el DSEE apagado, ahi el codec no dejo musica: subirla seria subir ruido. Y con
             // el DSEE encendido tampoco, porque la huella guardada describe el ARCHIVO (donde esa banda esta
@@ -1547,7 +1547,7 @@ namespace Rocola
         private bool DeclipVale(string path)
         {
             float[] c;
-            if (path == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen) return true;
+            if (path == null || !(eqCache.TryGetValue(path, out c) || RocolaOsMp3EqDeSombra(path, out c)) || c == null || c.Length < EqLen) return true;   // ROCOLA OS g432: (XP) if (path == null || !eqCache.TryGetValue(path, out c) || c == null || c.Length < EqLen) return true; — la sombra de una cancion tuya que suena desde Spotify decide el des-recorte con la ficha de tu MP3 (RocolaOs/RocolaOs.Calidad.cs; una pedida de Spotify, como antes)
             if (c[EqCut] <= 100f) return true;   // ficha vieja o sin analizar: no se sabe, se pone
             return c[EqClip] > 0.0001f;
         }

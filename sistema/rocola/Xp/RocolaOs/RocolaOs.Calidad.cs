@@ -83,6 +83,11 @@ namespace Rocola
         private static readonly ConcurrentDictionary<string, byte> pendientes = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
         internal static readonly ConcurrentDictionary<string, int> Fallos = new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
         internal static readonly ConditionalWeakTable<object, object> Sombras = new ConditionalWeakTable<object, object>();   // (la Track de Spotify -> su fuente)
+        // (27-11-2026) LA RUTA DE TU MP3 DE CADA SOMBRA, por su uri de Spotify (la ultima que se armo): lo que XP mira por la ruta de la cancion (el
+        // EQ, el bajo, el margen del ecualizador del dueno, el des-recorte, la duracion y el volumen parejo del billar) se mira en tu MP3
+        private static readonly ConcurrentDictionary<string, string> sombraDe = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+        internal static void PonSombra(string uri, string ruta) { if (sombraDe.Count > 4000) sombraDe.Clear(); sombraDe[uri] = ruta; }
+        internal static string Mp3DeSombra(string uri) { string r; return uri != null && sombraDe.TryGetValue(uri, out r) ? r : null; }
         internal static long Vistas_, Peores, Buenas, Pedidas, Parejas, SinPareja, DesdeSpotify, AlMp3, Confirmadas, Descartadas, Medidas;
 
         // ---------- el hilo ----------
@@ -505,19 +510,38 @@ namespace Rocola
             return true;
         }
         // g61 (Codigo/Form1.Sonido.cs, ArmaCadena): si el lector es la version de Spotify de una cancion tuya, la cadena se arma con una copia de
-        // tu cancion con la ruta de Spotify (sus medidas -ninguna de XP: g23 no aprende nada de «spotify:»-, su nivelado -g62- y nada del MP3:
-        // ni su EQ, ni su zumbido, ni su pre-eco, ni su realce de dañada). Lo que se ve (cad.Item, nowPlaying) sigue siendo tu cancion.
+        // tu cancion con la ruta de Spotify (g23 no aprende nada de «spotify:»). Desde el 27-11-2026 suena CON LO DE TU MP3: su EQ automatico y su
+        // realce (RocolaOsSpotifyEqHuella: la huella de tu MP3 en eqCache), el bajo psicoacustico, el margen del ecualizador del dueno, el
+        // des-recorte, la duracion minima del EQ del billar y el volumen parejo (g252-g254 y g430-g437 miran la huella de tu MP3 por la uri de
+        // la sombra) y su NIVEL (RocolaOsCalidadGananciaDe: la ganancia de tu MP3, la del disco si suena en racha, y lo que Spotify se aparta de
+        // ella). Sin el zumbido ni el pre-eco (son del archivo). Lo que se ve (cad.Item, nowPlaying) sigue siendo tu cancion.
         private Track RocolaOsCalidadCancion(Track t, IAudioSource source)
         {
             RocolaOsFuenteCalidad f = source as RocolaOsFuenteCalidad;
             if (f == null || t == null) return t;
             Track s = t.CopiaEtiqueta();
             s.Path = f.Uri;
-            f.Sombra = s;
+            f.Sombra = s; f.Original = t;
+            RocolaOsCalidad.PonSombra(f.Uri, f.Ruta);
             RocolaOsCalidad.Sombras.AddOrUpdate(s, f);
             string como;
             float g = RocolaOsCalidadGananciaDe(f, s, out como);
             RocolaOsCalidad.Apunta("la cadena de " + Path.GetFileName(f.Ruta) + " con " + f.Uri + ": nivelado " + (20 * Math.Log10(Math.Max(1e-6, g))).ToString("+0.0;-0.0", CultureInfo.InvariantCulture) + " dB (" + como + ")");
+            // (27-11-2026) y lo de tu MP3 que le toca en el resto de la cadena (la huella de tu MP3; sin ella, como antes: nada)
+            try
+            {
+                float[] eq = EqCorrFor(s.Path);
+                StringBuilder sb = new StringBuilder("la cadena de " + Path.GetFileName(f.Ruta) + " con " + f.Uri + ": con lo de tu MP3: EQ automatico ");
+                if (eq == null) sb.Append("sin correccion");
+                else for (int b = 0; b < eq.Length; b++) sb.Append(b == 0 ? "[" : " ").Append(eq[b].ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture)).Append(b == eq.Length - 1 ? "] dB" : "");
+                sb.Append("; realce ").Append(ExciteAmountFor(s.Path).ToString("0.00", CultureInfo.InvariantCulture));
+                sb.Append("; bajo x").Append(BassFactorFor(s.Path).ToString("0.00", CultureInfo.InvariantCulture)).Append(" de ").Append(BajoAuto(s.Path).ToString("0.00", CultureInfo.InvariantCulture));
+                sb.Append(DeclipVale(s.Path) ? "; con des-recorte" : "; sin des-recorte");
+                sb.Append(EqDuenoPesosDe(s.Path, eq) != null ? "; margen E3 con su huella" : "; margen E3 sin huella");
+                if (localAuto) sb.Append("; duracion ").Append(RocolaOsSegundosDe(s.Path).ToString("0", CultureInfo.InvariantCulture)).Append(" s; parejo ").Append(ParejoEstimado(s.Path).ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture)).Append(" dB");
+                RocolaOsCalidad.Apunta(sb.ToString());
+            }
+            catch (Exception ex) { RocolaOs.Falla(RocolaOsCalidad.Nombre, "la cadena de tu MP3", ex); }
             return s;
         }
         // g62 (Codigo/NivelDisco.cs, GananciaDe): la version de Spotify de una cancion tuya se nivela con lo suyo. Tambien cuando Ctrl+F3 vuelve
@@ -547,7 +571,19 @@ namespace Rocola
         {
             float g;
             RocolaOsCalidad.Pareja p = f.Par;
+            float gMp3, gLimMp3;
             if (!normalizeOn || normStrength <= 0.001f) { g = 1f; como = "el nivelado apagado"; }
+            else if (RocolaOsCalidadNivelMp3(f.Original, out gMp3, out gLimMp3))
+            {   // (27-11-2026) EL NIVEL DE TU MP3: lo que le toca a tu cancion (la del disco si suena en racha) y, encima, lo que la de Spotify se
+                // aparta de ella: con su medida al limite, el cociente de las dos ganancias al limite; sin ella (la primera vez), la mediana de ese
+                // cociente en las parejas ya medidas (con 3 o mas; si no, 1). Fuera de un disco en racha, las dos al limite: queda como antes.
+                float rel; string de;
+                if (p.ConMedida) { rel = GananciaAlLimite(normStrength, DbALin(p.PicoDb), DbALin(p.P99Db), DbALin(p.P90Db)) / gLimMp3; de = "su medida"; }
+                else { int cuantas; rel = RocolaOsCalidadRelMediana(out cuantas); de = cuantas >= 3 ? "la mediana de " + cuantas.ToString(CultureInfo.InvariantCulture) + " parejas medidas" : "sin medir: igual que tu MP3"; }
+                rel = Clampf(rel, 0.25f, 4f);
+                g = gMp3 * rel;
+                como = "el nivel de tu MP3 " + (20 * Math.Log10(Math.Max(1e-6, gMp3))).ToString("+0.0;-0.0", CultureInfo.InvariantCulture) + " dB" + (RachaDeDisco(f.Original) != null ? " (con su disco)" : "") + " y lo de Spotify: " + de;
+            }
             else if (p.ConMedida) { g = GananciaAlLimite(normStrength, DbALin(p.PicoDb), DbALin(p.P99Db), DbALin(p.P90Db)); como = "su medida"; }
             else
             {
@@ -563,8 +599,68 @@ namespace Rocola
                 else { g = 1f; como = "sin medir: como una de XP sin medir"; }
             }
             float m = MargenDelTono(sombra);
-            if (localAuto) { float pa = ParejoAplicado(sombra); if (pa != 0f) m *= DbALin(pa); }
+            if (localAuto) { float pa = ParejoAplicado(f.Original ?? sombra); if (pa != 0f) m *= DbALin(pa); }   // (27-11-2026: el parejo de tu MP3, en racha el de su disco)
             return m == 1f ? g : g * m;
+        }
+        // (27-11-2026) LA GANANCIA DE TU MP3 y la que lo deja al limite con su propia medida: la del disco si suena en racha con otra de su disco
+        // (GananciaDeDisco) y si no la suya (NormGainFor), como GananciaDe de XP; sin la medida al limite de tu MP3 (algoritmo 5), false: lo de antes.
+        private bool RocolaOsCalidadNivelMp3(Track orig, out float gMp3, out float gLimMp3)
+        {
+            gMp3 = 1f; gLimMp3 = 0f;
+            if (orig == null || orig.Path == null) return false;
+            float pico, p99, p90;
+            if (!PicosParaNivelar(orig.Path, out pico, out p99) || !P90ParaNivelar(orig.Path, out p90)) return false;
+            gLimMp3 = GananciaAlLimite(normStrength, pico, p99, p90);
+            List<Track> disco = RachaDeDisco(orig); float g;
+            if (!(disco != null && GananciaDeDisco(disco, orig.Path, out g))) g = NormGainFor(orig.Path);
+            gMp3 = g;
+            return gLimMp3 > 0f && gMp3 > 0f && !float.IsNaN(gLimMp3) && !float.IsInfinity(gLimMp3);
+        }
+        // la mediana de «ganancia al limite de Spotify entre ganancia al limite de tu MP3» de las parejas ya medidas (1 con menos de 3)
+        private float RocolaOsCalidadRelMediana(out int cuantas)
+        {
+            List<float> l = new List<float>();
+            foreach (RocolaOsCalidad.Pareja x in RocolaOsCalidad.Pares.Values)
+            {
+                if (x.Id == null || !x.ConMedida || x.Ruta == null) continue;
+                float pico, p99, p90;
+                if (!PicosParaNivelar(x.Ruta, out pico, out p99) || !P90ParaNivelar(x.Ruta, out p90)) continue;
+                float a = GananciaAlLimite(normStrength, pico, p99, p90), b = GananciaAlLimite(normStrength, DbALin(x.PicoDb), DbALin(x.P99Db), DbALin(x.P90Db));
+                if (a > 0f && b > 0f && !float.IsNaN(b / a) && !float.IsInfinity(b / a)) l.Add(b / a);
+            }
+            cuantas = l.Count;
+            if (l.Count < 3) return 1f;
+            l.Sort();
+            return l.Count % 2 == 1 ? l[l.Count / 2] : 0.5f * (l[l.Count / 2 - 1] + l[l.Count / 2]);
+        }
+
+        // (27-11-2026) las ayudas de los ganchos g430-g437: lo que XP mira por la ruta de una cancion, para la sombra de una tuya, en tu MP3
+        // g432 (DeclipVale) y g252-g254 (por RocolaOsSpotifyEqHuella): la huella de tu MP3 si la ruta es la sombra de una tuya; false para todo lo
+        // demas (una pedida sin huella de recorte: el des-recorte se pone por si acaso, como antes)
+        private bool RocolaOsMp3EqDeSombra(string path, out float[] c)
+        {
+            c = null;
+            if (!RocolaOs.Activo || path == null || !RocolaOsCalidad.Va || !path.StartsWith("spotify:track:", StringComparison.Ordinal)) return false;
+            string mp3 = RocolaOsCalidad.Mp3DeSombra(path);
+            return mp3 != null && eqCache.TryGetValue(mp3, out c) && c != null;
+        }
+        // g434 y g435: la duracion para el EQ del billar y el volumen parejo. Una de Spotify no esta en durCache: la de su pista (lo que pidio el
+        // catalogo) o, si es la sombra de una tuya, la de tu MP3. Lo demas, SegundosDe de XP.
+        private float RocolaOsSegundosDe(string path)
+        {
+            float d = SegundosDe(path);
+            if (d > 0.01f || !RocolaOs.Activo || path == null || !path.StartsWith("spotify:track:", StringComparison.Ordinal)) return d;
+            string mp3 = RocolaOsCalidad.Mp3DeSombra(path);
+            if (mp3 != null) { float m = SegundosDe(mp3); if (m > 0.01f) return m; }
+            RocolaOsSpotifyPista pi;
+            if (RocolaOsSpotify.Pistas.TryGetValue(path, out pi) && pi != null && pi.DuracionMs > 0) return pi.DuracionMs / 1000f;
+            return d;
+        }
+        // g436 (ParejoEstimado): el volumen parejo del billar de la sombra es el de tu MP3
+        private string RocolaOsRutaParejo(string path)
+        {
+            if (!RocolaOs.Activo || path == null || !path.StartsWith("spotify:track:", StringComparison.Ordinal)) return path;
+            return RocolaOsCalidad.Mp3DeSombra(path) ?? path;
         }
 
         // (encargo, en la pantalla) una cancion acaba de tener pareja: si el calentador de XP ya la tenia abierta por delante como MP3, se suelta

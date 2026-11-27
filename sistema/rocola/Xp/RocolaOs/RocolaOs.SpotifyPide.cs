@@ -157,13 +157,20 @@ namespace Rocola
 
         // ================================================================== I6
         // SOLOIST CON SESION (si no, el catalogo no pide)
-        internal bool RocolaOsSpotifyListo { get { return RocolaOsSpotify.Listo; } }
+        // (27-11-2026) tambien que Soloist responda (RocolaOsSpotify.PuedePedir): el catalogo, con esto, no cobra con Soloist sordo y dice el aviso de XP
+        internal bool RocolaOsSpotifyListo { get { string m; return RocolaOsSpotify.PuedePedir(out m); } }
         // PIDE UNA CANCION DE SPOTIFY con PONER, como una de XP desde un disco. En el hilo de la pantalla. Devuelve si entro en la cola.
         internal bool RocolaOsSpotifyPide(RocolaOsSpotifyPista p) { return RocolaOsSpotifyPide(p, false); }
         internal bool RocolaOsSpotifyPide(RocolaOsSpotifyPista p, bool desdeBuscador)
         {
             if (p == null || !RocolaOsSpotify.Encendido || !RocolaOsSpotify.EsUriDeCancion(p.Uri)) return false;
-            if (!RocolaOsSpotify.Listo) { RocolaOsSpotify.Apunta("no se pide " + p.Uri + ": Soloist sin sesion"); return false; }
+            string noPuede;
+            if (!RocolaOsSpotify.PuedePedir(out noPuede))
+            {   // (nada se cobra ni se mete en la cola: el aviso de XP, «Espera un momento y vuelve a intentarlo»)
+                RocolaOsSpotify.Apunta("no se pide " + p.Uri + ": " + noPuede + " (no se cobra)");
+                if (desdeBuscador) ShowSearchToast("Espera un momento y vuelve a intentarlo", false); else ShowToast("Espera un momento y vuelve a intentarlo", Color.FromArgb(200, 130, 35));
+                return false;
+            }
             RocolaOsSpotify.Pistas[p.Uri] = p;
             Track t = new Track();
             t.Path = p.Uri; t.Title = p.Titulo ?? ""; t.Artist = p.Artista ?? ""; t.Album = p.Disco ?? ""; t.Genre = "";

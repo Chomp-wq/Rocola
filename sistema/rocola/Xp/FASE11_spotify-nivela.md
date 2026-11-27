@@ -119,6 +119,32 @@ Vorbis 160 kbps (cortado a unos 16 kHz).
   que arranque con el guardado haría falta otro gancho (sembrar `cutHz` del `SpectralTap` al armarlo), y no hace falta.
 - Con las dos apagadas, sin el modo Spotify o sin Rocola OS: como antes, bit a bit (ningún gancho cambia nada con una ruta que no es «spotify:»).
 
+## 8. Cinco mejoras de Spotify (27-11-2026; elegidas por el dueño de la lista del 24-11)
+
+Solo Rocola OS con el modo Spotify. Ganchos g430-g437 (más la ayuda de g252-g254); nada cambia sin el modo.
+
+1. **La sustituida suena con el EQ y el nivel de tu MP3** (`RocolaOs.Calidad.cs`, `RocolaOs.SpotifyEq.cs`). Antes la sombra (g61) usaba solo lo de Spotify: sin EQ automático ni
+   realce, y nivelada sola. Ahora `RocolaOsSpotifyEqHuella` (g252/g253/g254) da la huella de `eqCache` de tu MP3 por la uri de la sombra (`RocolaOsCalidad.Mp3DeSombra`), así el EQ y
+   el realce son los de tu archivo (su corte, más bajo que el de Spotify, hace el EQ más prudente). El nivel (`RocolaOsCalidadGananciaDe`): la ganancia de tu MP3 (la del
+   disco si suena en racha, `GananciaDeDisco`; si no `NormGainFor`) por lo que Spotify se aparta de ella: con la medida de la pareja, el cociente de las dos ganancias al límite; sin
+   ella, la mediana de ese cociente en las parejas medidas (3 o más; si no, 1). Sin la medida al límite de tu MP3, como antes. No hecho: el LRA y el nivel del local del billar.
+2. **Billar y cadena completa con Spotify**: g430 `BassFactorFor`, g431 `BajoAuto`, g433 margen E3 (`EqDuenoPesosDe`), g437 rasgos del parejo estimado (pedidas con su huella de
+   `rocola_spotify_eq.txt`, sombras con la de tu MP3); g432 `DeclipVale` (solo la sombra; una pedida sigue con des-recorte por si acaso, su recorte no se mide); g434/g435 la
+   duración (`RocolaOsSegundosDe`: la de la pista de Spotify o la de tu MP3) para el mínimo de 45 s del EQ del billar y el parejo; g436 el parejo de la sombra es el de tu MP3.
+   La bitácora de la sustitución dice, al armar la cadena, EQ, realce, bajo, des-recorte, E3, duración y parejo.
+3. **No cobrar con Soloist sordo**: `RocolaOsSpotify.PuedePedir` (sin WebSocket, sin sesión, conectado 10 s sin contestar a `get_auth_state`, vigilante «esperando» o «arrancando»,
+   archivo «reinicia» puesto). `RocolaOsSpotifyListo` (que usa el catálogo) y `RocolaOsSpotifyPide` lo usan: no se cobra ni entra y sale «Espera un momento y vuelve a intentarlo»;
+   la bitácora dice el motivo. Las tuyas sustituidas no cambian.
+4. **Devolver si se corta antes de la mitad** (`RocolaOs.SpotifyFuente.cs`, `Acaba`): un fallo que no es natural devuelve el crédito si lo sonado no llegó a la mitad de la
+   duración (antes solo con menos de 10 s); desde la mitad, no. La bitácora dice «NO LLEGO A LA MITAD (iba en el s X de Y)». Sustituye «acaba SIN devolver» del 22-11.
+5. **Sin silencio al empezar** (función `spotify_arranque`, `RocolaOs.SpotifyArranque.cs`, encendida): medido, el arranque sin hueco de la fuente (unos 1,3 s de la tarjeta de XP) se
+   queda; lo que se quita es el silencio digital que Soloist entrega antes de la música: la fuente lo consume del anillo sin entregarlo (todo ≤ −80 dBFS, tope 1500 ms, hasta 16
+   tomas por lectura), completa la lectura con la música que sigue y le pone 1 ms de fundido; no toca retomadas ni cortes seguidos. Con el Soloist falso (1400 ms de ceros) la música
+   llega ~1 s antes. Efecto aceptado: el anillo queda sin colchón un instante (huecos al azar también aparecen sin la función con la máquina cargada).
+
+Pruebas: spotify-xp `arranque`, `sordopide`, `mitad` (cortada2 y cortadalarga ajustadas a la regla nueva); sustitucion `nivelmp3`. Soloist falso: `SOLOIST_FALSO_SILENCIO=MS` y
+`SOLOIST_FALSO_INTRO_SUAVE=MS`. No con Soloist real ni en el A4.
+
 ## Pruebas (`Pruebas/RocolaOs/spotify-xp`, con el Soloist falso)
 
 El Soloist falso aprende dos cosas: `q` y dígitos en el id (el pico del tono a −N dBFS) y `SOLOIST_FALSO_COPIA=«A>B»` (al pedir A toca B con

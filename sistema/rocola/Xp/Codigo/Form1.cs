@@ -1016,7 +1016,7 @@ namespace Rocola
         {
             float bas = 0.30f;   // punto de partida: el mismo que traia la perilla de fabrica
             float[] c = null;
-            if (path != null) eqCache.TryGetValue(path, out c);
+            if (path != null) if (!eqCache.TryGetValue(path, out c)) RocolaOsSpotifyEqHuella(path, false, out c);   // ROCOLA OS g431: (XP) if (path != null) eqCache.TryGetValue(path, out c); — el bajo automatico de una de Spotify con su huella (la de la pedida, o la de tu MP3 si es la sombra de una tuya)
             if (c != null && c.Length >= EqLen)
             {
                 if (c[EqClip] > 0.0015f) bas *= 0.75f;                          // picos aplastados: menos

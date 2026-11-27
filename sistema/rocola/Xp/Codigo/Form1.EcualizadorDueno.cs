@@ -101,7 +101,7 @@ namespace Rocola
         private float[] EqDuenoPesosDe(string path, float[] corr)
         {
             float[] h;
-            if (path == null || eqCache == null || !eqCache.TryGetValue(path, out h) || h == null || h.Length < EqLen || h[EqFingerprint] != EqVersionOriginal) return null;
+            if (path == null || eqCache == null || !(eqCache.TryGetValue(path, out h) || RocolaOsSpotifyEqHuella(path, false, out h)) || h == null || h.Length < EqLen || h[EqFingerprint] != EqVersionOriginal) return null;   // ROCOLA OS g433: (XP) if (path == null || eqCache == null || !eqCache.TryGetValue(path, out h) || h == null || h.Length < EqLen || h[EqFingerprint] != EqVersionOriginal) return null; — el margen del ecualizador del dueno (E3) de una de Spotify con su huella o, la sombra de una tuya, con la de tu MP3
             float[] p = new float[8];
             for (int b = 0; b < 8; b++)
             {
