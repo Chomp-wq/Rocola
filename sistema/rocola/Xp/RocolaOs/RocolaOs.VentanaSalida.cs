@@ -77,12 +77,12 @@ namespace Rocola
             bUsar.Relleno = Color.FromArgb(30, 96, 70); bUsar.Borde = Color.FromArgb(72, 182, 132);
             BotonPlano bProbar = new BotonPlano(); bProbar.SetBounds(16, 182, anchoFila, 38); bProbar.Font = x.FBot;
             BotonPlano bAuto = new BotonPlano(); bAuto.SetBounds(16, 228, anchoFila, 38); bAuto.Font = x.FBot;
-            Rotulo lInfo = new Rotulo(); lInfo.SetBounds(16, 278, anchoFila, 150); lInfo.BackColor = Color.Transparent; lInfo.ForeColor = x.CTenue; lInfo.Font = x.FDes;
-            lInfo.Text = "«Usar esta salida» la guarda (como «rocola-sonido usar N») y la rocola se vuelve a abrir en unos segundos sin perder "
-                + "los créditos, la cola ni lo que suena. Al volver pregunta «¿Se oye bien?»: si nadie contesta en " + RocolaOs.SalidaPruebaSegundos
-                + " s, vuelve sola a la de antes. «Probar un pitido» suena 3 s por otra tarjeta sin cambiar nada (la que está sonando no se puede "
-                + "probar aparte). La automática es la primera que no es del HDMI. «rocola-sonido auto» en la consola de mantenimiento lo deshace.";
-            Rotulo lEstado = new Rotulo(); lEstado.SetBounds(16, 436, anchoFila, 120); lEstado.BackColor = Color.Transparent; lEstado.ForeColor = x.CAviso; lEstado.Font = x.FDes;
+            // (27-11-2026, la salida nueva: el texto mas corto y el estado mas abajo, para su bloque; los botones no se mueven)
+            Rotulo lInfo = new Rotulo(); lInfo.SetBounds(16, 274, anchoFila, 62); lInfo.BackColor = Color.Transparent; lInfo.ForeColor = x.CTenue; lInfo.Font = x.FDes;
+            lInfo.Text = "«Usar» la guarda y la rocola se reabre sin perder créditos, cola ni lo que suena; al volver pregunta «¿Se oye bien?» "
+                + "y sin respuesta en " + RocolaOs.SalidaPruebaSegundos + " s vuelve sola a la de antes. «Probar»: 3 s por otra tarjeta. "
+                + "La automática: la primera que no es HDMI (con la salida nueva, la USB).";
+            Rotulo lEstado = new Rotulo(); lEstado.SetBounds(16, 512, anchoFila, 50); lEstado.BackColor = Color.Transparent; lEstado.ForeColor = x.CAviso; lEstado.Font = x.FDes;
             tUso.Controls.Add(lAhora); tUso.Controls.Add(lAhora2); tUso.Controls.Add(lSel);
             tUso.Controls.Add(bUsar); tUso.Controls.Add(bProbar); tUso.Controls.Add(bAuto); tUso.Controls.Add(lInfo); tUso.Controls.Add(lEstado);
 
@@ -144,6 +144,7 @@ namespace Rocola
             };
             bUsar.Click += delegate { if (sel < salidas.Count) elige(salidas[sel].Clave); };
             bAuto.Click += delegate { elige(RocolaOs.SalidaAuto); };
+            Action pintaNueva = RocolaOsSalidaNuevaBloque(x, tUso, 342, delegate (string e, bool bien) { estado = e; estadoBien = bien; pinta(); });
             bProbar.Click += delegate
             {
                 if (sel >= salidas.Count) return;
@@ -156,7 +157,7 @@ namespace Rocola
             RocolaOsPagina pag = new RocolaOsPagina();
             pag.Panel = pg; pag.Titulo = "Sonido";
             bool probabaAntes = false;
-            pag.CadaMedioSegundo = delegate { bool p = RocolaOs.Probando; if (p != probabaAntes) { probabaAntes = p; pinta(); } };
+            pag.CadaMedioSegundo = delegate { bool p = RocolaOs.Probando; if (p != probabaAntes) { probabaAntes = p; pinta(); } pintaNueva(); };
             return pag;
         }
 
@@ -194,7 +195,12 @@ namespace Rocola
                 PantallaRocola.EnsenaFlecha();
                 List<RocolaOsSalida> l = RocolaOs.SalidasDeSonido();
                 string nueva = p.Nueva == RocolaOs.SalidaAuto ? "la automática" : p.Nueva;
-                foreach (RocolaOsSalida s in l) if (s.Clave == p.Nueva) nueva = "la salida " + s.Numero + ", " + s.Tipo + " (" + s.Clave + ")";
+                string nuevaNum = SalidaNueva.ANumero(p.Nueva) ?? p.Nueva;
+                foreach (RocolaOsSalida s in l) if (s.Clave == nuevaNum) nueva = "la salida " + s.Numero + ", " + s.Tipo + " (" + s.Clave + ")";
+                if (p.Nueva == RocolaOs.PruebaSalidaNueva + "1")
+                    nueva = SalidaNueva.Va && SalidaNueva.Abierta ? "la SALIDA NUEVA (" + SalidaNueva.TextoFormato() + ", por " + (SalidaNueva.TarjetaNombre.Length > 0 ? SalidaNueva.TarjetaNombre : SalidaNueva.PcmNombre) + ")"
+                        : "la salida nueva, que NO abrió (" + SalidaNueva.Motivo + "): contesta «No»";
+                else if (p.Nueva == RocolaOs.PruebaSalidaNueva + "0") nueva = "la salida de siempre (sin la salida nueva)";
                 string ff = FamiliaUi();
                 using (Rocola.Nativo.Letra fTit = Rocola.Nativo.Letra.EnPuntos(ff, 15f, true))
                 using (Rocola.Nativo.Letra fSub = Rocola.Nativo.Letra.EnPuntos(ff, 9.5f))

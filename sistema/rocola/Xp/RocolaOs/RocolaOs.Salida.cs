@@ -44,6 +44,8 @@ namespace Rocola
     internal static partial class RocolaOs
     {
         internal const string NombreSalida = "salida_audio", ArchivoSalidaPrueba = "rocola_salida_prueba.txt", SalidaAuto = "auto";
+        // (27-11-2026) la prueba de la salida nueva va por el mismo camino: «salida_nueva:1» (encenderla) o «salida_nueva:0» en vez de una tarjeta
+        internal const string PruebaSalidaNueva = "salida_nueva:";
         internal const int SalidaPruebaSegundos = 15, SalidaPreguntaTrasMs = 3000, SalidaArranquesMax = 3;
 
         private static string Asound
@@ -107,7 +109,8 @@ namespace Rocola
                     }
                     catch { }
                     if (eld) hdmiT = true;
-                    bool usb = linea.IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0;
+                    bool usb = linea.IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0
+                        || File.Exists(Path.Combine(c, "usbid"));   // (27-11-2026, la salida nueva: snd-usb-audio deja usbid en su carpeta)
                     List<int> ps = new List<int>();
                     try { foreach (string d in Directory.GetDirectories(c)) { int n = NumeroDe(Path.GetFileName(d), "pcm", "p"); if (n >= 0) ps.Add(n); } } catch { }
                     ps.Sort();
@@ -134,18 +137,29 @@ namespace Rocola
             foreach (RocolaOsSalida s in l) if (!s.Hdmi) return s;
             return null;
         }
-        // LO GUARDADO en rocola_tarjeta.txt: «plughw:T,S» o null (la automatica: no hay archivo, o no dice una salida)
+        // LO GUARDADO en rocola_tarjeta.txt: «plughw:T,S» o null (la automatica: no hay archivo, o no dice una salida). (27-11-2026, la salida
+        // nueva) tambien POR NOMBRE, «plughw:CARD=id,DEV=S» (lo que escriben la hoja y rocola-sonido con la salida nueva): se da con el numero de
+        // ahora de esa tarjeta; si no esta conectada, tal cual (la hoja dice que es a mano y la automatica suena)
         internal static string SalidaGuardada()
+        {
+            string g = SalidaGuardadaCruda();
+            if (g == null || reFija.IsMatch(g)) return g;
+            return SalidaNueva.ANumero(g) ?? g;
+        }
+        // tal cual esta en el archivo (por numero o por nombre)
+        internal static string SalidaGuardadaCruda()
         {
             string t = Lee(ArchivoTarjetaFija);
             if (t == null) return null;
-            foreach (string x in t.Split('\n')) { string y = x.TrimEnd('\r'); if (reFija.IsMatch(y)) return y; }
+            foreach (string x in t.Split('\n')) { string y = x.TrimEnd('\r'); if (SalidaNueva.EsClaveDeTarjeta(y)) return y; }
             return null;
         }
         // LA QUE USA LA ROCOLA AHORA: ROCOLA_ALSA si dice una salida (la pone el lanzador con rocola-tarjeta); si no, la que rocola-tarjeta
         // elegiria (lo guardado si esa salida existe, si no la automatica)
         internal static string SalidaEnUso(List<RocolaOsSalida> l)
         {
+            // (la salida nueva: la que abrio su motor, por hw:, aunque el lanzador haya dicho otra en ROCOLA_ALSA)
+            if (SalidaNueva.Va && SalidaNueva.Abierta && SalidaNueva.TarjetaNumero >= 0) return "plughw:" + SalidaNueva.TarjetaNumero.ToString(CultureInfo.InvariantCulture) + "," + SalidaNueva.Dispositivo.ToString(CultureInfo.InvariantCulture);
             string e = null; try { e = Environment.GetEnvironmentVariable("ROCOLA_ALSA"); } catch { }
             if (!string.IsNullOrEmpty(e) && reFija.IsMatch(e)) return e;
             return SalidaQueTocaria(l);
@@ -165,6 +179,16 @@ namespace Rocola
             string f = ArchivoTarjetaFija;
             try
             {
+                // (27-11-2026) la prueba de la salida nueva: no es una tarjeta, es encenderla o apagarla (salida_nueva= en rocola_os.txt)
+                if (clave != null && clave.StartsWith(PruebaSalidaNueva, StringComparison.Ordinal))
+                {
+                    bool si = clave.Substring(PruebaSalidaNueva.Length) == "1";
+                    if (!PonAjuste(SalidaNueva.NombreFuncion, si ? "1" : "0")) { err = "no se pudo guardar salida_nueva en rocola_os.txt"; return false; }
+                    AnotaEnSonido(si ? "se encendio la salida nueva en Ctrl+F4" : "se apago la salida nueva en Ctrl+F4");
+                    return true;
+                }
+                // (27-11-2026) con la salida nueva se guarda POR NOMBRE (un aparato USB puede cambiar de numero de un arranque a otro)
+                if (clave != null && clave != SalidaAuto && SalidaNueva.Va) clave = SalidaNueva.ANombre(clave);
                 if (clave == null || clave == SalidaAuto) { if (File.Exists(f)) File.Delete(f); }
                 else EscribeConSync(f, clave + "\n");
                 AnotaEnSonido(clave == null || clave == SalidaAuto ? "se eligio la salida automatica en Ctrl+F4" : "se eligio a mano la salida " + clave + " en Ctrl+F4");
@@ -212,7 +236,7 @@ namespace Rocola
                 if (c == "antes") p.Antes = v; else if (c == "nueva") p.Nueva = v;
                 else if (c == "arranques") int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out p.Arranques);
             }
-            if (p.Antes == null || (p.Antes != SalidaAuto && !reFija.IsMatch(p.Antes))) p.Antes = SalidaAuto;
+            if (p.Antes == null || (p.Antes != SalidaAuto && !SalidaNueva.EsClaveDeTarjeta(p.Antes) && !p.Antes.StartsWith(PruebaSalidaNueva, StringComparison.Ordinal))) p.Antes = SalidaAuto;
             if (p.Nueva == null) p.Nueva = SalidaAuto;
             return p;
         }
@@ -228,7 +252,8 @@ namespace Rocola
         internal static bool EligeSalida(string clave, out string err)
         {
             err = null;
-            string antes = SalidaGuardada() ?? SalidaAuto;
+            string antes = clave != null && clave.StartsWith(PruebaSalidaNueva, StringComparison.Ordinal)
+                ? PruebaSalidaNueva + (Encendida(SalidaNueva.NombreFuncion) ? "1" : "0") : SalidaGuardadaCruda() ?? SalidaAuto;
             try { GuardaPruebaSalida(new PruebaSalida { Antes = antes, Nueva = clave, Arranques = 0 }); }
             catch (Exception ex) { err = ex.Message; Falla(NombreSalida, "guardar la prueba", ex); return false; }
             if (!GuardaSalida(clave, out err)) { BorraPruebaSalida(); return false; }

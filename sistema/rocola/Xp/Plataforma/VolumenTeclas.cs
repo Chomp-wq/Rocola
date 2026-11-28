@@ -59,6 +59,12 @@ namespace Rocola
 
         private static long Ahora() { return Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency; }
 
+        // ROCOLA OS, LA SALIDA NUEVA (RocolaOs/RocolaOs.SalidaNueva.cs; CADENA_NUEVA.md §4, decision D13): con la funcion «salida_nueva» el volumen
+        // del dueno es DIGITAL (en dB, antes de la unica cuantizacion) y no el de la tarjeta: los pasos juntados aqui (de los botones de atras,
+        // con su repeticion) y el silencio van a Desvio, que los toma como 1 dB por paso (true = atendido: no se llama a amixer). Sin ella, nadie
+        // lo pone: amixer, como siempre.
+        internal static Func<int, bool, bool> Desvio;
+
         private static void Arranca()
         {
             if (hilo != null) return;
@@ -86,6 +92,8 @@ namespace Rocola
                     pasos = pendiente; pendiente = 0;
                     mudo = silencio; silencio = false;
                 }
+                Func<int, bool, bool> desvio = Desvio;
+                if (desvio != null && (pasos != 0 || mudo)) { try { if (desvio(pasos, mudo)) { pasos = 0; mudo = false; } } catch { } }
                 try
                 {
                     if (pasos != 0) Amixer((Math.Abs(pasos) * PasoPct).ToString(CultureInfo.InvariantCulture) + "%" + (pasos > 0 ? "+" : "-") + (pasos > 0 ? " unmute" : ""));

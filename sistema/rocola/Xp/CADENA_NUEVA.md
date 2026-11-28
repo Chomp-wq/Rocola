@@ -128,7 +128,9 @@ el PROZOR primero · D13 botones de volumen a 1 dB por toque.
   pieza debe leer por delante (`Cebado`); si algo mas leyera la siguiente antes de que suene, `ExactoAlFinal = false`.
 - La hojita «Billar» de Ctrl+F4 (afinacion de varios puntos con el ruido por bandas EN MONO, la curva dibujada, los mandos) sale con
   `cadena_nueva=1` o `billar_nuevo=1`. El ruido por bandas suena por `CreaWaveOut` (como la prueba de bocinas de XP): con la salida nueva
-  siempre abierta hace falta un camino suyo (agente de la salida).
+  siempre abierta hace falta un camino suyo (agente de la salida). HECHO (28-11-2026, agente de la salida): con la salida nueva abierta va por
+  `SalidaNueva.EmpiezaPrueba` (sola, en coma flotante, ganancia 1, con el volumen del dueno; se corta sola si empieza algo pedido); sin ella,
+  `CreaWaveOut` como antes (CADENA_NUEVA_salida.md, «Las pruebas de sonido por el mismo flujo»).
 - Pruebas: `Pruebas/RocolaOs/billar-nuevo/prueba.sh`, 86 de 86 en NativeAOT (respuesta, fase lineal, ganancia constante, bajo virtual
   homogeneo y sin aliasing, disco continuo, afinacion, guardar y leer, la hojita); 0,24-0,50 % de un nucleo aqui.
 
@@ -153,3 +155,15 @@ el PROZOR primero · D13 botones de volumen a 1 dB por toque.
   final), sin limitador: la proteccion de 0 dBFS es de la salida.
 
 Estado: EN CURSO desde el 27-11-2026. Nada probado en el A4 ni oido.
+
+- Salida nueva (g440-g445): HECHA el 27-11-2026 y juntada con la A y la B el 28-11-2026, en su rama, sin publicar (CADENA_NUEVA_salida.md): la
+  funcion «salida_nueva» (apagada de fabrica; se enciende en Ctrl+F4 -> Sonido con «¿Se oye bien?» 15 s), la tarjeta por hw: y por su nombre (la
+  USB primero), siempre abierta con ceros (0,5 s al abrir), S32_LE de 24 bits a 44 100 Hz fijos, el volumen del dueno digital a 1 dB por toque,
+  la proteccion de 0 dBFS contada, una sola cuantizacion TPDF, los videos por la rocola (tuberia del «file» de alsa-lib, ganancia fija medida con
+  ffmpeg ebur128, noche como la musica), la medida del convertidor (Ctrl+F4 y rocola-mide-dac) y las pruebas de sonido por el mismo flujo
+  (SalidaNueva.EmpiezaPrueba; el ruido por bandas del billar ya va por ahi; «la musica manda»: se cortan si empieza algo pedido). LA CONVERSION DE
+  FRECUENCIA ES LA DE LA SALIDA, SIN LIMITADOR: con ella XP no convierte (g441-g443: ni `frecuencia_salida=`; g445: el relevo sin pausa solo con el
+  mismo formato), porque su `ConvierteSalida` pone su limitador de pico real detras; la cadena (la de hoy, la A o la B) sale a la frecuencia de la
+  cancion y la fuente del motor la lleva a 44,1 kHz con el mismo sinc, con solo la proteccion detras. Guiones cambiados: rocola-tarjeta,
+  rocola-sonido y rocola-mide-dac nuevo (piden la compilacion rapida del sistema). Prueba Pruebas/RocolaOs/salida-nueva (JIT y NativeAOT). Nada en
+  el A4, ni con el PO100 ni con el PROZOR de verdad.

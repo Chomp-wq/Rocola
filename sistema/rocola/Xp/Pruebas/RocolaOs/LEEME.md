@@ -30,6 +30,11 @@ Los archivos:
   ffmpeg), la ganancia, la ganancia constante (escalones de +-10 dB, tambien contra la de hoy), el disco continuo, los arreglos fijos y el costo
   (la orden `rocola-xp --prueba-cadena-nueva`, con las senales de `senales.py`); y escenas con la rocola de verdad y la tarjeta con reloj
   (`analiza.py`): la A, la B con el modo billar, la de hoy, sin `ROCOLA_OS` y Spotify con el Soloist falso de `spotify-xp`.
+- `salida-nueva/prueba.sh`: la salida nueva de sonido (`CADENA_NUEVA_salida.md`): los guiones `rocola-tarjeta` y `rocola-sonido` por nombre
+  (con BusyBox), la eleccion de la tarjeta, la medida del convertidor (`lazo.c`, un convertidor de prueba que recorta y se graba de vuelta), la
+  rocola de verdad con la tarjeta con reloj (`analiza.py`): la tarjeta siempre abierta a 24 bits y 44,1 kHz, la conversion sin el limitador de
+  XP, la cadena nueva A por ella, el video por la rocola, las pruebas de sonido solas (y el ruido por bandas del billar), la que no abre, el
+  volumen del dueno, la proteccion, la hoja Sonido de Ctrl+F4, sin la salida nueva y (con `BASE=`) bit a bit contra el programa de antes.
 
 ## Cómo se corre
 

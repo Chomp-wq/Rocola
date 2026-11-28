@@ -116,11 +116,11 @@ namespace Rocola
             if (!MismaSalida()) return;
             // Se eligio otra frecuencia para la tarjeta (A4) y esta salida va a la de antes: la siguiente abre la salida
             // de nuevo, ya a la elegida, en vez de seguir encadenada a la vieja.
-            if (frecuenciaSalida > 0 && s.WaveFormat.SampleRate != frecuenciaSalida) return;
+            if (RocolaOsSalidaNuevaHz(frecuenciaSalida) > 0 && s.WaveFormat.SampleRate != RocolaOsSalidaNuevaHz(frecuenciaSalida)) return;   // ROCOLA OS g443: (XP) if (frecuenciaSalida > 0 && s.WaveFormat.SampleRate != frecuenciaSalida) return; — con la salida nueva no hay frecuencia de la tarjeta que esperar: la salida va a la de la cancion y la convierte el motor de Rocola OS (RocolaOs/RocolaOs.SalidaNueva.cs; sin ella, lo guardado)
             // El lector de la siguiente lo abre por delante el calentador (MiraPorDelante). Si aun no esta, o
             // no conserva la disposicion conocida o excede trabajo de conversion, queda para PlayNext.
             string ruta = RutaQueSonaria(sig.Song.Path);
-            if (ruta == null || !lookahead.Cumple(ruta, delegate(IAudioSource l) { return Encadenado.MismoFormato(l.WaveFormat, s.WaveFormat) || RemuestreoContinuo.SePuede(l.WaveFormat, s.WaveFormat); }))
+            if (ruta == null || !lookahead.Cumple(ruta, delegate(IAudioSource l) { return Encadenado.MismoFormato(l.WaveFormat, s.WaveFormat) || RocolaOsSalidaNuevaRelevoConvierte(l.WaveFormat, s.WaveFormat); }))   // ROCOLA OS g445: (XP) if (ruta == null || !lookahead.Cumple(ruta, delegate(IAudioSource l) { return Encadenado.MismoFormato(l.WaveFormat, s.WaveFormat) || RemuestreoContinuo.SePuede(l.WaveFormat, s.WaveFormat); })) — con la salida nueva el relevo sin pausa solo sigue con el mismo formato: XP convertiria la siguiente a la frecuencia de la que suena con su limitador detras (ConvierteSalida); asi la de otra frecuencia abre su salida al acabar esta (en el motor, un cambio de fuente con la tarjeta abierta) y la convierte el motor, sin limitador (RocolaOs/RocolaOs.SalidaNueva.cs; sin ella, lo de XP)
                 return;
             double[] tablaConversion = null;
             if (!lookahead.Cumple(ruta, delegate(IAudioSource l) {
