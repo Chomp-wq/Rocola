@@ -116,7 +116,7 @@ namespace Rocola
             if (!MismaSalida()) return;
             // Se eligio otra frecuencia para la tarjeta (A4) y esta salida va a la de antes: la siguiente abre la salida
             // de nuevo, ya a la elegida, en vez de seguir encadenada a la vieja.
-            if (frecuenciaSalida > 0 && s.WaveFormat.SampleRate != frecuenciaSalida) return;
+            if (RocolaOsSalidaNuevaHz(frecuenciaSalida) > 0 && s.WaveFormat.SampleRate != RocolaOsSalidaNuevaHz(frecuenciaSalida)) return;   // ROCOLA OS g443: (XP) if (frecuenciaSalida > 0 && s.WaveFormat.SampleRate != frecuenciaSalida) return; — con la salida nueva el relevo solo sigue en una salida a 44 100 Hz (la siguiente ya llega convertida a 44,1 kHz; RocolaOs/RocolaOs.SalidaNueva.cs; sin ella, lo guardado)
             // El lector de la siguiente lo abre por delante el calentador (MiraPorDelante). Si aun no esta, o
             // no conserva la disposicion conocida o excede trabajo de conversion, queda para PlayNext.
             string ruta = RutaQueSonaria(sig.Song.Path);

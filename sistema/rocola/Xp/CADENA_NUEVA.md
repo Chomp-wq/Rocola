@@ -93,3 +93,11 @@ el PROZOR primero · D13 botones de volumen a 1 dB por toque.
 | Comparacion ciega, ABX y medidas (despues) | RocolaOs.Compara*.cs | g490-g499 |
 
 Estado: EN CURSO desde el 27-11-2026. Nada probado en el A4 ni oido.
+
+- Salida nueva (g440-g444): HECHA el 27-11-2026, en su rama, sin publicar (CADENA_NUEVA_salida.md): la funcion «salida_nueva» (apagada de fabrica;
+  se enciende en Ctrl+F4 -> Sonido con «¿Se oye bien?» 15 s), la tarjeta por hw: y por su nombre (la USB primero), siempre abierta con ceros
+  (0,5 s al abrir), S32_LE de 24 bits a 44 100 Hz fijos con el sinc de XP, el volumen del dueno digital a 1 dB por toque, la proteccion de 0 dBFS
+  contada, una sola cuantizacion TPDF, los videos por la rocola (tuberia del «file» de alsa-lib, ganancia fija medida con ffmpeg ebur128, noche
+  como la musica), la medida del convertidor (Ctrl+F4 y rocola-mide-dac) y las pruebas de sonido por el mismo flujo (SalidaNueva.EmpiezaPrueba,
+  para el billar). Guiones cambiados: rocola-tarjeta, rocola-sonido y rocola-mide-dac nuevo (piden la compilacion rapida del sistema). Prueba
+  Pruebas/RocolaOs/salida-nueva (JIT y NativeAOT). Nada en el A4, ni con el PO100 ni con el PROZOR de verdad.

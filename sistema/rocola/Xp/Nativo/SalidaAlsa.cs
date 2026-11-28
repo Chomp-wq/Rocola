@@ -94,9 +94,31 @@ namespace Rocola
         private SalidaAlsa(IntPtr pcm, string nombre, WaveFormat f, int bufer, int periodo)
         { this.pcm = pcm; Nombre = nombre; alineado = Math.Max(1, f.BlockAlign); Tasa = f.SampleRate; CuadrosBufer = bufer; CuadrosPeriodo = periodo; }
 
+        // ROCOLA OS (la salida nueva, CADENA_NUEVA.md §4; RocolaOs/RocolaOs.SalidaNueva*.cs): con la funcion «salida_nueva» la tarjeta la tiene
+        // SIEMPRE abierta el motor de Rocola OS y «abrir la tarjeta» es enchufarle una fuente: Abre le pregunta primero a RocolaOsAbre (lo pone
+        // esa funcion al arrancar; sin ella, null y XP tal cual) y, si da una fuente, esta salida le pasa todo (cuanto cabe, escribir, cuanto
+        // sono, tirar, pausa y cierre; los errores son los mismos ErrorAlsa). Lo de abajo no cambia nada mas.
+        internal interface IFuenteRocolaOs
+        {
+            string Nombre { get; }
+            int Libres();
+            void Escribe(byte[] datos, int bytes);
+            long Sonado();
+            long Escritos { get; }
+            void Vacia();
+            void Pausa(bool si);
+            void Cierra();
+        }
+        internal static Func<WaveFormat, int, int, IFuenteRocolaOs> RocolaOsAbre;
+        private readonly IFuenteRocolaOs fuente;
+        private SalidaAlsa(IFuenteRocolaOs f, WaveFormat formato, int bufer, int periodo)
+        { fuente = f; Nombre = f.Nombre; alineado = Math.Max(1, formato.BlockAlign); Tasa = formato.SampleRate; CuadrosBufer = bufer; CuadrosPeriodo = periodo; }
+
         // Abre la tarjeta de la rocola con ese formato, un periodo de un bloque y un bufer de todos los bloques. ErrorAlsa si no se puede.
         internal static SalidaAlsa Abre(WaveFormat formato, int cuadrosBloque, int bloques)
         {
+            Func<WaveFormat, int, int, IFuenteRocolaOs> ros = RocolaOsAbre;
+            if (ros != null) { IFuenteRocolaOs f = ros(formato, cuadrosBloque, bloques); if (f != null) return new SalidaAlsa(f, formato, Math.Max(2, cuadrosBloque * Math.Max(2, bloques)), Math.Max(1, cuadrosBloque)); }
             int fmt = FormatoAlsa(formato);
             if (fmt < 0) throw new ErrorAlsa(-ErrorAlsa.EINVAL, "snd_pcm_hw_params_set_format", true);
             string nombre = Tarjeta();
@@ -154,6 +176,7 @@ namespace Rocola
         // Cuantos cuadros caben ahora. Si la tarjeta se quedo sin nada (XRUN) o se suspendio, se recupera y cabe todo.
         internal int Libres()
         {
+            if (fuente != null) return fuente.Libres();
             nint a = snd_pcm_avail(pcm);
             if (a == -ErrorAlsa.EPIPE || a == -ErrorAlsa.ESTRPIPE) { Recupera((int)a, "snd_pcm_avail"); a = snd_pcm_avail(pcm); }
             if (a < 0) throw new ErrorAlsa((int)a, "snd_pcm_avail");
@@ -163,6 +186,7 @@ namespace Rocola
         // que haga falta (como mucho un bufer entero de tiempo, y no deberia).
         internal void Escribe(byte[] datos, int bytes)
         {
+            if (fuente != null) { fuente.Escribe(datos, bytes); return; }
             long cuadros = bytes / alineado, hechos = 0;
             int espera = 0, tope = Math.Max(1000, CuadrosBufer * 1000 / Math.Max(1, Tasa) * 2);
             fixed (byte* d = datos)
@@ -190,6 +214,7 @@ namespace Rocola
         // tras un corte de Codigo/SalidaPropia.cs mira con esto si la tarjeta se quedo muda).
         internal long Sonado()
         {
+            if (fuente != null) return fuente.Sonado();
             nint d;
             int r = snd_pcm_delay(pcm, out d);
             if (r == -ErrorAlsa.EPIPE || r == -ErrorAlsa.ESTRPIPE) return escritos;
@@ -197,11 +222,12 @@ namespace Rocola
             if (r < 0) throw new ErrorAlsa(r, "snd_pcm_delay");
             return Math.Max(0, escritos - Math.Max(0, (long)d));
         }
-        internal long Escritos { get { return escritos; } }
+        internal long Escritos { get { return fuente != null ? fuente.Escritos : escritos; } }   // ROCOLA OS g444: (antes) internal long Escritos { get { return escritos; } } — con la salida nueva (salida_nueva=1), lo escrito en su fuente del motor de Rocola OS (RocolaOs/RocolaOs.SalidaNuevaCliente.cs); sin ella, la cuenta de ALSA de siempre
         private const int EstadoXrun = 4;   // SND_PCM_STATE_XRUN
         // Lo que no sono se tira y la cuenta vuelve a 0 (waveOutReset)
         internal void Vacia()
         {
+            if (fuente != null) { fuente.Vacia(); return; }
             snd_pcm_drop(pcm);
             snd_pcm_prepare(pcm);
             escritos = 0;
@@ -210,12 +236,14 @@ namespace Rocola
         // tiene y despues se calla: WaveOutPropio no le da mas mientras este en pausa. XP no pausa nunca la musica: solo Play, Stop y Dispose.)
         internal int Pausa(bool si)
         {
+            if (fuente != null) { fuente.Pausa(si); return 0; }
             int r = snd_pcm_pause(pcm, si ? 1 : 0);
             if (r < 0 && !si) snd_pcm_prepare(pcm);
             return r;
         }
         internal void Cierra()
         {
+            if (fuente != null) { fuente.Cierra(); return; }
             IntPtr p = pcm; pcm = IntPtr.Zero;
             if (p == IntPtr.Zero) return;
             snd_pcm_drop(p);

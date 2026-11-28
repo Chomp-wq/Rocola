@@ -335,7 +335,7 @@ namespace Rocola
         internal static int FrecuenciaSalidaValida(int hz) { return hz == 44100 || hz == 48000 ? hz : 0; }
         private void AFrecuenciaDeLaTarjeta(CadenaCancion c)
         {
-            int hz = frecuenciaSalida;
+            int hz = RocolaOsSalidaNuevaHz(frecuenciaSalida);   // ROCOLA OS g441: (XP) int hz = frecuenciaSalida; — con la salida nueva la cadena va a 44 100 Hz fijos, como con frecuencia_salida=44100: el sinc de XP y su relevo sin pausa (RocolaOs/RocolaOs.SalidaNueva.cs; sin ella, lo guardado)
             if (hz <= 0 || c == null || c.Salida == null) return;
             NAudio.Wave.WaveFormat de = c.Salida.WaveFormat;
             if (de == null || de.SampleRate == hz) return;
@@ -353,7 +353,7 @@ namespace Rocola
         // Deja preparada en segundo plano la tabla mas comun (44,1 <-> 48 kHz), para que la primera cancion ya salga convertida.
         private static void CalientaFrecuenciaSalida()
         {
-            int hz = frecuenciaSalida;
+            int hz = RocolaOsSalidaNuevaHz(frecuenciaSalida);   // ROCOLA OS g442: (XP) int hz = frecuenciaSalida; — con la salida nueva se calienta la tabla del convertidor a 44 100 Hz (RocolaOs/RocolaOs.SalidaNueva.cs; sin ella, lo guardado)
             if (hz <= 0) return;
             try { RemuestreoContinuo.CapturaTabla(FormatoAudio.Flotante(hz == 48000 ? 44100 : 48000, 2, 3), FormatoAudio.Flotante(hz, 2, 3)); } catch { }
         }
@@ -1421,7 +1421,7 @@ namespace Rocola
                 // WaveOut (callback por ventana, 1 segundo de colchon en bloques de 50 ms): en XP, 16 bits con dither
                 // TPDF como siempre; en Vista o posterior, coma flotante, y 16 bits si el sistema la rechaza
                 // (SalidaSonido.cs).
-                try { AbreSalidaClasica(outChain, FlotanteAdmitido()); }
+                try { AbreSalidaClasica(outChain, RocolaOsSalidaNuevaFlotante(FlotanteAdmitido())); }   // ROCOLA OS g440: (XP) try { AbreSalidaClasica(outChain, FlotanteAdmitido()); } — con la salida nueva (salida_nueva=1) la cadena entrega coma flotante y la unica cuantizacion, a 24 bits, es la del motor de Rocola OS (RocolaOs/RocolaOs.SalidaNueva.cs; sin ella, lo de XP: 16 bits con dither TPDF)
                 catch (Exception sex)
                 {
                     // EL APARATO, NO LA CANCION: se espera y se retoma la misma (SalidaSonido.cs).

@@ -150,6 +150,7 @@ namespace Rocola
             string alsa = Environment.GetEnvironmentVariable("ROCOLA_ALSA");
             Mpv.mpv_set_option_string(m, "ao", "alsa");
             if (!string.IsNullOrEmpty(alsa)) Mpv.mpv_set_option_string(m, "audio-device", "alsa/" + alsa);
+            Action<IntPtr> ros = RocolaOsAudio; if (ros != null) ros(m);   // (Rocola OS: con la salida nueva, el sonido a la rocola; abajo)
             string mas = Environment.GetEnvironmentVariable("ROCOLA_VIDEO_OPCIONES");   // (pruebas) clave=valor;clave=valor para mpv, al final
             if (!string.IsNullOrEmpty(mas)) foreach (string o in mas.Split(';')) { int k = o.IndexOf('='); if (k > 0) Mpv.mpv_set_option_string(m, o.Substring(0, k), o.Substring(k + 1)); }
             if (Mpv.mpv_initialize(m) < 0) { Mpv.mpv_terminate_destroy(m); return; }
@@ -164,6 +165,7 @@ namespace Rocola
         internal void Carga(string ruta)
         {
             archivo = ruta ?? "";
+            Action<ReproductorVideo> ac = RocolaOsAntesDeCargar; if (ac != null && archivo.Length > 0) ac(this);   // (Rocola OS: abajo)
             if (archivo.Length == 0) { QuitaArchivo(); return; }
             if (mpv == IntPtr.Zero) return;
             Mpv.mpv_set_property_string(mpv, "pause", "no");
@@ -183,6 +185,7 @@ namespace Rocola
         internal void QuitaArchivo()
         {
             archivo = "";
+            Action<ReproductorVideo> ad = RocolaOsSoltado; if (ad != null) ad(this);   // (Rocola OS: abajo)
             if (mpv != IntPtr.Zero) Mpv.Orden(mpv, "stop");
             estado = (int)EstadoVideo.Detenido;
         }
@@ -205,9 +208,28 @@ namespace Rocola
         // Se guarda y va con el siguiente Carga, solo para ese archivo (el de despues, sin nada salvo que se vuelva a pedir).
         internal void FiltroAudio(string af) { afSiguiente = af ?? ""; }
         private string afSiguiente;
+        // ROCOLA OS, LA SALIDA NUEVA (RocolaOs/RocolaOs.SalidaNuevaVideo.cs; CADENA_NUEVA.md §4, decision D11): con la funcion «salida_nueva» el
+        // sonido del video no va a la tarjeta (la tiene siempre abierta la rocola) sino a la rocola, que lo saca por el mismo flujo con su
+        // ganancia fija. Sin ella nadie pone estos y todo es lo de arriba.
+        //   RocolaOsAudio          las opciones de sonido de mpv (al abrir libmpv, despues de las de arriba)
+        //   RocolaOsVolumen        el volumen de XP (0 a 100) para la rocola: true = ya lo atendio (mpv se queda en 100)
+        //   RocolaOsAntesDeCargar  justo antes de abrir un video; RocolaOsSoltado, al soltarlo (para la salida nueva sin videos por la rocola:
+        //                          la rocola suelta la tarjeta mientras dura)
+        internal static Action<IntPtr> RocolaOsAudio;
+        internal static Func<ReproductorVideo, int, bool> RocolaOsVolumen;
+        internal static Action<ReproductorVideo> RocolaOsAntesDeCargar, RocolaOsSoltado;
+        internal string Archivo { get { return archivo; } }
         private void AplicaVolumen()
         {
             if (mpv == IntPtr.Zero) return;
+            Func<ReproductorVideo, int, bool> rv = RocolaOsVolumen;
+            if (rv != null && rv(this, volumen))
+            {   // (Rocola OS: con la salida nueva, mpv a 100 y la ganancia en la rocola; abajo)
+                Mpv.mpv_set_property_string(mpv, "volume", "100");
+                Mpv.mpv_set_property_string(mpv, "mute", "no");
+                if (traza) Console.Error.WriteLine("video: volumen " + volumen + " (mpv 100: la ganancia la pone la salida nueva)");
+                return;
+            }
             double cubico = 100.0 * Math.Pow(volumen / 100.0, 1.0 / 3.0);   // la amplitud del WMP (v / 100) con el volumen cubico de mpv
             Mpv.mpv_set_property_string(mpv, "volume", cubico.ToString("0.###", CultureInfo.InvariantCulture));
             Mpv.mpv_set_property_string(mpv, "mute", "no");

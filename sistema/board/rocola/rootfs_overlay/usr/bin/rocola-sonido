@@ -6,7 +6,8 @@
 #   rocola-sonido usar N   la rocola usa desde ahora la salida N de la lista (/rocola/datos/rocola_tarjeta.txt, que rocola-tarjeta
 #                          obedece; el lanzador la vuelve a elegir cada vez que abre la rocola) y le sube el volumen: vale al volver a la
 #                          rocola (Ctrl+Alt+F1; si estaba abierta, se vuelve a abrir ya).
-#   rocola-sonido auto     vuelve a la eleccion automatica (la primera salida que no sea HDMI).
+#   rocola-sonido auto     vuelve a la eleccion automatica (la primera salida que no sea HDMI; con la salida nueva de rocola-xp, la USB primero).
+# (27-11-2026) Con la salida nueva (salida_nueva=1 en /rocola/datos/xp/rocola_os.txt) «usar N» guarda la tarjeta POR SU NOMBRE (plughw:CARD=id,DEV=n).
 # Mientras prueba, la rocola se pausa (no puede tener la tarjeta abierta a la vez) y despues sigue sola. Desde la consola de mantenimiento
 # la rocola (rocola-xp) ya esta cerrada (el lanzador la cierra al cambiar de consola); si aun estuviera abierta, se cierra conservando los
 # creditos y la cola (SIGUSR1, nunca SIGTERM: regla del 8-11-2026) y el lanzador la vuelve a abrir al acabar.
@@ -14,6 +15,7 @@ DATOS=${ROCOLA_DATOS:-/rocola/datos}
 XPD=${ROCOLA_XP_DATOS:-$DATOS/xp}   # (los datos de rocola-xp)
 RUN=${ROCOLA_RUN:-/run}
 FIJA=$DATOS/rocola_tarjeta.txt
+ASOUND=${ROCOLA_ASOUND:-/proc/asound}
 LOG=$DATOS/rocola_sonido.txt
 # las salidas: «tarjeta salida nombre», una por linea, como las da aplay -l
 salidas() { aplay -l 2>/dev/null | sed -n 's/^card \([0-9]*\): [^,]*, device \([0-9]*\): \(.*\)$/\1 \2 \3/p'; }
@@ -54,10 +56,14 @@ case "$1" in
 		l=$(salidas | sed -n "${2:-0}p")
 		[ -n "$2" ] && [ -n "$l" ] || { echo "Uso: rocola-sonido usar N   (N = el numero de la salida que se oyo; rocola-sonido sin nada las enseña)"; exit 1; }
 		set -- $l
-		echo "plughw:$1,$2" > "$FIJA"; sync
+		# (27-11-2026) con la salida nueva de rocola-xp (salida_nueva=1), POR SU NOMBRE (el id de ALSA de la tarjeta: un aparato USB puede
+		# cambiar de numero de un arranque a otro; rocola-tarjeta y la rocola lo entienden); sin ella, por su numero, como siempre
+		id=$(cat "$ASOUND/card$1/id" 2>/dev/null); clave="plughw:$1,$2"
+		if [ "$(sed -n 's/^salida_nueva=//p' "$XPD/rocola_os.txt" 2>/dev/null | tail -1)" = 1 ] && echo "$id" | grep -qE '^[A-Za-z0-9_-]+$'; then clave="plughw:CARD=$id,DEV=$2"; fi
+		echo "$clave" > "$FIJA"; sync
 		sube "$1"
-		echo "Listo: la rocola usa la tarjeta $1, salida $2 (al volver a ella con Ctrl+Alt+F1; si estaba abierta, se vuelve a abrir ya)."
-		printf '%s  se eligio a mano la salida plughw:%s,%s\n' "$(date '+%Y-%m-%d %H:%M')" "$1" "$2" >> "$LOG"
+		echo "Listo: la rocola usa la tarjeta $1${id:+ ($id)}, salida $2 (al volver a ella con Ctrl+Alt+F1; si estaba abierta, se vuelve a abrir ya)."
+		printf '%s  se eligio a mano la salida %s (plughw:%s,%s)\n' "$(date '+%Y-%m-%d %H:%M')" "$clave" "$1" "$2" >> "$LOG"
 		cierra_xp "otra salida de sonido (rocola-sonido usar)"
 		exit 0 ;;
 	auto)

@@ -1,0 +1,53 @@
+#!/bin/sh
+# MEDIR EL CONVERTIDOR (27-11-2026, la cadena de audio nueva: decision D12 del dueno, «medir el PROZOR primero»; sistema/rocola/Xp/CADENA_NUEVA.md
+# §4 y CADENA_NUEVA_salida.md). En la consola de mantenimiento (Ctrl+Alt+F2, usuario root):
+#   rocola-mide-dac                    tonos de 1 kHz a 0, -3, -6, -10 y -20 dBFS por la salida de la salida nueva (la USB, el SMSL PO100, si
+#                                      esta), grabados por la ENTRADA DE LINEA de la placa: dice cuanto distorsiona cada nivel (THD+N), desde
+#                                      donde deja de recortar y propone el techo de la cadena nueva (techo_dbtp=)
+#   rocola-mide-dac --salida PCM --entrada PCM   con otras (por ejemplo --salida hw:CARD=PO100,DEV=0 --entrada hw:CARD=Generic,DEV=0)
+# Antes: un cable RCA de la SALIDA del convertidor (PROZOR) a la entrada de linea AZUL de la placa, y el amplificador apagado o al minimo.
+# Mientras mide, la rocola se cierra (conservando creditos y cola: SIGUSR1, como rocola-sonido) y despues sigue sola. Lo mismo se puede
+# hacer sin salir de la rocola desde Ctrl+F4 -> Sonido -> «Más y medir el DAC...» (con la salida nueva encendida).
+# Lo que dice queda tambien en /rocola/datos/rocola_sonido.txt.
+DATOS=${ROCOLA_DATOS:-/rocola/datos}
+XPD=${ROCOLA_XP_DATOS:-$DATOS/xp}
+XPBIN=${ROCOLA_XP_BIN:-/usr/lib/rocola-xp/rocola-xp}
+RUN=${ROCOLA_RUN:-/run}
+R=${ROCOLA_ASOUND:-/proc/asound}
+LOG=$DATOS/rocola_sonido.txt
+# (como rocola-sonido) la rocola abierta, cerrarla conservando el estado, y la pausa del lanzador
+xp_abierta() {
+	for p in $(pidof rocola-xp); do
+		e=$(awk '{print $3}' "/proc/$p/stat" 2>/dev/null); [ -n "$e" ] && [ "$e" != Z ] || continue
+		tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | grep -qx -- --importa-xp && continue
+		tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | grep -qx -- --mide-convertidor && continue
+		echo "$p"
+	done
+}
+cierra_xp() {
+	p=$(xp_abierta); [ -n "$p" ] || return 0
+	echo "$1" > "$RUN/rocola-xp-reinicio"
+	kill -USR1 $p 2>/dev/null
+	i=0; while [ -n "$(xp_abierta)" ] && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
+	p=$(xp_abierta); [ -n "$p" ] && kill -KILL $p 2>/dev/null
+}
+sigue_rocola() { killall -CONT rocola 2>/dev/null; }
+trap 'sigue_rocola' EXIT; trap 'exit 130' INT TERM HUP
+killall -STOP rocola 2>/dev/null; cierra_xp "la medida del convertidor (rocola-mide-dac)"; killall mpv 2>/dev/null; sleep 1
+# LA ENTRADA DE LINEA LISTA (lo mismo que hace la rocola): la primera tarjeta que no es HDMI ni USB y graba: «Line» como fuente, la
+# ganancia en 0 dB y sin refuerzo (los nombres de los controles de las HDA Realtek; los que no esten no hacen nada)
+for c in "$R"/card[0-9]*; do
+	t=${c##*card}
+	grep -qiE "^ *$t \[.*(HDMI|DisplayPort|USB)" "$R/cards" 2>/dev/null && continue
+	[ -e "$c/usbid" ] && continue
+	ls -d "$c"/pcm[0-9]*c >/dev/null 2>&1 || continue
+	for o in "'Input Source' Line" "'Capture Source' Line" "Capture 0dB cap" "'Line Boost' 0" "'Line Boost Volume' 0"; do
+		eval amixer -c "$t" -q sset "$o" 2>/dev/null
+	done
+	break
+done
+echo "===== $(date '+%Y-%m-%d %H:%M')  rocola-mide-dac $*" >> "$LOG"
+ROCOLA_PANTALLA=fuera:64x64 ROCOLA_DATOS=$XPD "$XPBIN" --mide-convertidor "$@" 2>&1 | tee -a "$LOG"
+r=$?
+echo "(lo dicho queda en $LOG; la rocola vuelve sola)"
+exit $r

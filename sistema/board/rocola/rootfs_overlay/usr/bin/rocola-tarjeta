@@ -2,33 +2,58 @@
 # LA TARJETA DE SONIDO DEL AMPLIFICADOR (3-11-2026): la primera salida que no sea HDMI ni DisplayPort (el A4 tiene la HDA del HDMI de
 # la Radeon y la analogica, que va al amplificador; la 0 puede ser la del HDMI). Dice el dispositivo para abrirla directa
 # (plughw:TARJETA,SALIDA: sin el mezclador de ALSA, a la frecuencia de cada cancion) o, con -c, solo el numero de la tarjeta (para
-# amixer). Si no encuentra ninguna, «default» (o nada con -c). La misma eleccion que SalidaAlsa.Elige en la rocola.
+# amixer). Si no encuentra ninguna, «default» (o nada con -c). La misma eleccion que SalidaAlsa.Elige en la rocola. (27-11-2026) La salida nueva
+# de rocola-xp elige igual (RocolaOs/RocolaOs.SalidaNuevaTarjetas.cs): lo guardado tambien por NOMBRE y, con ella, la USB primero.
 R=${ROCOLA_ASOUND:-/proc/asound}
+DATOS=${ROCOLA_DATOS:-/rocola/datos}
+# (27-11-2026, la salida nueva de rocola-xp: salida_nueva=1 en su rocola_os.txt) en la eleccion automatica, un aparato USB (el convertidor
+# del dueno) va primero; sin ella, todo como antes
+NUEVA=$(sed -n 's/^salida_nueva=//p' "${ROCOLA_XP_DATOS:-$DATOS/xp}/rocola_os.txt" 2>/dev/null | tail -1)
+sale() { if [ "$1" = -c ]; then echo "$2"; else echo "plughw:$2,$3"; fi; exit 0; }
 # ELEGIDA A MANO (rocola-sonido usar N, 7-11-2026: la del amplificador puede ser otra, por ejemplo la del HDMI de la pantalla): manda si
 # esa tarjeta y esa salida siguen existiendo
-F=${ROCOLA_DATOS:-/rocola/datos}/rocola_tarjeta.txt
+F=$DATOS/rocola_tarjeta.txt
 if [ -f "$F" ]; then
 	m=$(sed -n 's/^plughw:\([0-9]*\),\([0-9]*\)$/\1 \2/p' "$F" | head -1)
 	if [ -n "$m" ]; then
 		set -- "$1" $m
-		if [ -e "$R/card$2/pcm${3}p" ]; then
-			if [ "$1" = -c ]; then echo "$2"; else echo "plughw:$2,$3"; fi
-			exit 0
-		fi
+		[ -e "$R/card$2/pcm${3}p" ] && sale "$1" "$2" "$3"
+		set -- "$1"
+	fi
+	# (27-11-2026) POR SU NOMBRE (lo que guardan la salida nueva y rocola-sonido con ella: «plughw:CARD=id,DEV=n», o «hw:CARD=id,DEV=n»): la
+	# tarjeta con ese id de ALSA, con el numero que tenga ahora (un aparato USB puede cambiar de numero de un arranque a otro). Si no esta
+	# conectada, la automatica (y lo dice por la salida de errores)
+	m=$(sed -n -e 's/^plughw:CARD=\([A-Za-z0-9_-]*\),DEV=\([0-9]*\)$/\1 \2/p' -e 's/^hw:CARD=\([A-Za-z0-9_-]*\),DEV=\([0-9]*\)$/\1 \2/p' "$F" | head -1)
+	if [ -n "$m" ]; then
+		set -- "$1" $m
+		for c in "$R"/card[0-9]*; do
+			[ -d "$c" ] && [ "$(cat "$c/id" 2>/dev/null)" = "$2" ] && [ -e "$c/pcm${3}p" ] && sale "$1" "${c##*card}" "$3"
+		done
+		echo "rocola-tarjeta: la tarjeta guardada «$2» no esta conectada: se usa la automatica" >&2
 		set -- "$1"
 	fi
 fi
-for t in $(ls -d "$R"/card[0-9]* 2>/dev/null | sed 's/.*card//' | sort -n); do
-	# LA TARJETA DEL HDMI, ENTERA (7-11-2026: en el A4 se eligio «HDA ATI HDMI»: con el controlador generico su salida no se llama «HDMI»):
-	# se reconoce tambien por el nombre de la tarjeta (/proc/asound/cards), su id, su codec o sus ELD (solo las salidas HDMI/DP los tienen)
-	grep -qiE "^ *$t \[.*(HDMI|DisplayPort)" "$R/cards" 2>/dev/null && continue
-	grep -qiE 'HDMI|DisplayPort' "$R/card$t/id" 2>/dev/null && continue
-	cat "$R/card$t"/codec#* 2>/dev/null | head -2 | grep -qiE 'HDMI|DisplayPort' && continue
-	ls "$R/card$t"/eld#* >/dev/null 2>&1 && continue
-	for p in $(ls -d "$R/card$t"/pcm[0-9]*p 2>/dev/null | sed 's/.*pcm\([0-9]*\)p/\1/' | sort -n); do
-		grep -qiE 'HDMI|DisplayPort' "$R/card$t/pcm${p}p/info" 2>/dev/null && continue
-		if [ "$1" = -c ]; then echo "$t"; else echo "plughw:$t,$p"; fi
-		exit 0
+# LA TARJETA DEL HDMI, ENTERA (7-11-2026: en el A4 se eligio «HDA ATI HDMI»: con el controlador generico su salida no se llama «HDMI»):
+# se reconoce tambien por el nombre de la tarjeta (/proc/asound/cards), su id, su codec o sus ELD (solo las salidas HDMI/DP los tienen)
+es_hdmi() {
+	grep -qiE "^ *$1 \[.*(HDMI|DisplayPort)" "$R/cards" 2>/dev/null && return 0
+	grep -qiE 'HDMI|DisplayPort' "$R/card$1/id" 2>/dev/null && return 0
+	cat "$R/card$1"/codec#* 2>/dev/null | head -2 | grep -qiE 'HDMI|DisplayPort' && return 0
+	ls "$R/card$1"/eld#* >/dev/null 2>&1 && return 0
+	return 1
+}
+es_usb() { [ -e "$R/card$1/usbid" ] || grep -qiE "^ *$1 \[.*USB" "$R/cards" 2>/dev/null || grep -qi USB "$R/card$1/id" 2>/dev/null; }
+# la primera salida que no sea HDMI de las tarjetas (con «usb»: solo de las USB)
+primera() {
+	for t in $(ls -d "$R"/card[0-9]* 2>/dev/null | sed 's/.*card//' | sort -n); do
+		es_hdmi "$t" && continue
+		[ "$2" = usb ] && ! es_usb "$t" && continue
+		for p in $(ls -d "$R/card$t"/pcm[0-9]*p 2>/dev/null | sed 's/.*pcm\([0-9]*\)p/\1/' | sort -n); do
+			grep -qiE 'HDMI|DisplayPort' "$R/card$t/pcm${p}p/info" 2>/dev/null && continue
+			sale "$1" "$t" "$p"
+		done
 	done
-done
+}
+[ "$NUEVA" = 1 ] && primera "$1" usb
+primera "$1"
 [ "$1" = -c ] || echo default
