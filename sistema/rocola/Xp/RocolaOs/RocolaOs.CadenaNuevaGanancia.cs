@@ -2,12 +2,15 @@
 //   g (dB) = min(T - L', C - TP')
 //   T = nivel_lufs (-18 de fabrica), C = techo_dbtp (-1). L' y TP' = lo medido de la salida de la cadena a ganancia 1 (RocolaOsMedidaNueva) MAS
 //   lo que le hara lo que va despues y no se midio: el ecualizador del dueno de esa memoria (para L', con el espectro de tercios de la cancion
-//   por la curva, con la ponderacion K; para TP', lo maximo que sube la curva, conservador), el tono parejo si esta puesto (igual) y, con
-//   agudos_mp3, medio dB mas de pico. Las que no caben quedan mas bajas (no hay limitador). Sin la medida: una ESTIMACION CONSERVADORA de las
+//   por la curva, con la ponderacion K, y sin espectro el tipico de la biblioteca; para TP', lo que sube de verdad su pico con los picos de las
+//   sondas de la cancion y la respuesta al impulso de la curva: RocolaOs.CadenaNuevaPicos.cs, a1 del 28-11-2026; hasta entonces, lo maximo de la
+//   curva), el tono parejo si esta puesto (lo maximo de su curva) y, con agudos_mp3, medio dB mas de pico. Las que no caben quedan mas bajas (no hay limitador). Sin la medida: una ESTIMACION CONSERVADORA de las
 //   tablas viejas de XP (su LKFS y su pico + 3 dB), fija toda la cancion; sin nada, -8 LUFS y +3 dBTP.
 // DISCOS (la racha de hoy, NivelDisco.cs, con sus reglas: dos pistas medidas o mas, la mitad del disco y la propia cancion; no en los
 // recopilatorios, con mas de 5 dB entre la mas fuerte y la mas baja): una sola ganancia del disco con L' = la media de energia de sus pistas
-// (por lo que duran) y TP' = el mayor.
+// (por lo que duran) y TP' = el mayor. (28-11-2026) El modo (por disco o cancion por cancion) lo decide la PRIMERA pista de la racha y las demas
+// lo siguen (b10); y la que entra SIN PAUSA detras de la anterior del mismo disco lleva la ganancia de la que suena mientras quepa en su techo
+// (a3: sin escalon; la regla de los recopilatorios no parte un disco continuo).
 // SPOTIFY: su medida (de la cadena nueva, hecha mientras sono entera) o, la primera vez, una FIJA ESTIMADA de las de Spotify ya medidas (la
 // mediana de su L' y de su TP' con 1,5 dB de margen; con menos de 5, las de rocola_spotify_niveles.txt de XP con su pico de muestra + 2 dB).
 // LA SUSTITUCION INVISIBLE: la medida de la version de Spotify o, sin ella, la de tu MP3.
@@ -47,15 +50,16 @@ namespace Rocola
             for (int b = 0; b < hz.Length; b++) hz[b] = RocolaOsMedidaNueva.Hz(b);
             return hz;
         }
-        // LO QUE SUBE LA SONORIDAD una curva (dB por tercio) sobre una cancion con ese espectro (dB por tercio, relativo): puro. Sin espectro, lo
-        // maximo que sube la curva (como si toda la musica estuviera ahi: conservador).
-        internal static double RocolaOsDeltaL(float[] tercios, double[] curva, int tasa)
+        // LO QUE SUBE LA SONORIDAD una curva (dB por tercio) sobre una cancion con ese espectro (dB por tercio, relativo): puro. Sin espectro (28-11-2026,
+        // a1), el TIPICO de la biblioteca (la mediana de los tercios medidos con esa cadena) y, sin nada medido, el de un ruido rosa; ya no lo
+        // maximo que sube la curva (que daba por hecho que toda la musica estaba en la banda subida).
+        internal static double RocolaOsDeltaL(float[] tercios, double[] curva, int tasa, char cadena = 'A')
         {
             if (curva == null) return 0.0;
             if (tercios == null || tercios.Length < RocolaOsMedidaNueva.Bandas)
             {
-                double mx = 0; foreach (double v in curva) if (v > mx) mx = v;
-                return mx;
+                float[] tt, tp; RocolaOsPicosEq.Tipico(cadena, out tt, out tp);
+                tercios = tt ?? RocolaOsPicosEq.Rosa;
             }
             double[] kw = RocolaOsKPesoDb(tasa);
             double sin = 0, con = 0;
@@ -66,7 +70,7 @@ namespace Rocola
             }
             return sin > 0 ? 10.0 * Math.Log10(con / sin) : 0.0;
         }
-        // LO MAXIMO QUE SUBE una curva de biquads entre 20 Hz y 20 kHz (200 puntos logaritmicos): para TP', conservador
+        // LO MAXIMO QUE SUBE una curva de biquads entre 20 Hz y 20 kHz (200 puntos logaritmicos): para TP' del tono parejo, conservador
         internal static double RocolaOsMaxSube(Func<double[], double[]> respuesta, int tasa)
         {
             double tope = Math.Min(20000.0, 0.49 * tasa);
@@ -77,48 +81,82 @@ namespace Rocola
             return mx;
         }
 
-        // LO QUE LE AÑADE A L Y A TP lo que va despues de lo medido (el EQ del dueno, el tono parejo, los agudos)
-        private void RocolaOsDespues(RocolaOsReceta r, float[] tercios, out double dl, out double dtp)
+        // LO QUE LE AÑADE A L Y A TP lo que va despues de lo medido (el EQ del dueno, el tono parejo, los agudos). 'tpDb' es el pico real antes del
+        // EQ del dueno y 'picos' los de las sondas de esa cancion (null: los tipicos): con ellos, lo que sube de verdad su pico (RocolaOsPicosEq,
+        // a1 del 28-11-2026; hasta entonces, lo maximo de la curva). 'otros': lo del tono parejo y los agudos (sin el EQ del dueno).
+        private void RocolaOsDespues(RocolaOsReceta r, float[] tercios, double tpDb, float[] picos, out double dl, out double dtp, out double otros)
         {
-            dl = 0; dtp = 0;
+            RocolaOsDespuesCon(r, EqDuenoMedios(r.Cadena == 'B'), tercios, tpDb, picos, out dl, out dtp, out otros);
+        }
+        internal static void RocolaOsDespuesCon(RocolaOsReceta r, int[] eq, float[] tercios, double tpDb, float[] picos, out double dl, out double dtp, out double otros)
+        {
+            dl = 0; dtp = 0; otros = 0;
             int tasa = r.Tasa;
-            int[] eq = EqDuenoMedios(r.Cadena == 'B');
-            bool hayEq = false; foreach (int m in eq) if (m != 0) hayEq = true;
+            bool hayEq = false; if (eq != null) foreach (int m in eq) if (m != 0) hayEq = true;
             double[] hzT = RocolaOsHzTercios();
             if (hayEq)
             {
-                dl += RocolaOsDeltaL(tercios, EcualizadorDueno.Respuesta(eq, tasa, hzT), tasa);
-                dtp += -EcualizadorDueno.PreganDb(eq, tasa);
+                dl += RocolaOsDeltaL(tercios, EcualizadorDueno.Respuesta(eq, tasa, hzT), tasa, r.Cadena);
+                float[] tt, tipicos = null;
+                if (picos == null) RocolaOsPicosEq.Tipico(r.Cadena, out tt, out tipicos);
+                dtp += RocolaOsPicosEq.SubeDb(eq, tasa, tpDb, picos, tipicos);
             }
             if (r.TonoDb != null)
             {
                 double[] g = TonoParejoGanancias(r.TonoDb, tasa);
-                dl += RocolaOsDeltaL(tercios, TonoParejoRespuesta(g, tasa, hzT), tasa);
-                dtp += RocolaOsMaxSube(h => TonoParejoRespuesta(g, tasa, h), tasa);
+                dl += RocolaOsDeltaL(tercios, TonoParejoRespuesta(g, tasa, hzT), tasa, r.Cadena);
+                otros += RocolaOsMaxSube(h => TonoParejoRespuesta(g, tasa, h), tasa);
             }
-            if (r.Agudos) dtp += RocolaOsAgudosMargenDb;
+            if (r.Agudos) otros += RocolaOsAgudosMargenDb;
+            dtp += otros;
         }
         private static double RocolaOsG(double l, double tp) { return Math.Max(RocolaOsCadenasNuevas.GananciaMinDb, Math.Min(RocolaOsCadenasNuevas.GananciaMaxDb, Math.Min(RocolaOsCadenasNuevas.T - l, RocolaOsCadenasNuevas.C - tp))); }
         private static string RocolaOsD1(double v) { return v.ToString("0.0", CultureInfo.InvariantCulture); }
-
-        // LA GANANCIA DE ESTA CANCION en esta receta (en dB); r.Como dice de donde salio. En el hilo de la pantalla.
-        private double RocolaOsGananciaNueva(RocolaOsReceta r, Track t, Track original, bool sombra)
+        // lo de esta cancion para el tope del EQ y el disco continuo (RocolaOsReceta: TpAntesEqDb, PicosEq, DtpOtrosDb, TechoDb)
+        private static double RocolaOsAnota(RocolaOsReceta r, double l, double tpAntes, float[] picos, double dtp, double otros)
         {
-            double dl, dtp;
-            // 1) DISCO EN RACHA (no con Spotify ni en la sustitucion)
-            if (!sombra && r.Medida != null && !r.Medida.Muda && !(t.Path ?? "").StartsWith("spotify:", StringComparison.Ordinal))
+            r.TpAntesEqDb = tpAntes; r.PicosEq = picos; r.DtpOtrosDb = otros; r.TechoDb = RocolaOsCadenasNuevas.C - (tpAntes + dtp);
+            return RocolaOsG(l, tpAntes + dtp);
+        }
+
+        // LA GANANCIA DE ESTA CANCION en esta receta (en dB); r.Como dice de donde salio. En el hilo de la pantalla. 'anterior': la que suena, si esta
+        // entra SIN PAUSA detras de ella (la siguiente pista del mismo disco, en el relevo; null si no).
+        private double RocolaOsGananciaNueva(RocolaOsReceta r, Track t, Track original, bool sombra, RocolaOsArmada anterior = null)
+        {
+            double g = RocolaOsGananciaSuya(r, t, original, sombra);
+            // EL DISCO CONTINUO (a3 del 28-11-2026): la que entra sin pausa lleva la MISMA ganancia que la que suena (la del disco, si la racha va por
+            // disco; si no, la de la pista anterior), mientras quepa en su techo: sin escalon en el cambio de pista. La regla de los recopilatorios
+            // no parte un disco continuo.
+            RocolaOsGananciaPieza ga = anterior != null ? anterior.Ganancia : null;
+            if (ga != null && anterior.Receta != null && anterior.Receta.Cadena == r.Cadena && !double.IsNaN(r.TechoDb))
             {
-                List<Track> disco = RachaDeDisco(original);
-                double g;
-                if (disco != null && RocolaOsGananciaDisco(r, disco, t.Path, out g)) return g;
+                double gAnt = ga.EfectivaDb;
+                double gc = Math.Max(RocolaOsCadenasNuevas.GananciaMinDb, Math.Min(gAnt, r.TechoDb));
+                r.Como = "disco continuo: la de la anterior, " + RocolaOsD1(gAnt) + " dB" + (gc < gAnt - 1e-9 ? " bajada a su techo (" + RocolaOsD1(gc) + ")" : "") + "; la suya seria " + RocolaOsD1(g) + " (" + r.Como + ")";
+                return gc;
+            }
+            return g;
+        }
+
+        // la suya (sin el disco continuo): la racha, lo medido, la sustitucion, Spotify, la estimacion
+        private double RocolaOsGananciaSuya(RocolaOsReceta r, Track t, Track original, bool sombra)
+        {
+            double dl, dtp, ot;
+            bool spotify = (t.Path ?? "").StartsWith("spotify:", StringComparison.Ordinal);
+            // 1) DISCO EN RACHA (no con Spotify ni en la sustitucion): el modo (por disco o cancion por cancion) lo decide la PRIMERA pista de la
+            //    racha (b10 del 28-11-2026: antes, si la 2 se pedia con la 1 ya sonando, la 1 iba por pista y la 2 por disco)
+            if (!sombra && !spotify && original != null && original.Path != null)
+            {
+                double gd;
+                if (RocolaOsRacha(r, original, t.Path, out gd)) return gd;
             }
             // 2) LO MEDIDO de esta cancion
             if (r.Medida != null)
             {
-                if (r.Medida.Muda) { r.Como = "medida: muda"; return 0.0; }
-                RocolaOsDespues(r, r.Medida.Tercios, out dl, out dtp);
-                r.Como = "medida " + RocolaOsD1(r.Medida.Lufs) + " LUFS, " + RocolaOsD1(r.Medida.TpDb) + " dBTP" + (dl != 0 || dtp != 0 ? " (despues +" + RocolaOsD1(dl) + " LU, +" + RocolaOsD1(dtp) + " dB de pico)" : "");
-                return RocolaOsG(r.Medida.Lufs + dl, r.Medida.TpDb + dtp);
+                if (r.Medida.Muda) { r.Como = (r.Como.Length > 0 ? r.Como + "; " : "") + "medida: muda"; r.TechoDb = RocolaOsCadenasNuevas.C; return 0.0; }
+                RocolaOsDespues(r, r.Medida.Tercios, r.Medida.TpDb, r.Medida.PicosEq, out dl, out dtp, out ot);
+                r.Como = (r.Como.Length > 0 ? r.Como + "; " : "") + "medida " + RocolaOsD1(r.Medida.Lufs) + " LUFS, " + RocolaOsD1(r.Medida.TpDb) + " dBTP" + (dl != 0 || dtp != 0 ? " (despues +" + RocolaOsD1(dl) + " LU, +" + RocolaOsD1(dtp) + " dB de pico)" : "");
+                return RocolaOsAnota(r, r.Medida.Lufs + dl, r.Medida.TpDb, r.Medida.PicosEq, dtp, ot);
             }
             // 3) LA SUSTITUCION: la de tu MP3
             if (sombra && original != null && original.Path != null)
@@ -126,27 +164,53 @@ namespace Rocola
                 RocolaOsMedidaNueva mp3 = RocolaOsMedidaTabla.Valida(original.Path, r.Cadena);
                 if (mp3 != null && mp3.Alg == RocolaOsMedidaNueva.Algoritmo && !mp3.Muda)
                 {
-                    RocolaOsDespues(r, mp3.Tercios, out dl, out dtp);
+                    RocolaOsDespues(r, mp3.Tercios, mp3.TpDb, mp3.PicosEq, out dl, out dtp, out ot);
                     r.Como = "la de Spotify sin medir: con la medida de tu MP3 (" + RocolaOsD1(mp3.Lufs) + " LUFS, " + RocolaOsD1(mp3.TpDb) + " dBTP)";
-                    return RocolaOsG(mp3.Lufs + dl, mp3.TpDb + dtp);
+                    return RocolaOsAnota(r, mp3.Lufs + dl, mp3.TpDb, mp3.PicosEq, dtp, ot);
                 }
             }
             // 4) SPOTIFY LA PRIMERA VEZ: fija, estimada de las de Spotify medidas
-            if ((t.Path ?? "").StartsWith("spotify:", StringComparison.Ordinal) && !sombra)
+            if (spotify && !sombra)
             {
                 double l, tp; string como;
                 RocolaOsSpotifyEstimada(r, out l, out tp, out como);
-                RocolaOsDespues(r, null, out dl, out dtp);
+                RocolaOsDespues(r, null, tp, null, out dl, out dtp, out ot);
                 r.Como = "Spotify la primera vez: fija, estimada (" + como + ")";
-                return RocolaOsG(l + dl, tp + dtp);
+                return RocolaOsAnota(r, l + dl, tp, null, dtp, ot);
             }
             // 5) SIN MEDIR: las tablas viejas de XP, conservador
             string p = sombra && original != null ? original.Path : t.Path;
             double le, tpe; string ce;
             RocolaOsEstimaVieja(p, out le, out tpe, out ce);
-            RocolaOsDespues(r, null, out dl, out dtp);
-            r.Como = "sin medir: " + ce;
-            return RocolaOsG(le + dl, tpe + dtp);
+            RocolaOsDespues(r, null, tpe, null, out dl, out dtp, out ot);
+            r.Como = (r.Como.Length > 0 ? r.Como + "; " : "") + "sin medir: " + ce;
+            return RocolaOsAnota(r, le + dl, tpe, null, dtp, ot);
+        }
+
+        // LA RACHA (b10): la carpeta de la racha que va y el modo que decidio su primera pista. true con la ganancia del disco si va por disco; false
+        // si va cancion por cancion (r.Como lo dice) o no hay racha.
+        private string rocolaOsRachaCarpeta; private bool rocolaOsRachaDisco;
+        private bool RocolaOsRacha(RocolaOsReceta r, Track original, string ruta, out double g)
+        {
+            g = 0;
+            string carpeta = CarpetaDe(original.Path);
+            if (string.IsNullOrEmpty(carpeta)) return false;
+            // la que sono (o suena) justo antes de esta, como RachaDeDisco
+            PlayItem np = nowPlaying, antes = null;
+            if (np != null && ReferenceEquals(np.Song, original)) antes = sonoAntes;
+            else if (queue.Count > 0 && queue[0] != null && ReferenceEquals(queue[0].Song, original)) antes = np;
+            bool sigue = rocolaOsRachaCarpeta != null && string.Equals(rocolaOsRachaCarpeta, carpeta, StringComparison.OrdinalIgnoreCase) && MismaCarpeta(antes, carpeta);
+            List<Track> disco = RachaDeDisco(original);
+            bool medida = r.Medida != null && !r.Medida.Muda;
+            if (!sigue)
+            {   // la PRIMERA de la racha (o suelta): decide el modo con las reglas de siempre
+                bool porDisco = disco != null && medida && RocolaOsGananciaDisco(r, disco, ruta, true, out g);
+                rocolaOsRachaCarpeta = carpeta; rocolaOsRachaDisco = porDisco;
+                return porDisco;
+            }
+            if (rocolaOsRachaDisco && disco != null && medida && RocolaOsGananciaDisco(r, disco, ruta, false, out g)) return true;
+            if (!rocolaOsRachaDisco) r.Como = "la racha va cancion por cancion (lo decidio su primera pista)";
+            return false;
         }
 
         // la estimacion conservadora de lo que XP ya sabe: su integrada (LKFS, del decodificado de 16 bits) y su pico + 3 dB; sin integrada, su
@@ -223,7 +287,7 @@ namespace Rocola
         }
 
         // EL DISCO: la ganancia unica de la racha (como GananciaDeDisco, con las medidas nuevas)
-        private bool RocolaOsGananciaDisco(RocolaOsReceta r, List<Track> pistas, string ruta, out double g)
+        private bool RocolaOsGananciaDisco(RocolaOsReceta r, List<Track> pistas, string ruta, bool recopilatorio, out double g)
         {
             g = 0;
             double peso = 0, pot = 0, tpMax = -200; int medidas = 0; bool esta = false;
@@ -233,8 +297,9 @@ namespace Rocola
                 if (tr == null || tr.Path == null) continue;
                 RocolaOsMedidaNueva m = string.Equals(tr.Path, ruta, StringComparison.OrdinalIgnoreCase) ? r.Medida : RocolaOsMedidaTabla.Busca(tr.Path, r.Cadena);
                 if (m == null || m.Alg != RocolaOsMedidaNueva.Algoritmo || m.Muda) continue;
-                double dl, dtp;
-                RocolaOsDespues(r, m.Tercios, out dl, out dtp);
+                double dl, dtp, ot;
+                RocolaOsDespues(r, m.Tercios, m.TpDb, m.PicosEq, out dl, out dtp, out ot);
+                if (string.Equals(tr.Path, ruta, StringComparison.OrdinalIgnoreCase)) { r.TpAntesEqDb = m.TpDb; r.PicosEq = m.PicosEq; r.DtpOtrosDb = ot; r.TechoDb = RocolaOsCadenasNuevas.C - (m.TpDb + dtp); }
                 double lp = m.Lufs + dl, w = Math.Max(1.0, m.Segundos);
                 pot += w * Math.Pow(10.0, lp / 10.0); peso += w; medidas++;
                 if (m.Segundos >= 30) { if (m.Lufs < lMin) lMin = m.Lufs; if (m.Lufs > lMax) lMax = m.Lufs; }
@@ -242,7 +307,7 @@ namespace Rocola
                 if (string.Equals(tr.Path, ruta, StringComparison.OrdinalIgnoreCase)) esta = true;
             }
             if (!esta || medidas < 2 || medidas * 2 < pistas.Count || !(peso > 0)) return false;
-            if (lMax > lMin && lMax - lMin > DispersionDiscoDb) return false;   // recopilatorio: cancion por cancion
+            if (recopilatorio && lMax > lMin && lMax - lMin > DispersionDiscoDb) return false;   // recopilatorio: cancion por cancion (solo al decidir el modo de la racha, en su primera pista: b10)
             double l = 10.0 * Math.Log10(pot / peso);
             g = RocolaOsG(l, tpMax);
             r.Como = "el disco (" + medidas + " de " + pistas.Count + " pistas medidas): " + RocolaOsD1(l) + " LUFS, pico real " + RocolaOsD1(tpMax) + " dBTP";

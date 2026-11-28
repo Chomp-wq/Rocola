@@ -54,7 +54,9 @@ namespace Rocola
         internal static double C { get { int v = RocolaOs.AjusteEntero(ClaveTecho); return v >= -20 && v <= 0 ? v : -1; } }
         internal static bool Agudos { get { return RocolaOs.AjusteSiNo(ClaveAgudos); } }
         internal static bool Tono { get { return RocolaOs.AjusteSiNo(ClaveTono); } }
-        internal static long Armadas, Fallos, Flotantes;
+        internal static long Armadas, Fallos, Flotantes, Respaldos, SinLimitador;
+        // (las pruebas) ROCOLA_CN_FALLA=armar: la cadena nueva falla al armarse (para ver el respaldo minimo, a6)
+        internal static readonly bool FallaPrueba = Environment.GetEnvironmentVariable("ROCOLA_CN_FALLA") == "armar";
         internal static string Ultima = "";
         internal static void Apunta(string que) { RocolaOs.Apunta(Nombre, que); }
     }
@@ -104,6 +106,9 @@ namespace Rocola
             internal RocolaOsMedidorVivo Vivo;
             internal RocolaOsGananciaPieza Ganancia;
             internal RocolaOsEqDuenoPieza EqDueno;
+            internal SpectralTap Sbr;      // el DSEE de agudos_mp3 (a7 del 28-11-2026: aqui y no en CadenaCancion.Sbr, que XP enciende y apaga)
+            internal float SbrCorteHz;     // su corte fijo, el de la cancion
+            internal bool Respaldo;        // la nueva minima (a6): leer, ganancia fija, noche, fundido
             internal string Fuente = "";   // como se abrio (coma flotante, sin huecos...)
         }
         private static readonly ConditionalWeakTable<CadenaCancion, RocolaOsArmada> rocolaOsArmadas = new ConditionalWeakTable<CadenaCancion, RocolaOsArmada>();
@@ -149,6 +154,8 @@ namespace Rocola
                 if (an.Zumbido != null && av.Zumbido != null) an.Zumbido.Sigue(av.Zumbido);
                 if (an.NocheCorte != null && av.NocheCorte != null) an.NocheCorte.Sigue(av.NocheCorte);
                 if (an.NocheGraves != null && av.NocheGraves != null) an.NocheGraves.Sigue(av.NocheGraves);
+                // convertidas a la frecuencia de la salida de hoy (a5: sin el limitador de XP detras): el convertidor sigue al de la anterior
+                if (nueva.Conversion != null && vieja.Conversion != null) nueva.Conversion.Sigue(vieja.Conversion);
             }
             catch (Exception ex) { RocolaOs.Falla(RocolaOsCadenasNuevas.Nombre, "el disco continuo", ex); }
             return true;
@@ -181,21 +188,123 @@ namespace Rocola
         private CadenaCancion RocolaOsCadenaNueva(Track t, IAudioSource source, bool iaMejorada, double saltadoSeg)
         {
             if (!RocolaOsCadenasNuevas.Suena || t == null || source == null || t.Path == null) return null;
+            string porque;
             try
             {
-                if (source.WaveFormat.Channels != 2 || source.WaveFormat.SampleRate < 8000) return null;   // (mas de dos canales: la de XP)
-                return RocolaOsArmaNueva(t, source, saltadoSeg);
+                if (source.WaveFormat.Channels == 2 && source.WaveFormat.SampleRate >= 8000) return RocolaOsArmaNueva(t, source, saltadoSeg);
+                porque = source.WaveFormat.Channels + " canales a " + source.WaveFormat.SampleRate + " Hz";
             }
             catch (Exception ex)
             {
                 Interlocked.Increment(ref RocolaOsCadenasNuevas.Fallos);
-                RocolaOs.Falla(RocolaOsCadenasNuevas.Nombre, "armar la cadena nueva de " + Path.GetFileName(t.Path) + " (suena con la de hoy)", ex);
+                RocolaOs.Falla(RocolaOsCadenasNuevas.Nombre, "armar la cadena nueva de " + Path.GetFileName(t.Path) + " (suena con el respaldo minimo, a su nivel)", ex);
+                porque = "fallo al armar: " + ex.GetType().Name;
+            }
+            // EL RESPALDO (a6 del 28-11-2026): nunca la de XP (4 a 9 dB mas fuerte que T): la nueva minima, que respeta el nivel
+            return RocolaOsArmaMinima(t, source, saltadoSeg, porque);
+        }
+
+        // LA NUEVA MINIMA: leer -> [el pulso] -> la ganancia fija estimada (lo medido de la cancion sin lo de despues, o la estimacion de las tablas
+        // viejas, o lo de una sin nada) con la noche del reloj -> el fundido de XP. Cada paso con su red: lo que falle se salta (sin pulso, sin
+        // fundido) y la ganancia, si no se puede estimar, la de una cancion de -8 LUFS y +3 dBTP. null solo si ni eso (la de XP).
+        private CadenaCancion RocolaOsArmaMinima(Track t, IAudioSource source, double saltadoSeg, string porque)
+        {
+            try
+            {
+                Interlocked.Increment(ref RocolaOsCadenasNuevas.Respaldos);
+                try { RocolaOsPublicaNoche(FactorNoche()); } catch { }
+                RocolaOsReceta r = new RocolaOsReceta();
+                try { r.Cadena = LocalAutoAGuardar ? 'B' : 'A'; } catch { }
+                r.Ruta = t.Path; r.Tasa = source.WaveFormat.SampleRate;
+                double g;
+                try { g = RocolaOsGananciaMinima(r, t.Path); }
+                catch { g = RocolaOsG(-8.0, RocolaOsEstimaPicoDb); r.Como = "sin poder estimar: -8 LUFS y +3 dBTP supuestos"; }
+                r.GananciaDb = g;
+                CadenaCancion c = new CadenaCancion();
+                c.Cancion = t; c.Lector = source; c.IaMejorada = false; c.MedidaRuta = null; c.EqRuta = null;
+                try { c.Fuente = FuenteDeLector(t.Path, source); } catch { }
+                RocolaOsArmada arm = new RocolaOsArmada { Receta = r, Respaldo = true, Fuente = "respaldo minimo (" + porque + ")" };
+                ISampleProvider x = source;
+                if (source.WaveFormat.Channels == 2) { try { arm.Entrada = r.Anota(new RocolaOsPiezaEntrada(x, this, false)); x = arm.Entrada; } catch { } }
+                arm.Ganancia = r.Anota(new RocolaOsGananciaPieza(x, this, g)); x = arm.Ganancia;
+                FadeProvider f;
+                try { f = RocolaOsFundido(x, source, t, saltadoSeg); }
+                catch { f = new FadeProvider(x, 0, 0, 0, FadeProvider.EntradaSeg); }
+                c.Fundido = f; c.Salida = f; c.Retardo = 0;
+                rocolaOsArmadas.AddOrUpdate(c, arm);
+                Interlocked.Increment(ref RocolaOsCadenasNuevas.Armadas);
+                string linea = r.Cadena + " " + Path.GetFileName(t.Path) + ": RESPALDO MINIMO (" + porque + "): ganancia " + g.ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture) + " dB (" + r.Como + ")";
+                RocolaOsCadenasNuevas.Ultima = linea;
+                RocolaOsCadenasNuevas.Apunta(linea);
+                return c;
+            }
+            catch (Exception ex)
+            {
+                RocolaOs.Falla(RocolaOsCadenasNuevas.Nombre, "el respaldo minimo de " + Path.GetFileName(t.Path) + " (suena con la de XP)", ex);
                 return null;
             }
+        }
+        // la ganancia del respaldo: lo medido de la cancion (sin el EQ del dueno, que el respaldo no lleva), Spotify la 1.a vez, o las tablas viejas
+        private double RocolaOsGananciaMinima(RocolaOsReceta r, string ruta)
+        {
+            RocolaOsMedidaNueva m = RocolaOsMedidaTabla.Valida(ruta, r.Cadena);
+            if (m != null && m.Alg == RocolaOsMedidaNueva.Algoritmo)
+            {
+                if (m.Muda) { r.Como = "medida: muda"; return 0.0; }
+                r.Como = "medida " + RocolaOsD1(m.Lufs) + " LUFS, " + RocolaOsD1(m.TpDb) + " dBTP";
+                return RocolaOsAnota(r, m.Lufs, m.TpDb, m.PicosEq, 0, 0);
+            }
+            double l, tp; string como;
+            if (ruta.StartsWith("spotify:", StringComparison.Ordinal)) { RocolaOsSpotifyEstimada(r, out l, out tp, out como); r.Como = "Spotify la primera vez: " + como; }
+            else { RocolaOsEstimaVieja(ruta, out l, out tp, out como); r.Como = "sin medir: " + como; }
+            return RocolaOsAnota(r, l, tp, null, 0, 0);
+        }
+
+        // ---------------------------------------------------------------- a8: la noche del reloj de la pantalla al hilo del sonido
+        // La publica el reloj de la pantalla cada vuelta (PublicaNoche, gancho g466) y la cadena al armarse (por si aun no dio la primera vuelta);
+        // la pieza de la ganancia solo la lee (antes llamaba a FactorNoche desde el hilo del sonido, que la primera vez corria MetaNoche: la hora y
+        // campos de la pantalla). La rampa de una hora no cambia: es la de XP, publicada tal cual.
+        internal static volatile float RocolaOsNocheAhora = 1f;
+        internal static void RocolaOsPublicaNoche(float f) { RocolaOsNocheAhora = (f > 0f && f <= 4f) ? f : 1f; }
+
+        // ---------------------------------------------------------------- a5: la conversion de frecuencia de la salida de hoy, sin limitador
+        // (gancho g464 en ConvierteSalida; g465 en AFrecuenciaDeLaTarjeta). Cuando XP convierte de frecuencia (frecuencia_salida= o el relevo de
+        // una de otra frecuencia) con la salida de hoy, pone detras su limitador de pico real (techo 0,88): con una cadena nueva, el convertidor
+        // solo (la ganancia ya deja el pico real bajo el techo). Con la salida nueva XP ya no convierte (g441, g445). true si se hizo.
+        private static bool RocolaOsConvierteSinLimitador(CadenaCancion c, RemuestreoContinuo r)
+        {
+            if (c == null || r == null || RocolaOsArmadaDe(c) == null) return false;
+            c.Salida = r; c.Retardo = 0; c.Conversion = r; c.LimiteSalida = null;
+            Interlocked.Increment(ref RocolaOsCadenasNuevas.SinLimitador);
+            return true;
+        }
+
+        // ---------------------------------------------------------------- a7: el corte fijo del DSEE de agudos_mp3 (gancho g467)
+        private static readonly ConditionalWeakTable<SpectralTap, StrongBox<float>> rocolaOsDseeFijo = new ConditionalWeakTable<SpectralTap, StrongBox<float>>();
+        private static void RocolaOsDseeFija(SpectralTap t, float hz) { if (t != null && hz > 0f) rocolaOsDseeFijo.AddOrUpdate(t, new StrongBox<float>(hz)); }
+        // En PreparaCorteGrupo de SpectralTap: con un corte fijo, ese y no el que sigue a la musica ventana a ventana. false (lo de XP) si no tiene.
+        private static bool RocolaOsDseeCorteFijo(SpectralTap t, ref float cutHz, ref int corteRecreado, float binHz)
+        {
+            StrongBox<float> b;
+            if (!rocolaOsDseeFijo.TryGetValue(t, out b)) return false;
+            cutHz = b.Value; corteRecreado = (int)(b.Value / binHz);
+            return true;
+        }
+        // el corte de una cancion: el de la medida nueva o, sin el, el de su ficha de XP (rocola_eq.txt o la de Spotify); 0 si nadie lo midio
+        private float RocolaOsCorteDe(RocolaOsReceta r, string ruta)
+        {
+            if (r.Medida != null && r.Medida.CorteHz > 100f) return r.Medida.CorteHz;
+            float[] c;
+            try { if (ruta != null && eqCache != null && (eqCache.TryGetValue(ruta, out c) || RocolaOsSpotifyEqHuella(ruta, false, out c)) && c != null && c.Length > EqCut && c[EqCut] > 100f) return c[EqCut]; } catch { }
+            return 0f;
         }
 
         private CadenaCancion RocolaOsArmaNueva(Track t, IAudioSource source, double saltadoSeg)
         {
+            if (RocolaOsCadenasNuevas.FallaPrueba) throw new InvalidOperationException("ROCOLA_CN_FALLA=armar (prueba)");
+            RocolaOsPublicaNoche(FactorNoche());   // (a8: por si el reloj aun no dio su primera vuelta; en el hilo de la pantalla)
+            // a3: ¿entra SIN PAUSA detras de la que suena? (el relevo de la siguiente del mismo disco: corteNocheRelevo lo pone XP solo ahi)
+            RocolaOsArmada anterior = corteNocheRelevo >= 0f ? RocolaOsArmadaDe(cadenaSonando) : null;
             Track original = t;
             t = RocolaOsCalidadCancion(t, source);   // la sustitucion invisible: la cadena con la ruta de Spotify (lo que se ve, tu cancion)
             bool sombra = !ReferenceEquals(t, original);
@@ -229,7 +338,7 @@ namespace Rocola
                 r.Agudos = RocolaOsCadenasNuevas.Agudos;
                 if (RocolaOsCadenasNuevas.Tono) r.TonoDb = RocolaOsTonoPedido(sombra ? original.Path : t.Path);
             }
-            r.GananciaDb = RocolaOsGananciaNueva(r, t, original, sombra);
+            r.GananciaDb = RocolaOsGananciaNueva(r, t, original, sombra, anterior);
 
             RocolaOsArmada arm = new RocolaOsArmada { Receta = r };
             string ca;
@@ -247,14 +356,20 @@ namespace Rocola
             {
                 if (r.Agudos && sbrAllowed)
                 {
-                    try
-                    {
-                        SpectralTap sbr = new SpectralTap(x);
-                        sbr.Red = ModeloDseePara(t);
-                        sbr.Active = true;
-                        c.Sbr = sbr; x = sbr;
-                    }
-                    catch (Exception ex) { RocolaOs.Falla(RocolaOsCadenasNuevas.Nombre, "el DSEE de agudos_mp3 (sin el)", ex); }
+                    // a7: el DSEE con el CORTE FIJO de la cancion (el medido), en la armada y no en c.Sbr (XP lo encenderia y apagaria con sus mandos
+                    // y «Escuchar sin mejoras»); sin corte medido, o una cancion completa, sin DSEE
+                    float corte = RocolaOsCorteDe(r, sombra ? original.Path : t.Path);
+                    if (corte > 100f && corte < 19300f)
+                        try
+                        {
+                            SpectralTap sbr = new SpectralTap(x);
+                            sbr.Red = ModeloDseePara(t);
+                            sbr.Active = true;
+                            RocolaOsDseeFija(sbr, corte);
+                            arm.Sbr = sbr; arm.SbrCorteHz = corte; x = sbr;
+                        }
+                        catch (Exception ex) { RocolaOs.Falla(RocolaOsCadenasNuevas.Nombre, "el DSEE de agudos_mp3 (sin el)", ex); }
+                    else arm.SbrCorteHz = corte;
                 }
                 if (r.TonoDb != null) x = r.Anota(new RocolaOsTonoParejo(x, TonoParejoGanancias(r.TonoDb, r.Tasa)));
                 x = r.Anota(new RocolaOsGravesCentro(x, RocolaOsCadenasNuevas.GravesCentroHz));
@@ -278,6 +393,13 @@ namespace Rocola
             }
             arm.EqDueno = r.Anota(new RocolaOsEqDuenoPieza(x, this, r.Cadena == 'B', EqDuenoMedios(r.Cadena == 'B'))); x = arm.EqDueno;
             arm.Ganancia = r.Anota(new RocolaOsGananciaPieza(x, this, r.GananciaDb)); x = arm.Ganancia;
+            // a1: si el dueno mueve el EQ mientras suena, la pieza del EQ vuelve a estimar el pico con lo de esta cancion y topa la ganancia
+            {
+                RocolaOsEqDuenoPieza e = arm.EqDueno;
+                e.TpAntesDb = r.TpAntesEqDb; e.Picos = r.PicosEq; e.OtrosDb = r.DtpOtrosDb; e.CDb = RocolaOsCadenasNuevas.C;
+                if (e.Picos == null) { float[] tt, tp; RocolaOsPicosEq.Tipico(r.Cadena, out tt, out tp); e.Tipicos = tp; }
+                e.Tope = arm.Ganancia;
+            }
             // LA NOCHE (§2: FactorNoche, en la ganancia, y sus filtros de graves de hoy): el corte del grave (NV2) y los graves de noche (N1)
             float corteNoche = corteNocheRelevo >= 0f ? corteNocheRelevo : NocheCorteHz();
             if (corteNoche > 0f && !nocheEnB) { arm.NocheCorte = GraveMono.DeNoche(x, corteNoche); c.Noche = arm.NocheCorte; x = arm.NocheCorte; }
@@ -292,7 +414,7 @@ namespace Rocola
                 + (r.Medida != null ? "; " + r.Medida.Resumen() : "; sin medir: se mide mientras suena")
                 + (af.Nada ? "" : "; arreglos: " + (r.CanalMudo >= 0 ? "canal mudo " : "") + (r.Invertido ? "invertido " : "") + (r.ContinuaL != 0f || r.ContinuaR != 0f ? "continua" : ""))
                 + (r.ZumbidoHz > 0 ? "; zumbido " + r.ZumbidoHz + " Hz" : "")
-                + (r.Agudos ? "; agudos_mp3" + (c.Sbr != null ? " (DSEE)" : "") : "") + (r.TonoDb != null ? "; tono parejo" : "")
+                + (r.Agudos ? "; agudos_mp3" + (arm.Sbr != null ? " (DSEE con el corte fijo de " + arm.SbrCorteHz.ToString("0", CultureInfo.InvariantCulture) + " Hz)" : arm.SbrCorteHz >= 19300f ? " (completa: sin DSEE)" : " (sin corte medido: sin DSEE)") : "") + (r.TonoDb != null ? "; tono parejo" : "")
                 + "; " + arm.Fuente;
             RocolaOsCadenasNuevas.Ultima = linea;
             RocolaOsCadenasNuevas.Apunta(linea);
@@ -342,6 +464,13 @@ namespace Rocola
               .Append(" fallos=").Append(Interlocked.Read(ref RocolaOsCadenasNuevas.Fallos).ToString(CultureInfo.InvariantCulture))
               .Append(" flotantes=").Append(Interlocked.Read(ref RocolaOsCadenasNuevas.Flotantes).ToString(CultureInfo.InvariantCulture));
             if (r != null) sb.Append(" sonando=").Append(r.Cadena).Append(" ganancia_db=").Append(r.GananciaDb.ToString("0.00", CultureInfo.InvariantCulture)).Append(" medida=").Append(r.Medida != null ? "si" : "no");
+            RocolaOsArmada a = RocolaOsArmadaDe(cadenaSonando);
+            sb.Append(" respaldos=").Append(Interlocked.Read(ref RocolaOsCadenasNuevas.Respaldos).ToString(CultureInfo.InvariantCulture))
+              .Append(" convertidas_sin_limitador=").Append(Interlocked.Read(ref RocolaOsCadenasNuevas.SinLimitador).ToString(CultureInfo.InvariantCulture))
+              .Append(" noche=").Append(RocolaOsNocheAhora.ToString("0.0000", CultureInfo.InvariantCulture))
+              .Append(" dsee=").Append(a != null && a.Sbr != null ? "1" : "0").Append(" dsee_corte=").Append(a != null ? a.SbrCorteHz.ToString("0", CultureInfo.InvariantCulture) : "0")
+              .Append(" dsee_xp=").Append(curSbr != null ? "1" : "0");
+            if (a != null && a.Ganancia != null) sb.Append(" efectiva_db=").Append(a.Ganancia.EfectivaDb.ToString("0.00", CultureInfo.InvariantCulture)).Append(" topes=").Append(a.EqDueno != null ? Interlocked.Read(ref a.EqDueno.Topes).ToString(CultureInfo.InvariantCulture) : "0");
             sb.Append('\n');
             sb.Append("medida_nueva medidas=").Append(RocolaOsMedidaTabla.Cuantas.ToString(CultureInfo.InvariantCulture))
               .Append(" nuevas=").Append(Interlocked.Read(ref RocolaOsMedidaTrabajo.Hechas).ToString(CultureInfo.InvariantCulture))

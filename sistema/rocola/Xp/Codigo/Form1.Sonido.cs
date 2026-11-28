@@ -307,7 +307,7 @@ namespace Rocola
         }
 
         // Lo que van AHORA el grave de noche y el corte, a las cadenas (las que suenan y las que se arman).
-        private void PublicaNoche() { SalaLocal.GravesNocheDb = gravesAhora; GraveMono.NocheMezcla = MezclaDeCorte(corteAhora); }
+        private void PublicaNoche() { SalaLocal.GravesNocheDb = gravesAhora; GraveMono.NocheMezcla = MezclaDeCorte(corteAhora); RocolaOsPublicaNoche(nocheFactor); }   // ROCOLA OS g466: (XP) private void PublicaNoche() { SalaLocal.GravesNocheDb = gravesAhora; GraveMono.NocheMezcla = MezclaDeCorte(corteAhora); } — el reloj de la pantalla publica tambien el volumen de la noche para la cadena de sonido nueva, que lo lee en el hilo del sonido sin llamar a FactorNoche (RocolaOs/RocolaOs.CadenaNueva.cs); sin ella nadie lo lee
         private static float SigueMeta(float actual, float meta, float paso)
         {
             if (actual == meta) return meta;
@@ -348,7 +348,7 @@ namespace Rocola
             LimitadorPicoReal lim = c.LimiteSalida;
             // El reloj de la cancion descuenta el cebado en cuadros DE LA CANCION (SalidaSonido.cs): el convertidor ya tiro
             // el de la cadena y solo queda el del limitador, que va en cuadros de la salida.
-            c.CebadoInicial = (int)Math.Round(lim.DelayFrames * (double)de.SampleRate / hz);
+            c.CebadoInicial = lim != null ? (int)Math.Round(lim.DelayFrames * (double)de.SampleRate / hz) : 0;   // ROCOLA OS g465: (XP) c.CebadoInicial = (int)Math.Round(lim.DelayFrames * (double)de.SampleRate / hz); — una cadena de sonido nueva convertida sin limitador (g464) no deja cebado; con XP siempre hay limitador: lo de XP
         }
         // Deja preparada en segundo plano la tabla mas comun (44,1 <-> 48 kHz), para que la primera cancion ya salga convertida.
         private static void CalientaFrecuenciaSalida()
@@ -2443,7 +2443,7 @@ namespace Rocola
                 canalDeteccion = canal; detectPair = pareja;
                 if (!firstFrame && !srcEnded && (musicales[canal] || (pareja && musicales[canal + 1])))
                 {
-                    if (corteOriginal == null) { DetectCliff(); ActualizaCorte(); }
+                    if (corteOriginal == null) { if (!RocolaOsDseeCorteFijo(this, ref cutHz, ref corteRecreado, binHz)) { DetectCliff(); ActualizaCorte(); } }   // ROCOLA OS g467: (XP) if (corteOriginal == null) { DetectCliff(); ActualizaCorte(); } — el DSEE de agudos_mp3 de la cadena de sonido nueva recrea desde el corte FIJO medido de la cancion, no desde el que sigue a la musica ventana a ventana (RocolaOs/RocolaOs.CadenaNueva.cs); los de XP no tienen corte fijo: false y lo de XP
                     else if ((cutHz <= 0 || (ventanasCorte & 3) == 1) &&
                         corteOriginal.CuadroOriginal(inicioOriginal + sourceFrames, canal, originalRe, originalIm, win))
                     {

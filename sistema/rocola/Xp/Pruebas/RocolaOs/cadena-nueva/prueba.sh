@@ -6,7 +6,9 @@
 # spotify-xp. Lo que sono se mide con el ebur128 de ffmpeg (otra implementacion de BS.1770) y analiza.py.
 #   bash prueba.sh PROGRAMA [partes...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   partes (de fabrica todas): decodifica sinhuecos medidor mide ganancia constante disco arreglos costo escena billar hoy sinros spotify
+#   partes (de fabrica todas): decodifica sinhuecos medidor mide ganancia constante disco arreglos costo eqdueno eqvivo convierte dsee noche escena
+#   billar hoy sinros spotify relevo respaldo opciones (las del 28-11-2026, los arreglos de CADENA_NUEVA_A.md: eqdueno eqvivo convierte dsee noche
+#   relevo respaldo opciones)
 #   W (/root/rocola-trabajo/fase11/cadena-nueva/prueba; se rehace), DATOS0 (/root/rocola-trabajo/port/ventanas/datos0, se copia),
 #   FALSO (el Soloist falso compilado de spotify-xp, /root/rocola-trabajo/fase11/spotify-xp/falso; se compila si falta)
 # Cada comprobacion: BIEN o MAL en una linea; al final «TODO BIEN (N comprobaciones)» o cuantas MAL (y sale con 1).
@@ -15,7 +17,7 @@ export ROCOLA_LETRA_API="${ROCOLA_LETRA_API:-http://127.0.0.1:7}" ROCOLA_GENIUS_
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SP="$G/../spotify-xp"
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-decodifica sinhuecos medidor mide ganancia constante disco arreglos costo escena billar hoy sinros spotify}"
+partes="${*:-decodifica sinhuecos medidor mide ganancia constante disco arreglos costo eqdueno eqvivo convierte dsee noche escena billar hoy sinros spotify relevo respaldo opciones}"
 W=${W:-/root/rocola-trabajo/fase11/cadena-nueva/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 FALSO=${FALSO:-/root/rocola-trabajo/fase11/spotify-xp/falso}
@@ -109,7 +111,7 @@ if [[ " $partes " == *" mide "* ]]; then
   echo "== mide (la cancion entera en coma flotante por la cadena; lo que sale, tambien con el ebur128 de ffmpeg)"
   sed 's/^/   /' "$W/mide.txt"
   for f in fuerte medio rango mpeg2; do l=$(lin "$W/mide.txt" MIDE $f.mp3)
-    si "mide $f: cancion entera, renglon de 19 campos con 30 tercios ($(de "$l" veces_tiempo_real) veces el tiempo real)" py "$(de "$l" segundos) > 10 and '$(de "$l" tercios)' == '30' and '$(de "$l" renglon_campos)' == '19'"
+    si "mide $f: cancion entera, renglon de 21 campos con 30 tercios ($(de "$l" veces_tiempo_real) veces el tiempo real)" py "$(de "$l" segundos) > 10 and '$(de "$l" tercios)' == '30' and '$(de "$l" renglon_campos)' == '21'"
     g=$(lin "$W/ganancia.txt" GANANCIA $f.mp3); e=$(ebur "$W/sale/$f.sale.wav")
     si "mide $f: lo que sale, por el medidor y por ffmpeg: $(de "$g" sale_lufs)/${e% *} LUFS y $(de "$g" sale_tp)/${e#* } dBTP" py "abs($(de "$g" sale_lufs) - (${e% *})) <= 0.15 and abs($(de "$g" sale_tp) - (${e#* })) <= 0.35"
   done
@@ -211,7 +213,7 @@ if [[ " $partes " == *" escena "* ]]; then
   trozos nueva
   si "escena nueva: sale con 0" test "$(cat $o/salio)" = 0
   si "escena nueva: el repaso de fondo midio las cuatro (rocola_medida_nueva.txt: cabecera y cuatro renglones de la A)" bash -c "[ \$(grep -c '^A	' '$d/rocola_medida_nueva.txt') = 4 ] && head -1 '$d/rocola_medida_nueva.txt' | grep -qx 'ROCOLA-MEDIDA-NUEVA v1'"
-  si "escena nueva: la tabla solo trae la ruta y numeros (19 campos)" bash -c "awk -F'\t' 'NR>1 && NF != 19 {bad=1} END {exit bad}' '$d/rocola_medida_nueva.txt'"
+  si "escena nueva: la tabla solo trae la ruta y numeros (21 campos)" bash -c "awk -F'\t' 'NR>1 && NF != 21 {bad=1} END {exit bad}' '$d/rocola_medida_nueva.txt'"
   si "escena nueva: las cuatro sonaron por la cadena A con su medida (la bitacora), las dos del disco con una sola ganancia, la del disco" bash -c "[ \$(grep -F '[cadena_nueva]' '$b' | grep -c '] A .*: ganancia ') = 4 ] && ! grep -F '[cadena_nueva]' '$b' | grep -q 'sin medir' && [ \$(grep -F '[cadena_nueva]' '$b' | grep -c 'media.mp3: ganancia .* (el disco (2 de 2 pistas medidas)') = 2 ] && [ \$(grep -F '[cadena_nueva]' '$b' | grep -c 'medida ') = 2 ]"
   si "escena nueva: abiertas en coma flotante y sin huecos con LAME" bash -c "grep -F '[cadena_nueva]' '$b' | grep -q 'libmpg123 (coma flotante), sin huecos: LAME'"
   si "escena nueva: vivo.txt dice que suena la nueva" bash -c "grep -q '^cadena_nueva=suena armadas=[1-9]' '$o/vivo.txt'"
@@ -301,6 +303,123 @@ EOP
   si "spotify 2.a vez: con su medida (la bitacora)" bash -c "grep -F '[cadena_nueva]' '$b' | grep -q 'spotify:track:f440d034q30: ganancia .*(medida '"
   si "spotify 2.a vez: sin brincos y sin nivelado en vivo: el nivel no se mueve ($r2)" py "$(echo "$r2" | sed 's/.*salto=//') <= 0.3 and abs($(echo "$r2" | sed 's/.*fin=\([^ ]*\).*/\1/') - ($(echo "$r2" | sed 's/ini=\([^ ]*\).*/\1/'))) <= 0.5"
   si "spotify 2.a vez: mas fuerte que la 1.a (la estimada de las medidas por XP era -10 LKFS; el tono del falso, mucho mas bajo)" py "$(echo "$r2" | sed 's/ini=\([^ ]*\).*/\1/') > $(echo "$r1" | sed 's/ini=\([^ ]*\).*/\1/') + 10"
+fi
+
+# ================================================================ LOS ARREGLOS DEL 28-11-2026 (CADENA_NUEVA_A.md «Arreglos»)
+# ---------------------------------------------------------------- eqdueno (a1: el pico con el ecualizador del dueno)
+if [[ " $partes " == *" eqdueno "* ]]; then
+  echo "== eqdueno (a1: cuanto sube el pico real con curvas del dueno: de verdad, lo que estima la cadena y lo de antes, lo maximo de la curva)"
+  cn eqdueno "$M/aplastada.wav" "$M/bolero.wav" > "$W/eqdueno.txt"; sed 's/^/   /' "$W/eqdueno.txt" | cut -c1-330
+  ok=1; while read -r l; do py "$(de "$l" sube_nueva) >= $(de "$l" sube_real) - 0.05 and $(de "$l" sale_tp_nueva) <= -0.95" || { ok=0; echo "   (corta: $l)" | cut -c1-200; }; done < <(grep -v 'curva=ninguna' "$W/eqdueno.txt")
+  si "eqdueno: en las 14 (dos canciones, siete curvas) lo estimado no se queda corto y nada pasa el techo de -1 dBTP" test $ok = 1 -a "$(grep -vc 'curva=ninguna' "$W/eqdueno.txt")" = 14
+  l=$(lin "$W/eqdueno.txt" EQDUENO "bolero.wav curva=63+6")
+  si "eqdueno: el bolero con +6 dB en 63 Hz: su pico sube $(de "$l" sube_real) dB; se supone $(de "$l" sube_nueva) (antes $(de "$l" sube_hoy)) y sale a $(de "$l" sale_tp_nueva) dBTP, $(de "$l" sale_lufs_nueva) LUFS (antes $(de "$l" sale_tp_hoy), $(de "$l" sale_lufs_hoy))" py "$(de "$l" sale_tp_nueva) >= -2.0 and $(de "$l" g_nueva) - $(de "$l" g_hoy) >= 4.5"
+  l=$(lin "$W/eqdueno.txt" EQDUENO "bolero.wav curva=63+6_125+6")
+  si "eqdueno: el bolero con +6 en 63 y 125: $(de "$l" sale_tp_nueva) dBTP (antes $(de "$l" sale_tp_hoy))" py "$(de "$l" sale_tp_nueva) >= -2.5 and $(de "$l" g_nueva) - $(de "$l" g_hoy) >= 4.5"
+  l=$(lin "$W/eqdueno.txt" EQDUENO "aplastada.wav curva=63+6_125+6")
+  si "eqdueno: en la aplastada lo maximo de la curva se quedaba corto ($(de "$l" sube_hoy) dB, sube $(de "$l" sube_real)); lo estimado no ($(de "$l" sube_nueva))" py "$(de "$l" sube_hoy) < $(de "$l" sube_real) and $(de "$l" sube_nueva) >= $(de "$l" sube_real)"
+  l=$(lin "$W/eqdueno.txt" EQDUENO "bolero.wav curva=63+6")
+  si "eqdueno: sin espectro, la sonoridad con +6 en 63 Hz sube lo de un espectro tipico ($(de "$l" dl_sin_espectro) LU), no lo maximo ($(de "$l" dl_sin_espectro_hoy))" py "$(de "$l" dl_sin_espectro) < 2.0 and $(de "$l" dl_sin_espectro_hoy) >= 5.9"
+fi
+if [[ " $partes " == *" eqvivo "* ]]; then
+  echo "== eqvivo (a1: el dueno sube +12 dB en 2, 4 y 8 kHz a media cancion; con el tope la ganancia baja y no pasa el techo)"
+  cn eqvivo "$M/bolero.wav" > "$W/eqvivo.txt"; sed 's/^/   /' "$W/eqvivo.txt"
+  a=$(lin "$W/eqvivo.txt" EQVIVO "bolero.wav tope=1"); b=$(lin "$W/eqvivo.txt" EQVIVO "bolero.wav tope=0")
+  si "eqvivo: con el tope, la segunda mitad no pasa el techo ($(de "$a" tp_segunda_mitad) dBTP; sin el tope, $(de "$b" tp_segunda_mitad)) y la primera sigue igual ($(de "$a" tp_primera_mitad)/$(de "$b" tp_primera_mitad))" py "$(de "$a" tp_segunda_mitad) <= -0.95 and $(de "$b" tp_segunda_mitad) > 0 and abs($(de "$a" tp_primera_mitad) - ($(de "$b" tp_primera_mitad))) < 0.01 and $(de "$a" efectiva_al_final) < $(de "$a" g)"
+fi
+# ---------------------------------------------------------------- convierte (a5)
+if [[ " $partes " == *" convierte "* ]]; then
+  echo "== convierte (a5: la conversion de frecuencia de la salida de hoy; con una cadena nueva, sin el limitador de XP)"
+  cn convierte > "$W/convierte.txt"; sed 's/^/   /' "$W/convierte.txt"
+  a=$(lin "$W/convierte.txt" CONVIERTE nueva); b=$(lin "$W/convierte.txt" CONVIERTE xp)
+  si "convierte: con una cadena nueva, el convertidor solo (sin limitador ni cebado): el seno de $(de "$a" entra_db) dBFS sale a $(de "$a" pico_db) (con una de XP, su limitador: $(de "$b" pico_db))" py "'$(de "$a" limitador)' == '0' and '$(de "$a" retardo)' == '0' and abs($(de "$a" pico_db) - ($(de "$a" entra_db))) < 0.05 and '$(de "$b" limitador)' == '1' and $(de "$b" pico_db) <= $(de "$b" techo_xp_db) + 0.05"
+fi
+# ---------------------------------------------------------------- dsee (a7)
+if [[ " $partes " == *" dsee "* ]]; then
+  echo "== dsee (a7: el corte de agudos medido, fijo por cancion; el DSEE con el, frente al que sigue a la musica)"
+  cn dsee "$W/dsee" > "$W/dsee.txt"; sed 's/^/   /' "$W/dsee.txt"
+  m=$(lin "$W/dsee.txt" DSEE medida); a=$(lin "$W/dsee.txt" DSEE fijo); b=$(lin "$W/dsee.txt" DSEE sigue)
+  si "dsee: la medida da el corte del codificador (16 kHz) aunque la mitad de la cancion vaya apagada hasta 11 kHz ($(de "$m" corte) Hz)" py "15700 <= $(de "$m" corte) <= 16600"
+  si "dsee: con el corte fijo, en la parte apagada no recrea nada entre 11,5 y 15,5 kHz ($(de "$a" apagada_11k5_15k5_db) dB; siguiendo a la musica, $(de "$b" apagada_11k5_15k5_db)) y en la de agudos recrea lo mismo ($(de "$a" con_agudos_16k5_19k5_db)/$(de "$b" con_agudos_16k5_19k5_db))" py "$(de "$a" apagada_11k5_15k5_db) < -90 and $(de "$b" apagada_11k5_15k5_db) > -60 and abs($(de "$a" con_agudos_16k5_19k5_db) - ($(de "$b" con_agudos_16k5_19k5_db))) < 3"
+fi
+# ---------------------------------------------------------------- noche (a8)
+if [[ " $partes " == *" noche "* ]]; then
+  echo "== noche (a8: la pieza de la ganancia toma la noche que publica el reloj de la pantalla)"
+  cn noche > "$W/noche.txt"; sed 's/^/   /' "$W/noche.txt"
+  ok=1; while read -r l; do py "abs($(de "$l" sale_db) - ($(de "$l" espera_db))) < 0.02" || ok=0; done < <(grep '^NOCHE' "$W/noche.txt")
+  si "noche: lo publicado (1 y 0,5) es lo que aplica la ganancia" test $ok = 1 -a "$(grep -c '^NOCHE' "$W/noche.txt")" = 2
+fi
+
+# ---------------------------------------------------------------- las escenas de los arreglos
+# escena2 NOMBRE DATOS SEGUNDOS «PON A LOS 16 s» SEGUNDO «PON A ESE SEGUNDO» [VAR=valor...]: cuatro monedas, lo pedido a los 16 s y lo demas despues
+escena2() {
+  local n="$1" d="$2" seg="$3" p1="$4" t2="$5" p2="$6"; shift 6
+  local o="$W/$n"; mkdir -p "$o/run/rocola-xp/spotify"
+  printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj  file "%s"  registro "%s" }\n' "$AL/libasound_module_pcm_reloj.so" "$o/sonado.raw" "$o/registro.txt" > "$o/alsa.conf"
+  ( cd "$d" && exec env ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$o/alsa.conf \
+      ROCOLA_PANTALLA=fuera:1024x768 ROCOLA_PULSA="7:67,7.5:67,8:67,8.5:67" ROCOLA_CAPTURA_SALE=0 ROCOLA_CATALOGO_URL=http://127.0.0.1:9/catalogo ROCOLA_PORTADAS_CATALOGO=http://127.0.0.1:9 \
+      "$@" "${RX[@]}" > "$o/salida.txt" 2>&1 ) &
+  local p=$!
+  sleep 16; printf "$p1" >> "$o/run/rocola-xp/spotify/prueba-xp"
+  sleep $((t2 - 16)); printf "$p2" >> "$o/run/rocola-xp/spotify/prueba-xp"
+  sleep $((seg - t2 - 10)); cp "$o/run/rocola-os-prueba-vivo.txt" "$o/vivo.txt" 2>/dev/null
+  sleep 10; kill -TERM $p 2>/dev/null
+  ( sleep 40; kill -KILL $p 2>/dev/null ) & local v=$!
+  wait $p; echo $? > "$o/salio"; kill $v 2>/dev/null; wait $v 2>/dev/null
+}
+gan() { grep -F '[cadena_nueva]' "$1" | grep -F "] $2 $3: " | tail -1 | sed -n 's/.*: ganancia \([-+0-9.]*\) dB.*/\1/p'; }   # gan BITACORA CADENA ARCHIVO
+if [[ " $partes " == *" relevo "* ]]; then
+  echo "== relevo (a3 y b10: un recopilatorio continuo con la misma ganancia en sus dos pistas; una racha que sigue el modo de su primera pista)"
+  enc -i "$M/corto_baja.wav" -c:a libmp3lame -b:a 192k "$M/corto_baja.mp3"
+  enc -i "$M/largo_fuerte.wav" -c:a libmp3lame -b:a 192k "$M/largo_fuerte.mp3"; enc -i "$M/largo_suave.wav" -c:a libmp3lame -b:a 192k "$M/largo_suave.mp3"
+  d="$W/datos-relevo"; rm -rf "$d"; mkdir -p "$d/musica/Varios/Recopilatorio" "$d/musica/Grupo Normal/Disco Normal"
+  cp "$DATOS0/rocola_teclas.txt" "$d/"; printf 'noche=0\r\n' > "$d/rocola_config.txt"
+  cp "$M/largo_fuerte.mp3" "$d/musica/Varios/Recopilatorio/01 fuerte.mp3"; cp "$M/largo_suave.mp3" "$d/musica/Varios/Recopilatorio/02 suave.mp3"
+  cp "$M/corto.mp3" "$d/musica/Grupo Normal/Disco Normal/01 media.mp3"; cp "$M/corto1b.mp3" "$d/musica/Grupo Normal/Disco Normal/02 media.mp3"
+  cp "$M/corto_baja.mp3" "$d/musica/Grupo Normal/Disco Normal/03 baja.mp3"
+  escena2 relevo "$d" 116 'pon Recopilatorio/01 fuerte.mp3\npon Recopilatorio/02 suave.mp3\npon Disco Normal/01 media.mp3\n' 86 'pon Disco Normal/03 baja.mp3\n' ROCOLA_OS=cadena_nueva,medida_nueva,calidad-prueba,prueba-andamio
+  o=$W/relevo; b="$d/rocola_os_bitacora.txt"
+  grep -F '[cadena_nueva]' "$b" 2>/dev/null | grep ': ganancia ' | sed 's/^/   bitacora: /' | cut -c1-330
+  i=$(python3 "$G/analiza.py" inicio "$o/sonado.raw" | sed -n 's/.* segundo=\([^ ]*\).*/\1/p'); t() { python3 -c "print('%.4f' % ($i + $1))"; }
+  { echo "inicio $i"; echo "r1 $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(t 0.5)" -t 31)"; echo "r2 $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(t 32.5)" -t 31)"
+    echo "d1 $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(t 64.5)" -t 11)"; echo "d3 $(ebur "$o/sonado.raw" -f s16le -ar 44100 -ac 2 -ss "$(t 76.5)" -t 11)"; } > "$o/trozos.txt"
+  sed 's/^/   /' "$o/trozos.txt"
+  g1=$(gan "$b" A "01 fuerte.mp3"); g2=$(gan "$b" A "02 suave.mp3")
+  si "relevo: sale con 0" test "$(cat $o/salio)" = 0
+  si "relevo (a3): el recopilatorio (32 s cada una, 7 dB entre ellas) empezo cancion por cancion y la segunda, continua, lleva la ganancia de la primera ($g1 y $g2 dB: sin escalon en el cambio de pista)" bash -c "[ -n '$g1' ] && [ '$g1' = '$g2' ] && grep -F '[cadena_nueva]' '$b' | grep -F '] A 02 suave.mp3: ' | grep -q 'disco continuo: la de la anterior' && ! grep -F '[cadena_nueva]' '$b' | grep -F '] A 01 fuerte.mp3: ' | grep -q 'el disco ('"
+  si "relevo (a3): la primera a -18 LUFS y la segunda tan por debajo como en el disco ($(val relevo r1 2) y $(val relevo r2 2) LUFS; antes, las dos a -18 con el escalon en la union)" py "abs($(val relevo r1 2) + 18) <= 0.5 and $(val relevo r1 2) - $(val relevo r2 2) >= 5"
+  si "relevo (b10): la racha del disco normal empezo cancion por cancion (la 1 sola en la cola) y la 3 la sigue: por su medida, no por la del disco" bash -c "grep -F '[cadena_nueva]' '$b' | grep -F '] A 03 baja.mp3: ' | grep -q 'la racha va cancion por cancion' && ! grep -F '[cadena_nueva]' '$b' | grep -F '] A 03 baja.mp3: ' | grep -q 'el disco (' && ! grep -F '[cadena_nueva]' '$b' | grep -F '] A 01 media.mp3: ' | grep -q 'el disco ('"
+  si "relevo (b10): la 1 y la 3 del disco normal, las dos a -18 LUFS ($(val relevo d1 2) y $(val relevo d3 2))" py "abs($(val relevo d1 2) + 18) <= 0.5 and abs($(val relevo d3 2) + 18) <= 0.5"
+fi
+if [[ " $partes " == *" respaldo "* ]]; then
+  echo "== respaldo (a6: la cadena nueva falla al armarse; suena el respaldo minimo, a su nivel, y nunca la de XP)"
+  d=$(datos respaldo); escena respaldo "$d" 62 ROCOLA_OS=cadena_nueva,medida_nueva,calidad-prueba,prueba-andamio ROCOLA_CN_FALLA=armar
+  o=$W/respaldo; b="$d/rocola_os_bitacora.txt"
+  grep -F '[cadena_nueva]' "$b" 2>/dev/null | grep 'RESPALDO' | sed 's/^/   bitacora: /' | cut -c1-260
+  trozos respaldo
+  si "respaldo: sale con 0" test "$(cat $o/salio)" = 0
+  si "respaldo: las cuatro por el respaldo minimo, con el fallo apuntado en rocola_error.txt" bash -c "[ \$(grep -F '[cadena_nueva]' '$b' | grep -c 'RESPALDO MINIMO (fallo al armar') = 4 ] && grep -q 'armar la cadena nueva' '$d/rocola_error.txt'"
+  si "respaldo: a su nivel, el disco y la fuerte a -18 LUFS a 0,5 LU ($(val respaldo disco 2) y $(val respaldo fuerte 2)), sin pasar -1 dBTP ($(val respaldo media1 3), $(val respaldo fuerte 3))" py "abs($(val respaldo disco 2) + 18) <= 0.5 and abs($(val respaldo fuerte 2) + 18) <= 0.5 and max($(val respaldo media1 3), $(val respaldo media2 3), $(val respaldo fuerte 3)) <= -0.7"
+  si "respaldo: vivo.txt lo cuenta" bash -c "grep -q 'respaldos=[1-9]' '$o/vivo.txt'"
+fi
+if [[ " $partes " == *" opciones "* ]]; then
+  echo "== opciones (a5: frecuencia_salida=48000 con la salida de hoy; a7: agudos_mp3 con el corte fijo y fuera de XP; a8: de noche desde el arranque)"
+  enc -i "$M/corto2.wav" -c:a libmp3lame -b:a 128k "$M/corto2_128.mp3"
+  d=$(datos opciones); cp "$M/corto2_128.mp3" "$d/musica/Grupo Fuerte/Disco Fuerte/01 fuerte.mp3"
+  h=$(date +%-H); printf 'noche=1\r\nnoche_desde=%d\r\nnoche_hasta=%d\r\nnoche_pct=80\r\nnoche_graves=0\r\nnoche_corte=0\r\nnoche_madrugada=0\r\nfrecuencia_salida=48000\r\n' "$h" $(( (h + 3) % 24 )) > "$d/rocola_config.txt"
+  printf 'agudos_mp3=1\nnoche_desde_min=0\n' > "$d/rocola_os.txt"
+  escena opciones "$d" 62 ROCOLA_OS=cadena_nueva,medida_nueva,calidad-prueba,prueba-andamio
+  o=$W/opciones; b="$d/rocola_os_bitacora.txt"
+  grep -F '[cadena_nueva]' "$b" 2>/dev/null | grep ': ganancia ' | sed 's/^/   bitacora: /' | cut -c1-300; grep '^cadena_nueva' "$o/vivo.txt" 2>/dev/null | sed 's/^/   vivo: /'
+  i=$(python3 -c "import sys, numpy as np; x=np.fromfile(sys.argv[1], dtype='<i2').reshape(-1,2); a=np.nonzero(np.abs(x).max(axis=1) > 33)[0]; print('%.4f' % (a[0] / 48000.0 if len(a) else 0))" "$o/sonado.raw")
+  t() { python3 -c "print('%.4f' % ($i + $1))"; }
+  { echo "inicio $i"; echo "disco $(ebur "$o/sonado.raw" -f s16le -ar 48000 -ac 2 -ss "$(t 0.5)" -t 23)"; echo "fuerte $(ebur "$o/sonado.raw" -f s16le -ar 48000 -ac 2 -ss "$(t 24.5)" -t 11)"; } > "$o/trozos.txt"; sed 's/^/   /' "$o/trozos.txt"
+  ndb=$(python3 -c "import math; print('%.2f' % (10 * math.log2(0.8)))")
+  si "opciones: sale con 0" test "$(cat $o/salio)" = 0
+  si "opciones (a5): a 48 kHz, convertidas sin el limitador de XP (vivo.txt: $(num "$o/vivo.txt" convertidas_sin_limitador))" bash -c "grep -q 'convertidas_sin_limitador=[1-9]' '$o/vivo.txt' && grep -qi '48000' '$o/registro.txt'"
+  si "opciones (a8): de noche desde el arranque, el volumen que publica el reloj ($(num "$o/vivo.txt" noche)) y lo que sono: el disco y la fuerte a -18 ${ndb} dB ($(val opciones disco 2) y $(val opciones fuerte 2) LUFS)" py "abs($(num "$o/vivo.txt" noche) - 0.6905) < 0.002 and abs($(val opciones disco 2) - (-18 + $ndb)) <= 0.5 and abs($(val opciones fuerte 2) - (-18 + $ndb)) <= 0.5"
+  si "opciones (a7): la fuerte (LAME 128, corte medido de unos 17 kHz) con el DSEE de corte fijo, y XP no lo ve (vivo.txt: dsee=$(num "$o/vivo.txt" dsee) dsee_corte=$(num "$o/vivo.txt" dsee_corte) dsee_xp=$(num "$o/vivo.txt" dsee_xp))" bash -c "grep -F '[cadena_nueva]' '$b' | grep -F '] A 01 fuerte.mp3: ' | grep -q 'DSEE con el corte fijo de 1[67][0-9][0-9][0-9] Hz' && grep -q ' dsee=1 dsee_corte=1[67][0-9][0-9][0-9] dsee_xp=0' '$o/vivo.txt'"
+  si "opciones: ningun fallo de la cadena nueva en rocola_error.txt" bash -c "! grep -q 'Rocola OS: cadena_nueva\|Rocola OS: medida_nueva' '$d/rocola_error.txt' 2>/dev/null"
 fi
 
 echo
