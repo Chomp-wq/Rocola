@@ -28,7 +28,8 @@ namespace Rocola
         internal const int Max = 420;
         private static readonly float[] rx = new float[Max], rp = new float[Max], rl = new float[Max];
         private static readonly bool[] cerca = new bool[Max];
-        private static Tarjeta.Vtx[] buf = new Tarjeta.Vtx[Max * 6 + 12];
+        private static readonly int[] prof = new int[Max];                       // la profundidad de un copo: 0 lejos, 1 en medio, 2 cerca
+        private static Tarjeta.Vtx[] buf = new Tarjeta.Vtx[Max * 18 + 12];       // (un copo son 6 triangulos; una raya, 2)
         private static int nv;
         private static double fase;       // el reloj de las rayas (s), frenado por la calma
         private static double msAntes = -1;
@@ -41,25 +42,31 @@ namespace Rocola
                 uint c = (uint)(i + 31) * 374761393u; c ^= c >> 13; c *= 1274126177u; c ^= c >> 16;
                 rx[i] = (a & 0xFFFFFF) / 16777216f; rp[i] = (b & 0xFFFFFF) / 16777216f; rl[i] = 0.75f + 0.5f * ((c & 0xFFFF) / 65536f);
                 cerca[i] = i % 3 == 0;                                           // un tercio delante, dos de atras
+                prof[i] = i % 5 == 0 ? 2 : (i % 5 <= 2 ? 1 : 0);                 // copos: un quinto cerca, dos de quince en medio, el resto lejos
             }
         }
         // lo mas que sube la inclinacion con el viento (px de x por px de y): el viento hacia la izquierda (-1) da x negativo
         internal static float Inclina(float dirX, float vientoKmh) { return dirX * Math.Min(0.5f, Math.Max(0f, vientoKmh) / 50f); }
         // cuantas rayas (de Max) con tanta lluvia (0-1) y la calma
         internal static int Cuantas(float lluvia, float calma) { return (int)Math.Max(0f, Math.Min(Max, Max * lluvia * (0.35f + 0.65f * calma))); }
-        // el color de una raya (0-255): pizarra, escalada por la luz del cielo; su luminancia no pasa de 0,17 (la regla 3)
+        // el color de una raya (0-255) con 'nivel' = la luz del sol (0 a 1): de noche lavanda clara (se ve sobre el cielo oscuro), de dia pizarra (se ve sobre el
+        // claro). Lo que pasa del tope de la regla 3 se atenua con el texto (RocolaOsClimaLuces.Proteccion): ahi la raya queda a 0,15 x su alfa
         internal static void Color(bool cercana, float nivel, out float r, out float g, out float b)
         {
-            float k = 0.30f + 0.70f * Math.Max(0f, Math.Min(1f, nivel));
-            r = (cercana ? 100f : 92f) * k; g = (cercana ? 116f : 108f) * k; b = (cercana ? 142f : 134f) * k;
+            float k = Math.Max(0f, Math.Min(1f, nivel));
+            float rn = cercana ? 206f : 190f, gn = cercana ? 214f : 200f, bn = 255f, rd = cercana ? 96f : 88f, gd = cercana ? 112f : 104f, bd = cercana ? 142f : 134f;
+            r = rn + (rd - rn) * k; g = gn + (gd - gn) * k; b = bn + (bd - bn) * k;
         }
+        // lo que se atenua el clima encima de un punto con texto (alfa x esto)
+        internal const float AtenuaTexto = 0.94f;
         private static uint Rgba(float r, float g, float b, float a)
         {
             int al = (int)(a * 255f + 0.5f); if (al < 0) al = 0; else if (al > 255) al = 255;
             return ((uint)al << 24) | ((uint)(int)(r + 0.5f) << 16) | ((uint)(int)(g + 0.5f) << 8) | (uint)(int)(b + 0.5f);
         }
         private static void P(float x, float y, uint c) { buf[nv].X = x; buf[nv].Y = y; buf[nv].Z = 0f; buf[nv].Rhw = 1f; buf[nv].Color = c; buf[nv].U = 0f; buf[nv].V = 0f; nv++; }
-        // UN CUADRO de lluvia o nieve: arma la malla (sin dibujar); devuelve los triangulos. 'llueve' 0-1, 'nieva' 0-1. Pura salvo por la fase.
+        // UN CUADRO de lluvia o nieve: arma la malla (sin dibujar); devuelve los triangulos. 'llueve' 0-1, 'nieva' 0-1, 'nivel' la luz del sol 0-1. Pura salvo por
+        // la fase y por las luces (RocolaOsClimaLuces: sin ellas, nada brilla de mas ni se atenua).
         internal static int Arma(int ancho, float hz, float alto, float lluvia, float nieva, float dirX, float viento, float calma, float nivel, double dt)
         {
             nv = 0;
@@ -68,34 +75,54 @@ namespace Rocola
             int n = Cuantas(nieve ? nieva : lluvia, calma);
             if (n <= 0 || hz < 20f) return 0;
             float esc = alto / 768f, incl = Inclina(dirX, viento);
+            float ka = Math.Min(1f, nieve ? nieva * 1.2f : 1f);
             for (int i = 0; i < n; i++)
             {
                 bool c = cerca[i];
-                float vy = (nieve ? (c ? 95f : 55f) : (c ? 560f : 300f)) * esc, len = nieve ? (c ? 3.5f : 2.5f) * esc : (c ? 22f : 11f) * rl[i] * esc;
-                float span = hz + len + 8f;
-                double t = rp[i] + fase * vy / span; t -= Math.Floor(t);
-                float yh = (float)(t * span) - 4f;                                   // la cabeza (abajo) de la raya
-                float r, g, b; Color(c, nivel, out r, out g, out b);
                 if (nieve)
                 {
-                    float sway = (float)Math.Sin(fase * 0.8 + rp[i] * 6.28) * 9f * esc;
-                    float x = rx[i] * ancho + incl * yh * 0.5f + sway; x -= (float)Math.Floor(x / ancho) * ancho;
-                    float y0 = yh - len, y1 = yh;
-                    if (y0 >= hz || y1 < 0f) continue;
-                    if (y1 > hz) y1 = hz;
-                    float a = (c ? 0.55f : 0.40f) * Math.Min(1f, nieva * 1.2f), h = len * 0.5f;
-                    uint col = Rgba(r, g, b, a);
-                    P(x - h, y0, col); P(x + h, y0, col); P(x - h, y1, col);
-                    P(x + h, y0, col); P(x + h, y1, col); P(x - h, y1, col);
+                    int d = prof[i];
+                    float vy = (d == 2 ? 112f : d == 1 ? 68f : 42f) * esc, tam = (d == 2 ? 4.4f + 2.2f * rl[i] : d == 1 ? 2.2f + 1.1f * rl[i] : 1.2f + 0.7f * rl[i]) * esc;
+                    float span = hz + 2f * tam + 8f;
+                    double tt = rp[i] + fase * vy / span; tt -= Math.Floor(tt);
+                    float yh = (float)(tt * span) - 4f;
+                    float sway = (float)Math.Sin(fase * (d == 2 ? 0.7 : 0.9) + rp[i] * 6.28) * (d == 2 ? 16f : 9f) * esc;
+                    float x = rx[i] * ancho + incl * yh * (d == 2 ? 0.7f : 0.45f) + sway; x -= (float)Math.Floor(x / ancho) * ancho;
+                    if (yh - tam >= hz || yh + tam < 0f) continue;
+                    float a = (d == 2 ? 0.80f : d == 1 ? 0.66f : 0.48f) * ka, pr = RocolaOsClimaLuces.Proteccion(x, yh);
+                    a *= 1f - AtenuaTexto * pr;
+                    float lr, lg, lb, br = RocolaOsClimaLuces.Brillo(x, yh, out lr, out lg, out lb);
+                    float cr = 236f + (lr - 236f) * 0.4f * br, cg = 242f + (lg - 242f) * 0.4f * br, cb = 255f + (lb - 255f) * 0.4f * br;
+                    a = Math.Min(0.95f, a * (1f + 0.6f * br * (1f - pr)));
+                    if (a < 0.02f) continue;
+                    // un copo: un hexagono suave (el centro con todo su alfa, el borde con un tercio)
+                    uint cc = Rgba(cr, cg, cb, a), ce = Rgba(cr, cg, cb, a * 0.3f);
+                    float yb = Math.Min(yh, hz + tam * 0.5f);
+                    for (int s = 0; s < 6; s++)
+                    {
+                        float a0 = s * 1.0472f + 0.5f, a1 = (s + 1) * 1.0472f + 0.5f;
+                        P(x, yb, cc); P(x + (float)Math.Cos(a0) * tam, yb + (float)Math.Sin(a0) * tam, ce); P(x + (float)Math.Cos(a1) * tam, yb + (float)Math.Sin(a1) * tam, ce);
+                    }
                     continue;
                 }
-                float x0 = rx[i] * ancho + incl * yh;                                 // (la x de la cabeza: se inclina con la altura)
+                float vyr = (c ? 560f : 300f) * esc, len = (c ? 34f : 15f) * rl[i] * esc;
+                float spanr = hz + len + 8f;
+                double t = rp[i] + fase * vyr / spanr; t -= Math.Floor(t);
+                float yh2 = (float)(t * spanr) - 4f;                                  // la cabeza (abajo) de la raya
+                float x0 = rx[i] * ancho + incl * yh2;                                // (la x de la cabeza: se inclina con la altura)
                 x0 -= (float)Math.Floor(x0 / ancho) * ancho;
-                float yt = yh - len; if (yt >= hz || yh < 0f) continue;
+                float yt = yh2 - len; if (yt >= hz || yh2 < 0f) continue;
                 float xt = x0 - incl * len;
-                float yc = yh, xc = x0, ac = (c ? 0.36f : 0.22f);
-                if (yc > hz) { float u = (hz - yt) / (yh - yt); xc = xt + (x0 - xt) * u; yc = hz; ac *= u; }
+                float yc = yh2, xc = x0, ac = (c ? 0.50f : 0.32f);
+                if (yc > hz) { float u = (hz - yt) / (yh2 - yt); xc = xt + (x0 - xt) * u; yc = hz; ac *= u; }
                 float dx = xc - xt, dy = yc - yt, ln = (float)Math.Sqrt(dx * dx + dy * dy); if (ln < 0.5f) continue;
+                // el texto atenua la raya; la luz de detras (la luna, la aurora, la estrella, las luces de las fiestas) la hace brillar y la tine de su color
+                float mx = (xt + xc) * 0.5f, my = (yt + yc) * 0.5f, pr2 = RocolaOsClimaLuces.Proteccion(mx, my);
+                float r, g, b; Color(c, nivel, out r, out g, out b);
+                float lr2, lg2, lb2, br2 = RocolaOsClimaLuces.Brillo(xc, yc, out lr2, out lg2, out lb2);
+                if (br2 > 0.01f) { float kb = 0.55f * br2; r += (lr2 - r) * kb; g += (lg2 - g) * kb; b += (lb2 - b) * kb; ac = Math.Min(0.92f, ac * (1f + 1.8f * br2 * (1f - pr2))); }
+                ac *= 1f - AtenuaTexto * pr2;
+                if (ac < 0.015f) continue;
                 float w = (c ? 1.7f : 1.1f) * esc * 0.5f, px = -dy / ln * w, py = dx / ln * w;
                 uint cabeza = Rgba(r, g, b, ac), cola = Rgba(r, g, b, 0f);
                 P(xt - px, yt - py, cola); P(xt + px, yt + py, cola); P(xc - px, yc - py, cabeza);
@@ -113,7 +140,7 @@ namespace Rocola
             RocolaOsCieloClimaVista.Actualiza();
             float llueve = RocolaOsCieloClimaVista.Lluvia, nieva = RocolaOsCieloClimaVista.Nieve;
             if (llueve < 0.02f && nieva < 0.02f) return;
-            int tris = Arma(e.Ancho, e.Horizonte, e.Alto, llueve, nieva, RocolaOsCieloClimaVista.DirX, RocolaOsCieloClimaVista.Viento, e.Calma, RocolaOsCieloClimaVista.Nivel, e.Dt);
+            int tris = Arma(e.Ancho, e.Horizonte, e.Alto, llueve, nieva, RocolaOsCieloClimaVista.DirX, RocolaOsCieloClimaVista.Viento, e.Calma, RocolaOsCieloClimaVista.Sol, e.Dt);
             if (tris > 0) st.DrawMesh(buf, tris);
         }
         internal static Tarjeta.Vtx[] Malla { get { return buf; } }
@@ -130,7 +157,8 @@ namespace Rocola
         private static uint semilla = 12345u;
         private static string registro; private static bool registroLeido;
         internal const double IntervaloMinimo = 6.0, IntervaloMaximo = 16.0, SubeS = 0.07, BajaS = 0.2, DuraS = 0.9;
-        internal const float Suma = 0.26f;   // el alfa de la mancha sumada de (180, 180, 240): +47 como mucho al color de la nube
+        internal const float Suma = 0.50f;   // el alfa de la forma de la nube sumada de (190, 190, 250): +95 como mucho al color de la nube (oscura: la regla 3)
+        internal static float Destello;      // lo que brilla ahora el relampago (0 a 1): el piso mojado lo toma
         private static float Azar() { semilla = semilla * 1664525u + 1013904223u; return ((semilla >> 8) & 0xFFFF) / 65536f; }
         // el tiempo hasta el siguiente comienzo (s): de 6 a 16 (nunca menos de 6: el tope de CL3). Pura.
         internal static double Intervalo(float azar01) { return IntervaloMinimo + (IntervaloMaximo - IntervaloMinimo) * Math.Max(0f, Math.Min(1f, azar01)); }
@@ -144,6 +172,7 @@ namespace Rocola
         // lo que pasa en un cuadro: (nada a la vista: se reinicia)
         internal static void Pinta(GpuStarfield st, RocolaOsCieloEscena e, RocolaOsCieloFoto f)
         {
+            Destello = 0f;
             if (!f.CL3 || !f.ClimaSabido || RocolaOsCieloClimaVista.Tormenta < 0.5f || RocolaOsCieloNubes.Visibles <= 0) { enFlash = false; proximo = -1; return; }
             double t = e.Ms / 1000.0;
             if (proximo < 0) proximo = t + 2.0 + 4.0 * Azar();
@@ -163,8 +192,11 @@ namespace Rocola
             float al = Math.Min(1f, RocolaOsCieloNubes.Al[nube] / 0.5f);
             float a0 = Suma * env * e.Calma * al;
             if (a0 <= 0.003f) return;
-            float cx = RocolaOsCieloNubes.Cx[nube], cy = RocolaOsCieloNubes.Cy[nube] - RocolaOsCieloNubes.Ry[nube] * 0.2f, r = RocolaOsCieloNubes.Rx[nube] * 0.75f;
-            RocolaOsCieloAstros.Halo(st, true, cx, cy, r, 0xB4B4F0, a0, 1.6f, -2e9f, e.Horizonte);
+            a0 *= 1f - 0.8f * RocolaOsClimaLuces.Proteccion(RocolaOsCieloNubes.Cx[nube], RocolaOsCieloNubes.Cy[nube]);   // (sobre el texto, mas tenue)
+            Destello = env * e.Calma * al;
+            // la nube se enciende por dentro CON SU FORMA (sus manchas sumadas), no una mancha redonda; sin destello de pantalla
+            int tris = RocolaOsCieloNubes.ArmaLuz(nube, 0xBEBEFA, a0, 0f);
+            if (tris > 0) st.DrawMeshAdd(RocolaOsCieloNubes.MallaLuz, tris);
         }
         // (pruebas: ROCOLA_CIELO_RELAMPAGOS=archivo: la hora de cada comienzo, en segundos)
         private static void Apunta(double t)

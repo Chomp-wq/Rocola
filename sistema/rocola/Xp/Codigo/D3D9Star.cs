@@ -3819,7 +3819,7 @@ namespace Rocola
         {
             if (Nieblas == GpuStarfield.Bajo) return;   // perilla de Ctrl+F3
             if (hazTex == IntPtr.Zero && nebTex == IntPtr.Zero) return;
-            if (nebTex != IntPtr.Zero)
+            if (nebTex != IntPtr.Zero && !RocolaOsSinNebulosas())   // ROCOLA OS g320: (XP) if (nebTex != IntPtr.Zero) — con el cielo vivo y nebulosas=0 (de fabrica) no se dibujan las nebulosas de XP (RocolaOs/RocolaOs.CieloEnchufes.cs); sin ROCOLA_OS o con el cielo apagado, false
             {
                 // El color va en el VERTICE: la tarjeta multiplica la textura por el y las nebulosas cambian
                 // de color con la cancion sin volver a subir nada.

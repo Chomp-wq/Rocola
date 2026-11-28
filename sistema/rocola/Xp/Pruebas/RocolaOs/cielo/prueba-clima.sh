@@ -9,7 +9,7 @@
 #   BASE:     el programa de la rama principal (JIT), para «apagado» (de fabrica $T/base-jit)
 #   W: la carpeta de trabajo (de fabrica $T/prueba-clima); CAPTURAS (de fabrica $W/capturas); T: donde quedan los datos inventados, brotli
 # partes (de fabrica todas): ganchos orden apagado noche escenas relampagos reloj
-#   ganchos     ganchos.py TODO BIEN y que esta rama no tenga ganchos propios (g320-g339: ninguno; todo va por los enchufes del nucleo)
+#   ganchos     ganchos.py TODO BIEN y un solo gancho propio (g320: las nebulosas; el resto va por los enchufes del nucleo)
 #   orden       `rocola-xp --prueba-cielo-clima` (las cuentas puras)
 #   apagado     APAGADO = XP: la cinta de la tarjeta de la pared sin ROCOLA_OS, con las funciones en 0 y con las ideas de este grupo en 0 (y un
 #               clima de tormenta forzado): iguales a BASE; y el control (las nubes con tormenta a las 13:00): distinta
@@ -107,7 +107,7 @@ if [[ " $partes " == *" ganchos "* ]]; then
   echo "== ganchos"
   python3 "$XP/Pruebas/RocolaOs/ganchos.py" > "$W/ganchos.txt" 2>&1; r=$?
   si "ganchos.py: TODO BIEN" test $r = 0 -a "$(tail -1 "$W/ganchos.txt")" = "TODO BIEN"
-  si "sin ganchos propios (g320 a g339): el grupo va por los enchufes del nucleo" test "$(grep -cP '^g3[23][0-9]\t' "$XP/RocolaOs/GANCHOS.tsv")" = 0
+  si "un solo gancho propio (g320, las nebulosas: Codigo/D3D9Star.cs); el resto del grupo va por los enchufes del nucleo" test "$(grep -cP '^g3[23][0-9]\t' "$XP/RocolaOs/GANCHOS.tsv")" = 1 -a "$(grep -cP '^g320\tCodigo/D3D9Star.cs\t' "$XP/RocolaOs/GANCHOS.tsv")" = 1
 fi
 # ---------------------------------------------------------------- orden
 if [[ " $partes " == *" orden "* ]]; then
@@ -126,7 +126,7 @@ TORMENTA="tormenta,100,9,35,240,15"
 if [[ " $partes " == *" apagado "* ]]; then
   echo "== apagado"
   TODO0='cielo=0\nfiestas=0\nclima=0\nvidrio=0\n'
-  IDEAS0='cielo=1\nclima=1\nfiestas=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\nlluvia=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
+  IDEAS0='cielo=1\nclima=1\nfiestas=0\nvidrio=0\nnebulosas=1\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\nlluvia=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
   SIN_NUBES='cielo=1\nclima=1\nfiestas=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nlluvia=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
   SIN_LLUVIA='cielo=1\nclima=1\nfiestas=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\ntormenta=0\nneblina=0\nclima_escaparate=0\n'
   cinta base-sin "$BASE" -; espera base-sin
@@ -153,10 +153,15 @@ if [[ " $partes " == *" noche "* ]]; then
   echo "== noche"
   [ -f "$W/base-sin.cinta" ] || { cinta base-sin "$BASE" -; espera base-sin; }
   # a las 23:30, con cielo y clima encendidos y sin clima: sin nubes (nubes=0) la noche es la de XP
-  cinta noche-sin "$prog" 'cielo=1\nclima=1\nfiestas=0\nvidrio=0\nnubes=0\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$FECHA23" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera noche-sin
+  cinta noche-sin "$prog" 'cielo=1\nclima=1\nfiestas=0\nvidrio=0\nnubes=0\nnebulosas=1\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$FECHA23" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED
+  cinta noche-sin-neb "$prog" 'cielo=1\nclima=1\nfiestas=0\nvidrio=0\nnubes=0\n' ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$FECHA23" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera noche-sin noche-sin-neb
   PYTHONPATH="$PY" python3 "$G/cinta.py" compara "$W/base-sin.cinta" "$W/noche-sin.cinta" > "$W/noche-sin.compara" 2>&1; r=$?
   sed 's/^/   /' "$W/noche-sin.compara" | head -6
-  si "DE NOCHE = XP (23:30, cielo y clima encendidos, sin nubes, sin clima): la cinta igual a la de la rama principal" test $r = 0
+  si "DE NOCHE = XP (23:30, cielo y clima encendidos, sin nubes, sin clima, con nebulosas=1): la cinta igual a la de la rama principal" test $r = 0
+  # (27-11-2026) SIN NEBULOSAS: con el cielo vivo y la clave de fabrica (nebulosas=0) la noche ya no dibuja las nebulosas de XP: la cinta SI cambia
+  PYTHONPATH="$PY" python3 "$G/cinta.py" compara "$W/base-sin.cinta" "$W/noche-sin-neb.cinta" > "$W/noche-sin-neb.compara" 2>&1; r=$?
+  sed 's/^/   /' "$W/noche-sin-neb.compara" | head -4
+  si "SIN NEBULOSAS de noche (cielo vivo, nebulosas=0 de fabrica): la cinta cambia (no pinta las dos pasadas de la nebulosa)" test $r = 1
 fi
 
 # ---------------------------------------------------------------- escenas

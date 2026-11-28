@@ -51,6 +51,7 @@ namespace Rocola
         internal RocolaOsCalendarioHoy Hoy = RocolaOsCalendarioHoy.Nada;
         // LAS IDEAS, ya miradas (su funcion encendida y su clave): lo que lee cada grupo para saber si pinta
         internal bool DN1, DN2, DN3B, DN4, DN5, DN6, FI1, FI2, FI3, FI4, FI5, FI6, CL1, CL2, CL3, CL4, CL5, VI1, VI2, VI3, VI4, VI5, VI6;
+        internal bool Nebulosas = true;       // false: con el cielo vivo, las nebulosas de XP no se dibujan (clave nebulosas=0; gancho g320)
         internal bool Cielo, Fiestas, ClimaVa, Vidrio;   // las cuatro funciones
     }
 
@@ -91,6 +92,7 @@ namespace Rocola
                     RocolaOsClave.SiNo("estrellas_anochecer", true, true, "DN4: las estrellas se encienden de una en una al anochecer"),
                     RocolaOsClave.SiNo("horizonte_hora", true, true, "DN5: la raya del horizonte con la luz de la hora"),
                     RocolaOsClave.SiNo("nubes", true, true, "DN6: nubes pintadas con la luz del sol o de la luna"),
+                    RocolaOsClave.SiNo("nebulosas", false, true, "las nebulosas del cielo de XP (apagadas de fabrica con el cielo vivo: decision del dueno del 27-11-2026; 1 las vuelve a poner)"),
                     RocolaOsClave.Texto("bar_lat", "", v => RocolaOsMetar.Coordenada(v, 90, out _) || v.Length == 0, true, "la latitud exacta del bar (con bar_lon manda sobre la ciudad y la de internet); vacia: no hay"),
                     RocolaOsClave.Texto("bar_lon", "", v => RocolaOsMetar.Coordenada(v, 180, out _) || v.Length == 0, true, "la longitud exacta del bar (con bar_lat)"),
                     RocolaOsClave.Entero("ciudad_bar", 0, 0, RocolaOsCiudades.Maxima, true, "la ciudad del bar: 0 automatica por internet (una vez por semana), o una de la lista (1 a 41)"),
@@ -284,6 +286,7 @@ namespace Rocola
             f.ClimaVa = RocolaOs.Encendida(FuncionClima); f.Vidrio = RocolaOs.Encendida(FuncionVidrio);
             f.DN1 = f.Cielo && RocolaOs.AjusteSiNo("cielo_sol"); f.DN2 = f.Cielo && RocolaOs.AjusteSiNo("sol"); f.DN3B = f.Cielo && RocolaOs.AjusteSiNo("luna_camino");
             f.DN4 = f.Cielo && RocolaOs.AjusteSiNo("estrellas_anochecer"); f.DN5 = f.Cielo && RocolaOs.AjusteSiNo("horizonte_hora"); f.DN6 = f.Cielo && RocolaOs.AjusteSiNo("nubes");
+            f.Nebulosas = !f.Cielo || RocolaOs.AjusteSiNo("nebulosas");   // (sin el cielo vivo, las de XP)
             f.FI1 = f.Fiestas && RocolaOs.AjusteSiNo("aurora_fiesta"); f.FI2 = f.Fiestas && RocolaOs.AjusteSiNo("horizonte_fiesta");
             f.FI3 = f.Fiestas && RocolaOs.AjusteSiNo("fugaz_fiesta"); f.FI4 = f.Fiestas && RocolaOs.AjusteSiNo("fuegos");
             f.FI5 = f.Fiestas && RocolaOs.AjusteSiNo("escaparate_fiesta"); f.FI6 = f.Fiestas && RocolaOs.AjusteSiNo("fechas_propias");
@@ -320,6 +323,7 @@ namespace Rocola
         }
 
         // ================================================================ EL CUADRO (gancho g120: en la pantalla, al empezar cada cuadro)
+        internal static volatile bool SinNebulosas;                        // las nebulosas de XP no se dibujan (el gancho g320 lo pregunta)
         internal static RocolaOsCieloEscena escena;                       // la de este cuadro (solo la pantalla la escribe)
         internal static RocolaOsCieloEscena Escena { get { return escena; } }
         private static GpuStarfield estrellasPrincipal;                   // el campo de la rocola (no el de la ventana de prueba F12)
@@ -339,6 +343,7 @@ namespace Rocola
             msAntes = ms;
             escena.Ancho = ancho; escena.Alto = alto; escena.Horizonte = horizonte; escena.EstadoArriba = estadoArriba; escena.Modo = modo; escena.Pared = pared;
             escena.Reposo = reposo; escena.Ms = ms; escena.Dt = dt;
+            SinNebulosas = !f.Nebulosas;
             // la calma (regla 5): baja a 0,35 en 0,4 s y vuelve a 1 en 3 s
             Form1 r = RocolaOs.LaRocola;
             bool eligiendo = r != null && r.RocolaOsCieloEligiendo();

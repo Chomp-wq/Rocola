@@ -17,7 +17,7 @@
 // no bajan de 0,76 del horizonte (la franja clara es de la raya y su resplandor, DN5).
 // REGLA 5 (calma): mientras alguien elige la deriva se frena a 0,35 y las nubes pierden la mitad de su alfa (0,5 + 0,5 x calma): se ven mas
 // quietas y tenues. REGLA 1: con todo apagado, ni se arma ni se pinta nada; de noche cerrada sin clima, solo si nubes=1 y entonces por la luz
-// de la luna (poca, 0,012 de luminancia sin luna).
+// de la luna (poca, 0,04 de luminancia sin luna: la nube se ve como una silueta gris sobre las estrellas).
 using System;
 using System.Globalization;
 using System.IO;
@@ -34,6 +34,8 @@ namespace Rocola
         internal static float Sol, Luna, Nivel;                                          // la luz del sol, de la luna y la total (0-1)
         internal static float LitR, LitG, LitB, ShadeR, ShadeG, ShadeB, AlfaNube;        // los colores de las nubes (0-255) y su alfa de cuerpo
         internal static float Tormenta;                                                  // 0-1 (si hay relampagos)
+        internal static float VientoK = 1f;                                              // cuanto se menea lo de las fiestas con el viento (1 sin viento, 2,4 con 40 km/h o mas): papel picado, copos, llamas
+        internal static float AurR, AurG, AurB, AurK;                                    // el color de la aurora de ahora y cuanta hay (la base de las nubes de noche toma un poco)
         internal static double Deriva;                                                   // lo que han corrido las nubes (px de un viento de 1): crece con el tiempo y la calma
         internal static bool Hay;                                                        // hay clima que ver (sabido y encendido)
         private static double msUltimo = -1; private static bool listo;
@@ -77,6 +79,8 @@ namespace Rocola
         // la velocidad de deriva en px/s de un viento (km/h), 3 a 30 (sin viento sabido, 3,5)
         internal static float VelocidadPx(float vientoKmh, bool sabido) { return sabido ? Math.Max(3f, Math.Min(30f, vientoKmh * 0.9f)) : 3.5f; }
 
+        // cuanto se menea lo de las fiestas con un viento (km/h): 1 sin viento, 2,4 con 40 o mas
+        internal static float KDeViento(float kmh) { return 1f + 1.4f * Math.Min(1f, Math.Max(0f, kmh) / 40f); }
         private static float Hacia(float v, float objetivo, float k) { return v + (objetivo - v) * k; }
         // UNA VEZ POR CUADRO (la escena de este cuadro ya esta puesta: Prepara del cuadro)
         internal static void Actualiza()
@@ -96,6 +100,7 @@ namespace Rocola
             RocolaOsClima c = f.Clima;
             float viento = Hay ? c.Viento : 0f, ve = Hay ? DireccionX(c.Direccion) : -1f;   // sin clima: de derecha a izquierda, despacio
             Viento = Hacia(Viento, viento, kf); DirX = Hacia(DirX, ve, kf);
+            VientoK = KDeViento(Viento);
             // la deriva: px de un viento de 1 (el sentido y la velocidad se ponen aparte); se frena con la calma (regla 5)
             Deriva += dt * e.Calma;
             // la luz (de la foto: los pesos de §5 ya mezclados por 1 s)
@@ -107,8 +112,15 @@ namespace Rocola
             AlfaNube = Math.Min(0.85f, 0.30f + 0.55f * Math.Max(Sol, Math.Min(1f, Luna * 3f)));
             listo = true;
         }
+        // LA AURORA DE AHORA (la lee Prepara de las nubes: la de XP no se toca), suavizada en 1,5 s
+        internal static void Aurora(GpuPanel p, double dt)
+        {
+            float r, g, b, k = p.RocolaOsAuroraMedia(out r, out g, out b), kf = 1f - (float)Math.Exp(-dt / 1.5);
+            AurK += (k - AurK) * kf;
+            if (k > 0.02f) { AurR += (r - AurR) * kf; AurG += (g - AurG) * kf; AurB += (b - AurB) * kf; }
+        }
         // LOS COLORES DE UNA NUBE (0-255): la luz (lo que da el astro: el sol blanco que se hace del color de la raya al bajar; la luna azulada) y la
-        // sombra, con el gris del clima. Su luminancia NO pasa de 0,15 x sol + 0,075 x luna + 0,012 (la regla 3). Pura (la prueba la recorre).
+        // sombra, con el gris del clima. Su luminancia NO pasa de 0,15 x sol + 0,075 x luna + 0,04 (la regla 3). Pura (la prueba la recorre).
         internal static void Colores(RocolaOsCieloFoto f, float sol, float luna, float gris, out float lr, out float lg, out float lb, out float sr, out float sg, out float sb)
         {
             // el color de la luz: el sol (blanco que se calienta al bajar), la luna (azul palido)
@@ -125,7 +137,7 @@ namespace Rocola
             // el gris del clima (lluvia, tormenta): la luz pierde color y fuerza
             double kg = gris * 0.8;
             R += (gr - R) * kg; G += (gr - G) * kg; B += (gr - B) * kg;
-            double tope = 0.15 * sol + 0.075 * luna + 0.012;                // la regla 3
+            double tope = 0.15 * sol + 0.075 * luna + 0.04;                 // la regla 3
             tope *= 1.0 - 0.55 * gris;                                      // y mas oscuras con el mal tiempo
             double l = 0.2126 * R + 0.7152 * G + 0.0722 * B;
             double esc = l > 1e-9 ? tope / l : 0.0;
@@ -176,6 +188,7 @@ namespace Rocola
         // lo de cada nube en este cuadro (la pone Prepara; lo leen el pintor, la pasada de la luna y las estrellas)
         internal static readonly float[] Cx = new float[Max], Cy = new float[Max], Rx = new float[Max], Ry = new float[Max], Al = new float[Max];
         internal static int Visibles;     // cuantas tienen alfa
+        internal static float LaneY = -1f;   // la altura del astro de ahora (el sol de dia, la luna de noche): la nube 0 pasa por ahi (frente a el); <0: ninguna
         private static Tarjeta.Vtx[] buf = new Tarjeta.Vtx[Max * Manchas * Seg * 9 + 64];
         private static int nv;
         internal static bool Activa;      // DN6 puesta y con algo que ver en este cuadro
@@ -195,6 +208,7 @@ namespace Rocola
                 float w = bw[k] * ancho * grande, span = ancho + 2f * w;
                 double x = (bx[k] * span + v * bv[k] * deriva) % span; if (x < 0) x += span;
                 Cx[k] = (float)x - w + w * 0.5f; Cy[k] = Math.Min(by[k], 0.76f) * horizonte;
+                if (k == 0 && LaneY > 0f) Cy[k] = Math.Min(LaneY + 0.05f * w, 0.76f * horizonte);   // la que pasa frente al sol o a la luna
                 Rx[k] = w * 0.5f; Ry[k] = w * 0.16f;
                 Al[k] = vis * alfa * (bv[k] < 1f ? 0.8f : 1f);
                 if (Al[k] > 0.01f) Visibles++;
@@ -206,8 +220,16 @@ namespace Rocola
             RocolaOsCieloClimaVista.Actualiza();
             Tinte.SubeVersion();
             if (f == null || !f.DN6) { Activa = false; Visibles = 0; return; }
+            RocolaOsCieloClimaVista.Aurora(p, RocolaOsCielo.Escena.Dt);
             RocolaOsCieloEscena e = RocolaOsCielo.Escena;
             if (e.Ancho < 64 || e.Alto < 64) { Activa = false; return; }
+            LaneY = -1f;
+            if (RocolaOsCieloClimaVista.Sol >= 0.1f && f.DN2)
+            {
+                float sx, sy; RocolaOsCieloAstros.Proyecta(RocolaOsCieloAstros.Este(f.SolAlt, f.SolAz), f.SolAlt, e.Ancho, e.Horizonte, out sx, out sy);
+                if (sy < 0.7f * e.Horizonte && !RocolaOsCieloAstros.ConPortadas(e)) LaneY = sy;
+            }
+            else if (Math.Max(RocolaOsCieloClimaVista.Luna, RocolaOsCielo.NocheCuadro * 0.7f) >= 0.3f) { float cx, cy, cr; Form1.SitioLuna(e.Ancho, e.Alto, out cx, out cy, out cr); LaneY = cy; }
             Coloca(e.Ancho, e.Horizonte, e.Calma);
             Activa = Visibles > 0;
         }
@@ -246,6 +268,15 @@ namespace Rocola
             // el astro que alumbra (el sol si lo hay, si no la luna): su sitio en la pantalla, para el lado de la luz
             double alt = RocolaOsCieloClimaVista.Sol >= RocolaOsCieloClimaVista.Luna ? f.SolAlt : f.LunaAlt, az = RocolaOsCieloClimaVista.Sol >= RocolaOsCieloClimaVista.Luna ? f.SolAz : f.LunaAz;
             float ax, ay; RocolaOsCieloAstros.Proyecta(RocolaOsCieloAstros.Este(alt, az), alt, e.Ancho, e.Horizonte, out ax, out ay);
+            // la base de la nube de noche toma un poco del color de la aurora de ese momento (a la luminancia de su sombra x 1,7: la regla 3 no cambia)
+            float sr = RocolaOsCieloClimaVista.ShadeR, sg = RocolaOsCieloClimaVista.ShadeG, sb = RocolaOsCieloClimaVista.ShadeB;
+            float ta = 0.5f * RocolaOsCieloClimaVista.AurK * Math.Max(0f, 1f - RocolaOsCieloClimaVista.Sol * 1.6f);
+            if (ta > 0.01f)
+            {
+                float la = 0.2126f * RocolaOsCieloClimaVista.AurR + 0.7152f * RocolaOsCieloClimaVista.AurG + 0.0722f * RocolaOsCieloClimaVista.AurB;
+                float ls = 0.2126f * sr + 0.7152f * sg + 0.0722f * sb, esc = la > 1f ? Math.Min(1.5f, ls * 1.7f / la) : 0f;
+                sr += (RocolaOsCieloClimaVista.AurR * esc - sr) * ta; sg += (RocolaOsCieloClimaVista.AurG * esc - sg) * ta; sb += (RocolaOsCieloClimaVista.AurB * esc - sb) * ta;
+            }
             for (int k = 0; k < Max; k++)
             {
                 float a = Al[k]; if (a <= 0.01f) continue;
@@ -263,11 +294,94 @@ namespace Rocola
                 for (int j = 0; j < Manchas; j++)
                     Mancha(Cx[k] + ox[k, j] * w, Cy[k] + oy[k, j] * w, orr[k, j] * w, orr[k, j] * w * 0.66f, a, lx, ly,
                            RocolaOsCieloClimaVista.LitR, RocolaOsCieloClimaVista.LitG, RocolaOsCieloClimaVista.LitB,
-                           RocolaOsCieloClimaVista.ShadeR, RocolaOsCieloClimaVista.ShadeG, RocolaOsCieloClimaVista.ShadeB);
+                           sr, sg, sb);
             }
             return nv / 3;
         }
         internal static Tarjeta.Vtx[] Malla { get { return buf; } }
+
+        // LA LUZ DE UNA NUBE (un relampago, un fuego): la forma de la nube k sumada, de un color y un alfa, con mas luz abajo (sesgo +1) o arriba (-1);
+        // devuelve los triangulos (para DrawMeshAdd con MallaLuz)
+        private static readonly Tarjeta.Vtx[] bufL = new Tarjeta.Vtx[Manchas * Seg * 9 + 64];
+        private static int nvL;
+        internal static Tarjeta.Vtx[] MallaLuz { get { return bufL; } }
+        private static void PL(float x, float y, uint c) { bufL[nvL].X = x; bufL[nvL].Y = y; bufL[nvL].Z = 0f; bufL[nvL].Rhw = 1f; bufL[nvL].Color = c; bufL[nvL].U = 0f; bufL[nvL].V = 0f; nvL++; }
+        private static uint ColorL(uint rgb, float a) { int al = (int)(a * 255f + 0.5f); if (al < 0) al = 0; else if (al > 255) al = 255; return ((uint)al << 24) | (rgb & 0x00FFFFFFu); }
+        internal static int ArmaLuz(int k, uint rgb, float a, float sesgo)
+        {
+            nvL = 0;
+            if (k < 0 || k >= Max || !(a > 0.002f)) return 0;
+            float w = Rx[k] * 2f, ra = 0.55f;
+            for (int j = 0; j < Manchas; j++)
+            {
+                float cx = Cx[k] + ox[k, j] * w, cy = Cy[k] + oy[k, j] * w, rx = orr[k, j] * w, ry = orr[k, j] * w * 0.66f;
+                uint c0 = ColorL(rgb, a);
+                for (int s = 0; s < Seg; s++)
+                {
+                    float c1 = cosT[s], s1 = sinT[s], c2 = cosT[s + 1], s2 = sinT[s + 1];
+                    uint m1 = ColorL(rgb, a * 0.8f * Math.Max(0f, 1f + 0.5f * sesgo * s1 * ra)), m2 = ColorL(rgb, a * 0.8f * Math.Max(0f, 1f + 0.5f * sesgo * s2 * ra)), o = ColorL(rgb, 0f);
+                    float x1 = cx + c1 * rx * ra, y1 = cy + s1 * ry * ra, x2 = cx + c2 * rx * ra, y2 = cy + s2 * ry * ra, X1 = cx + c1 * rx, Y1 = cy + s1 * ry, X2 = cx + c2 * rx, Y2 = cy + s2 * ry;
+                    PL(cx, cy, c0); PL(x1, y1, m1); PL(x2, y2, m2);
+                    PL(x1, y1, m1); PL(X1, Y1, o); PL(X2, Y2, o);
+                    PL(x1, y1, m1); PL(X2, Y2, o); PL(x2, y2, m2);
+                }
+            }
+            return nvL / 3;
+        }
+
+        // EL BORDE BRILLANTE (la nube frente a la luna: plateado; frente al sol: calido): de los bordes de las nubes que tocan el astro (ax, ay, aR), una
+        // banda sumada que brilla mas cuanto mas cerca del astro; devuelve los triangulos (DrawMeshAdd con MallaBorde)
+        private static readonly Tarjeta.Vtx[] bufB = new Tarjeta.Vtx[Max * Manchas * Seg * 6 + 64];
+        private static int nvB;
+        private static readonly float[] expo = new float[Seg + 1];
+        internal static Tarjeta.Vtx[] MallaBorde { get { return bufB; } }
+        private static void PB(float x, float y, uint c) { bufB[nvB].X = x; bufB[nvB].Y = y; bufB[nvB].Z = 0f; bufB[nvB].Rhw = 1f; bufB[nvB].Color = c; bufB[nvB].U = 0f; bufB[nvB].V = 0f; nvB++; }
+        private static float Cerca(float x, float y, float ax, float ay, float R2)
+        {
+            float dx = x - ax, dy = y - ay, d = (float)Math.Sqrt(dx * dx + dy * dy);
+            float t = 1f - d / R2; if (t <= 0f) return 0f;
+            return t * t;
+        }
+        internal static int ArmaBorde(float ax, float ay, float aR, uint rgb, float fuerza)
+        {
+            nvB = 0;
+            if (!(fuerza > 0.01f) || !(aR > 1f)) return 0;
+            float R2 = aR * 2.4f, ra = 0.55f;
+            for (int k = 0; k < Max; k++)
+            {
+                float al = Al[k]; if (al <= 0.01f) continue;
+                float dx = ax - Cx[k], dy = ay - Cy[k];
+                if (dx * dx + dy * dy > (Rx[k] * 1.5f + R2) * (Rx[k] * 1.5f + R2)) continue;
+                float w = Rx[k] * 2f, q = fuerza * Math.Min(1f, al / 0.6f);
+                for (int j = 0; j < Manchas; j++)
+                {
+                    float cx = Cx[k] + ox[k, j] * w, cy = Cy[k] + oy[k, j] * w, rx = orr[k, j] * w, ry = orr[k, j] * w * 0.66f;
+                    // solo el contorno de la nube: el borde de una mancha que queda dentro de otra no brilla (si no se verian aros)
+                    for (int q2 = 0; q2 <= Seg; q2++)
+                    {
+                        float X = cx + cosT[q2] * rx, Y = cy + sinT[q2] * ry, emin = 9f;
+                        for (int j2 = 0; j2 < Manchas; j2++)
+                        {
+                            if (j2 == j) continue;
+                            float dx2 = (X - (Cx[k] + ox[k, j2] * w)) / (orr[k, j2] * w), dy2 = (Y - (Cy[k] + oy[k, j2] * w)) / (orr[k, j2] * w * 0.66f), v = dx2 * dx2 + dy2 * dy2;
+                            if (v < emin) emin = v;
+                        }
+                        expo[q2] = RocolaOsCieloAstros.Paso(emin, 0.55, 1.0);
+                    }
+                    for (int s = 0; s < Seg; s++)
+                    {
+                        if (nvB + 6 > bufB.Length) return nvB / 3;
+                        float c1 = cosT[s], s1 = sinT[s], c2 = cosT[s + 1], s2 = sinT[s + 1];
+                        float x1 = cx + c1 * rx * ra, y1 = cy + s1 * ry * ra, x2 = cx + c2 * rx * ra, y2 = cy + s2 * ry * ra, X1 = cx + c1 * rx, Y1 = cy + s1 * ry, X2 = cx + c2 * rx, Y2 = cy + s2 * ry;
+                        float am1 = 0.42f * q * Cerca(x1, y1, ax, ay, R2) * expo[s], am2 = 0.42f * q * Cerca(x2, y2, ax, ay, R2) * expo[s + 1], ao1 = q * Cerca(X1, Y1, ax, ay, R2) * 0.2f * expo[s], ao2 = q * Cerca(X2, Y2, ax, ay, R2) * 0.2f * expo[s + 1];
+                        if (am1 + am2 + ao1 + ao2 < 0.004f) continue;
+                        PB(x1, y1, ColorL(rgb, am1)); PB(X1, Y1, ColorL(rgb, ao1)); PB(X2, Y2, ColorL(rgb, ao2));
+                        PB(x1, y1, ColorL(rgb, am1)); PB(X2, Y2, ColorL(rgb, ao2)); PB(x2, y2, ColorL(rgb, am2));
+                    }
+                }
+            }
+            return nvB / 3;
+        }
         internal override void Pinta(GpuPanel p, int capa)
         {
             RocolaOsCieloFoto f = RocolaOsCielo.Foto;
@@ -286,15 +400,40 @@ namespace Rocola
             }
             else return;
             if (tris > 0) st.DrawMesh(buf, tris);
+            Borde(st, e, f, capa);
             if (capa == RocolaOsCieloCapa.TrasNieblas) RocolaOsCieloNubesRelampago.Pinta(st, e, f);
         }
 
+        // el borde brillante de las nubes frente al sol (en la capa de atras: el sol esta ahi) y frente a la luna (en la capa de la luna)
+        private static void Borde(GpuStarfield st, RocolaOsCieloEscena e, RocolaOsCieloFoto f, int capa)
+        {
+            float ax, ay, aR, fuerza; uint rgb;
+            if (capa == RocolaOsCieloCapa.TrasNieblas)
+            {
+                if (RocolaOsCieloClimaVista.Sol < 0.05f || !f.DN2) return;
+                if (RocolaOsCieloAstros.ConPortadas(e)) return;   // (en la pared el sol apenas asoma)
+                RocolaOsCieloAstros.Proyecta(RocolaOsCieloAstros.Este(f.SolAlt, f.SolAz), f.SolAlt, e.Ancho, e.Horizonte, out ax, out ay);
+                if (ay > e.Horizonte) return;
+                aR = Math.Max(10f, e.Alto * RocolaOsCieloSol.RadioDelAlto); fuerza = 0.8f * RocolaOsCieloClimaVista.Sol; rgb = 0xFFF2D0;
+            }
+            else
+            {
+                float luna = Math.Max(RocolaOsCieloClimaVista.Luna, RocolaOsCielo.NocheCuadro * 0.7f); if (luna < 0.05f) return;
+                Form1.SitioLuna(e.Ancho, e.Alto, out ax, out ay, out aR);
+                fuerza = 0.85f * luna * (0.4f + 0.6f * (float)Math.Max(0.0, Math.Min(1.0, f.LunaLuz))); rgb = 0xE8EAFA;
+            }
+            fuerza *= 1f - 0.8f * RocolaOsClimaLuces.Proteccion(ax, ay);
+            int t = ArmaBorde(ax, ay, aR, rgb, fuerza);
+            if (t > 0) st.DrawMeshAdd(bufB, t);
+        }
         // EL BRILLO DE LAS ESTRELLAS tras una nube (g127): de 1 (sin nube) a 0,15 (bajo una nube entera)
         internal sealed class Estrellas : RocolaOsCieloEstrella
         {
             internal Estrellas() { Quien = "DN6 las estrellas tras las nubes"; Orden = RocolaOsCieloOrden.Nubes; }
-            internal override bool Activo { get { return Activa && Visibles > 0; } }
-            internal override float Brillo(bool actual, int i, float x, float y, int tamano) { return Cobertura(x, y); }
+            internal override bool Activo { get { return (Activa && Visibles > 0) || (RocolaOsCieloClimaVista.Nieve > 0.02f && Nieva); } }
+            private static bool Nieva { get { RocolaOsCieloFoto f = RocolaOsCielo.Foto; return f != null && f.CL2; } }
+            // (con nieve, las estrellas un poco mas tenues: hasta 0,72 con nieve total)
+            internal override float Brillo(bool actual, int i, float x, float y, int tamano) { return (Activa && Visibles > 0 ? Cobertura(x, y) : 1f) * (1f - (Nieva ? 0.28f * Math.Min(1f, RocolaOsCieloClimaVista.Nieve) : 0f)); }
         }
         // cuanto tapa una nube (0 a 1) un punto de la pantalla: por la elipse de cada una y su alfa (pura; la prueba la recorre)
         internal static float Cobertura(float x, float y)

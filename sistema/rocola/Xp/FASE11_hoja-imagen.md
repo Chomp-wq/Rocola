@@ -118,3 +118,7 @@ Capturas de 1024x768 de la sesion: Dia y noche (apagada y con `cielo` encendido)
 
 - **«Ver como se veria» desde la hoja ya no se quita solo.** Se quitaba al primer cambio de `lastInput`; el raton lo actualiza al moverse mas de 4 px (`Form1.Video.cs`), asi que al cerrar la hoja se quitaba al instante (la escena `raton` con el programa de antes: se quito al 1.er segundo). Ahora (a) el raton que solo se mueve no lo quita (gancho g438, `RocolaOsRatonMueve`: si antes del movimiento no habia otra cosa nueva, se absorbe) y (b) 2 s de gracia tras ponerlo (lo que mueva el cierre de la hoja). Una tecla o un clic (pasada la gracia) lo quita como siempre. Prueba: `imagen/prueba.sh ... raton` (4 movimientos del raton hasta el segundo 20 y una tecla en el 26: se quita a los 14 s de ponerlo; antes de este cambio, a 1 s).
 - La hoja dice «Lugar sin saber: elige la ciudad» cuando el lugar es automatico y no se ha sabido (ver FASE11_cielo-clima.md).
+
+## Nebulosas (27-11-2026)
+En la hojita de dia y noche (grupo `cielo`) hay una fila nueva, «Nebulosas del cielo de XP» (`nebulosas=`, **apagada de fabrica**: decision del dueno, «quitar del cielo nocturno
+las nebulosas»); encenderla las vuelve a dibujar (gancho g320). Ver `FASE11_cielo-clima.md`, seccion 10.
