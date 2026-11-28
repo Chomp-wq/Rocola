@@ -174,7 +174,7 @@ namespace Rocola
                 Caida = true;
                 return false;
             }
-            Respaldo = porQue.Length > 0 ? porQue + " (" + nombre + "; la elegida no abrio: " + primerMotivo + ")" : "";
+            Respaldo = porQue.Length > 0 ? porQue + " (" + nombre + "; " + (primerMotivo != null ? "la elegida no abrio: " + primerMotivo : "Linux no ve ninguna tarjeta de sonido") + ")" : "";
             if (Respaldo != respaldoApuntado) { respaldoApuntado = Respaldo; if (Respaldo.Length > 0) RocolaOs.Apunta(NombreFuncion, "RESPALDO: " + Respaldo); }
             if (porQue.Length > 0 && e != null && nombre != e.ClaveNombre) e = null;   // (lo del lanzador o default: no se sabe de que tarjeta es)
             pcm = p;

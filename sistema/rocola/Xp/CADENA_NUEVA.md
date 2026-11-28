@@ -194,16 +194,20 @@ g530-g539, bajo virtual g540-g544): la FASE 1 (hecha) deja la nueva como la unic
 | La hojita «Billar» de Ctrl+F4 siempre a la vista con ROCOLA_OS (siete pestanas: van mas angostas, d33b952; los clics de las pruebas siguen cayendo en su pestana: Imagen 500, Sonido 606, Billar 818, Archivos 924) | `RocolaOs.Billar2Hoja.cs` |
 | `spotify_nivela`, `spotify_eq` y `spotify_brillo` (de la cadena de XP) ya no van con ROCOLA_OS=1 (`SoloEnLaLista`: solo con una lista de pruebas que las nombre); la tabla de los niveles de Spotify se carga SOLO PARA LEER (`RocolaOsSpotifyNivela.CargaParaLeer`): la cadena nueva la usa de respaldo para la ganancia fija estimada de Spotify la 1.a vez hasta tener 5 medidas suyas | `RocolaOs.SpotifyNivela.cs`, `RocolaOs.SpotifyEq.cs` |
 | Gancho g550 (`Codigo/Form1.Sonido.cs:901`, MeasureFile): con Rocola OS no se junta material para la IA (la cosecha) | `RocolaOs.CadenaVieja.cs` (`RocolaOsCosechaIa`), `GANCHOS.tsv` |
-| LOS DATOS VIEJOS QUE YA NADIE LEE, A LA PAPELERA de Archivos de Ctrl+F4 (se vacia sola a los 30 dias; se pueden devolver), una vez por lista (`rocola_cadena_vieja.txt`, `papelera=N`); el MATERIAL DE LA IA (hasta 24 GB, en el disco de la rocola) no cabe en la papelera de los datos (datos.img de 512 MB, tope de 64 MB): se aparta en su mismo disco a `papelera-cadena-vieja/AAAAMMDD/` (un rename) y se borra solo a los 30 dias. Lo llama el Arranca de `cadena_nueva` | `RocolaOs.CadenaVieja.cs` |
+| LOS DATOS VIEJOS QUE YA NADIE LEE, A LA PAPELERA de Archivos de Ctrl+F4 (se vacia sola a los 30 dias; se pueden devolver), una vez por lista (`rocola_cadena_vieja.txt`, `papelera=N`), 3 s despues de arrancar (para no cruzarse con lo que XP aparta al arrancar); un archivo que ya no esta no cuenta como fallo. El MATERIAL DE LA IA (hasta 24 GB, en el disco de la rocola: es derivado y no cabe en la papelera de datos.img) se BORRA (decision (4) del 28-11-2026, «elimina todo de la IA»): solo `rocola_ia_datos.bin`, `.idx` y `.generos.tsv`; las miniaturas y el respaldo de esa misma carpeta (`ROCOLA_IA_DATOS`) no se tocan. Lo llama el Arranca de `cadena_nueva` | `RocolaOs.CadenaVieja.cs` |
+| El importador de XP ya no trae ningun modelo de IA (IAS/ ni sueltos), ni `rocola_ia_hechas.txt`, `rocola_billar_nivel.txt` ni `rocola_billar_bitacora.txt` (la carpeta de XP del disco de Windows se sigue solo leyendo) | `Nativo/ImportaXp.cs` (`Tablas`, `NombreModelo`) |
 | rocola-tarjeta y rocola-sonido: la USB primero y la tarjeta guardada por su nombre SIEMPRE (salvo con Rocola OS apagado de emergencia, `rocola_os_apagado`); `salida_nueva=` ya no se mira. Piden la compilacion rapida del sistema | `sistema/board/rocola/rootfs_overlay/usr/bin/rocola-tarjeta`, `rocola-sonido` |
 
 La lista 1 de la papelera (fase 1; solo lo que la cadena nueva ya no lee): `rocola_billar_nivel.txt` y `rocola_billar_nivel.antes-2026-11-18.txt`
 (el volumen parejo del billar), `rocola_billar_bitacora.txt` y `.1` (la bitacora del billar), `rocola_spotify_eq.txt` (spotify_eq y
 spotify_brillo), `IAS/rocola_eq_ia.bin` (la IA del EQ: «a la medida» y el EQ automatico) e `IAS/rocola_ia_genero_*.bin` (el DSEE por genero,
-quitado el 18-11-2026). Apartado en el disco: `rocola_ia_datos.bin`, `.idx` y `.generos.tsv`. NO van todavia (la nueva aun los lee hasta que la
-fase 2 los porte, abajo): `rocola_volumen.txt`, `rocola_eq.txt`, `rocola_sonoridad.txt`, `rocola_fuentes.txt`, `rocola_afondo.txt`,
-`rocola_ia_hechas.txt`, `rocola_calidad.txt`, `rocola_spotify_niveles.txt` y `IAS/rocola_ia.bin` (el modelo del DSEE: se QUEDA, lo usa
-`agudos_mp3`).
+quitado el 18-11-2026) y, con la decision (4), TODOS los modelos de IA (`IAS/rocola_*.bin` -tambien `rocola_ia.bin`, el del DSEE, y la candidata
+`rocola_ia.candidata.bin`-, sus `.anterior-N`, los sueltos de la carpeta de datos que XP aun no paso a IAS/), `rocola_ia_hechas.txt` y la carpeta
+`IAS` si queda vacia. Sin `rocola_ia.bin`, el DSEE de `agudos_mp3` usa su CURVA FIJA (`EnvolventeClasica` de `SpectralTap`, Codigo/Form1.Sonido.cs:
+`if (!((Red ?? NeuralEnv).Loaded && RegenNeural(...)) && !EnvolventeClasica(...))`; existe y funciona sola: es lo que hace sin modelo) desde el
+siguiente arranque (en la sesion del primer arranque el modelo ya estaba cargado en memoria). BORRADO del disco: `rocola_ia_datos.bin`, `.idx` y
+`.generos.tsv`. NO van todavia (la nueva aun los lee hasta que la fase 2 los porte, abajo): `rocola_volumen.txt`, `rocola_eq.txt`,
+`rocola_sonoridad.txt`, `rocola_fuentes.txt`, `rocola_afondo.txt`, `rocola_calidad.txt` y `rocola_spotify_niveles.txt`.
 
 Lo que en la fase 1 aun corre aunque es de la cadena vieja, porque la nueva todavia necesita lo que mide (se va en la fase 2): el REPASO DE XP
 (`StartPreScan`: la primera tanda, `MeasureFile` -la estimacion K-RMS, la huella de tono de 8 bandas y el corte de agudos-, y la segunda,
@@ -228,7 +232,7 @@ salida nueva una vez, y el lanzador), `VozGolpeYRetumbe.cs`.
 | `Form1.Sonido.cs` | el bajo psicoacustico y el DSEE de XP (`BassBaseNow`, `BassFactorFor`, `DseeDe`, `ExcitePara`, `IaMejoradaPara`...), las tablas de sonoridad (`LoudFile`, `EqFile`, `ReadLoudCache*`, `LoudTier*`, `NormGainFor`, `FinalizeLoudMeasure`, `CierraSonoridad`), `MeasureFile` entero (con la cosecha), el cuerpo de XP de `ArmaCadena` (todas sus etapas, `LevelTap`, la medida en vivo de XP, `curTap`), `FrecuenciaSalidaValida`/`AFrecuenciaDeLaTarjeta`/`CalientaFrecuenciaSalida` (la salida nueva va a 44,1 kHz fijos), `ApplyNormNow` y lo que solo la llama | el modo noche entero (`NocheDb`... `AvanzaModoNoche`, `FactorNoche`, `NocheCorteHz`, `GravesNocheDe`, `FactorVideoNoche`, `PruebaNoche*`), `PlayTrack`/`StartOpenedTrack` (sin `curTap`), `ArmaCadena` reducida a armar la nueva (o su respaldo «nueva minima» del agente de los fallos), `OpenAudio` (con g462: el MP3 en coma flotante; lo demas, `FileAudioSource`), `BuildCleanMp3`, lo de incompatibles, los bloques del espectro para lo que se ve (`EnqueueLevel`/`ConsumeLevels`/`ReportAudioBlock`), `ComoEstereo`, la aurora y el estado de la pantalla (no son del sonido) |
 | `Form1.Datos.cs` | las claves de la cadena vieja (abajo) al leer y guardar `rocola_config.txt`, la carga y el guardado de `rocola_volumen/eq/sonoridad/fuentes/afondo/ia_hechas`, `DeclipVale`, el EQ automatico, el respaldo de esas tablas | lo demas de la configuracion, el estado, las estadisticas, los botones, la noche |
 | `Form1.Biblioteca.cs`, `PlanBiblioteca.cs`, `Optimizaciones.cs` | el repaso (`StartPreScan`, `TandaPorMedir`, `CarrilesPara`, `RevisaCarriles`, `TurnoAnalisis`, `MeasureFileResponsive`, `TrabajoMedida`, `AudioFftPlan`, `MarkIaDone`, `MarkDeepDone`, `EscribeInformeCalidad`/`rocola_calidad.txt`) | el escaneo de la biblioteca y el de las duraciones (`StartDurScan`, `rocola_duracion.txt`: de ahi salen las duraciones, no del repaso), `LecturaBiblioteca`, las miniaturas, los tintes, el GC en baja latencia |
-| `Form1.Ia.cs` | la cosecha y su material (`IaDataFile`, `IaIndexFile`, `GenerosIa`, `iaDone`, `IaPasadas*`, `IaBudgetFull`, `IaInfoText`), la IA del EQ (`EqNet`), el DSEE por genero (`ModeloDseePara` con `dseeGeneros`) | `RedChica` y el modelo general del DSEE (`NeuralEnv`, `IAS/rocola_ia.bin`): lo usa `agudos_mp3` |
+| `Form1.Ia.cs` | ENTERO (decision (4): «elimina todo de la IA»): la cosecha y su material (`IaDataFile`, `IaIndexFile`, `GenerosIa`, `iaDone`, `IaPasadas*`, `IaBudgetFull`, `IaInfoText`), la red (`RedChica`), el modelo del DSEE (`NeuralEnv`), la IA del EQ (`EqNet`), el DSEE por genero (`ModeloDseePara`, `dseeGeneros`, `CargaModelosPorGenero`), los generos interpretados para la IA | nada (de `SpectralTap` se quita la rama de la red: `Red`, `RegenNeural`, `iaIn/iaOut`; queda la curva fija `EnvolventeClasica`) |
 | `Sonoridad.cs` | `SonoridadIntegrada`, `GananciaAlLimite`, `TandaIntegrada`, `MideIntegrada*`, `DisposicionBs1770` (mas de dos canales), la tabla `rocola_sonoridad.txt` | lo minimo de BS.1770 que usan `RocolaOs.Medida.cs` y `RocolaOs.CalidadFuente.cs` (los filtros K `Estante`/`PasoAlto`, `Potencia`, `Lkfs`, las puertas) y `PicosBloques` si la medida nueva hace el mapa de silencios con el |
 | `GraveMono.cs` | el grave en mono, S3, el estrecho, el subgrave de XP | el corte del grave de noche (`GraveMono.DeNoche`, `NocheMezcla`: la A y el paso alto de la B) |
 | `SalaLocal.cs` | el local (subgrave, estereo, claridad, partes suaves, balance, graves y agudos del local) | los graves de noche (el estante de 120 Hz, `GravesNocheDb`) y la prueba de bocinas (`PruebaBocinas`, `PruebaModo`) |
@@ -252,6 +256,22 @@ lo de `RocolaOs.Calidad.cs` que arma la sombra en la cadena de XP (g61, g62, g43
 se queda (la lista 2 de la papelera). Ganchos que se van con lo que tocaban: g01-g05 (la cosecha y su material), g23, g24, g61, g62, g102, g111,
 g250-g254, g260/g261 (R1 en el lector de XP: R1 va en el descompresor nuevo), g430-g437, g441-g443, g445, g550; se rehacen en la base nueva o se
 quedan: g13, g110, g112, g113, g235, g440, g444, g460-g463.
+
+**TODA LA IA** (decision (4) del 28-11-2026: «elimina todo de la IA, al igual que lo de recolectar datos para entrenar IA»; se suma a lo de
+arriba): en Codigo/ `Form1.Ia.cs` entero, la rama de la red de `SpectralTap` (Form1.Sonido.cs), lo de los modelos en `Form1.Datos.cs`
+(`NombreCarpetaIas`, `CarpetaIas`, `OrdenaIas`, `RutaLectura` de los .bin, `PrefijoDseeGenero`), la carga en `Form1.cs` (`NeuralEnv.TryLoad`,
+`EqNet`), los textos de los modelos en Ctrl+F3 (la hoja «Mejoras con IA» entera, que ya se va arriba, y «Juntar material para la IA»); el EQ
+automatico con IA, I1 (a la medida), I2 (siseo), I3 (por genero, ya quitado el 18-11-2026); la cosecha (`MeasureFile`, ya en el repaso); los
+ganchos g01-g05 y g550. En Nativo/: `DatosGrandes.cs` deja de hablar del material de la IA (`ReservaBytes` de la cosecha, la parada con menos
+de 256 MB) y se queda solo para las miniaturas y el respaldo (la variable del lanzador `ROCOLA_IA_DATOS` y la carpeta `/rocola/disco/rocola-os/
+ia-xp` conservan su nombre por las miniaturas; si se renombra, el lanzador `sistema/board/rocola/rootfs_overlay/usr/bin/rocola` y una mudanza en
+el mismo disco); `ImportaXp.cs` ya no trae modelos (hecho en la fase 1). EntrenaIa, IaNueva, MaterialIa y CortesIa (la candidata y su
+comparacion a ciegas) eran del programa retirado (`sistema/rocola/Motor`, rocola-consola): en rocola-xp no estan; si se quiere, `sistema/rocola/
+Motor` y `sistema/rocola/Consola` (solo de referencia desde el 14-11-2026) pierden tambien esos archivos y los de su cadena (lo decide el
+coordinador: rocola-xp todavia toma de ahi `Gl.cs`, `Kms.cs` y `Botones.cs`; alli estan `EntrenaIa.cs`, `IaNueva.cs`, `MaterialIa.cs`,
+`CortesIa.cs`). La carpeta `ia/` de la raiz (los guiones para entrenar en otra PC) es de la rocola de Windows XP (Rocola/): NO se toca. Claves:
+`ia_datos=`, `ia_datos_mb=`, `dsee_genero=`, `a_la_medida=`, `quita_siseo=`. Pruebas: las de la IA de rocola-xp que haya (se buscan por
+`rocola_ia`, `NeuralEnv`, `EqNet` en `Pruebas/`).
 
 **Claves de configuracion** que se van: de `rocola_config.txt` (XP) `normalizar=`, `nivel_objetivo=`, `nivel_fuerza=`, `video_vol=`,
 `video_automatico=`, `eq_auto=`, `eq_automatico=`, `bajo=`, `bajo_automatico=`, `realce=`, `dsee=`, `dsee_forzar=`, `dsee_genero=`, `ia_datos=`,
@@ -308,7 +328,8 @@ La cadena nueva y lo que se queda leen hoy de las tablas de XP (por eso su repas
 5. **Lo que aun no se midio** (`CadenaNuevaGanancia`: la integrada y la K-RMS de XP) -> la estimacion de P10 del agente de la medida; Spotify la
    1.a vez -> la mediana de las de Spotify de la medida nueva (y, mientras no haya 5, una fija conservadora).
 6. **Los videos sin medir** (la regla de XP, `VideoVolumeFor` con `loudCache`) -> una ganancia fija conservadora hasta que ffmpeg los mida.
-7. **El DSEE de `agudos_mp3`**: sigue con `SpectralTap` y el modelo general (`IAS/rocola_ia.bin`), sin cosecha ni modelos por genero.
+7. **El DSEE de `agudos_mp3`**: solo con la CURVA FIJA (`SpectralTap` sin `Red`/`NeuralEnv`: `EnvolventeClasica`), sin ningun modelo, sin cosecha ni
+   entrenamiento (decision (4)). Se comprueba en la fase 2 con la prueba de `agudos_mp3` de cadena-nueva sin ningun .bin.
 
 ### Plan para Codigo/ y los ganchos (fase 2)
 

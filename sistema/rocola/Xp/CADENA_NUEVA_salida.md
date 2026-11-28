@@ -4,6 +4,10 @@ Del plan aprobado por el dueño el 27-11-2026 («Haz todo lo que me recomiendas 
 Hardware nuevo del dueño: rocola (USB) → SMSL PO100 2024 (XMOS XU316, USB Audio Class 2, a S/PDIF óptico) → PROZOR (CS8416 + CS4344,
 S/PDIF → RCA) → amplificador. Solo Rocola OS: sin `ROCOLA_OS`, o con `salida_nueva=0` (de fábrica), XP tal cual, bit a bit.
 
+**28-11-2026 (fase 1 de «La cadena vieja borrada», CADENA_NUEVA.md): la salida nueva va SIEMPRE con ROCOLA_OS=1 (su clave se ignora; sin
+«Encender» ni «¿Se oye bien?») y ya no se rinde al camino de XP: si no abre por hw: se respalda sola (plughw, ROCOLA_ALSA, default) con su motor.
+Lo de abajo que diga «apagada de fabrica», «Encender» o «se rinde» es de antes.**
+
 ## Lo que hay
 
 ### La función `salida_nueva` (RocolaOs/RocolaOs.SalidaNueva.cs)
