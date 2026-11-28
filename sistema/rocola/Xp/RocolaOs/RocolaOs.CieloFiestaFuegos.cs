@@ -100,8 +100,9 @@ namespace Rocola
             {
                 if (!r[i].On) continue;
                 r[i].T += dt;
-                if (r[i].T >= Vida) { r[i].On = false; continue; }
+                if (r[i].T >= Vida) { r[i].On = false; RocolaOsClimaLuces.PonFuego(i, 0f, 0f, 0f, 0u, 0f, e.Ms); continue; }
                 Chispea(ref r[i], ymax, s, luz);
+                RocolaOsClimaLuces.PonFuego(i, r[i].Cx, r[i].Cy, r[i].R, r[i].C0, (float)Math.Pow(1f - r[i].T / Vida, 1.3) * luz, e.Ms);   // (alumbra las nubes: RocolaOsCieloClimaLuz)
             }
             if (gn > 0)
             {

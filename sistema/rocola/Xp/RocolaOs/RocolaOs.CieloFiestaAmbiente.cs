@@ -133,7 +133,7 @@ namespace Rocola
 
         private void Glow(float x, float y, float r, uint rgb, float a) { if (gn < gx.Length && a > 0.01f) { gx[gn] = x; gy[gn] = y; gr[gn] = r; gc[gn] = RocolaOsFiestaMalla.Con(rgb, Math.Min(1f, a)); gn++; } }
         private static uint Pal(uint[] c, int i) { return c[Math.Abs(i) % c.Length] & 0x00FFFFFFu; }
-        private float Mueve { get { return 0.35f + 0.65f * calma; } }   // cuanto se mecen las cosas (la calma las aquieta)
+        private float Mueve { get { return (0.35f + 0.65f * calma) * RocolaOsCieloClimaVista.VientoK; } }   // cuanto se mecen las cosas (la calma las aquieta; el viento del clima las menea mas)
 
         // ------------------------------------------------------------------ el papel picado
         // dos guirnaldas que cuelgan en curva (de -10 a la mitad y de la mitad al otro borde, 46 px de caida), con banderines de 44 x 54 px con su calado

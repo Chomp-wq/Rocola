@@ -49,6 +49,7 @@ namespace Rocola
             new ImagenFila("estrellas_anochecer", "Estrellas que se encienden al anochecer", "Una a una, según la hora; de noche, las de siempre.", "cielo"),
             new ImagenFila("horizonte_hora", "La raya del horizonte con la luz de la hora", "El color de la raya sigue al sol (la de la noche es la de siempre).", "cielo"),
             new ImagenFila("nubes", "Nubes con la luz del sol o de la luna", "Nubes pintadas, de día y de noche.", "cielo"),
+            new ImagenFila("nebulosas", "Nebulosas del cielo de XP", "Las manchas de color del fondo de siempre. Apagadas con el cielo vivo.", "cielo"),
         };
         internal static readonly ImagenFila[] ImagenFiestas = {
             new ImagenFila("fiestas", "Fiestas (todo este grupo)", "Sin internet. Vale al siguiente arranque.", null),

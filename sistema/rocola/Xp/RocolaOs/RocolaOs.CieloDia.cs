@@ -120,7 +120,7 @@ namespace Rocola
                 // el horizonte de la escena (sube con el reposo): lo usan DN1 y los tintes de los grupos (Tine lo recibe), asi que entra siempre que
                 // se pinte el cielo de Rocola OS, no solo con DN1
                 if (Pinta) h = h * 31 + (int)Math.Round(RocolaOsCielo.Escena.Horizonte * 4f) + 1;
-                h = h * 31 + FirmaCieloExtra + RocolaOsCielo.TintesVersion;
+                h = h * 31 + FirmaCieloExtra + RocolaOsCielo.TintesVersion + (RocolaOsCielo.SinNebulosas ? 977 : 0);
                 FirmaCielo = h;
                 int a = DN5Cuadro && noche < 1f ? 101 : 7;
                 if (DN5Cuadro && noche < 1f)
