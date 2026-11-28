@@ -62,10 +62,10 @@ namespace Rocola
                         RocolaOsCieloFoto f = new RocolaOsCieloFoto(); f.SolAlt = alt; f.LunaAlt = lalt; f.Raya = alt < 12 ? 0xFF9A58u : 0xF0F8FFu;
                         float sol = RocolaOsCieloAstros.Paso(alt, -6.0, 10.0), luna = RocolaOsCieloAstros.Paso(lalt, -3.0, 8.0) * 0.8f * (1f - sol);
                         float lr, lg, lb, sr, sg, sb; RocolaOsCieloClimaVista.Colores(f, sol, luna, gris, out lr, out lg, out lb, out sr, out sg, out sb);
-                        double l = RocolaOsCieloDia.Luminancia(lr, lg, lb), s = RocolaOsCieloDia.Luminancia(sr, sg, sb), tope = 0.15 * sol + 0.075 * luna + 0.03;
+                        double l = RocolaOsCieloDia.Luminancia(lr, lg, lb), s = RocolaOsCieloDia.Luminancia(sr, sg, sb), tope = 0.15 * sol + 0.075 * luna + 0.04;
                         peor = Math.Max(peor, l - tope); if (s > l + 1e-6) sombraOk = false; cuantos++;
                     }
-            Si("la luz de las nubes no pasa de su tope (0,15 sol + 0,075 luna + 0,03) en " + cuantos + " casos (peor exceso " + peor.ToString("0.0000", ci) + ")", peor < 0.004);
+            Si("la luz de las nubes no pasa de su tope (0,15 sol + 0,075 luna + 0,04) en " + cuantos + " casos (peor exceso " + peor.ToString("0.0000", ci) + ")", peor < 0.004);
             Si("la sombra de una nube nunca es mas clara que su luz", sombraOk);
             // las rayas se ven (lavanda clara de noche, pizarra de dia) y sobre el texto se atenuan: su alfa (0,5 como mucho) x (1 - 0,85) sobre un cielo de 0,15 no pasa de 0,17
             double lmx = 0, mezcla = 0;

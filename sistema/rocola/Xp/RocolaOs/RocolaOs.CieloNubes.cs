@@ -17,7 +17,7 @@
 // no bajan de 0,76 del horizonte (la franja clara es de la raya y su resplandor, DN5).
 // REGLA 5 (calma): mientras alguien elige la deriva se frena a 0,35 y las nubes pierden la mitad de su alfa (0,5 + 0,5 x calma): se ven mas
 // quietas y tenues. REGLA 1: con todo apagado, ni se arma ni se pinta nada; de noche cerrada sin clima, solo si nubes=1 y entonces por la luz
-// de la luna (poca, 0,03 de luminancia sin luna: la nube se ve como una silueta gris sobre las estrellas).
+// de la luna (poca, 0,04 de luminancia sin luna: la nube se ve como una silueta gris sobre las estrellas).
 using System;
 using System.Globalization;
 using System.IO;
@@ -120,7 +120,7 @@ namespace Rocola
             if (k > 0.02f) { AurR += (r - AurR) * kf; AurG += (g - AurG) * kf; AurB += (b - AurB) * kf; }
         }
         // LOS COLORES DE UNA NUBE (0-255): la luz (lo que da el astro: el sol blanco que se hace del color de la raya al bajar; la luna azulada) y la
-        // sombra, con el gris del clima. Su luminancia NO pasa de 0,15 x sol + 0,075 x luna + 0,03 (la regla 3). Pura (la prueba la recorre).
+        // sombra, con el gris del clima. Su luminancia NO pasa de 0,15 x sol + 0,075 x luna + 0,04 (la regla 3). Pura (la prueba la recorre).
         internal static void Colores(RocolaOsCieloFoto f, float sol, float luna, float gris, out float lr, out float lg, out float lb, out float sr, out float sg, out float sb)
         {
             // el color de la luz: el sol (blanco que se calienta al bajar), la luna (azul palido)
@@ -137,7 +137,7 @@ namespace Rocola
             // el gris del clima (lluvia, tormenta): la luz pierde color y fuerza
             double kg = gris * 0.8;
             R += (gr - R) * kg; G += (gr - G) * kg; B += (gr - B) * kg;
-            double tope = 0.15 * sol + 0.075 * luna + 0.03;                 // la regla 3
+            double tope = 0.15 * sol + 0.075 * luna + 0.04;                 // la regla 3
             tope *= 1.0 - 0.55 * gris;                                      // y mas oscuras con el mal tiempo
             double l = 0.2126 * R + 0.7152 * G + 0.0722 * B;
             double esc = l > 1e-9 ? tope / l : 0.0;
@@ -430,9 +430,10 @@ namespace Rocola
         internal sealed class Estrellas : RocolaOsCieloEstrella
         {
             internal Estrellas() { Quien = "DN6 las estrellas tras las nubes"; Orden = RocolaOsCieloOrden.Nubes; }
-            internal override bool Activo { get { return (Activa && Visibles > 0) || RocolaOsCieloClimaVista.Nieve > 0.02f; } }
+            internal override bool Activo { get { return (Activa && Visibles > 0) || (RocolaOsCieloClimaVista.Nieve > 0.02f && Nieva); } }
+            private static bool Nieva { get { RocolaOsCieloFoto f = RocolaOsCielo.Foto; return f != null && f.CL2; } }
             // (con nieve, las estrellas un poco mas tenues: hasta 0,72 con nieve total)
-            internal override float Brillo(bool actual, int i, float x, float y, int tamano) { return (Activa && Visibles > 0 ? Cobertura(x, y) : 1f) * (1f - 0.28f * Math.Min(1f, RocolaOsCieloClimaVista.Nieve)); }
+            internal override float Brillo(bool actual, int i, float x, float y, int tamano) { return (Activa && Visibles > 0 ? Cobertura(x, y) : 1f) * (1f - (Nieva ? 0.28f * Math.Min(1f, RocolaOsCieloClimaVista.Nieve) : 0f)); }
         }
         // cuanto tapa una nube (0 a 1) un punto de la pantalla: por la elipse de cada una y su alfa (pura; la prueba la recorre)
         internal static float Cobertura(float x, float y)

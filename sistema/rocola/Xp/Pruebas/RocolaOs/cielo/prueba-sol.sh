@@ -103,7 +103,7 @@ cinta() {   # NOMBRE PROGRAMA OS [VAR=valor...]: la pared sin teclas, los cuadro
 if [[ " $partes " == *" apagado "* ]]; then
   echo "== apagado"
   TODO0='cielo=0\nfiestas=0\nclima=0\nvidrio=0\n'
-  IDEAS0='cielo=1\nfiestas=0\nclima=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\n'
+  IDEAS0='cielo=1\nnebulosas=1\nfiestas=0\nclima=0\nvidrio=0\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\n'
   cinta base-sin "$BASE" -; espera base-sin
   cinta mio-sin "$prog" -; espera mio-sin
   cinta mio-cero "$prog" "$TODO0" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="$FECHA13" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera mio-cero

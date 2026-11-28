@@ -178,7 +178,7 @@ namespace Rocola
             float kf = (float)(1.0 - Math.Exp(-e.Dt / 1.0));
             RocolaOsClimaLuces.AurK += (k - RocolaOsClimaLuces.AurK) * kf;
             if (k > 0.02f) { RocolaOsClimaLuces.AurR += (r - RocolaOsClimaLuces.AurR) * kf; RocolaOsClimaLuces.AurG += (g - RocolaOsClimaLuces.AurG) * kf; RocolaOsClimaLuces.AurB += (b - RocolaOsClimaLuces.AurB) * kf; }
-            modo = e.Modo == 4 ? 1f : (e.Modo == 1 || e.Pared ? 0.55f + 0.2f * RocolaOsCieloAstros.Paso(e.Reposo, 0.3, 0.7) : 0.4f);
+            modo = e.Modo == 4 ? 1f : (e.Modo == 1 || e.Pared ? 0.5f - 0.24f * RocolaOsCieloAstros.Paso(e.Reposo, 0.3, 0.7) : 0.4f);
             double dt = ultimoMs < 0 ? 0 : Math.Max(0, Math.Min(100, e.Ms - ultimoMs)); ultimoMs = e.Ms; tm += dt / 1000.0 * (0.55 + 0.45 * e.Calma);
         }
         // la luna, el sol y la estrella de XP: sitio, radio, fuerza y color
@@ -210,11 +210,12 @@ namespace Rocola
             GpuStarfield st = p.RocolaOsEstrellas; if (st == null || e.Horizonte < 40f || e.Horizonte > e.Alto - 6f) return;
             if (capa == RocolaOsCieloCapa.TrasAurora)
             {
-                if (f.ClimaSabido) { PisoMojado(p, st, e); FiloDeNieve(st, e); }
+                if (f.ClimaSabido && f.CL2) { PisoMojado(p, st, e); FiloDeNieve(st, e); }   // (con la clave lluvia=0 nada de esto)
             }
             else if (capa == RocolaOsCieloCapa.TrasFondo)
             {
-                if (f.ClimaSabido) { Salpicaduras(st, e); Halos(st, e); }
+                if (f.ClimaSabido && f.CL2) Salpicaduras(st, e);
+                if (f.ClimaSabido && (f.CL2 || f.CL4)) Halos(st, e);
                 FuegosEnLasNubes(p);
             }
         }
@@ -252,7 +253,7 @@ namespace Rocola
         private void PisoMojado(GpuPanel p, GpuStarfield st, RocolaOsCieloEscena e)
         {
             nPiso = 0;
-            float w = Humedad(e.Calma) * modo;
+            float w = Humedad(e.Calma) * modo * (0.3f + 0.7f * RocolaOsCielo.NocheCuadro);   // (de dia el piso ya es claro por la raya: menos brillo, regla 3)
             float flash = RocolaOsCieloNubesRelampago.Destello * modo;
             if (w < 0.02f && flash < 0.02f) return;
             float hz = e.Horizonte, sc = e.Alto / 768f;
