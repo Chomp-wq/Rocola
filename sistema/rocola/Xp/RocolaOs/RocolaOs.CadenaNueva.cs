@@ -4,11 +4,12 @@
 // el dueno elige cual suena y solo la reemplazan si ganan a ciegas.
 //
 // LAS FUNCIONES DE ROCOLA OS:
-//   cadena_nueva  (APAGADA de fabrica) cual suena: 0 la de hoy, 1 la nueva (con el modo billar guardado, la B; si no, la A). Se elige en
-//                 Ctrl+F4 -> Cadena (RocolaOs.CadenaNuevaHoja.cs) y vale DESDE LA SIGUIENTE CANCION, sin reiniciar: su clave se lee en vivo al
-//                 armar cada cancion (con ROCOLA_OS=lista, lo que diga la lista). Sus claves: nivel_lufs (T, -18 de fabrica), techo_dbtp (C,
-//                 -1), agudos_mp3 (el DSEE y el relleno de huecos, apagado) y tono_parejo (el EQ automatico fijo por cancion, apagado), todas
-//                 desde la siguiente cancion.
+//   cadena_nueva  (28-11-2026, el dueno: «Elimina la cadena de sonido anterior y tambien el modo billar anterior, yo se que esta cadena de sonido
+//                 nueva sera mejor»; CADENA_NUEVA.md, «La cadena vieja borrada») SIEMPRE: con ROCOLA_OS=1 es la unica cadena (la A; con el modo
+//                 billar guardado, la B) y su clave «cadena_nueva=» se ignora (Siempre, RocolaOs.cs); con ROCOLA_OS=lista (pruebas), si la nombra.
+//                 Sus claves: nivel_lufs (T, -18 de fabrica), techo_dbtp (C, -1), agudos_mp3 (el DSEE y el relleno de huecos, apagado) y
+//                 tono_parejo (el EQ automatico fijo por cancion, apagado), todas desde la siguiente cancion (Ctrl+F4 -> Cadena). Al arrancar,
+//                 los datos de la cadena vieja que ya nadie lee van a la papelera de Ctrl+F4 (RocolaOs.CadenaVieja.cs).
 //   medida_nueva  (encendida de fabrica: solo mide, y solo si la cadena nueva suena o alguien la pide) la tabla rocola_medida_nueva.txt, la
 //                 medida al entrar a la cola y el repaso de fondo (RocolaOs.MedidaTabla.cs).
 //
@@ -46,18 +47,9 @@ namespace Rocola
         internal const float GravesCentroHz = 120f;
         internal const double GananciaMaxDb = 20.0, GananciaMinDb = -40.0;
 
-        // ¿SUENA LA NUEVA? En vivo (desde la siguiente cancion): con ROCOLA_OS=1 su clave en rocola_os.txt; con una lista, si la nombra.
-        internal static bool Suena
-        {
-            get
-            {
-                if (!RocolaOs.Activo) return false;
-                if (Forzada != 0) return Forzada > 0;
-                if (RocolaOs.ConLista) return RocolaOs.Encendida(Nombre);
-                return RocolaOs.AjusteSiNo(Nombre);
-            }
-        }
-        internal static int Forzada;   // (pruebas y la comparacion ciega: 1 la nueva, -1 la de hoy, 0 lo que diga la clave)
+        // ¿SUENA LA NUEVA? Con ROCOLA_OS=1, siempre (28-11-2026: es la unica); con una lista (pruebas), si la nombra. (Sin ROCOLA_OS, hasta la
+        // fase 2 de «La cadena vieja borrada», CADENA_NUEVA.md, la de XP.)
+        internal static bool Suena { get { return RocolaOs.Activo && RocolaOs.Encendida(Nombre); } }
         internal static double T { get { int v = RocolaOs.AjusteEntero(ClaveNivel); return v >= -30 && v <= -6 ? v : -18; } }
         internal static double C { get { int v = RocolaOs.AjusteEntero(ClaveTecho); return v >= -20 && v <= 0 ? v : -1; } }
         internal static bool Agudos { get { return RocolaOs.AjusteSiNo(ClaveAgudos); } }
@@ -79,8 +71,9 @@ namespace Rocola
             RocolaOs.Registra(new RocolaOsFuncion
             {
                 Nombre = RocolaOsCadenasNuevas.Nombre,
-                Que = "la cadena de sonido nueva en vez de la de hoy (la A; con el modo billar, la B); se elige en Ctrl+F4 -> Cadena y vale desde la siguiente cancion",
-                DeFabrica = false,
+                Que = "la cadena de sonido nueva, la unica (la A; con el modo billar, la B); sus ajustes en Ctrl+F4 -> Cadena",
+                DeFabrica = true, Siempre = true,
+                Arranca = f => RocolaOsCadenaVieja.Arranca(),
                 Claves = new RocolaOsClave[]
                 {
                     RocolaOsClave.Entero(RocolaOsCadenasNuevas.ClaveNivel, -18, -30, -6, true, "cadena nueva: la sonoridad a la que va cada cancion (LUFS, BS.1770); desde la siguiente cancion"),

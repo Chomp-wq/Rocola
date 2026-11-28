@@ -180,13 +180,8 @@ namespace Rocola
             try
             {
                 // (27-11-2026) la prueba de la salida nueva: no es una tarjeta, es encenderla o apagarla (salida_nueva= en rocola_os.txt)
-                if (clave != null && clave.StartsWith(PruebaSalidaNueva, StringComparison.Ordinal))
-                {
-                    bool si = clave.Substring(PruebaSalidaNueva.Length) == "1";
-                    if (!PonAjuste(SalidaNueva.NombreFuncion, si ? "1" : "0")) { err = "no se pudo guardar salida_nueva en rocola_os.txt"; return false; }
-                    AnotaEnSonido(si ? "se encendio la salida nueva en Ctrl+F4" : "se apago la salida nueva en Ctrl+F4");
-                    return true;
-                }
+                // (28-11-2026) la salida nueva ya no se enciende ni se apaga (es la unica: CADENA_NUEVA.md, «La cadena vieja borrada»): no se guarda nada
+                if (clave != null && clave.StartsWith(PruebaSalidaNueva, StringComparison.Ordinal)) return true;
                 // (27-11-2026) con la salida nueva se guarda POR NOMBRE (un aparato USB puede cambiar de numero de un arranque a otro)
                 if (clave != null && clave != SalidaAuto && SalidaNueva.Va) clave = SalidaNueva.ANombre(clave);
                 if (clave == null || clave == SalidaAuto) { if (File.Exists(f)) File.Delete(f); }
@@ -336,6 +331,14 @@ namespace Rocola
             Apunta(NombreSalida, "salidas (" + l.Count + "): " + (sb.Length > 0 ? sb.ToString() : "ninguna") + "; en uso " + SalidaEnUso(l) + (SalidaGuardada() != null ? " (elegida a mano)" : " (automatica)"));
             PruebaSalida p = LeePruebaSalida();
             if (p == null) return;
+            // (28-11-2026) una prueba de encender o apagar la salida nueva que quedo de antes ya no aplica (la salida nueva es la unica): se borra sin
+            // preguntar ni volver a nada
+            if ((p.Nueva != null && p.Nueva.StartsWith(PruebaSalidaNueva, StringComparison.Ordinal)) || (p.Antes != null && p.Antes.StartsWith(PruebaSalidaNueva, StringComparison.Ordinal)))
+            {
+                BorraPruebaSalida();
+                Apunta(NombreSalida, "la prueba de la salida nueva que quedaba (" + p.Nueva + ") ya no aplica: la salida nueva es la unica; se borra sin preguntar");
+                return;
+            }
             p.Arranques++;
             if (p.Arranques >= SalidaArranquesMax)
             {

@@ -898,7 +898,7 @@ namespace Rocola
                 int nivelAhora; bool cosechar;
                 if (aFondo) { nivelAhora = 2; cosechar = (nivelPrevio != 2); }
                 else { nivelAhora = IaNivelDePasada(pasadas); cosechar = pasadas < Math.Min(IaPasadasMax, strideIa); }
-                cosechar = cosechar && iaHarvestOn && !IaBudgetFull() && !esVideo;
+                cosechar = cosechar && RocolaOsCosechaIa(iaHarvestOn) && !IaBudgetFull() && !esVideo;   // ROCOLA OS g550: (XP) cosechar = cosechar && iaHarvestOn && !IaBudgetFull() && !esVideo; — con Rocola OS la cadena de XP ya no esta: no se junta material para la IA (CADENA_NUEVA.md, «La cadena vieja borrada»; RocolaOs/RocolaOs.CadenaVieja.cs); sin ROCOLA_OS, el interruptor de XP
                 if (!cosechar && !esVideo)
                 {
                     // Solo hace falta el acantilado: se analizan unos pocos cuadros y se para (ni se guardan pares).

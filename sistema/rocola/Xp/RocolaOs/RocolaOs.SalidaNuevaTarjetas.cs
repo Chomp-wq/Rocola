@@ -118,36 +118,65 @@ namespace Rocola
         private static readonly int[] Formatos = { SalidaNuevaPcm.S32_LE, SalidaNuevaPcm.S24_3LE, SalidaNuevaPcm.S16_LE };
         private static string avisoApuntado = "";
         private static readonly HashSet<string> mezcladorPuesto = new HashSet<string>();
+        // (28-11-2026, «La cadena vieja borrada», CADENA_NUEVA.md) LA SALIDA SE RESPALDA SOLA: ya no se rinde al camino de XP. Si la elegida no abre
+        // por hw: (no acepta 44,1 kHz ni ninguno de los tres formatos, o no esta), se prueba en este orden: la misma por plughw: (ALSA convierte),
+        // la del lanzador (ROCOLA_ALSA: el plughw de rocola-tarjeta; en las pruebas, la tarjeta con reloj o «null») y «default»; siempre con este
+        // motor, su sinc, su volumen y su proteccion. Lo que abra por un respaldo se dice en la bitacora y en la hoja (Respaldo). Si nada abre, se
+        // espera y se vuelve a intentar (como XP con el aparato que falla), sin ningun camino viejo.
+        internal static string Respaldo = "";
+        private static string respaldoApuntado = "";
         private static bool AbreLaTarjeta(bool primera)
         {
-            string nombre; Eleccion e = null;
-            if (PcmFijo != null) nombre = PcmFijo;
+            Eleccion e = null;
+            List<KeyValuePair<string, string>> candidatas = new List<KeyValuePair<string, string>>();
+            Action<string, string> pon = delegate (string pcmN, string porque)
+            {
+                if (string.IsNullOrEmpty(pcmN)) return;
+                foreach (KeyValuePair<string, string> c in candidatas) if (c.Key == pcmN) return;
+                candidatas.Add(new KeyValuePair<string, string>(pcmN, porque));
+            };
+            if (PcmFijo != null) { pon(PcmFijo, ""); pon("plug:" + PcmFijo, "respaldo: por plug (ALSA convierte)"); }
             else
             {
                 e = Elige();
-                if (e == null) { Motivo = "Linux no ve ninguna tarjeta de sonido"; Caida = true; if (primera) RocolaOs.Apunta(NombreFuncion, Motivo); return false; }
-                nombre = e.Pcm;
-                Aviso = e.Aviso;
-                if (Aviso != avisoApuntado) { avisoApuntado = Aviso; if (Aviso.Length > 0) RocolaOs.Apunta(NombreFuncion, "AVISO: " + Aviso); }
+                if (e != null)
+                {
+                    Aviso = e.Aviso;
+                    if (Aviso != avisoApuntado) { avisoApuntado = Aviso; if (Aviso.Length > 0) RocolaOs.Apunta(NombreFuncion, "AVISO: " + Aviso); }
+                    pon(e.Pcm, "");
+                    pon(e.ClaveNombre, "respaldo: la misma por plughw (ALSA convierte)");
+                }
+                string alsa = null; try { alsa = Environment.GetEnvironmentVariable("ROCOLA_ALSA"); } catch { }
+                pon(alsa, "respaldo: la del lanzador (ROCOLA_ALSA)");
+                pon("default", "respaldo: la de fabrica de ALSA (default)");
             }
             int periodo = Math.Max(64, Tasa * PeriodoMs / 1000), bufer = Math.Max(periodo * 3, Tasa * BuferMs / 1000);
-            int err = 0; string paso = "";
             SalidaNuevaPcm p = null;
-            for (int i = 0; i < 15; i++)
+            string nombre = null, porQue = "", primerMotivo = null;
+            for (int k = 0; k < candidatas.Count && p == null; k++)
             {
-                p = SalidaNuevaPcm.Abre(nombre, false, Formatos, Tasa, Canales, periodo, bufer, false, out err, out paso);
-                if (p != null || err != -SalidaNuevaPcm.EBUSY) break;
-                System.Threading.Thread.Sleep(100);   // (otro la suelta: mpv de un video que acaba, speaker-test)
+                int err = 0; string paso = "";
+                string n = candidatas[k].Key;
+                for (int i = 0; i < (k == 0 ? 15 : 1); i++)
+                {
+                    p = SalidaNuevaPcm.Abre(n, false, Formatos, Tasa, Canales, periodo, bufer, false, out err, out paso);
+                    if (p != null || err != -SalidaNuevaPcm.EBUSY) break;
+                    System.Threading.Thread.Sleep(100);   // (otro la suelta: mpv de un video que acaba, speaker-test)
+                }
+                if (p != null) { nombre = n; porQue = candidatas[k].Value; break; }
+                string m = n + ": " + (err == int.MinValue ? "no esta ALSA (libasound.so.2)" : SalidaNuevaPcm.Texto(err)) + " en " + paso;
+                if (primerMotivo == null) primerMotivo = (e == null && PcmFijo == null ? "Linux no ve ninguna tarjeta de sonido; " : "") + m;
             }
             if (p == null)
             {
-                Motivo = nombre + ": " + (err == int.MinValue ? "no esta ALSA (libasound.so.2)" : SalidaNuevaPcm.Texto(err)) + " en " + paso;
-                bool falta = err == -SalidaNuevaPcm.ENOENT || err == -SalidaNuevaPcm.ENODEV || err == -SalidaNuevaPcm.ENXIO || err == -SalidaNuevaPcm.EBUSY;
-                if (primera && !falta) return false;   // (Bucle: se rinde, el camino de XP esta sesion)
-                if (primera) RocolaOs.Apunta(NombreFuncion, "aun no abre la tarjeta (" + Motivo + "): se vuelve a intentar cada segundo");
+                Motivo = primerMotivo ?? "Linux no ve ninguna tarjeta de sonido";
+                if (primera) RocolaOs.Apunta(NombreFuncion, "aun no abre ninguna salida (" + Motivo + "): se vuelve a intentar cada segundo");
                 Caida = true;
                 return false;
             }
+            Respaldo = porQue.Length > 0 ? porQue + " (" + nombre + "; " + (primerMotivo != null ? "la elegida no abrio: " + primerMotivo : "Linux no ve ninguna tarjeta de sonido") + ")" : "";
+            if (Respaldo != respaldoApuntado) { respaldoApuntado = Respaldo; if (Respaldo.Length > 0) RocolaOs.Apunta(NombreFuncion, "RESPALDO: " + Respaldo); }
+            if (porQue.Length > 0 && e != null && nombre != e.ClaveNombre) e = null;   // (lo del lanzador o default: no se sabe de que tarjeta es)
             pcm = p;
             PcmNombre = nombre; FormatoAbierto = p.Formato; TasaAbierta = p.Tasa; PeriodoAbierto = p.Periodo; BuferAbierto = p.Bufer;
             if (e != null) { TarjetaNumero = e.Tarjeta; Dispositivo = e.Dispositivo; TarjetaId = e.Id; TarjetaNombre = e.Nombre; TarjetaUsb = e.Usb; }

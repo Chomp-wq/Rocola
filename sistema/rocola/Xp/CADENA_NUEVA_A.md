@@ -4,6 +4,9 @@ Parte de la cadena nueva aprobada por el dueno el 27-11-2026 (`CADENA_NUEVA.md` 
 Solo Rocola OS (`rocola-xp` con `ROCOLA_OS`); sin el, o con la cadena nueva sin elegir, la de hoy tal cual, bit a bit. Nada oido ni probado en
 el A4: lo de abajo son cuentas con senales inventadas y la rocola de verdad fuera de pantalla con la tarjeta de prueba con reloj.
 
+**28-11-2026 (fase 1 de «La cadena vieja borrada», CADENA_NUEVA.md): la cadena nueva va SIEMPRE con ROCOLA_OS=1 (`cadena_nueva` se ignora; la
+hoja Cadena ya no elige) y la cadena de XP se borra en la fase 2. Lo de abajo sobre elegirla, «la de hoy» y «apagada de fabrica» es de antes.**
+
 ## Que es y como se elige
 
 - **`cadena_nueva`** (funcion de Rocola OS, APAGADA de fabrica): cual suena. Se elige en **Ctrl+F4 -> Cadena** («La de hoy» / «La nueva») y

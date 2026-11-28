@@ -72,8 +72,10 @@ namespace Rocola
         // guardan anadiendo al final: solo lineas enteras y sin ceros (DiarioTablas.cs, LeeLineasSanas); las demas, tal cual.
         private static readonly string[] Tablas = {
             "rocola_sonoridad.txt", "rocola_volumen.txt", "rocola_eq.txt", "rocola_fuentes.txt",
-            "rocola_duracion.txt", "rocola_afondo.txt", "rocola_ia_hechas.txt", "rocola_stats.txt",
-            "rocola_billar_nivel.txt", "rocola_billar_bitacora.txt" };
+            "rocola_duracion.txt", "rocola_afondo.txt", "rocola_stats.txt" };
+        // (28-11-2026, «La cadena vieja borrada» y «elimina todo de la IA», CADENA_NUEVA.md) ya NO se traen rocola_ia_hechas.txt (la cosecha
+        // de la IA), rocola_billar_nivel.txt ni rocola_billar_bitacora.txt (el modo billar viejo), ni ningun modelo de IA (NombreModelo):
+        // la carpeta de XP sigue sin tocarse (se lee y nada mas)
         private const int TablasSanas = 4;
         private static readonly string[] NoSeTraen = {
             "rocola_estado.txt", "rocola_noche.txt", "rocola_error.txt", "rocola_calidad.txt", "rocola_incompatibles.txt",
@@ -500,6 +502,7 @@ namespace Rocola
         // rocola_*.bin y sus copias .anterior-N; sueltos, los que OrdenaIas pasa a IAS/ (Form1.Datos.cs). Nunca el material.
         private static string NombreModelo(string n, bool enIas)
         {
+            if (TraeModelos == false) return null;   // (28-11-2026: rocola-xp ya no tiene IA; ningun modelo se trae)
             string m = n.ToLowerInvariant();
             if (!m.StartsWith("rocola_", StringComparison.Ordinal) || m.StartsWith("rocola_ia_datos", StringComparison.Ordinal)) return null;
             bool bin = m.EndsWith(".bin", StringComparison.Ordinal), anterior = Regex.IsMatch(m, @"\.bin\.anterior-[0-9]+$", RegexOptions.CultureInvariant);
@@ -509,6 +512,7 @@ namespace Rocola
             return null;
         }
 
+        private static readonly bool TraeModelos = false;
         private static bool EsRutaWindows(string v)
         { return v.Length >= 3 && ((char.IsLetter(v[0]) && v[1] == ':' && v[2] == '\\') || (v[0] == '\\' && v[1] == '\\')); }
 

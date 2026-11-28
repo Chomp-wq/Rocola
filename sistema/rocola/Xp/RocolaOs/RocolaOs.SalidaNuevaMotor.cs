@@ -179,17 +179,10 @@ namespace Rocola
                     if (pcm == null)
                     {
                         bool primera = !primeraVez.IsSet;
-                        if (AbreLaTarjeta(primera)) { intentos = 0; sinSitio = 0; primeraVez.Set(); continue; }
-                        if (primera && Caida) primeraVez.Set();   // (la tarjeta aun no esta, o esta ocupada: no es rendirse; se espera y se reintenta)
-                        else if (primera)
-                        {
-                            // al arrancar la tarjeta esta pero no abre por hw: (ni 44,1 kHz ni ninguno de los tres formatos): esta sesion, lo de XP
-                            // (plughw y 16 bits)
-                            Rendida = true;
-                            RocolaOs.Apunta(NombreFuncion, "NO abrio la salida nueva (" + Motivo + "): esta sesion suena por el camino de siempre (plughw y 16 bits)");
-                            primeraVez.Set();
-                            return;
-                        }
+                        if (AbreLaTarjeta(primera)) { intentos = 0; sinSitio = 0; ritmoDesde = 0; primeraVez.Set(); continue; }
+                        // (28-11-2026) ya no se rinde al camino de XP: AbreLaTarjeta probo sus respaldos (plughw, la del lanzador, default); si
+                        // ninguno abre, se espera y se reintenta (Rendida se queda en false: CADENA_NUEVA.md, «La cadena vieja borrada»)
+                        if (primera) primeraVez.Set();
                         intentos++;
                         DrenaSinTarjeta(intentos < 10 ? 1000 : 3000);
                         continue;
@@ -204,6 +197,7 @@ namespace Rocola
                     }
                     long libres = pcm.Libres();
                     if (libres < 0) { Pierde((int)libres, "snd_pcm_avail"); continue; }
+                    AlRitmo();
                     if (libres < PeriodoAbierto)
                     {
                         int w = pcm.Espera(100);
@@ -240,6 +234,19 @@ namespace Rocola
             try { Cierra("se cierra la rocola", false); } catch { }
         }
         private static long xrunsAntes;
+        // UNA SALIDA SIN RELOJ (el respaldo «null» de las pruebas, o un dispositivo que se lo traga todo al momento): sin esto el hilo escribiria
+        // sin parar. Si lo escrito desde que abrio va mas de un bufer por delante del reloj, se espera lo que sobra (con una tarjeta de verdad
+        // nunca pasa: ella marca el ritmo).
+        private static long ritmoDesde, ritmoEscritos;
+        private static void AlRitmo()
+        {
+            long ahora = Stopwatch.GetTimestamp();
+            long escritos; lock (cerrojoSonado) escritos = escritosTarjeta;
+            if (ritmoDesde == 0 || escritos < ritmoEscritos) { ritmoDesde = ahora; ritmoEscritos = escritos; return; }
+            double reloj = (ahora - ritmoDesde) * (double)Tasa / Stopwatch.Frequency;
+            double adelante = (escritos - ritmoEscritos) - reloj - Math.Max(PeriodoAbierto, BuferAbierto);
+            if (adelante > PeriodoAbierto) Thread.Sleep((int)Math.Min(100, adelante * 1000.0 / Tasa));
+        }
 
         // LA MEZCLA DE UN PERIODO: las fuentes, el volumen, la proteccion y la cuantizacion (en «bytes»)
         private static void Mezcla(int n, long tarjeta)

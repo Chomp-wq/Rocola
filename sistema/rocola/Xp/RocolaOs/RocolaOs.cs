@@ -43,6 +43,7 @@ namespace Rocola
         internal string Que;              // una linea: que hace (la bitacora y la orden «ajuste» la dicen)
         internal bool DeFabrica;          // con ROCOLA_OS=1, encendida si rocola_os.txt no dice otra cosa
         internal bool SoloEnLaLista;      // solo con ROCOLA_OS=lista que la nombre (las de prueba): con «1» nunca, diga lo que diga el archivo
+        internal bool Siempre;            // (28-11-2026, la cadena de sonido nueva) con ROCOLA_OS=1 SIEMPRE encendida: su clave se ignora; con una lista, si la nombra
         internal RocolaOsClave[] Claves;  // sus ajustes en rocola_os.txt (RocolaOs.Ajustes.cs), con su valor de fabrica
         internal Action<Form1> Arranca;                    // al arrancar, en el hilo de la pantalla, antes de ensenarse la ventana
         internal Action<Form1> Latido;                     // cada latido (1 s), en el hilo de la pantalla: rapido, sin esperar a nada
@@ -113,7 +114,7 @@ namespace Rocola
                     if (mal != null) { problemas.Add(mal); return; }
                     // sus claves: la suya (encendida o no; con «1»), salvo las de prueba, y las que declara
                     List<RocolaOsClave> suyas = new List<RocolaOsClave>();
-                    if (!f.SoloEnLaLista) suyas.Add(RocolaOsClave.SiNo(f.Nombre, f.DeFabrica, false, "encendida (1) o apagada (0) con ROCOLA_OS=1: " + (f.Que ?? f.Nombre)));
+                    if (!f.SoloEnLaLista) suyas.Add(RocolaOsClave.SiNo(f.Nombre, f.DeFabrica || f.Siempre, false, f.Siempre ? "se ignora: con ROCOLA_OS=1 va siempre (" + (f.Que ?? f.Nombre) + ")" : "encendida (1) o apagada (0) con ROCOLA_OS=1: " + (f.Que ?? f.Nombre)));
                     if (f.Claves != null) suyas.AddRange(f.Claves);
                     Dictionary<string, RocolaOsClave> c = new Dictionary<string, RocolaOsClave>(claves, StringComparer.Ordinal);
                     foreach (RocolaOsClave k in suyas)
@@ -178,7 +179,7 @@ namespace Rocola
             if (m == Nada || nombre == null) return false;
             if (m == Lista) return lista.Contains(nombre) && Busca(nombre) != null;
             RocolaOsFuncion f = Busca(nombre);
-            return f != null && !f.SoloEnLaLista && f.DeFabrica;
+            return f != null && !f.SoloEnLaLista && (f.DeFabrica || f.Siempre);
         }
         private static Dictionary<string, bool> Decide()
         {
@@ -191,7 +192,7 @@ namespace Rocola
                 {
                     bool e;
                     if (m == Lista) e = lista.Contains(f.Nombre);
-                    else if (m == Todo) e = !f.SoloEnLaLista && AjusteSiNo(f.Nombre);   // (su clave, con su valor de fabrica: Registra la declaro)
+                    else if (m == Todo) e = !f.SoloEnLaLista && (f.Siempre || AjusteSiNo(f.Nombre));   // (su clave, con su valor de fabrica: Registra la declaro; Siempre: se ignora)
                     else e = false;
                     d[f.Nombre] = e;
                 }

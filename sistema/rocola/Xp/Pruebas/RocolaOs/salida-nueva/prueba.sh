@@ -11,7 +11,7 @@
 # Las partes:
 #   guiones     rocola-tarjeta y rocola-sonido (los del sistema, con sh) con el /proc/asound simulado: lo de antes (plughw:N,M) sigue; por
 #               nombre (plughw:CARD=id,DEV=n) con el numero de ahora; la guardada que no esta -> la automatica y lo dice; la USB primero
-#               SOLO con salida_nueva=1; «rocola-sonido usar N» por nombre solo con ella; sin «stat»
+#               siempre (salvo con rocola_os_apagado; antes SOLO con salida_nueva=1); «rocola-sonido usar N» por nombre solo con ella; sin «stat»
 #   elige       la eleccion de la tarjeta del motor (rocola-xp --prueba-salida-nueva elige): las mismas reglas
 #   convertidor la medida del convertidor por la consola (rocola-xp --mide-convertidor con el lazo): recortando desde -10 dBFS propone -11; sin
 #               recortar, -1; sin senal y con la entrada que recorta, lo dice
@@ -99,13 +99,17 @@ if [[ " $partes " == *" guiones "* ]]; then
   D=$W/sis; mkdir -p "$D/xp"
   t() { env ROCOLA_ASOUND="${AS:-$A}" ROCOLA_DATOS="$D" PATH="$RUTA" "$SH" "$SIS/rocola-tarjeta" "$@" 2>"$W/tarjeta.err"; }
   rm -f "$D/rocola_tarjeta.txt" "$D/xp/rocola_os.txt"
-  si "sin nada y sin la salida nueva: la placa, como antes ($(t))" test "$(t)" = plughw:1,0
-  si "y con -c, su numero ($(t -c))" test "$(t -c)" = 1
+  # (28-11-2026, «La cadena vieja borrada»: la salida nueva es la unica: la USB primero SIEMPRE, salvo con Rocola OS apagado, rocola_os_apagado)
+  si "sin nada: la USB primero, ya sin salida_nueva= ($(t))" test "$(t)" = plughw:2,0
+  si "y con -c, su numero ($(t -c))" test "$(t -c)" = 2
   printf 'salida_nueva=1\n' > "$D/xp/rocola_os.txt"
   si "con salida_nueva=1: la USB primero ($(t), -c $(t -c))" bash -c "[ '$(t)' = plughw:2,0 ] && [ '$(t -c)' = 2 ]"
   AS=$A2; si "con salida_nueva=1 y sin la USB: la placa ($(t))" test "$(t)" = plughw:1,0; unset AS
   printf 'salida_nueva=0\n' > "$D/xp/rocola_os.txt"
-  si "con salida_nueva=0: la placa otra vez ($(t))" test "$(t)" = plughw:1,0
+  si "con salida_nueva=0 (ya no se mira): la USB igual ($(t))" test "$(t)" = plughw:2,0
+  : > "$D/xp/rocola_os_apagado"
+  si "con Rocola OS apagado de emergencia: la placa, como antes ($(t))" test "$(t)" = plughw:1,0
+  rm -f "$D/xp/rocola_os_apagado"
   echo plughw:0,3 > "$D/rocola_tarjeta.txt"
   si "lo de antes, a mano por numero (plughw:0,3): manda ($(t))" test "$(t)" = plughw:0,3
   echo plughw:CARD=PO100,DEV=0 > "$D/rocola_tarjeta.txt"
@@ -117,8 +121,8 @@ if [[ " $partes " == *" guiones "* ]]; then
   # rocola-sonido usar N (sin que haya rocola abierta: no cierra nada)
   s() { env ROCOLA_ASOUND="$A" ROCOLA_DATOS="$D" ROCOLA_XP_DATOS="$D/xp" ROCOLA_RUN="$W/run-sis" PATH="$RUTA" "$SH" "$SIS/rocola-sonido" "$@" > "$W/sonido.out" 2>&1; }
   mkdir -p "$W/run-sis"
-  printf 'salida_nueva=0\n' > "$D/xp/rocola_os.txt"; s usar 4
-  si "rocola-sonido usar 4 sin la salida nueva: por numero, como antes ($(cat $D/rocola_tarjeta.txt))" test "$(cat $D/rocola_tarjeta.txt)" = plughw:2,0
+  : > "$D/xp/rocola_os_apagado"; s usar 4; rm -f "$D/xp/rocola_os_apagado"
+  si "rocola-sonido usar 4 con Rocola OS apagado: por numero, como antes ($(cat $D/rocola_tarjeta.txt))" test "$(cat $D/rocola_tarjeta.txt)" = plughw:2,0
   printf 'salida_nueva=1\n' > "$D/xp/rocola_os.txt"; s usar 4
   si "rocola-sonido usar 4 con la salida nueva: por nombre ($(cat $D/rocola_tarjeta.txt))" test "$(cat $D/rocola_tarjeta.txt)" = plughw:CARD=PO100,DEV=0
   si "y rocola-tarjeta lo entiende ($(t))" test "$(t)" = plughw:2,0

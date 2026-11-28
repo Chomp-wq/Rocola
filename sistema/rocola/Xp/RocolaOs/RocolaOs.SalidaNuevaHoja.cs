@@ -1,9 +1,10 @@
 // ROCOLA OS (cadena de audio nueva; CADENA_NUEVA.md §4; CADENA_NUEVA_salida.md): LA SALIDA NUEVA EN LA HOJA «SONIDO» DE CTRL+F4.
 // Debajo de «LA QUE SE USA» (RocolaOs.VentanaSalida.cs), un bloque «SALIDA NUEVA»: lo que se abrio (la tarjeta por su nombre, el formato y
 // la frecuencia de verdad, si tiene control de volumen por hardware), el volumen del dueno en dB, si actuo la proteccion, si los videos van
-// por la rocola y los avisos (la tarjeta guardada que no esta); «Encender la salida nueva (prueba de 15 s)» / «Apagar la salida nueva» (por
-// la misma prueba de «¿Se oye bien?» que elegir una salida: si nadie contesta, vuelve sola a lo de antes) y «Más y medir el DAC...»,
-// una hoja con todo eso en grande, el volumen a mano y LA MEDIDA DEL CONVERTIDOR (RocolaOs.SalidaNuevaMide.cs) con sus instrucciones.
+// por la rocola y los avisos (la tarjeta guardada que no esta, o el RESPALDO si no abrio por hw:); desde el 28-11-2026 la salida nueva es la
+// unica (CADENA_NUEVA.md, «La cadena vieja borrada»): el boton de la izquierda ya no la enciende ni la apaga (sin «¿Se oye bien?»), dice
+// «Siempre encendida» en gris; «Más y medir el DAC...», una hoja con todo eso en grande, el volumen a mano y LA MEDIDA DEL CONVERTIDOR
+// (RocolaOs.SalidaNuevaMide.cs) con sus instrucciones.
 using System;
 using System.Drawing;
 using System.Globalization;
@@ -30,22 +31,15 @@ namespace Rocola
             {
                 lDiag.Text = RocolaOsSalidaNuevaTexto(false);
                 // (en ambar si algo no va: encendida y rendida o sin tarjeta, con un aviso o si actuo la proteccion)
-                bool mal = encendida && (SalidaNueva.Rendida || !SalidaNueva.Abierta || SalidaNueva.Aviso.Length > 0 || SalidaNueva.ProteccionVeces > 0);
+                bool mal = encendida && (!SalidaNueva.Abierta || SalidaNueva.Aviso.Length > 0 || SalidaNueva.Respaldo.Length > 0 || SalidaNueva.ProteccionVeces > 0);
                 lDiag.ForeColor = mal ? x.CAviso : x.CTenue;
-                bNueva.Text = encendida ? "Apagar la salida nueva" : "Encender (prueba de 15 s)";
-                bNueva.Relleno = encendida ? Color.FromArgb(40, 52, 98) : Color.FromArgb(30, 96, 70);
-                bNueva.Borde = encendida ? Color.FromArgb(72, 90, 150) : Color.FromArgb(72, 182, 132);
-                bNueva.Enabled = va;
+                // (28-11-2026) ya no se enciende ni se apaga: la salida nueva es la unica (se respalda sola si no abre por hw:)
+                bNueva.Text = encendida ? "Siempre encendida" : "Sin la salida nueva (lista)";
+                bNueva.Relleno = Color.FromArgb(28, 34, 62);
+                bNueva.Borde = Color.FromArgb(60, 72, 118);
+                bNueva.Enabled = false;
                 bMas.Enabled = va;
                 bNueva.Invalidate(); bMas.Invalidate();
-            };
-            bNueva.Click += delegate
-            {
-                string err;
-                if (!RocolaOs.EligeSalida(RocolaOs.PruebaSalidaNueva + (encendida ? "0" : "1"), out err)) { estado("No se pudo guardar: " + err, false); return; }
-                estado(encendida ? "Se apaga la salida nueva: la rocola se vuelve a abrir..." : "Se enciende la salida nueva: la rocola se vuelve a abrir y pregunta «¿Se oye bien?»...", true);
-                x.Dlg.Close();
-                RocolaOs.ReabreConservando(encendida ? "se apaga la salida nueva (Ctrl+F4)" : "se enciende la salida nueva (Ctrl+F4)");
             };
             bMas.Click += delegate { try { RocolaOsSalidaNuevaHoja(x); } catch (Exception ex) { RocolaOs.Falla(SalidaNueva.NombreFuncion, "la hoja de la salida nueva", ex); } pinta(); };
             pinta();
@@ -58,12 +52,11 @@ namespace Rocola
             StringBuilder sb = new StringBuilder();
             if (!RocolaOs.Encendida(SalidaNueva.NombreFuncion))
             {
-                sb.Append("Apagada (lo de siempre: la tarjeta por su número, plughw, 16 bits y a la frecuencia de cada canción). ");
-                sb.Append("Encendida: la tarjeta por su nombre (la USB primero), siempre abierta, 24 bits y 44,1 kHz fijos, los botones de volumen en dB y los videos por la rocola.");
+                sb.Append("Con esta lista de ROCOLA_OS (pruebas) no va: lo de XP (la tarjeta por su número, plughw, 16 bits y a la frecuencia de cada canción).");
                 return sb.ToString();
             }
-            if (SalidaNueva.Rendida) { sb.Append("Encendida, pero NO ABRIÓ: ").Append(SalidaNueva.Motivo).Append(". Esta sesión suena por el camino de siempre."); return sb.ToString(); }
             if (!SalidaNueva.Abierta) sb.Append("Sin tarjeta ahora: ").Append(SalidaNueva.Motivo.Length > 0 ? SalidaNueva.Motivo : "abriendo").Append(" (se vuelve a buscar cada segundo).\n");
+            else if (SalidaNueva.Respaldo.Length > 0) sb.Append("RESPALDO: ").Append(SalidaNueva.Respaldo).Append(".\n");
             else
             {
                 sb.Append("Tarjeta: ").Append(SalidaNueva.TarjetaNombre.Length > 0 ? SalidaNueva.TarjetaNombre : SalidaNueva.PcmNombre).Append(SalidaNueva.TarjetaUsb ? " (USB)" : "")
