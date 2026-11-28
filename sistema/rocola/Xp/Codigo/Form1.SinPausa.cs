@@ -359,7 +359,7 @@ namespace Rocola
         // picos que la conversion pueda dejar. El cebado que queda es el de ese limitador.
         private static void ConvierteSalida(CadenaCancion c, NAudio.Wave.WaveFormat a, double[] tabla)
         {
-            RemuestreoContinuo r = new RemuestreoContinuo(c.Salida, a, c.Retardo, tabla);
+            RemuestreoContinuo r = new RemuestreoContinuo(c.Salida, a, c.Retardo, tabla); if (RocolaOsConvierteSinLimitador(c, r)) return;   // ROCOLA OS g464: (XP) RemuestreoContinuo r = new RemuestreoContinuo(c.Salida, a, c.Retardo, tabla); — con una cadena de sonido nueva y la salida de hoy (la nueva ya no convierte aqui: g441, g445), la conversion de frecuencia va sin el limitador de pico real de XP detras (RocolaOs/RocolaOs.CadenaNueva.cs); con una de XP, false y lo de XP
             LimitadorPicoReal lim = new LimitadorPicoReal(r, TechoPicoReal, 3.0);
             c.Salida = lim; c.Retardo = lim.DelayFrames; c.Conversion = r; c.LimiteSalida = lim;
         }

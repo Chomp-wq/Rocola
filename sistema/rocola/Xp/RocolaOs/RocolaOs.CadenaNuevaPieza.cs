@@ -54,6 +54,13 @@ namespace Rocola
         // LA GANANCIA (una, fija toda la cancion o el disco: RocolaOs.CadenaNuevaGanancia.cs)
         internal double GananciaDb;
         internal string Como = "";                  // de donde salio (la bitacora y la hoja)
+        // (28-11-2026) lo de ESTA cancion con lo que se decidio la ganancia, para el tope si el dueno mueve el EQ mientras suena (a1) y para el
+        // disco continuo (a3): su pico real antes del EQ del dueno (medido o estimado), los picos de sus sondas (o null: los tipicos), lo que le
+        // suman al pico el tono parejo y los agudos, y su techo (C menos su pico real con el EQ de cuando se armo)
+        internal double TpAntesEqDb = double.NaN;
+        internal float[] PicosEq;
+        internal double DtpOtrosDb;
+        internal double TechoDb = double.NaN;
         // LAS PIEZAS, en orden (para el disco continuo: la pieza k de esta sigue a la pieza k de la anterior si son del mismo tipo)
         internal readonly List<IRocolaOsPieza> Piezas = new List<IRocolaOsPieza>();
         internal T Anota<T>(T p) where T : IRocolaOsPieza { if (p != null) Piezas.Add(p); return p; }
