@@ -3,8 +3,12 @@
 // (estereo). La B toca TODO EN MONO (las mismas muestras por todas las bocinas): en el grave, dos bocinas repartidas por el local se suman o se
 // restan segun donde este uno parado, y eso es lo que el dueno tiene que medir. Asi que aqui cada banda es UN ruido rosa de una octava, el mismo en
 // L y R, al mismo nivel que el de Ctrl+F3 (-20 dB eficaces), con los mismos generadores (PruebaBanda.Generador) y el mismo orden: las ocho de grave
-// a agudo, 8 s cada una con 1,5 s de silencio entre ellas, con su entrada y salida de 50 ms. Suena por su propia salida (CreaWaveOut, como la
-// prueba de bocinas de XP), con la rocola callada; no pasa por ninguna cadena (se mide el local tal cual).
+// a agudo, 8 s cada una con 1,5 s de silencio entre ellas, con su entrada y salida de 50 ms. Suena con la rocola callada y no pasa por ninguna
+// cadena (se mide el local tal cual). Por donde: con la salida nueva (salida_nueva=1, la tarjeta siempre abierta: CADENA_NUEVA_salida.md, «Las
+// pruebas de sonido por el mismo flujo») como PRUEBA QUE OCUPA LA SALIDA SOLA (SalidaNueva.EmpiezaPrueba): en coma flotante, sin los 16 bits de
+// CreaWaveOut, con ganancia 1 y el volumen del dueno (el mismo con que suena la musica que se va a corregir); si empieza a sonar algo pedido se
+// corta sola (la musica manda). Sin la salida nueva (o con la tarjeta aun cerrada), por su propia salida (CreaWaveOut), como la prueba de
+// bocinas de XP.
 using System;
 using NAudio.Wave;
 
@@ -40,9 +44,10 @@ namespace Rocola
             internal double NivelDe(int k) { return nivel[k]; }
             internal long Total { get { return total; } }
             // la banda que se oye con 'retrasoMs' de salida por delante (-1: en un silencio o antes de empezar)
-            internal int BandaOida(int retrasoMs)
+            internal int BandaOida(int retrasoMs) { return BandaEn(pos - (long)Math.Max(0, retrasoMs) * Tasa / 1000); }
+            // la banda en el cuadro 'oido' (lo que ya se oyo: con la salida nueva lo cuenta ella, con el bufer de la tarjeta descontado)
+            internal int BandaEn(long oido)
             {
-                long oido = pos - (long)Math.Max(0, retrasoMs) * Tasa / 1000;
                 if (oido < 0) return -1;
                 long k = oido / porBanda;
                 if (k >= 8) k = 7;
@@ -74,12 +79,24 @@ namespace Rocola
         }
 
         private RocolaOsBillar2Bandas rocolaOsBillar2Bandas;
+        private SalidaNuevaPruebaSonido rocolaOsBillar2PorLaNueva;   // (con la salida nueva: la prueba que la ocupa sola)
         // TOCAR LAS OCHO BANDAS (el boton de la hojita): lo que dice la hojita
         internal string RocolaOsBillar2ProbarBandas()
         {
             if (nowPlaying != null || videoOn) return "Hay música sonando: la medida es con la rocola callada.";
-            ParaPruebaBocinas();
+            ParaPruebaBocinas(); RocolaOsBillar2SueltaNueva();
             RocolaOsBillar2Bandas p = new RocolaOsBillar2Bandas();
+            if (SalidaNueva.Va && SalidaNueva.Abierta)
+            {
+                SalidaNuevaPruebaSonido n = SalidaNueva.EmpiezaPrueba(p, "billar: las 8 bandas en mono", 1f, true);
+                if (n != null)
+                {
+                    rocolaOsBillar2PorLaNueva = n; rocolaOsBillar2Bandas = p;
+                    RocolaOs.Apunta(RocolaOsBillar2.Nombre, "suenan las 8 bandas en mono para afinar con el celular (por la salida nueva)");
+                    return "";
+                }
+                if (SalidaNueva.Exclusiva != null) return "La salida está ocupada con otra prueba (la medida del convertidor): espera a que acabe.";
+            }
             IWavePlayer w = null;
             try
             {
@@ -103,10 +120,25 @@ namespace Rocola
         internal string RocolaOsBillar2BandaGrande()
         {
             RocolaOsBillar2Bandas p = rocolaOsBillar2Bandas;
+            SalidaNuevaPruebaSonido n = rocolaOsBillar2PorLaNueva;
+            if (p != null && n != null)
+            {
+                if (!n.Sonando) { RocolaOsBillar2SueltaNueva(); return ""; }   // (acabo, o se corto porque empezo algo pedido)
+                int bn = p.BandaEn((long)(n.SegundosOidos * RocolaOsBillar2Bandas.Tasa));
+                return bn < 0 ? "" : NombreBanda(bn) + "   " + (bn + 1) + " de 8";
+            }
             if (p == null || pruebaSalida == null) return "";
             int b = p.BandaOida(latenciaAbiertaMs > 0 ? latenciaAbiertaMs : 1000);
             return b < 0 ? "" : NombreBanda(b) + "   " + (b + 1) + " de 8";
         }
-        internal void RocolaOsBillar2ParaBandas() { if (rocolaOsBillar2Bandas != null) { rocolaOsBillar2Bandas = null; ParaPruebaBocinas(); } }
+        internal void RocolaOsBillar2ParaBandas() { RocolaOsBillar2SueltaNueva(); if (rocolaOsBillar2Bandas != null) { rocolaOsBillar2Bandas = null; ParaPruebaBocinas(); } }
+        private void RocolaOsBillar2SueltaNueva()
+        {
+            SalidaNuevaPruebaSonido n = rocolaOsBillar2PorLaNueva;
+            if (n == null) return;
+            rocolaOsBillar2PorLaNueva = null;
+            if (n.Sonando) n.Para();
+            if (pruebaSalida == null) rocolaOsBillar2Bandas = null;
+        }
     }
 }

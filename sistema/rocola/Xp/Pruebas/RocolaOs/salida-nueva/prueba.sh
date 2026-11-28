@@ -6,7 +6,7 @@
 # (32 kHz) en MP3 y un video con 3 kHz (48 kHz, AAC).
 #   bash prueba.sh PROGRAMA [partes...]
 #   PROGRAMA: la carpeta con rocola-xp.dll (JIT) o aot:CARPETA (NativeAOT)
-#   partes (de fabrica todas): guiones elige convertidor flujo mide prueba rendida volumen proteccion hoja sin
+#   partes (de fabrica todas): guiones elige convertidor flujo cadena mide prueba rendida volumen proteccion hoja sin
 #   W (/root/rocola-trabajo/fase11/salida-nueva/prueba; se rehace)
 # Las partes:
 #   guiones     rocola-tarjeta y rocola-sonido (los del sistema, con sh) con el /proc/asound simulado: lo de antes (plughw:N,M) sigue; por
@@ -18,9 +18,14 @@
 #   flujo       la rocola entera con ROCOLA_OS=salida_nueva: tres canciones (44,1, 48 y 32 kHz), un salto a media cancion y un video, y la
 #               medida del convertidor desde la rocola: la tarjeta se abre UNA vez (S32_LE a 44 100 Hz) y no se cierra hasta el final; 0,5 s
 #               de ceros al abrir; 24 bits; cada tono a su frecuencia (convertido dentro); el video por el mismo flujo; el control de la
-#               tarjeta al 100 % una vez
+#               tarjeta al 100 % una vez; con frecuencia_salida=44100 en la configuracion de XP, la cadena NO convierte (ni con su limitador
+#               detras): la de 48 y la de 32 kHz llegan a la salida nueva a su frecuencia y las convierte ella
+#   cadena      la cadena nueva (A, cadena_nueva) con la salida nueva: tres canciones (44,1, 48 y 32 kHz) por la A (coma flotante, sin
+#               limitador) a la salida nueva, que las convierte (sin el limitador de XP), una sola apertura, la proteccion sin actuar
 #   mide        la medida desde la rocola (con una cancion sonando y el volumen del dueno en -6 dB: la medida va tal cual)
-#   prueba      una prueba de sonido sola por el mismo flujo (SalidaNueva.EmpiezaPrueba, la de la hojita del billar): en lugar de la musica
+#   prueba      una prueba de sonido sola por el mismo flujo (SalidaNueva.EmpiezaPrueba, la de la hojita del billar): en lugar de la musica;
+#               «la musica manda»: una larga se corta sola en cuanto empieza una cancion pedida, que suena (no callada); y el ruido por bandas
+#               de la hojita «Billar» de Ctrl+F4 (ROCOLA_OS=1, billar_nuevo=1, el clic en «Tocar las 8 bandas») por ese camino
 #   rendida     una tarjeta que no da 44,1 kHz por hw: la salida nueva se rinde y la musica suena por el camino de XP; una que no esta:
 #               espera (no se rinde) y la cancion espera al aparato como en XP
 #   volumen     los botones de volumen (las teclas multimedia 0xAF/0xAE/0xAD): 1 dB por toque, guardado en rocola_os.txt, el nivel de lo que
@@ -34,7 +39,7 @@
 set -u
 G=$(cd "$(dirname "$0")" && pwd); XP=$(cd "$G/../../.." && pwd); SIS=$(cd "$XP/../../board/rocola/rootfs_overlay/usr/bin" && pwd)
 prog="${1:?uso: prueba.sh PROGRAMA [partes]}"; shift
-partes="${*:-guiones elige convertidor flujo mide prueba rendida volumen proteccion hoja sin}"
+partes="${*:-guiones elige convertidor flujo cadena mide prueba rendida volumen proteccion hoja sin}"
 W=${W:-/root/rocola-trabajo/fase11/salida-nueva/prueba}
 DATOS0=${DATOS0:-/root/rocola-trabajo/port/ventanas/datos0}
 if [ "${prog#aot:}" != "$prog" ]; then RX=("$(cd "${prog#aot:}" && pwd)/rocola-xp"); else RX=(dotnet "$(cd "$prog" && pwd)/rocola-xp.dll"); fi
@@ -198,7 +203,7 @@ bit() { grep -F "[salida_nueva]" "$1/rocola_os_bitacora.txt" 2>/dev/null; }
 # ---------------------------------------------------------------- flujo
 if [[ " $partes " == *" flujo "* ]]; then
   echo "== flujo (la tarjeta siempre abierta: tres canciones de 44,1, 48 y 32 kHz, un salto, un video y la medida)"
-  d=$(datos flujo 'salida_nueva=1\n')
+  d=$(datos flujo 'salida_nueva=1\n'); printf 'frecuencia_salida=44100\r\nnoche=0\r\n' > "$d/rocola_config.txt"   # (sin el modo noche: el nivel del video no depende de la hora)
   escena flujo "$d" 48 "8:pon 01 tono 440.mp3;8.3:pon 01 tono 1000.mp3;8.6:pon 01 tono 2000.mp3;8.9:pon video 3000.mp4;22:salta;24:mira;35:mira;46:mira" \
     ROCOLA_OS=salida_nueva,salida_nueva-prueba,noche_video ROCOLA_SALIDA_NUEVA_PCM=reloj ROCOLA_SALIDA_NUEVA_TARJETA=2
   o=$W/flujo
@@ -226,7 +231,30 @@ if [[ " $partes " == *" flujo "* ]]; then
   si "flujo: el video con su ganancia fija (a -18 LUFS, con el tope de +12 dB: el tono de 3 kHz a unos -32 dBFS: $(sed -n 's/^TRAMO f=3000 .* db=//p' $o/analisis.txt))" \
     bash -c "grep -F '[salida_nueva]' '$d/rocola_os_bitacora.txt' | grep -q 'video video 3000.mp4: .*ganancia fija 12.0 dB' && awk '/^TRAMO f=3000 /{split(\$5,a,\"=\"); exit !(a[2] > -33 && a[2] < -31)}' '$o/analisis.txt'"
   si "flujo: «mira» dice fuentes y una sola apertura" bash -c "grep -q 'aperturas 1, caidas 0' '$o/ordenes.log'"
+  si "flujo: con frecuencia_salida=44100 de XP, la cadena no convierte (ni su limitador): la de 48 y la de 32 kHz llegan a la salida nueva a la suya y las convierte ella" \
+    bash -c "grep -F '[salida_nueva]' '$d/rocola_os_bitacora.txt' | grep -q 'cancion a 48000 Hz (IeeeFloat 32 bits): la convierte la salida nueva a 44100 Hz con el sinc de XP, sin limitador' && grep -F '[salida_nueva]' '$d/rocola_os_bitacora.txt' | grep -q 'cancion a 32000 Hz (IeeeFloat 32 bits): la convierte la salida nueva'"
   si "flujo: rocola_error.txt sin fallos de Rocola OS" bash -c "! grep -q 'Rocola OS' '$d/rocola_error.txt' 2>/dev/null"
+fi
+
+# ---------------------------------------------------------------- cadena (la cadena nueva A por la salida nueva)
+if [[ " $partes " == *" cadena "* ]]; then
+  echo "== cadena (la A de la cadena nueva por la salida nueva: 44,1, 48 y 32 kHz; la conversion es la de la salida, sin limitador)"
+  d=$(datos cadena 'salida_nueva=1\ncadena_nueva=1\n'); printf 'noche=0\r\n' > "$d/rocola_config.txt"
+  escena cadena "$d" 40 "8:pon 01 tono 440.mp3;8.3:pon 01 tono 1000.mp3;8.6:pon 01 tono 2000.mp3;20:mira;37:mira" \
+    ROCOLA_OS=salida_nueva,salida_nueva-prueba,cadena_nueva,medida_nueva ROCOLA_SALIDA_NUEVA_PCM=reloj
+  o=$W/cadena; b="$d/rocola_os_bitacora.txt"
+  grep -E '\[(salida_nueva|cadena_nueva)\]' "$b" | sed 's/^/   bit: /' | cut -c1-230
+  python3 "$G/analiza.py" "$o/sonado.raw" s32 44100 > "$o/analisis.txt"; sed 's/^/   analisis: /' "$o/analisis.txt"
+  si "cadena: sale con 0" test "$(cat $o/salio)" = 0
+  si "cadena: las tres sonaron por la A (la bitacora de la cadena nueva: «] A ...: ganancia»)" bash -c "[ \$(grep -F '[cadena_nueva]' '$b' | grep -c '] A .*: ganancia ') -ge 3 ]"
+  si "cadena: la de 48 y la de 32 kHz llegaron a la salida nueva a la suya y las convirtio ella, sin limitador" \
+    bash -c "grep -F '[salida_nueva]' '$b' | grep -q 'cancion a 48000 Hz (IeeeFloat 32 bits): la convierte la salida nueva' && grep -F '[salida_nueva]' '$b' | grep -q 'cancion a 32000 Hz (IeeeFloat 32 bits): la convierte la salida nueva'"
+  for f in 440 1000 2000; do
+    si "cadena: el tono de $f Hz sono a su frecuencia ($(grep "TRAMO f=$f " $o/analisis.txt | head -1))" grep -qE "^TRAMO f=($((f - 3))|$((f - 2))|$((f - 1))|$f|$((f + 1))|$((f + 2))|$((f + 3))) " "$o/analisis.txt"
+  done
+  si "cadena: la tarjeta, abierta una vez en S32_LE a 44 100 Hz; la proteccion no actuo" \
+    bash -c "[ \$(grep -c ' PREPARA ' '$o/registro.txt') = 1 ] && ! grep -v 'rate=44100 ch=2 fmt=10 ' '$o/registro.txt' | grep -q . && grep -q 'aperturas 1, caidas 0' '$o/ordenes.log' && ! grep -q 'proteccion [1-9]' '$o/ordenes.log'"
+  si "cadena: rocola_error.txt sin fallos de Rocola OS" bash -c "! grep -q 'Rocola OS' '$d/rocola_error.txt' 2>/dev/null"
 fi
 
 # ---------------------------------------------------------------- mide (desde la rocola)
@@ -257,6 +285,42 @@ if [[ " $partes " == *" prueba "* ]]; then
   si "prueba: la cancion antes y despues, y no mientras (dos tramos de 440 Hz con la prueba en medio)" bash -c "[ \$(grep -c '^TRAMO f=440 ' '$o/analisis.txt') = 2 ]"
   si "prueba: lo oido a la mitad y al acabar (prueba-oida)" bash -c "grep -qE 'prueba-oida (1|0)\.[0-9]+ s sonando' '$o/ordenes.log' && grep -qE 'prueba-oida (2\.9|3\.0)[0-9] s acabo' '$o/ordenes.log'"
   si "prueba: la tarjeta, abierta una vez" bash -c "[ \$(grep -c ' PREPARA ' '$o/registro.txt') = 1 ] && grep -q 'aperturas 1, caidas 0' '$o/ordenes.log'"
+  # la musica manda: una prueba de 20 s con la rocola callada; a los 3 s se pide una cancion: la prueba se corta y la cancion se oye
+  d=$(datos manda 'salida_nueva=1\n')
+  escena manda "$d" 22 "7:prueba-larga;8.5:prueba-oida;10:pon 01 tono 440.mp3;12:prueba-oida;16:mira" ROCOLA_OS=salida_nueva,salida_nueva-prueba ROCOLA_SALIDA_NUEVA_PCM=reloj
+  o=$W/manda
+  python3 "$G/analiza.py" "$o/sonado.raw" s32 44100 > "$o/analisis.txt"; sed 's/^/   analisis: /' "$o/analisis.txt"
+  sed 's/^/   ordenes: /' "$o/ordenes.log" | cut -c1-200
+  si "manda: sale con 0" test "$(cat $o/salio)" = 0
+  si "manda: la prueba larga se corto sola al empezar la cancion (prueba-oida: acabo con menos de 5 s oidos)" bash -c "grep -qE 'prueba-oida [0-4]\.[0-9]+ s acabo' '$o/ordenes.log'"
+  si "manda: la bitacora lo dice («la prueba de sonido se corta: empieza a sonar cancion»)" bash -c "grep -F '[salida_nueva]' '$d/rocola_os_bitacora.txt' | grep -q 'la prueba de sonido se corta: empieza a sonar cancion'"
+  si "manda: los 500 Hz menos de 5 s y despues la cancion de 440 Hz se oye (mas de 3 s)" bash -c "awk '/^TRAMO f=(499|500|501) /{split(\$3,a,\"=\");split(\$4,b,\"=\"); p+=b[2]-a[2]} /^TRAMO f=(439|440|441) /{split(\$3,a,\"=\");split(\$4,b,\"=\"); c+=b[2]-a[2]} END{exit !(p>1 && p<5 && c>3)}' '$o/analisis.txt'"
+  # el ruido por bandas de la hojita «Billar» de Ctrl+F4 (RocolaOs.Billar2Bandas.cs): por la salida nueva, solo, con la rocola callada; Esc lo para.
+  # (1024x768: con la pestana Cadena y la Billar son siete, pegadas a la derecha: Billar en (818,54); «Tocar las 8 bandas» en (276,223))
+  d=$(datos billar 'salida_nueva=1\nbillar_nuevo=1\n')
+  escena billar "$d" 26 "" ROCOLA_OS=1 ROCOLA_SALIDA_NUEVA_PCM=reloj ROCOLA_PULSA="6:17+115,8:clic:818:54,9.5:clic:276:223,21.5:27,22.5:27" ROCOLA_CAPTURA="13:$W/billar/bandas.png"
+  o=$W/billar; b="$d/rocola_os_bitacora.txt"
+  grep -E '\[(salida_nueva|billar_nuevo)\]' "$b" | tail -6 | sed 's/^/   bit: /' | cut -c1-220
+  r=$(python3 - "$o/sonado.raw" <<'PY'
+import sys, struct, math
+b = open(sys.argv[1], 'rb').read(); n = len(b) // 8; t = 4410; bloques = []
+for k in range(n // t):
+    s = 0.0
+    for i in range(k * t, (k + 1) * t, 7):
+        v = struct.unpack_from('<i', b, i * 8)[0] / 2147483648.0; s += v * v
+    db = 10 * math.log10(max(1e-20, s / len(range(k * t, (k + 1) * t, 7))))
+    bloques.append(db)
+ruido = sum(1 for x in bloques if -28 < x < -12)
+print("%.1f %.1f" % (ruido / 10.0, len(bloques) / 10.0))
+PY
+)
+  echo "   billar: segundos con ruido de -20 dB eficaces / segundos sonados: $r"
+  si "billar: sale con 0" test "$(cat $o/salio)" = 0
+  si "billar: las bandas por la salida nueva, solas («prueba de sonido «billar: las 8 bandas en mono» (sola, ganancia 0.0 dB, con el volumen del dueno)» y «(por la salida nueva)»)" \
+    bash -c "grep -F '[salida_nueva]' '$b' | grep -q 'prueba de sonido «billar: las 8 bandas en mono» (sola, ganancia 0.0 dB, con el volumen del dueno)' && grep -q 'suenan las 8 bandas en mono para afinar con el celular (por la salida nueva)' '$b'"
+  si "billar: el ruido sono entre 8 y 13 s (dos bandas, la segunda cortada por Esc): $r" bash -c "set -- $r; python3 -c 'import sys; v=float(sys.argv[1]); sys.exit(0 if 8 <= v <= 13 else 1)' \$1"
+  si "billar: la tarjeta, abierta una vez (S32_LE a 44 100 Hz)" bash -c "[ \$(grep -c ' PREPARA ' '$o/registro.txt') = 1 ] && ! grep -v 'rate=44100 ch=2 fmt=10 ' '$o/registro.txt' | grep -q ."
+  si "billar: la captura de la hojita con la banda que suena" test -s "$o/bandas.png"
 fi
 
 # ---------------------------------------------------------------- rendida (si la tarjeta no abre por hw:, la musica no se queda muda)
@@ -364,21 +428,21 @@ if [[ " $partes " == *" sin "* ]]; then
 fi
 
 # ---------------------------------------------------------------- hoja (Ctrl+F4 -> Sonido, y encender con la prueba de 15 s)
-# (1024x768: la hoja en (29,2) y su cliente en (32,31), como en la prueba salida-audio; la pestana Sonido en (712,54); el bloque de la salida
+# (1024x768: la hoja en (29,2) y su cliente en (32,31), como en la prueba salida-audio; la pestana Sonido en (606,54), con la pestana Cadena (antes (712,54)); el bloque de la salida
 # nueva: «Encender/Apagar» en (639,616) y «Mas y medir el convertidor...» en (857,616))
 if [[ " $partes " == *" hoja "* ]]; then
   echo "== hoja (Ctrl+F4 -> Sonido: el bloque de la salida nueva; encender con «¿Se oye bien?»; sin contestar vuelve sola)"
   d=$(datos hoja)
   difs() { python3 -c "import sys;from PIL import Image,ImageChops;a=Image.open(sys.argv[1]).convert('RGB');b=Image.open(sys.argv[2]).convert('RGB');x,y,w,h=map(int,sys.argv[3:7]);d=ImageChops.difference(a.crop((x,y,x+w,y+h)),b.crop((x,y,x+w,y+h)));print(sum(1 for q in d.getdata() if max(q)>40))" "$@" 2>/dev/null || echo 0; }
   # 1: apagada; la hoja; «Encender (prueba de 15 s)»: se guarda y se reabre sola (SIGUSR1)
-  escena hoja-1 "$d" 16 "" ROCOLA_OS=1 ROCOLA_PULSA="4:67,6:17+115,8:clic:712:54,10.5:clic:639:616" ROCOLA_CAPTURA="9.5:$W/hoja-1/apagada.png"
+  escena hoja-1 "$d" 16 "" ROCOLA_OS=1 ROCOLA_PULSA="4:67,6:17+115,8:clic:606:54,10.5:clic:639:616" ROCOLA_CAPTURA="9.5:$W/hoja-1/apagada.png"
   o=$W/hoja-1
   si "hoja 1: la captura de la hoja con la salida nueva apagada" test -s "$o/apagada.png"
   si "hoja 1: «Encender»: salida_nueva=1 en rocola_os.txt y la prueba (antes=salida_nueva:0, nueva=salida_nueva:1)" \
     bash -c "grep -qx 'salida_nueva=1' '$d/rocola_os.txt' && grep -qx 'antes=salida_nueva:0' '$d/rocola_salida_prueba.txt' && grep -qx 'nueva=salida_nueva:1' '$d/rocola_salida_prueba.txt'"
   si "hoja 1: se reabre conservando el estado (la marca del lanzador y sale con 0)" bash -c "grep -q 'se enciende la salida nueva' '$o/run/rocola-xp-reinicio' && [ \$(cat $o/salio) = 0 ]"
   # 2: como la reabre el lanzador: la salida nueva abre, pregunta y se contesta «Si» (Tab, Intro); despues la hoja y su hoja de «Mas»
-  escena hoja-2 "$d" 22 "" ROCOLA_OS=1 ROCOLA_SALIDA_NUEVA_PCM=reloj ROCOLA_PULSA="5:9,5.3:13,8:17+115,10:clic:712:54,13:clic:857:616,17:27,18:27" \
+  escena hoja-2 "$d" 22 "" ROCOLA_OS=1 ROCOLA_SALIDA_NUEVA_PCM=reloj ROCOLA_PULSA="5:9,5.3:13,8:17+115,10:clic:606:54,13:clic:857:616,17:27,18:27" \
     ROCOLA_CAPTURA="11.5:$W/hoja-2/encendida.png,15.5:$W/hoja-2/mas.png"
   o=$W/hoja-2; b="$d/rocola_os_bitacora.txt"
   grep -F '[salida_audio]' "$b" | tail -3 | sed 's/^/   bit: /' | cut -c1-200

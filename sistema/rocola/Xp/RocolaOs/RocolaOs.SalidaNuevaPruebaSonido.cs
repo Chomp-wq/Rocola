@@ -2,7 +2,9 @@
 // SONIDO QUE OCUPA LA SALIDA NUEVA SOLA. Para lo que suena para medir o afinar (el ruido por bandas de la hojita del billar para el celular,
 // los tonos de la medida del convertidor) mientras la tarjeta sigue siempre abierta: la prueba entra EN LUGAR de la musica (la musica sigue su
 // curso callada, como si sonara: su reloj, sus bloques y su fin no se paran) con su ganancia fija, con o sin el volumen del dueno, y al
-// acabarse (la fuente devuelve 0) o al pararla, la musica vuelve a oirse en el mismo periodo. Una a la vez.
+// acabarse (la fuente devuelve 0) o al pararla, la musica vuelve a oirse en el mismo periodo. Una a la vez. LA MUSICA MANDA: si mientras tanto
+// se enchufa una fuente nueva (una cancion pedida, un video, la prueba de bocinas de XP), la prueba se corta sola (SalidaNueva.Enchufa) y
+// Sonando pasa a false: nada pedido suena callado.
 //
 //   SalidaNuevaPruebaSonido p = SalidaNueva.EmpiezaPrueba(fuente, "billar: ruido por bandas", 1f, true);
 //   (null: la salida nueva no va -sin ella, el camino de XP: CreaWaveOut, que con ella tambien funciona, sumado a la musica- o ya hay otra)

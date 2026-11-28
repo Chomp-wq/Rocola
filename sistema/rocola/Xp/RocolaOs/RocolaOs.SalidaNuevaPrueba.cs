@@ -75,10 +75,11 @@ namespace Rocola
                     int n; int.TryParse(l.Substring(4), NumberStyles.Integer, CultureInfo.InvariantCulture, out n);
                     SalidaNueva.CambiaVolumen(n, false); log.Append("vol ").Append(SalidaNueva.VolumenDb).Append('\n'); continue;
                 }
-                if (l == "prueba")
+                if (l == "prueba" || l == "prueba-larga")
                 {
-                    // una prueba de sonido sola por el mismo flujo: 500 Hz a 48 kHz, un canal, 3 s, a la mitad (-6 dB), con el volumen del dueno
-                    SalidaNuevaPruebaSonido p = SalidaNueva.EmpiezaPrueba(new RocolaOsSenoDePrueba(48000, 500, 3.0), "prueba del doble", 0.5f, true);
+                    // una prueba de sonido sola por el mismo flujo: 500 Hz a 48 kHz, un canal, 3 s (la larga, 20 s), a la mitad (-6 dB), con el volumen
+                    // del dueno
+                    SalidaNuevaPruebaSonido p = SalidaNueva.EmpiezaPrueba(new RocolaOsSenoDePrueba(48000, 500, l == "prueba" ? 3.0 : 20.0), "prueba del doble", 0.5f, true);
                     log.Append("prueba ").Append(p != null ? "empieza" : "no se pudo").Append('\n'); rocolaOsPruebaSonido = p; continue;
                 }
                 if (l == "prueba-oida")

@@ -169,6 +169,7 @@ namespace Rocola
                         if (SalidaNueva.Exclusiva != null) { inf.Problema = "Hay otra prueba de sonido sonando."; break; }
                         SalidaNueva.ExclusivaConVolumen = false; SalidaNueva.Exclusiva = g; tono = true; Estado = "Sonando los tonos (no toques nada)...";
                     }
+                    if (tono && !g.Acabo && !object.ReferenceEquals(SalidaNueva.Exclusiva, g)) { inf.Problema = "Se corto: empezo a sonar una cancion o un video (la musica manda). Vuelve a medir con la rocola callada."; break; }
                     if (tono && g.Acabo && hasta < 0) hasta = ahora + 800 + SalidaNueva.RetrasoTarjetaMs;
                     if (hasta >= 0 && ahora >= hasta) break;
                     if (ahora - empezo > (long)(TotalSeg * 1000) + 15000) { inf.Problema = "La salida nueva no dio los tonos a tiempo (¿se cayo la tarjeta?)."; break; }

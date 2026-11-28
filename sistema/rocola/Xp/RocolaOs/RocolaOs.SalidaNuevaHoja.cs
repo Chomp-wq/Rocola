@@ -80,6 +80,7 @@ namespace Rocola
             {
                 sb.Append('\n').Append("Aperturas de la tarjeta: ").Append(SalidaNueva.Aperturas).Append(" · caídas: ").Append(SalidaNueva.Caidas).Append(" · xruns: ").Append(SalidaNueva.Xruns)
                   .Append(" · fuentes: ").Append(SalidaNueva.FuentesVivas);
+                sb.Append('\n').Append("Frecuencias: cada canción sale de su cadena a la suya y la salida nueva la lleva a 44,1 kHz con el sinc de XP, sin limitador (la frecuencia de salida de Ctrl+F3 no se usa).");
                 sb.Append('\n').Append("Pico más alto antes de la protección: ").Append(SalidaNueva.PicoMax > 0 ? SalidaNuevaMide.D(20 * Math.Log10(SalidaNueva.PicoMax)) + " dBFS" : "— (aún no sonó nada)");
                 if (SalidaNueva.VideoFlujos > 0) sb.Append('\n').Append("Sonido de los videos: ").Append(SalidaNueva.VideoFlujos).Append(" (el último: ").Append(SalidaNueva.VideoFormato).Append(")");
             }

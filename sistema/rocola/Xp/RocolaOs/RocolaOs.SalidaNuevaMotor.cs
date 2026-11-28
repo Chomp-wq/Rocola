@@ -120,6 +120,14 @@ namespace Rocola
         }
         internal static void Enchufa(SalidaNuevaCliente c)
         {
+            // LA MUSICA MANDA: una prueba que ocupa la salida sola (el ruido por bandas, los tonos de la medida) se corta en cuanto algo nuevo
+            // quiere sonar (una cancion pagada, un video, la prueba de bocinas de Ctrl+F3): nada que se haya pedido suena callado.
+            ISalidaNuevaGenerador ex = Exclusiva;
+            if (ex != null)
+            {
+                SueltaPrueba(ex);
+                RocolaOs.Apunta(NombreFuncion, "la prueba de sonido se corta: empieza a sonar " + c.Nombre + " (la musica no se queda callada)");
+            }
             lock (cerrojoFuentes)
             {
                 SalidaNuevaCliente[] n = new SalidaNuevaCliente[fuentes.Length + 1];

@@ -71,23 +71,32 @@ contestar) vuelve sola a `salida_nueva=0` y se reabre. «Apagar la salida nueva�
   iban a sonar se apagan con media curva de coseno (lo que ya estaba en el búfer de la tarjeta, hasta 200 ms, suena: el salto se oye ese poco
   después).
 
-### Los ganchos de Codigo/ (g440-g443; GANCHOS.tsv)
+### Los ganchos de Codigo/ (g440-g443 y g445; GANCHOS.tsv)
 
 | gancho | dónde | qué |
 |---|---|---|
 | g440 | Form1.Sonido.cs:1424 (StartOpenedTrack) | `AbreSalidaClasica(outChain, RocolaOsSalidaNuevaFlotante(FlotanteAdmitido()))`: con la salida nueva, coma flotante (sin el dither de 16 de XP) |
-| g441 | Form1.Sonido.cs:338 (AFrecuenciaDeLaTarjeta) | la cadena a 44 100 Hz, como `frecuencia_salida=44100` (el sinc y su relevo sin pausa) |
-| g442 | Form1.Sonido.cs:356 (CalientaFrecuenciaSalida) | la tabla a 44 100 Hz |
-| g443 | Form1.SinPausa.cs:119 (el relevo) | el relevo sigue solo en una salida a 44 100 Hz |
+| g441 | Form1.Sonido.cs:338 (AFrecuenciaDeLaTarjeta) | con la salida nueva la cadena **no se convierte** (`RocolaOsSalidaNuevaHz` da 0): ni con `frecuencia_salida=` de Ctrl+F3 ni con el limitador que XP pone detrás |
+| g442 | Form1.Sonido.cs:356 (CalientaFrecuenciaSalida) | no se calienta nada aquí: las tablas a 44 100 Hz las calienta el motor (48, 32, 22,05 y 24 kHz, de fondo) |
+| g443 | Form1.SinPausa.cs:119 (el relevo) | no hay frecuencia de la tarjeta que esperar: la salida va a la de la canción |
+| g445 | Form1.SinPausa.cs:123 (el relevo) | el relevo sin pausa solo encadena una siguiente del **mismo formato** (`RocolaOsSalidaNuevaRelevoConvierte` da no) |
 
 Y fuera de Codigo/: g444 (Nativo/SalidaAlsa.cs, `Escritos`), líneas añadidas en Nativo/SalidaAlsa.cs (la fuente), Nativo/ReproductorVideo.cs
 (cuatro enchufes: las opciones de sonido de mpv, el volumen, antes de cargar y al soltar; y `Archivo`) y Plataforma/VolumenTeclas.cs
 (`VolumenTeclas.Desvio`). `python3 Pruebas/RocolaOs/ganchos.py`: TODO BIEN.
 
-Nota para la cadena nueva (A y B): con g441, cuando la tarjeta de la cadena va a otra frecuencia, XP la convierte en `ConvierteSalida`, que pone
-detrás un `LimitadorPicoReal` (dinámico, techo 0,88 = -1,1 dBTP). Para la cadena de hoy es lo de siempre; las cadenas nuevas (sin limitador)
-deberían convertir sin él o dejar que convierta la fuente del motor (que no limita: solo la protección de 0 dBFS). `SalidaNueva.Va` dice si la
-salida nueva va.
+**La conversión de frecuencia con la salida nueva es la de la salida nueva, sin limitador** (lo que dejó pedido el agente de la cadena, 28-11-2026).
+XP convierte de frecuencia en dos sitios, y los dos ponen detrás su `LimitadorPicoReal` (dinámico, techo 0,88 = -1,1 dBTP: mueve el nivel en
+tiempo real, justo lo que la cadena nueva no quiere): `AFrecuenciaDeLaTarjeta` (con `frecuencia_salida=`, g441) y el relevo sin pausa entre dos
+canciones de distinta frecuencia (`ConvierteSalida` en `PreparaSiguienteSinPausa`). Con la salida nueva ninguno de los dos se usa: la cadena (la de
+hoy, o las nuevas A y B, que entregan coma flotante estéreo a la frecuencia de la canción en `CadenaCancion.Salida`, sin limitador) sale a la
+frecuencia de la canción y **la fuente del motor la lleva a 44,1 kHz con el mismo sinc** (`RemuestreoContinuo`); detrás solo queda la protección
+de 0 dBFS, que cuenta y apunta (si actúa, algo está mal: con el techo de -1 dBTP de la cadena nueva, lo que sube el sinc entre muestras cabe). Con
+g445, una siguiente de otra frecuencia ya no se encadena: abre su salida al acabar la que suena, que en el motor es un cambio de fuente (la
+tarjeta sigue abierta, ceros en medio, sin chasquido); solo se pierde el «sin pausa» en ese cambio (un disco con pistas de 44,1 y de 48 kHz, casi
+nunca). La primera canción (o video, o prueba) de cada frecuencia que no es 44,1 kHz lo dice en la bitácora: «cancion a 48000 Hz (IeeeFloat 32
+bits): la convierte la salida nueva a 44100 Hz con el sinc de XP, sin limitador». La hoja lo dice en «Más...». Sin la salida nueva, lo de XP tal
+cual (`frecuencia_salida=` y el relevo con `ConvierteSalida`, con su limitador). `SalidaNueva.Va` dice si la salida nueva va.
 
 ### El volumen del dueño, digital (D13)
 
@@ -125,9 +134,9 @@ Lo que sí hay: el **«file» de alsa-lib** (`pcm.file` de alsa.conf, con «null
 Con la salida nueva la tarjeta es del motor y no se abre otra vez. Dos caminos, los dos sin cerrar nada:
 
 1. **Lo que abre su propia salida con `CreaWaveOut()`** (la prueba de bocinas y el ruido por bandas de Ctrl+F3 de XP, SalaLocal.cs y
-   AfinarLocal.cs, y lo que haga igual la hojita del billar): YA suena por el mismo flujo sin cambiar nada, porque `CreaWaveOut` → `WaveOutPropio`
-   → `SalidaAlsa.Abre` da una fuente del motor (16 bits o coma flotante, cualquier frecuencia). Se SUMA a lo que haya (las de XP solo se
-   dejan con la rocola callada), pasa por el volumen del dueño y la protección, y su `Stop`/`Dispose` la desenchufa.
+   AfinarLocal.cs): YA suena por el mismo flujo sin cambiar nada, porque `CreaWaveOut` → `WaveOutPropio` → `SalidaAlsa.Abre` da una fuente del
+   motor (16 bits o coma flotante, cualquier frecuencia). Se SUMA a lo que haya (las de XP solo se dejan con la rocola callada), pasa por el
+   volumen del dueño y la protección, y su `Stop`/`Dispose` la desenchufa. Es Codigo/ de XP: se queda así.
 2. **Una prueba que ocupa el flujo SOLA** (lo que pidió el billar: en lugar de la música, con su ganancia fija):
 
    ```csharp
@@ -139,11 +148,22 @@ Con la salida nueva la tarjeta es del motor y no se abre otra vez. Dos caminos, 
    p.Para();
    ```
 
-   Mientras dura, la música sigue su curso CALLADA (su reloj, sus bloques y su fin no se paran: no se da por caída ni se retoma); al acabar
-   vuelve a oírse en el mismo periodo. Sin la protección contada ni (si se pide) el volumen del dueño. Si no viene a 44,1 kHz se convierte con el
-   sinc de XP, construido en el hilo que llama (la tabla, si no estaba, ~20 ms). El `Read` de la fuente lo llama el hilo del motor cada 20 ms:
-   rápido y sin esperar. Una a la vez (también la medida del convertidor va por aquí: `Exclusiva`). Probado (parte «prueba»): 3 s de 500 Hz a
-   48 kHz con una canción sonando: la canción antes y después, la prueba en medio a su nivel, la tarjeta sin cerrarse.
+   Mientras dura, lo que ya sonaba sigue su curso CALLADO (su reloj, sus bloques y su fin no se paran: no se da por caída ni se retoma); al
+   acabar vuelve a oírse en el mismo periodo. **La música manda**: si mientras tanto algo NUEVO quiere sonar (una canción pedida, un video, la
+   prueba de bocinas de Ctrl+F3: cualquier fuente que se enchufa), la prueba **se corta sola** en ese momento, lo apunta («la prueba de sonido se
+   corta: empieza a sonar cancion») y `p.Sonando` pasa a false: nada pagado suena callado. Sin la protección contada ni (si se pide) el volumen
+   del dueño. Si no viene a 44,1 kHz se convierte con el sinc de XP, construido en el hilo que llama (la tabla, si no estaba, ~20 ms). El `Read`
+   de la fuente lo llama el hilo del motor cada 20 ms: rápido y sin esperar. Una a la vez (también la medida del convertidor va por aquí:
+   `Exclusiva`; si la corta una canción, la medida lo dice: «Se cortó: empezó a sonar una canción o un video»). Probado (parte «prueba»): 3 s de
+   500 Hz a 48 kHz con una canción sonando: la canción antes y después, la prueba en medio a su nivel, la tarjeta sin cerrarse; y una de 20 s que
+   se corta al pedir una canción, que se oye.
+
+   **El ruido por bandas de la hojita «Billar» de Ctrl+F4** (RocolaOs.Billar2Bandas.cs, de la cadena nueva B; lo dejó pedido su agente) va ya por
+   este camino: con la salida nueva abierta, «Tocar las 8 bandas» es `EmpiezaPrueba(bandas, "billar: las 8 bandas en mono", 1f, true)`: en coma
+   flotante (sin los 16 bits de `CreaWaveOut`), ganancia 1 y con el volumen del dueño (el mismo con el que suena la música que la afinación va a
+   corregir); «la banda que suena» en grande sale de `p.SegundosOidos` (con el búfer de la tarjeta descontado); cerrar Ctrl+F4 (o cambiar de
+   hojita) la para; si empieza una canción, se corta sola y la hojita deja de decir la banda. Sin la salida nueva (o con la tarjeta aún sin
+   abrir), su `CreaWaveOut` de antes. Probado (parte «prueba», escena «billar», con Ctrl+F4 de verdad fuera de pantalla).
 
 ### Medir el convertidor (D12; RocolaOs.SalidaNuevaMide.cs, guion rocola-mide-dac)
 
@@ -179,22 +199,30 @@ sonado. (Solo para pruebas: `ROCOLA_SALIDA_NUEVA_PCM`, `ROCOLA_SALIDA_NUEVA_TARJ
 
 Las partes (de fábrica todas menos `bitabit`, que pide `BASE=` con el programa de antes compilado):
 
-| parte | qué comprueba | resultado (27-11-2026) |
+| parte | qué comprueba | resultado (28-11-2026, juntada con la A y la B) |
 |---|---|---|
 | guiones | rocola-tarjeta y rocola-sonido con BusyBox (1.36 de Ubuntu, sus applets delante en el PATH): lo de antes por número sigue; por nombre con el número de ahora (también renumerado); la guardada que no está → la automática y lo dice; la USB primero SOLO con `salida_nueva=1`; `usar N` por nombre solo con ella; sin `stat` | 15/15 |
 | elige | la elección del motor (`rocola-xp --prueba-salida-nueva elige`): las mismas reglas, con el aviso | 6/6 |
 | convertidor | `rocola-xp --mide-convertidor` con el lazo: recortando desde -10 dBFS, 0/-3/-6 RECORTAN (32/26/17 % de THD+N), -10 y -20 limpios y propone -11; sin recortar, todo limpio y -1; sin señal y con la entrada que recorta, lo dice | 6/6 |
-| flujo | la rocola entera (fuera de pantalla) con tres canciones (44,1/48/32 kHz), un salto a media canción y un video: la tarjeta se abre UNA vez (S32_LE, 44 100 Hz) y no se cierra hasta salir; 0,5 s de ceros de verdad; 24 bits; cada tono a su frecuencia (convertidos dentro); el corte del salto; el control de la tarjeta al 100 % una vez (solo PCM, no Mic); el video por la rocola (48 kHz, medido con ffmpeg a -38 LUFS, ganancia fija +12 dB con el tope: su tono sonó a -32,1 dBFS) | 17/17 |
+| flujo | la rocola entera (fuera de pantalla) con tres canciones (44,1/48/32 kHz), un salto a media canción y un video: la tarjeta se abre UNA vez (S32_LE, 44 100 Hz) y no se cierra hasta salir; 0,5 s de ceros de verdad; 24 bits; cada tono a su frecuencia (convertidos dentro); el corte del salto; el control de la tarjeta al 100 % una vez (solo PCM, no Mic); el video por la rocola (48 kHz, medido con ffmpeg a -38 LUFS, ganancia fija +12 dB con el tope: su tono sonó a -32,1 dBFS; sin el modo noche, que a la 1 de la mañana lo bajaba 5 dB); con `frecuencia_salida=44100` en la configuración de XP, la de 48 y la de 32 kHz llegan a la salida nueva a la suya (la cadena no las convirtió ni puso su limitador) y las convierte ella | 18/18 |
+| cadena | la cadena nueva A (`cadena_nueva`) por la salida nueva: tres canciones de 44,1, 48 y 32 kHz, cada una a -18 LUFS por la A (ganancias +16,0, +15,3 y +12,9 dB), coma flotante a la salida, que convierte la de 48 y la de 32 kHz sin limitador; cada tono a su frecuencia; una sola apertura; la protección sin actuar | 8/8 |
 | mide | la medida desde la rocola (el lazo como salida nueva, una canción sonando y el volumen del dueño en -6 dB): la medida va tal cual y propone -11; la tarjeta sigue abierta | 4/4 |
-| prueba | `SalidaNueva.EmpiezaPrueba` (3 s de 500 Hz a 48 kHz) con una canción sonando: la canción antes y después, la prueba en medio a su nivel, lo oído a la mitad y al acabar, una sola apertura | 5/5 |
+| prueba | `SalidaNueva.EmpiezaPrueba` (3 s de 500 Hz a 48 kHz) con una canción sonando: la canción antes y después, la prueba en medio a su nivel, lo oído a la mitad y al acabar, una sola apertura; «la música manda»: una de 20 s se corta sola al pedir una canción (a los 3,6 s), lo apunta, y la canción se oye; el ruido por bandas de la hojita «Billar» de Ctrl+F4 (`ROCOLA_OS=1`, `billar_nuevo=1`, el clic en «Tocar las 8 bandas»): por la salida nueva sola, 10,5 s de ruido a -20 dB eficaces hasta Esc, «Suena: 63 Hz 1 de 8» en la captura, una apertura | 14/14 |
 | rendida | una tarjeta que solo da 48 kHz: se rinde, lo apunta y la canción suena por el camino de XP; una que no está: no se rinde, la canción espera al aparato como en XP (ni dañada ni devuelta) | 5/5 |
 | volumen | las teclas multimedia: seis toques abajo y dos arriba desde -3 → `volumen_db=-7` guardado; lo que sonó bajó 6,00 dB y subió 2,00 (mesetas del nivel); el silencio puesto y quitado; amixer sin tocar | 5/5 |
 | proteccion | con 40 dB de más (solo pruebas): actúa, se cuenta (veces y muestras) y se apunta; nada pasó de 0 dBFS | 3/3 |
 | hoja | Ctrl+F4 → Sonido con `ROCOLA_OS=1` (capturas): «Encender» guarda `salida_nueva=1` y la prueba y se reabre conservando el estado; al volver abre, pregunta y con «Sí» (Tab, Intro) queda; el bloque cambia; «Más y medir el DAC...» abre su hoja; la prueba sin contestar vuelve sola a `salida_nueva=0` y se reabre | 9/9 |
 | sin | sin `ROCOLA_OS` y con `salida_nueva=0` (`ROCOLA_OS=salida_nueva-prueba`): ni bitácora ni archivos de la salida nueva; por plughw a 16 bits; la de 48 kHz por el relevo convertida a la de la que sonaba (lo de XP); la salida se cierra al acabar la cola | 6/6 |
-| bitabit | con `salida_nueva=0`, la misma escena (tres canciones con relevos y conversión) con el programa de antes (fee0890) y con el de ahora, sobre la misma foto de la biblioteca ya medida: lo que sonó, igual a 2 escalones de 16 bits como mucho en 1 190 696 cuadros (los dos tramados TPDF de XP, con su semilla de la hora), y el mismo registro de la tarjeta | 3/3 |
+| bitabit | con `salida_nueva=0`, la misma escena (tres canciones con relevos y conversión) con el programa de antes (fee0890) y con el de ahora, sobre la misma foto de la biblioteca ya medida: lo que sonó, igual a 2 escalones de 16 bits como mucho en 1 190 696 cuadros (los dos tramados TPDF de XP, con su semilla de la hora), y el mismo registro de la tarjeta; el 28-11-2026, otra vez con la A y la B juntadas (y apagadas) | 3/3 |
 
-JIT: la corrida entera 77 de 78 (`bitabit` falló porque el repaso de XP midió una canción antes en una corrida que en la otra: se arregló la
+28-11-2026, juntada la rama de la cadena nueva (A y B, 48fcdbf/af2d1be/27c8abd) y hecho lo que pidió su agente (la conversión sin el limitador de
+XP, g441-g445; el ruido por bandas del billar por el flujo; «la música manda»): JIT todas las partes de fábrica, 99 de 99 (en dos tandas: la
+primera se cortó tras `mide` por editar el guion mientras corría; todo lo de antes de eso, bien) y `bitabit` contra fee0890 3 de 3; NativeAOT
+(`dotnet publish -r linux-x64`, 0 avisos IL/AOT) todas las partes de fábrica, 99 de 99. `salida-audio` 29/29 (con la pestaña Sonido en su sitio
+nuevo, (606,54): la pestaña Cadena corrió las de la izquierda), `billar-nuevo` parte `hoja` (NativeAOT, sin la salida nueva: su `CreaWaveOut` de
+antes) 10/10; `ganchos.py` TODO BIEN; compila con los 13 avisos de siempre.
+
+27-11-2026: JIT: la corrida entera 77 de 78 (`bitabit` falló porque el repaso de XP midió una canción antes en una corrida que en la otra: se arregló la
 prueba con la foto de la biblioteca ya medida) y después `rendida` + `bitabit` 8 de 8. NativeAOT (`dotnet publish -p:PublishAot=true`, 0 avisos
 IL/AOT): todas las partes de fábrica, 81 de 81. Además, sin cambios: `Pruebas/RocolaOs/salida-audio/prueba.sh` (la hoja Sonido de antes: sus botones en su sitio)
 29/29 y `Pruebas/RocolaOs/volumen/prueba.sh` (los botones con amixer, sin la salida nueva) 11/11; `ganchos.py` TODO BIEN; compila con los 13
@@ -209,4 +237,8 @@ avisos de siempre. La batería del nivel 0 (escenas contra la referencia congela
   `audio-delay` está calculado, no medido), el mpv 0.40 del sistema (aquí 0.37) con la tubería, y la medida con la entrada de línea de la placa
   del A4 (qué controles tiene la ALC892 para «Line» y si su entrada recorta con ~1 Vrms del PROZOR).
 - Los guiones con el BusyBox de Buildroot (aquí el de Ubuntu 1.36): falta en QEMU.
+- Con la cadena nueva: la escena `cadena` es la A; la B (modo billar) entrega lo mismo a la salida (coma flotante estéreo a la frecuencia de la
+  canción, sin limitador) pero no se corrió por la salida nueva en escena. El «sin pausa» que se pierde entre dos canciones de distinta frecuencia
+  (g445) se ve en la escena como unos 0,2-0,3 s entre tonos (con el fundido de XP de canciones sueltas); no se midió con un disco continuo de
+  frecuencias mezcladas.
 - Un XRUN de verdad (la tarjeta de prueba no se queda sin nada en estas pruebas) y desenchufar el USB con música sonando.

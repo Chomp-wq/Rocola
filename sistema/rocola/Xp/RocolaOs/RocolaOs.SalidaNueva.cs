@@ -8,9 +8,11 @@
 //     ceros cuando no hay nada y 0,5 s de ceros al abrir (el motor: RocolaOs.SalidaNuevaMotor.cs; la tarjeta: RocolaOs.SalidaNuevaTarjetas.cs).
 //     Lo que XP abre y cierra (la salida de cada cancion, la de Spotify, la retomada, la del diagnostico) pasa a ser una FUENTE del motor
 //     (RocolaOs.SalidaNuevaCliente.cs): Nativo/SalidaAlsa.cs, al abrir, le pregunta a SalidaAlsa.RocolaOsAbre (que pone esta funcion).
-//   - La cadena entrega coma flotante (gancho g440: AbreSalidaClasica con flotante; sin el dither de 16 bits de XP) a 44,1 kHz (ganchos
-//     g441-g443: como frecuencia_salida=44100, con el convertidor sinc de XP y su relevo sin pausa); lo que llegue a otra frecuencia (la
-//     primera vez, mientras se calienta la tabla del convertidor; el sonido de un video) lo convierte la fuente con el mismo sinc.
+//   - La cadena entrega coma flotante (gancho g440: AbreSalidaClasica con flotante; sin el dither de 16 bits de XP) a LA FRECUENCIA DE LA
+//     CANCION: con ella XP no convierte (ganchos g441-g443: frecuencia_salida= no vale; g445: el relevo sin pausa solo con el mismo formato),
+//     porque su ConvierteSalida pone su limitador detras. Lo que no venga a 44,1 kHz (una cancion de 48 kHz, el sonido de un video, una
+//     prueba) lo convierte la fuente del motor con el mismo sinc de XP (RemuestreoContinuo), sin limitador: detras solo queda la proteccion.
+//     Las cadenas nuevas (A y B: float estereo a la tasa de la cancion en CadenaCancion.Salida, sin limitador) entran igual.
 //   - EL VOLUMEN DEL DUENO DIGITAL en dB (volumen_db=, de -60 a 0, y volumen_mudo=; se guardan y valen al volver a arrancar): los botones de
 //     atras (Plataforma/VolumenTeclas.cs: VolumenTeclas.Desvio) mueven 1 dB por toque, y apretados unas 10 veces por segundo, como antes;
 //     el control de la tarjeta se pone una vez en 0 dB y no se toca mas.
@@ -174,7 +176,15 @@ namespace Rocola
         // a 24 bits); sin ella, lo de XP (FlotanteAdmitido: en XP, no: 16 bits con dither TPDF)
         private static bool RocolaOsSalidaNuevaFlotante(bool deXp) { return SalidaNueva.Va || deXp; }
         // g441-g443 (Form1.Sonido.cs, AFrecuenciaDeLaTarjeta y CalientaFrecuenciaSalida; Form1.SinPausa.cs, el relevo): con la salida nueva la
-        // cadena va a 44 100 Hz, como con frecuencia_salida=44100 (el sinc de XP y su relevo sin pausa); sin ella, lo guardado
-        private static int RocolaOsSalidaNuevaHz(int deXp) { return SalidaNueva.Va ? SalidaNueva.Tasa : deXp; }
+        // cadena NO se convierte de frecuencia (ni con frecuencia_salida= de Ctrl+F3): XP lo haria con ConvierteSalida, que pone su limitador de
+        // pico real detras. La cadena (la de hoy o las nuevas, A y B) sale a la frecuencia de la cancion y el cliente del motor la lleva a
+        // 44 100 Hz con el mismo sinc (RemuestreoContinuo), sin limitador: lo unico que queda detras es la proteccion de 0 dBFS, que cuenta y
+        // apunta. Sin ella, lo guardado (bit a bit como XP).
+        private static int RocolaOsSalidaNuevaHz(int deXp) { return SalidaNueva.Va ? 0 : deXp; }
+        // g445 (Form1.SinPausa.cs, PreparaSiguienteSinPausa): con la salida nueva el relevo sin pausa solo encadena una siguiente del MISMO
+        // formato (XP convertiria la de otra frecuencia a la de la que suena, con su limitador detras). La de otra frecuencia (un disco con
+        // pistas de 44,1 y de 48 kHz, casi nunca) abre su salida al acabar esta: en el motor es un cambio de fuente, con la tarjeta abierta y
+        // ceros en medio, sin chasquido; pierde solo el «sin pausa» de ese cambio. Sin ella, lo de XP.
+        private static bool RocolaOsSalidaNuevaRelevoConvierte(WaveFormat de, WaveFormat a) { return !SalidaNueva.Va && RemuestreoContinuo.SePuede(de, a); }
     }
 }

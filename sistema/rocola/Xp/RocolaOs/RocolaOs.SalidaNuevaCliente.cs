@@ -169,6 +169,17 @@ namespace Rocola
             capacidad = (int)Math.Min(int.MaxValue / 4, (long)Math.Ceiling(CuadrosBuferIn * (double)Tasa / TasaIn) + 1024);   // (lo de XP y un poco: la latencia no crece)
             anillo = new float[capacidad * 2];
             NuevoTramo(); Tramos = 0;
+            if (TasaIn != Tasa) ApuntaLaPrimera(nombre, TasaIn, f);
+        }
+        // la primera fuente de cada clase y frecuencia que no es 44,1 kHz (en la sesion): que la bitacora diga que la convierte la salida nueva
+        // (y no XP con su limitador detras: ganchos g441-g445)
+        private static readonly System.Collections.Generic.HashSet<string> convertidasDichas = new System.Collections.Generic.HashSet<string>();
+        private static void ApuntaLaPrimera(string nombre, int hz, WaveFormat f)
+        {
+            string k = nombre + "|" + hz;
+            lock (convertidasDichas) { if (!convertidasDichas.Add(k)) return; }
+            RocolaOs.Apunta(SalidaNueva.NombreFuncion, nombre + " a " + hz + " Hz (" + f.Encoding + " " + f.BitsPerSample + " bits): la convierte la salida nueva a "
+                + Tasa + " Hz con el sinc de XP, sin limitador (la primera a esa frecuencia)");
         }
         private static int TipoDe(WaveFormat f)
         {
