@@ -161,6 +161,15 @@ namespace Rocola
             return true;
         }
 
+        // LA PREPARADA SE RETIRA SIN EMPEZAR (gancho g463, SiguienteConElInterruptor de SinSilencios.cs, antes de soltar su lector): la que suena ya no
+        // lee su principio para el disco continuo exacto del billar (RocolaOsBillar2Tramo.Retira; si ya lo leyo, la siguiente que se arme empalma)
+        private static void RocolaOsCadenaNuevaNoSigue(CadenaCancion p)
+        {
+            RocolaOsArmada a = RocolaOsArmadaDe(p); if (a == null) return;
+            try { foreach (IRocolaOsPieza x in a.Receta.Piezas) { RocolaOsBillar2Tramo t = x as RocolaOsBillar2Tramo; if (t != null) t.Retira(); } }
+            catch (Exception ex) { RocolaOs.Falla(RocolaOsCadenasNuevas.Nombre, "retirar la siguiente", ex); }
+        }
+
         // cada pieza de la nueva con la de la vieja del MISMO tipo y el mismo orden entre las de su tipo (una medida en vivo o un tono parejo de mas en
         // una de las dos no descoloca a las demas). Al preparar el relevo (antes de que la vieja acabe): las piezas del billar lo usan para el
         // disco continuo exacto (CADENA_NUEVA.md §8.2); las del marco lo toman en su primera lectura.

@@ -56,6 +56,11 @@ namespace Rocola
         // EL MODO EXACTO: en la de antes, lo que leyo del origen de la siguiente (intercalado, tal cual) y en mono (para su ventana); en la siguiente,
         // eso mismo pendiente de entregar como lo primero de su origen
         internal bool ExactoAlFinal = true;
+        // (27-11-2026) la preparada que XP retira sin empezar (SiguienteConElInterruptor, «saltar los silencios» en los ultimos 12 s) suelta su lector
+        // en el hilo de la pantalla: la anterior no debe estar leyendo su origen en ese momento. Retira y la lectura del adelanto van bajo este candado
+        // (el de la siguiente): o el adelanto ya se leyo entero, o ya no se lee. Lo llama RocolaOsCadenaNuevaNoSigue (gancho g463) antes del Dispose.
+        private readonly object candadoOrigen = new object();
+        internal void Retira() { lock (candadoOrigen) ExactoAlFinal = false; }
         private float[] adelanto; private int adelantoN; private bool adelantoAcabo, adelantoVisto;
         private double[] adelantoMono; private int adelantoMonoN;
         private volatile RocolaOsBillar2Tramo adelantoPara;
@@ -269,8 +274,9 @@ namespace Rocola
         {
             RocolaOsBillar2Tramo s = siguiente;
             if (s == null || !ExactoAlFinal || !s.ExactoAlFinal || s.pasa || s.empezo || s.Cebado > 0 || !object.ReferenceEquals(s.D, D) || s.canales != canales) return;
-            try
+            lock (s.candadoOrigen) try
             {
+                if (!s.ExactoAlFinal) return;   // (la retiraron mientras tanto: su lector se suelta o ya se solto)
                 float[] b = new float[K * canales];
                 int tiene = 0; bool fin = false;
                 while (tiene < b.Length) { int r = s.src.Read(b, tiene, b.Length - tiene); if (r <= 0) { fin = true; break; } tiene += r; }
