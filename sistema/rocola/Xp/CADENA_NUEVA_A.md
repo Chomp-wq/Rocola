@@ -161,28 +161,43 @@ devuelven lo de XP.
   media cancion): con el tope la segunda mitad queda en -4,7 dBTP (sin el, +8,5) y la primera igual.
 - **a3. El disco continuo con la misma ganancia** (`RocolaOsGananciaNueva`): la que entra SIN PAUSA detras de la anterior del mismo disco (el
   relevo con `SiguienteDelDisco`) lleva la ganancia que lleva la que suena (la del disco si la racha va por disco; si no, la de la pista
-  anterior), bajada solo si no cabe en su techo; la regla de los recopilatorios (mas de 5 dB) no parte un disco continuo. Escena `relevo`: un
-  recopilatorio de dos pistas seguidas de 7 dB de diferencia (resultados abajo).
+  anterior), bajada solo si no cabe en su techo; la regla de los recopilatorios (mas de 5 dB) no parte un disco continuo. Escena `relevo` (la
+  rocola de verdad con la tarjeta con reloj): un recopilatorio de dos pistas seguidas de 32 s con 7 dB entre ellas (empieza cancion por cancion:
+  la primera a -18,0 LUFS): la segunda entra sin pausa con la ganancia de la primera (-8,9 y -8,9 dB) y suena a -25,7 LUFS, lo que le toca en
+  el disco; con el programa de antes, -8,9 y -1,3 dB: un escalon de 7,6 dB en la union.
 - **a5. Sin el limitador de XP al convertir de frecuencia con la salida de hoy** (g464 en `ConvierteSalida`, g465 en `AFrecuenciaDeLaTarjeta`):
   con una cadena nueva, el convertidor solo (sin limitador, sin cebado), y en el disco continuo el convertidor sigue al de la anterior. Con la
   salida nueva XP ya no convierte (g441, g445; sus lineas no se tocan): esto queda para la salida de hoy, el respaldo de emergencia. Prueba
-  `convierte`: un seno a -0,45 dBFS sale a -0,45 (con una de XP, su limitador lo deja en -1,12).
+  `convierte`: un seno a -0,45 dBFS sale a -0,45 (con una de XP, su limitador lo deja en -1,12). Escena `opciones` (`frecuencia_salida=48000`):
+  las cuatro convertidas a 48 kHz sin el limitador (vivo.txt `convertidas_sin_limitador=4`).
 - **a6. El respaldo que respeta el nivel** (`RocolaOsArmaMinima`): si la nueva falla al armarse (o la fuente no es de dos canales), ya no suena la
   de XP (de 4 a 9 dB mas fuerte que -18 LUFS): la NUEVA MINIMA, leer -> el pulso -> la ganancia fija (lo medido sin lo de despues, Spotify la
   1.a vez o las tablas viejas; si ni eso, la de -8 LUFS y +3 dBTP) con la noche -> el fundido de XP, cada paso con su red; el fallo va a
   `rocola_error.txt` y la bitacora dice «RESPALDO MINIMO»; vivo.txt cuenta `respaldos=`. Es el UNICO respaldo (decision del dueno del
-  28-11-2026: en Rocola OS la cadena nueva es la unica). Escena `respaldo` con `ROCOLA_CN_FALLA=armar` (la falla a proposito).
+  28-11-2026: en Rocola OS la cadena nueva es la unica). Escena `respaldo` con `ROCOLA_CN_FALLA=armar` (falla a proposito al armar cada una): las
+  cuatro por el respaldo, el disco y la fuerte a -18,0 LUFS (ffmpeg) sin pasar -1 dBTP; antes habrian sonado por la de XP, a su nivel de hoy
+  (la escena `hoy`, lo mismo con la de XP: el disco a -15,0 LUFS y la fuerte a -10,5).
 - **a7. El DSEE de `agudos_mp3`, fuera del alcance de XP y con su corte fijo**: va en la armada (no en `CadenaCancion.Sbr`, que XP enciende y
   apaga: `ApplyNormNow`, «Escuchar sin mejoras»); su corte es el de la cancion (el de la medida nueva; sin el, el de su ficha de XP; sin nadie
   que lo midiera, o completa, sin DSEE) y no el que sigue a la musica ventana a ventana (g467). Prueba `dsee` (ruido con agudos hasta 16 kHz la
   mitad y apagado hasta 11 kHz la otra): la medida da 16 100 Hz; con el corte fijo, en la parte apagada no se recrea nada entre 11,5 y 15,5 kHz
   (-122 dB, lo de la entrada) y siguiendo a la musica se recreaba a -28 dB de lo de 4-8 kHz; donde hay agudos, lo mismo (-11,6 y -11,6).
+  Escena `opciones` (`agudos_mp3=1`): la fuerte de LAME 128 con el corte fijo medido de 16 700 Hz, las del disco con 18 800, el ruido completo sin
+  DSEE; vivo.txt `dsee=1 dsee_corte=16700 dsee_xp=0` (XP no lo ve).
 - **a8. La noche sin `FactorNoche` en el hilo del sonido**: el reloj de la pantalla la publica en cada vuelta (`PublicaNoche`, g466) y la cadena
   al armarse; la pieza de la ganancia solo lee ese `volatile`. La rampa de una hora es la de XP, publicada tal cual. Prueba `noche`: lo publicado
-  (1 y 0,5) es lo que aplica; escena `opciones` de noche desde el arranque.
+  (1 y 0,5) es lo que aplica; escena `opciones` de noche desde el arranque (80 %): vivo.txt `noche=0.6903` y el disco y la fuerte a -21,2 LUFS
+  (-18 - 3,22). (El fallo era una carrera entre hilos, no un nivel distinto: con el programa de antes la escena suena igual.)
 - **b10. El modo de la racha lo decide su primera pista**: la carpeta y el modo (por disco o cancion por cancion) de la racha que va; las
   siguientes de la misma carpeta, detras de una de ella, lo siguen (antes, con la 2 pedida cuando ya sonaba la 1, la 1 iba por pista y la 2 por
-  disco). Escena `relevo`: la 1 de un disco pedida sola y la 3 pedida mientras suena la 1.
+  disco). Escena `relevo`: la 1 de un disco pedida sola (cancion por cancion) y la 3 pedida mientras suena la 1: la 3 va por su medida, -18,0
+  LUFS como la 1; con el programa de antes, por la del disco (-20,2 LUFS).
+
+Baterias (28-11-2026, NativeAOT publicado sin avisos IL/AOT; `dotnet build` con los 13 avisos de siempre; `ganchos.py` TODO BIEN): `cadena-nueva`
+**94 de 94** (las 70 de antes con la tabla de 21 campos y las 24 nuevas), `billar-nuevo` **86 de 86**, `andamio` **101 de 101**. Las escenas
+nuevas con el programa de ANTES (el mismo guion): `relevo` 4 MAL de 5 (el escalon de 7,6 dB y la 3 por la del disco) y `opciones` 3 MAL de 5
+(lo que cuenta vivo.txt: sin convertir sin limitador, sin la noche publicada, el DSEE visible para XP); las partes de cuentas nuevas no existian.
+La medida con las sondas cuesta un 25 % mas (88 veces el tiempo real en NativeAOT con la maquina cargada).
 
 ## Lo no comprobado y lo que queda
 
