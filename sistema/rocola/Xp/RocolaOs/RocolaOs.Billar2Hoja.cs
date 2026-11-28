@@ -1,6 +1,6 @@
-// ROCOLA OS (la cadena nueva del billar, B; CADENA_NUEVA.md §3, CADENA_NUEVA_B.md §5): LA HOJITA «BILLAR» DE CTRL+F4. Se ve con la cadena nueva
-// elegida (cadena_nueva=1, la hojita «Cadena» del marco) o con la funcion «billar_nuevo» encendida; si no, no sale (las pestanas de siempre no se
-// mueven). Dos tarjetas como las de Ctrl+F3 y las hojas de Ctrl+F4:
+// ROCOLA OS (la cadena nueva del billar, B; CADENA_NUEVA.md §3, CADENA_NUEVA_B.md §5): LA HOJITA «BILLAR» DE CTRL+F4. Desde el 28-11-2026 (la
+// cadena nueva es la unica) se ve SIEMPRE con ROCOLA_OS (antes, con cadena_nueva=1 o «billar_nuevo»). Dos tarjetas como las de Ctrl+F3 y las
+// hojas de Ctrl+F4:
 //   AFINAR CON EL CELULAR: la hoja de Ctrl+F3 (AfinarLocal.cs) para varios puntos del local: los botones 1 a 8 eligen el punto que se anota, «Tocar
 //     las 8 bandas» (en MONO, como suena la B: RocolaOs.Billar2Bandas.cs), la banda que suena en grande, una barra por banda (lo que marca la app),
 //     «Tu app dice: dBA / dBC», «Borrar este punto» y «Traer la de Ctrl+F3» (la de un punto de la cadena de hoy, al punto elegido). Con uno solo
@@ -30,7 +30,8 @@ namespace Rocola
             RocolaOsHojitas.Registra(new RocolaOsHojita { Nombre = "Billar", Orden = 18, Arma = (f, x) => f.RocolaOsPaginaBillar2(x) });
         }
         internal const string RocolaOsClaveCadenaNueva = "cadena_nueva";   // (la del marco: RocolaOs.CadenaNueva.cs)
-        internal static bool RocolaOsBillar2HojaVisible { get { return RocolaOs.Encendida(RocolaOsBillar2.Nombre) || RocolaOs.AjusteSiNo(RocolaOsClaveCadenaNueva); } }
+        // (28-11-2026: la cadena nueva es la unica, CADENA_NUEVA.md «La cadena vieja borrada») siempre a la vista con ROCOLA_OS
+        internal static bool RocolaOsBillar2HojaVisible { get { return RocolaOs.Activo; } }
 
         private static int rocolaOsBillar2Punto;   // el punto que se anota (se recuerda mientras la rocola siga abierta)
 

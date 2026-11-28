@@ -7,7 +7,8 @@ Plan presentado (artefacto 9s1k4u7xzzC7tsdLdpb1nj) y aprobado el mismo dia: «Ha
 
 Reglas de esta tarea: la hacen SOLO agentes Opus (sin Sonnet); solo Rocola OS (rocola-xp con ROCOLA_OS; sin el, XP tal cual); Codigo/ solo por
 ganchos de una linea (RocolaOs/GANCHOS.tsv, `python3 Pruebas/RocolaOs/ganchos.py` TODO BIEN); las cadenas nuevas CONVIVEN con las actuales y solo
-las reemplazan si ganan a ciegas al mismo volumen y pasan las medidas (el dueno decide).
+las reemplazan si ganan a ciegas al mismo volumen y pasan las medidas (el dueno decide). SUSTITUIDO el 28-11-2026: la nueva y la salida nueva son
+las UNICAS y la cadena vieja se borra, tambien de Codigo/ (ver «La cadena vieja borrada», al final).
 
 Inventarios y la investigacion que sostienen esto: el plan (artefacto) y los resumenes de la sesion. Lo esencial de la cadena actual: el MP3 se
 decodifica a 16 bits con recorte (Nativo/DescompresorMp3.cs, ENC_SIGNED_16); el volumen iguala PICOS (GananciaAlLimite, Sonoridad.cs) con un
@@ -167,3 +168,182 @@ Estado: EN CURSO desde el 27-11-2026. Nada probado en el A4 ni oido.
   cancion y la fuente del motor la lleva a 44,1 kHz con el mismo sinc, con solo la proteccion detras. Guiones cambiados: rocola-tarjeta,
   rocola-sonido y rocola-mide-dac nuevo (piden la compilacion rapida del sistema). Prueba Pruebas/RocolaOs/salida-nueva (JIT y NativeAOT). Nada en
   el A4, ni con el PO100 ni con el PROZOR de verdad.
+
+## La cadena vieja borrada (28-11-2026)
+
+Lo que pidio el dueno el 28-11-2026: «Elimina la cadena de sonido anterior y tambien el modo billar anterior, yo se que esta cadena de sonido
+nueva sera mejor» y, el mismo dia, «Sobre las cadenas de audio viejas elimina todo de ellas, que no quede rastro». Ya no es ponerlas en gris:
+se BORRAN de rocola-xp (tambien de Codigo/) la cadena de XP, el modo billar viejo, su repaso de fondo, sus mandos de Ctrl+F3, sus claves, sus
+datos y sus pruebas, y la salida de XP (plughw, abrir y cerrar). Se queda, como parte de la cadena nueva, lo que la nueva usa. Sin ROCOLA_OS
+tampoco habra cadena de XP: la rocola usara la nueva siempre (la regla «sin ROCOLA_OS = XP tal cual» deja de valer para el sonido; lo demas de
+XP no cambia). La rocola de Windows XP (Rocola/) NO se toca.
+
+Se hace en DOS FASES para no chocar con los agentes que trabajan a la vez en la cadena nueva (fallos g464-g479, medida g510-g519, salida y nivel
+g530-g539, bajo virtual g540-g544): la FASE 1 (hecha) deja la nueva como la unica con ROCOLA_OS=1 y aparta lo que ya nadie lee; la FASE 2
+(cuando el coordinador junte a los demas) borra de verdad, mueve la base de los ganchos y rehace las pruebas.
+
+### Fase 1: lo hecho (en la rama del agente, sin publicar)
+
+| que | donde |
+|---|---|
+| Una funcion de Rocola OS puede ser `Siempre`: con ROCOLA_OS=1 va siempre y su clave se ignora (su descripcion lo dice); con una lista, si la nombra | `RocolaOs/RocolaOs.cs` (`RocolaOsFuncion.Siempre`, `Decide`, `Pedida`, `Registra`) |
+| `cadena_nueva` Siempre (de fabrica encendida): con ROCOLA_OS=1 es la UNICA cadena (la A; con el modo billar guardado, la B); `RocolaOsCadenasNuevas.Suena` ya no lee la clave ni tiene `Forzada` | `RocolaOs.CadenaNueva.cs` |
+| `salida_nueva` Siempre (de fabrica encendida); ya no hay «Encender (prueba de 15 s)» ni «¿Se oye bien?»: el boton dice «Siempre encendida» en gris; una prueba de encenderla o apagarla que quedara en `rocola_salida_prueba.txt` se borra sin preguntar; elegir la TARJETA (con su «¿Se oye bien?») se queda | `RocolaOs.SalidaNueva.cs`, `RocolaOs.SalidaNuevaHoja.cs`, `RocolaOs.Salida.cs` |
+| LA SALIDA SE RESPALDA SOLA: ya no se rinde al camino de XP (`Rendida` se queda en false). Si la elegida no abre por `hw:`, prueba la misma por `plughw:` (ALSA convierte), la del lanzador (`ROCOLA_ALSA`: el plughw de rocola-tarjeta; en las pruebas la tarjeta con reloj o «null») y `default`, siempre con su motor, su sinc, el volumen del dueno y la proteccion; lo dice en la bitacora («RESPALDO: ...») y en la hoja (en ambar). Si nada abre, espera y lo vuelve a intentar cada segundo. Con una salida sin reloj (el «null» de las pruebas) el motor va al ritmo del reloj (`AlRitmo`), sin escribir sin parar | `RocolaOs.SalidaNuevaTarjetas.cs` (`AbreLaTarjeta`, `Respaldo`), `RocolaOs.SalidaNuevaMotor.cs` (`Bucle`, `AlRitmo`) |
+| La hoja «Cadena» de Ctrl+F4 ya no elige: dice cual va (la A, o la B por el modo billar de Ctrl+F3) | `RocolaOs.CadenaNuevaHoja.cs` |
+| La hojita «Billar» de Ctrl+F4 siempre a la vista con ROCOLA_OS (siete pestanas: van mas angostas, d33b952; los clics de las pruebas siguen cayendo en su pestana: Imagen 500, Sonido 606, Billar 818, Archivos 924) | `RocolaOs.Billar2Hoja.cs` |
+| `spotify_nivela`, `spotify_eq` y `spotify_brillo` (de la cadena de XP) ya no van con ROCOLA_OS=1 (`SoloEnLaLista`: solo con una lista de pruebas que las nombre); la tabla de los niveles de Spotify se carga SOLO PARA LEER (`RocolaOsSpotifyNivela.CargaParaLeer`): la cadena nueva la usa de respaldo para la ganancia fija estimada de Spotify la 1.a vez hasta tener 5 medidas suyas | `RocolaOs.SpotifyNivela.cs`, `RocolaOs.SpotifyEq.cs` |
+| Gancho g550 (`Codigo/Form1.Sonido.cs:901`, MeasureFile): con Rocola OS no se junta material para la IA (la cosecha) | `RocolaOs.CadenaVieja.cs` (`RocolaOsCosechaIa`), `GANCHOS.tsv` |
+| LOS DATOS VIEJOS QUE YA NADIE LEE, A LA PAPELERA de Archivos de Ctrl+F4 (se vacia sola a los 30 dias; se pueden devolver), una vez por lista (`rocola_cadena_vieja.txt`, `papelera=N`); el MATERIAL DE LA IA (hasta 24 GB, en el disco de la rocola) no cabe en la papelera de los datos (datos.img de 512 MB, tope de 64 MB): se aparta en su mismo disco a `papelera-cadena-vieja/AAAAMMDD/` (un rename) y se borra solo a los 30 dias. Lo llama el Arranca de `cadena_nueva` | `RocolaOs.CadenaVieja.cs` |
+| rocola-tarjeta y rocola-sonido: la USB primero y la tarjeta guardada por su nombre SIEMPRE (salvo con Rocola OS apagado de emergencia, `rocola_os_apagado`); `salida_nueva=` ya no se mira. Piden la compilacion rapida del sistema | `sistema/board/rocola/rootfs_overlay/usr/bin/rocola-tarjeta`, `rocola-sonido` |
+
+La lista 1 de la papelera (fase 1; solo lo que la cadena nueva ya no lee): `rocola_billar_nivel.txt` y `rocola_billar_nivel.antes-2026-11-18.txt`
+(el volumen parejo del billar), `rocola_billar_bitacora.txt` y `.1` (la bitacora del billar), `rocola_spotify_eq.txt` (spotify_eq y
+spotify_brillo), `IAS/rocola_eq_ia.bin` (la IA del EQ: «a la medida» y el EQ automatico) e `IAS/rocola_ia_genero_*.bin` (el DSEE por genero,
+quitado el 18-11-2026). Apartado en el disco: `rocola_ia_datos.bin`, `.idx` y `.generos.tsv`. NO van todavia (la nueva aun los lee hasta que la
+fase 2 los porte, abajo): `rocola_volumen.txt`, `rocola_eq.txt`, `rocola_sonoridad.txt`, `rocola_fuentes.txt`, `rocola_afondo.txt`,
+`rocola_ia_hechas.txt`, `rocola_calidad.txt`, `rocola_spotify_niveles.txt` y `IAS/rocola_ia.bin` (el modelo del DSEE: se QUEDA, lo usa
+`agudos_mp3`).
+
+Lo que en la fase 1 aun corre aunque es de la cadena vieja, porque la nueva todavia necesita lo que mide (se va en la fase 2): el REPASO DE XP
+(`StartPreScan`: la primera tanda, `MeasureFile` -la estimacion K-RMS, la huella de tono de 8 bandas y el corte de agudos-, y la segunda,
+`TandaIntegrada` -algoritmos 5 a 7: BS.1770, P90, LRA, pre-eco, el mapa de silencios, el inicio y el fin utiles y el zumbido-). Sin ROCOLA_OS (o
+con una lista que no nombre `cadena_nueva`), la cadena de XP sigue armandose hasta la fase 2. Los mandos de Ctrl+F3 de la cadena vieja siguen a
+la vista (con ROCOLA_OS=1 no hacen nada): se QUITAN en la fase 2 (no se ponen en gris).
+
+### El inventario: lo que se BORRA en la fase 2
+
+**Codigo/, archivos enteros** (la cadena de XP y el modo billar viejo; unas 5 700 lineas): `AfinarLocal.cs` (salvo `Generador`/`PruebaBanda`, que
+usan `RocolaOs.Billar2Bandas.cs` y `RocolaOs.SalidaNuevaMide.cs`: pasan a RocolaOs/), `AsperezaDinamica.cs`, `AtaqueClaro.cs`,
+`BitacoraBillar.cs`, `BomboSinHundir.cs`, `CadenaBillar.cs`, `CompararCiegas.cs`, `DiarioTablas.cs`, `Eses.cs`, `EtapaPorCuadros.cs`,
+`LoQueSuena.cs`, `LocalAuto.cs` (salvo el campo `localAuto`/`local_auto=`, que con la nueva es «el modo billar»: elige la B), `NivelDisco.cs`
+(salvo `RachaDeDisco`, que usa `RocolaOs.CadenaNuevaGanancia.cs`), `PicoReal.cs` (el limitador y el detector de XP), `PreEco.cs`,
+`PresenciaSala.cs`, `Realce.cs`, `RetumbeDinamico.cs`, `Siseo.cs`, `SubirTodo.cs`, `VolumenParejo.cs`, `VolumenWindows.cs` (el 100 % lo pone la
+salida nueva una vez, y el lanzador), `VozGolpeYRetumbe.cs`.
+
+**Codigo/, archivos que se PARTEN** (se va lo de la cadena vieja; se queda lo dicho):
+
+| archivo | se va | se queda (lo usa la nueva o no es del sonido) |
+|---|---|---|
+| `Form1.Sonido.cs` | el bajo psicoacustico y el DSEE de XP (`BassBaseNow`, `BassFactorFor`, `DseeDe`, `ExcitePara`, `IaMejoradaPara`...), las tablas de sonoridad (`LoudFile`, `EqFile`, `ReadLoudCache*`, `LoudTier*`, `NormGainFor`, `FinalizeLoudMeasure`, `CierraSonoridad`), `MeasureFile` entero (con la cosecha), el cuerpo de XP de `ArmaCadena` (todas sus etapas, `LevelTap`, la medida en vivo de XP, `curTap`), `FrecuenciaSalidaValida`/`AFrecuenciaDeLaTarjeta`/`CalientaFrecuenciaSalida` (la salida nueva va a 44,1 kHz fijos), `ApplyNormNow` y lo que solo la llama | el modo noche entero (`NocheDb`... `AvanzaModoNoche`, `FactorNoche`, `NocheCorteHz`, `GravesNocheDe`, `FactorVideoNoche`, `PruebaNoche*`), `PlayTrack`/`StartOpenedTrack` (sin `curTap`), `ArmaCadena` reducida a armar la nueva (o su respaldo «nueva minima» del agente de los fallos), `OpenAudio` (con g462: el MP3 en coma flotante; lo demas, `FileAudioSource`), `BuildCleanMp3`, lo de incompatibles, los bloques del espectro para lo que se ve (`EnqueueLevel`/`ConsumeLevels`/`ReportAudioBlock`), `ComoEstereo`, la aurora y el estado de la pantalla (no son del sonido) |
+| `Form1.Datos.cs` | las claves de la cadena vieja (abajo) al leer y guardar `rocola_config.txt`, la carga y el guardado de `rocola_volumen/eq/sonoridad/fuentes/afondo/ia_hechas`, `DeclipVale`, el EQ automatico, el respaldo de esas tablas | lo demas de la configuracion, el estado, las estadisticas, los botones, la noche |
+| `Form1.Biblioteca.cs`, `PlanBiblioteca.cs`, `Optimizaciones.cs` | el repaso (`StartPreScan`, `TandaPorMedir`, `CarrilesPara`, `RevisaCarriles`, `TurnoAnalisis`, `MeasureFileResponsive`, `TrabajoMedida`, `AudioFftPlan`, `MarkIaDone`, `MarkDeepDone`, `EscribeInformeCalidad`/`rocola_calidad.txt`) | el escaneo de la biblioteca y el de las duraciones (`StartDurScan`, `rocola_duracion.txt`: de ahi salen las duraciones, no del repaso), `LecturaBiblioteca`, las miniaturas, los tintes, el GC en baja latencia |
+| `Form1.Ia.cs` | la cosecha y su material (`IaDataFile`, `IaIndexFile`, `GenerosIa`, `iaDone`, `IaPasadas*`, `IaBudgetFull`, `IaInfoText`), la IA del EQ (`EqNet`), el DSEE por genero (`ModeloDseePara` con `dseeGeneros`) | `RedChica` y el modelo general del DSEE (`NeuralEnv`, `IAS/rocola_ia.bin`): lo usa `agudos_mp3` |
+| `Sonoridad.cs` | `SonoridadIntegrada`, `GananciaAlLimite`, `TandaIntegrada`, `MideIntegrada*`, `DisposicionBs1770` (mas de dos canales), la tabla `rocola_sonoridad.txt` | lo minimo de BS.1770 que usan `RocolaOs.Medida.cs` y `RocolaOs.CalidadFuente.cs` (los filtros K `Estante`/`PasoAlto`, `Potencia`, `Lkfs`, las puertas) y `PicosBloques` si la medida nueva hace el mapa de silencios con el |
+| `GraveMono.cs` | el grave en mono, S3, el estrecho, el subgrave de XP | el corte del grave de noche (`GraveMono.DeNoche`, `NocheMezcla`: la A y el paso alto de la B) |
+| `SalaLocal.cs` | el local (subgrave, estereo, claridad, partes suaves, balance, graves y agudos del local) | los graves de noche (el estante de 120 Hz, `GravesNocheDb`) y la prueba de bocinas (`PruebaBocinas`, `PruebaModo`) |
+| `ArreglosGrabacion.cs` | `ArreglaGrabacion` (canal mudo y continua dinamicos de XP), los interruptores `canal_mudo=`/`quita_continua=`/`quita_zumbido=`, `ZumbidoDe` (lo da la medida nueva) | nada (los arreglos fijos son de `RocolaOs.CadenaNuevaPiezas.cs`) |
+| `Zumbido.cs` | — | `MedidorZumbido` (pasa a la medida nueva) y `QuitaZumbido` (la nueva la usa) |
+| `AudioControles.cs`, `Form1.SinPausa.cs`, `SinPausa.cs` | `FuenteOriginal`, `LevelTap`, `ConvierteSalida` y el limitador de la conversion de XP, lo de `CadenaCancion` que solo era de XP (`Margen`, sus taps) | `FormatoAudio`, `WavDirecto`, `AudioRamp`, el relevo sin pausa (`Encadenado`, `Relevo`, `Cierre`), `RemuestreoContinuo` y su tabla (los usa la salida nueva), `CadenaCancion` (lo que el marco usa) |
+| `SinSilencios.cs`, `RellenoMp3.cs`, `Mp3Ligero.cs`, `FlotanteNLayer.cs`, `CancionEnMemoria.cs`, `AperturaAudio.cs`, `NoEsMp3.cs`, `Pcm16Directo.cs`, `BombaSonido.cs`, `SalidaSonido.cs`, `SalidaPropia.cs`, `EcualizadorDueno.cs`, `Form1.EcualizadorDueno.cs`, `FuentesMedidas.cs` | de `FuentesMedidas.cs`: `FuenteMedida`, `rocola_fuentes.txt`, `PublicaMedidaDeFuente`... (los sellos de las tablas de XP); de los del ecualizador: el margen E3 (`PreganCancionDb`: la nueva no tiene preganancia); de `SalidaSonido.cs`: lo de la salida de Windows (`TextoSalida`) | saltar los silencios y `FuenteSinRelleno` (sin huecos), el lector ligero, NLayer en coma flotante, el calentador, la apertura de fondo, `NoEsMp3`, la bomba del hilo de la musica (la usa Spotify), lo que XP hace cuando falla el aparato (la nueva lanza ENODEV y XP espera y retoma), `WaveOutPropio` como la cara de XP de la salida nueva, el ecualizador del dueno con sus dos memorias y «Sin ecualizador» |
+| `Form1.Ajustes.cs`, `AjustesVivos.cs` | de la pagina de Sonido de Ctrl+F3 (lineas ~677-1860) todo lo de la cadena vieja (abajo); `TextoSalida` | la pagina de Sonido reducida (abajo), el asistente de botones, lo demas de Ctrl+F3 |
+| `Form1.Video.cs`, `Form1.cs` | `VideoVolumeFor` y lo de la perilla de XP (`normTarget`, `videoVol`, `videoAuto`, `VideoBase`, `MasterLin`): los videos van por la rocola con su ganancia medida (si aun no se midieron, una fija conservadora); `ApplyBassAuto` (g431) | lo demas del video; mpv al 100 |
+
+**Nativo/ y Plataforma/**: `Nativo/SalidaAlsa.cs` pierde su camino directo a ALSA (plughw, abrir y cerrar): `Abre` siempre da una fuente del
+motor (los respaldos los hace el motor); `Nativo/DescompresorMp3.cs` (el MP3 de XP a 16 bits con recorte) se va si nada mas lo usa (con g462
+siempre puesto solo lo usaria el repaso de XP, que se va; los WAV van por `FileAudioSource`); `Plataforma/VolumenTeclas.cs` pierde el 2 % por
+amixer (los botones son el volumen digital de la salida nueva).
+
+**RocolaOs/**: se van `RocolaOs.SpotifyNivela.cs` (con `rocola_spotify_niveles.txt`, cuando la medida nueva de Spotify o la estimacion de P10 lo
+sustituya), `RocolaOs.SpotifyEq.cs`, `RocolaOs.NocheVideo.cs` (el filtro de noche de mpv: los videos van por la rocola con la noche del motor),
+lo de `RocolaOs.Calidad.cs` que arma la sombra en la cadena de XP (g61, g62, g432-g437) y el nivel de la sombra con las tablas de XP; de
+`RocolaOs.CadenaNueva*.cs`, `Medida*.cs` y `SalidaNueva*.cs`: lo que habla de «la de hoy», `Rendida`, `PruebaSalidaNueva`, `salida_nueva_videos=0`
+(mpv directo), las claves `cadena_nueva`, `salida_nueva` y `billar_nuevo` (o se quedan declaradas e ignoradas un tiempo). `RocolaOs.CadenaVieja.cs`
+se queda (la lista 2 de la papelera). Ganchos que se van con lo que tocaban: g01-g05 (la cosecha y su material), g23, g24, g61, g62, g102, g111,
+g250-g254, g260/g261 (R1 en el lector de XP: R1 va en el descompresor nuevo), g430-g437, g441-g443, g445, g550; se rehacen en la base nueva o se
+quedan: g13, g110, g112, g113, g235, g440, g444, g460-g463.
+
+**Claves de configuracion** que se van: de `rocola_config.txt` (XP) `normalizar=`, `nivel_objetivo=`, `nivel_fuerza=`, `video_vol=`,
+`video_automatico=`, `eq_auto=`, `eq_automatico=`, `bajo=`, `bajo_automatico=`, `realce=`, `dsee=`, `dsee_forzar=`, `dsee_genero=`, `ia_datos=`,
+`ia_datos_mb=`, `declip=`, `a_la_medida=`, `quita_siseo=`, `canal_mudo=`, `quita_continua=`, `estereo_auto=`, `quita_zumbido=`, `quita_preeco=`,
+`suaviza_eses=`, `bombo_sin_hundir=`, `retumbe_dinamico=`, `ataque_claro=`, `aspereza_dinamica=`, `claridad_local=`, `partes_suaves=`,
+`balance=`, `graves_local=`, `agudos_local=`, `presencia_sala=`, `corta_subgrave=`, `subgrave=`, `estereo_estrecho=`, `ancho_estereo=`,
+`grave_mono=`, `tipo_local=`, `afinado_local=`, `afinado_ponderacion=`, `afinado_usar=`, `parejo_v2=`, `frecuencia_salida=`, y `relevo=` si solo
+era de la salida de XP (se mira en la fase 2); de `rocola_os.txt`: `spotify_nivela=`, `spotify_eq=`, `spotify_brillo=`, `cadena_nueva=`,
+`salida_nueva=`, `billar_nuevo=`, `salida_nueva_videos=`. Se quedan: `local_auto=` (el modo billar: la B), `eq_dueno=` y `eq_dueno_billar=`,
+`noche*=`, `saltar_silencios=`, `fundido=`. La afinacion vieja de un punto (`afinado_local=`) se pasa UNA vez como punto 1 de la B si la B no tiene
+ninguno (y se quita «Traer la de Ctrl+F3» de la hojita Billar). Al leer una configuracion vieja, las claves que se fueron se ignoran (y no se
+vuelven a escribir).
+
+**Ctrl+F3 -> Sonido** (se QUITAN, no van en gris): «Subir cada cancion hasta su limite», «Cuanto se sube cada cancion», «Videos y canciones aun sin
+medir», «Volumen de los videos» (y su Auto), toda la tarjeta CALIDAD DEL SONIDO (EQ automatico, Graves, Realce, DSEE), las hojas «El local y sus
+bocinas» (subgrave, estereo, claridad, partes suaves, balance, «Tarjeta a:» 0/44,1/48 kHz), «Tono y presencia» (graves y agudos del local, eses,
+presencia), «Afinar el local con el celular» (las 8 barras, dBA/dBC, «Usar la afinacion»: la afinacion es la de Ctrl+F4 -> Billar), «Mejoras con
+IA» (a la medida, siseo, los modelos), «Lo que suena ahora» («Escuchar sin mejoras», «Billar o fabrica», «Con o sin afinar», «Me gusta esta»,
+canal mudo, continua, zumbido, pre-eco, estereo estrecho solo si hace falta: lo que suena ahora esta en Ctrl+F4 -> Cadena), «Voz, golpe y
+retumbe», y de TU BIBLIOTECA «Repasar la biblioteca a fondo», «Juntar material para la IA» y el resumen de calidad (la ficha de calidad de la
+medida nueva lo sustituye, agente de la medida). QUEDA la pagina de Sonido con: el modo noche (interruptor, cuanto se oye, «Probar» y su hoja
+«Graves, corte y madrugada»), EL BILLAR (el interruptor «Modo billar», que elige la B, con su texto nuevo y «Ctrl+F4 -> Billar»; la prueba de
+bocinas), «Ecualizador...» (su hoja entera: las dos memorias y «Sin ecualizador»; sin el renglon del margen), «Saltar silencios largos», el tipo de
+disco, «Dejar como de fabrica» (solo lo que queda) y un renglon que manda a Ctrl+F4 -> Sonido y Cadena.
+
+**Datos** (lista 2 de la papelera, en la fase 2, cuando la medida nueva ya de lo que la nueva leia de ellos): `rocola_volumen.txt`, `rocola_eq.txt`,
+`rocola_sonoridad.txt`, `rocola_fuentes.txt`, `rocola_afondo.txt`, `rocola_ia_hechas.txt`, `rocola_calidad.txt`, `rocola_spotify_niveles.txt` y
+sus copias de `respaldo/` (en el disco de la rocola: se apartan como el material de la IA). Lo que no quepa en el tope de la papelera (64 MB de
+fabrica) se aparta en el disco como el material de la IA. Se queda `IAS/rocola_ia.bin`.
+
+**Pruebas** que se van o cambian: `Pruebas/Windows/sonido.sh`, `difsonido.py` y `variantes.sh` (comparan el sonido de XP con la referencia
+congelada: ya no hay sonido de XP que comparar), las escenas de `Pruebas/RocolaOs/spotify-xp` `nivela`, `speq` y las que dan por hecho el
+nivelado de XP, `Pruebas/RocolaOs/noche-video` (el filtro de mpv), de `cadena-nueva` las escenas «hoy» y la comparacion con el limitador de hoy
+(constante: 6,3 dB), de `salida-nueva` las partes `hoja` (encender con «¿Se oye bien?»), `rendida` (pasa a «respaldo»), `guiones` (la USB primero ya
+no depende de `salida_nueva=1`), `sin` y `bitabit` (sin ROCOLA_OS tambien la salida nueva), de `andamio` y `pantalla` lo de «sin ROCOLA_OS ni
+bitacora ni rocola_os.txt» para el sonido y el Tab de mas de la pestana Billar, de `billar-nuevo` la comprobacion de (818,54) «sin Billar»,
+`salida-audio` (sus botones con la salida nueva siempre), `volumen` (amixer: pasa al volumen digital), `sustitucion` (la sombra en la cadena nueva)
+y `huecos` (R1 en el descompresor nuevo). Las de la rocola de XP de Rocola/ (`billar18`, `billarparejo`, `compara-cadena`...) no se tocan.
+
+### Lo que la nueva necesita antes de borrar (se porta en la fase 2, sobre lo que junte el agente de la medida)
+
+La cadena nueva y lo que se queda leen hoy de las tablas de XP (por eso su repaso sigue en la fase 1):
+1. **Saltar los silencios largos** (`SinSilencios.MapaDe`): el mapa de silencios (algoritmo 3 de `rocola_sonoridad.txt`) -> la medida nueva lo
+   saca de lo crudo (bloques de 100 ms con su pico, -60 dBFS, como `PicosBloques.Mapa`) y lo guarda en un campo mas del renglon
+   (`desde;hasta;hueco_desde;hueco_hasta`, despues de los de hoy: el agente de la medida tambien anade campos, se juntan al final); un gancho en
+   `MapaDe` mira primero la medida nueva.
+2. **El zumbido** (`ZumbidoDe`, T6): `MedidorZumbido` dentro de `RocolaOsCrudo`; si lo encuentra y no se midio con el, la segunda pasada lo lleva
+   puesto (como los demas arreglos).
+3. **La sustitucion invisible**: el corte de agudos medido (`EqCut` de `rocola_eq.txt`) -> el de la ficha de calidad de la medida nueva (agente de
+   la medida, P2); la frontera continua de un disco (`InicioUtil`/`FinUtil`) -> el mapa de silencios nuevo (punto 1); su nivel -> el de la medida
+   nueva (ya lo es con la nueva).
+4. **El tono parejo** (opcional de la A) y su estimacion en la ganancia: la huella de 8 bandas de `rocola_eq.txt` -> los 30 tercios de la medida
+   nueva contra la media de la biblioteca (en tercios).
+5. **Lo que aun no se midio** (`CadenaNuevaGanancia`: la integrada y la K-RMS de XP) -> la estimacion de P10 del agente de la medida; Spotify la
+   1.a vez -> la mediana de las de Spotify de la medida nueva (y, mientras no haya 5, una fija conservadora).
+6. **Los videos sin medir** (la regla de XP, `VideoVolumeFor` con `loudCache`) -> una ganancia fija conservadora hasta que ffmpeg los mida.
+7. **El DSEE de `agudos_mp3`**: sigue con `SpectralTap` y el modelo general (`IAS/rocola_ia.bin`), sin cosecha ni modelos por genero.
+
+### Plan para Codigo/ y los ganchos (fase 2)
+
+Borrar codigo de XP rompe la comparacion de `ganchos.py` contra la base 8c8cba0 (punto 5: devolviendo los ganchos, Codigo/ igual byte a byte que
+la base) y mueve las lineas (las trazas nombran relojes y encargos por «archivo:linea», y la referencia congelada, /root/rocola-trabajo/
+referencia-xp, tiene esas lineas). Como se hizo con 8c8cba0 (la junta 4), una BASE NUEVA documentada:
+1. Con todo juntado (los otros agentes ya en claude/modest-carson-fa2v2n), un commit «Codigo/ sin la cadena vieja (base nueva de los ganchos)» en
+   el que Codigo/ es la base 8c8cba0 (sin ganchos) MENOS lo del inventario: archivos quitados enteros y, en los partidos, metodos, campos y
+   lineas enteras quitados (nunca reescritos: lo que queda es la traduccion de XP tal cual). Lo arma un guion que parte de la base pura
+   (`ganchos.py` ya sabe devolver los ganchos), quita lo de la lista y no toca nada mas: el diff contra 8c8cba0 es SOLO de lineas quitadas (se
+   revisa con el diff por archivos y con `diff-xp.py --sin-ganchos`).
+2. Encima, otro commit con los ganchos que quedan, cada uno en su linea nueva (`GANCHOS.tsv` con los numeros nuevos, buscados por su «ahora»); lo
+   que hoy son varias lineas de XP que la nueva sustituye (el cuerpo de `ArmaCadena`) se queda en una linea de la base que llama a RocolaOs/ (la
+   nueva vive en RocolaOs/; Codigo/ solo la llama).
+3. `ganchos.py` pasa a esa base (su `base` de fabrica y su comentario: «la base sin la cadena vieja, 28-11-2026: Codigo/ como 8c8cba0 menos lo de
+   CADENA_NUEVA.md, La cadena vieja borrada»), y la regla de AGENTS.md del 8-11-2026 («Codigo/ es Rocola/ con solo las diferencias de traduccion»)
+   dice la excepcion: sin la cadena de sonido de XP.
+4. Las trazas por «archivo:linea» y las cintas: lo que no es sonido no cambia de contenido (solo de numero de linea en los archivos partidos); se
+   vuelven a sacar las de referencia en esta rama (las de la referencia congelada, aef2211, dejan de valer para los archivos partidos: se apunta
+   en PORT_JUNTAS.md). Los relojes con nombre fijo no cambian.
+
+### Plan para que la nueva sea la de siempre, tambien sin ROCOLA_OS (fase 2)
+
+Hoy sin ROCOLA_OS no corre nada de Rocola OS (ni latido, ni hilos, ni rocola_os.txt). El sonido deja de depender de ese interruptor:
+1. En el andamio, una funcion puede ser «del sonido» (`RocolaOsFuncion.Sonido`): va aunque no este ROCOLA_OS (o con `rocola_os_apagado`): su
+   Arranca, su latido (un reloj suyo con nombre fijo, sin el resto del latido) y sus hilos; sus claves se leen y se guardan en rocola_os.txt
+   tambien sin ROCOLA_OS (el volumen del dueno, el techo medido del convertidor y la curva del billar no se pierden en el modo de emergencia); su
+   bitacora, la de Rocola OS. Lo son `cadena_nueva`, `medida_nueva` y `salida_nueva`.
+2. Los ganchos del sonido preguntan por esas funciones, no por `RocolaOs.Activo` (lo demas de Rocola OS sigue apagado sin ROCOLA_OS: Ctrl+F4,
+   Spotify, el cielo...).
+3. Con el camino directo de `SalidaAlsa` borrado, si la salida nueva no abre nada la musica espera al aparato (como XP).
+4. Las pruebas de «sin ROCOLA_OS = XP bit a bit» dejan de comparar el sonido (las cintas y las escenas de pantalla siguen).
+
+### El orden de la fase 2
+
+(1) juntar claude/modest-carson-fa2v2n (los otros agentes); (2) portar a la medida nueva lo de «lo que la nueva necesita» (con el agente de la
+medida si sigue); (3) la nueva sin ROCOLA_OS (andamio); (4) borrar (los dos commits de la base nueva) y la lista 2 de la papelera; (5) la pagina
+de Sonido de Ctrl+F3 reducida; (6) las pruebas; (7) AGENTS.md, este documento, CADENA_NUEVA_A/B/salida.md.

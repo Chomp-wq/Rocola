@@ -7,7 +7,8 @@
 #                          obedece; el lanzador la vuelve a elegir cada vez que abre la rocola) y le sube el volumen: vale al volver a la
 #                          rocola (Ctrl+Alt+F1; si estaba abierta, se vuelve a abrir ya).
 #   rocola-sonido auto     vuelve a la eleccion automatica (la primera salida que no sea HDMI; con la salida nueva de rocola-xp, la USB primero).
-# (27-11-2026) Con la salida nueva (salida_nueva=1 en /rocola/datos/xp/rocola_os.txt) «usar N» guarda la tarjeta POR SU NOMBRE (plughw:CARD=id,DEV=n).
+# (27-11-2026) Con la salida nueva «usar N» guarda la tarjeta POR SU NOMBRE (plughw:CARD=id,DEV=n); desde el 28-11-2026 siempre (salvo con
+# Rocola OS apagado de emergencia: rocola_os_apagado).
 # Mientras prueba, la rocola se pausa (no puede tener la tarjeta abierta a la vez) y despues sigue sola. Desde la consola de mantenimiento
 # la rocola (rocola-xp) ya esta cerrada (el lanzador la cierra al cambiar de consola); si aun estuviera abierta, se cierra conservando los
 # creditos y la cola (SIGUSR1, nunca SIGTERM: regla del 8-11-2026) y el lanzador la vuelve a abrir al acabar.
@@ -59,7 +60,8 @@ case "$1" in
 		# (27-11-2026) con la salida nueva de rocola-xp (salida_nueva=1), POR SU NOMBRE (el id de ALSA de la tarjeta: un aparato USB puede
 		# cambiar de numero de un arranque a otro; rocola-tarjeta y la rocola lo entienden); sin ella, por su numero, como siempre
 		id=$(cat "$ASOUND/card$1/id" 2>/dev/null); clave="plughw:$1,$2"
-		if [ "$(sed -n 's/^salida_nueva=//p' "$XPD/rocola_os.txt" 2>/dev/null | tail -1)" = 1 ] && echo "$id" | grep -qE '^[A-Za-z0-9_-]+$'; then clave="plughw:CARD=$id,DEV=$2"; fi
+		# (28-11-2026) la salida nueva es la unica: siempre por su nombre, salvo con Rocola OS apagado de emergencia (rocola_os_apagado)
+		if [ ! -f "$XPD/rocola_os_apagado" ] && echo "$id" | grep -qE '^[A-Za-z0-9_-]+$'; then clave="plughw:CARD=$id,DEV=$2"; fi
 		echo "$clave" > "$FIJA"; sync
 		sube "$1"
 		echo "Listo: la rocola usa la tarjeta $1${id:+ ($id)}, salida $2 (al volver a ella con Ctrl+Alt+F1; si estaba abierta, se vuelve a abrir ya)."

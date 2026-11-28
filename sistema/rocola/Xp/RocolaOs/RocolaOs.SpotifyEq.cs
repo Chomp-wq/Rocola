@@ -205,7 +205,7 @@ namespace Rocola
             {
                 Nombre = RocolaOsSpotifyEq.Nombre,
                 Que = "el EQ automatico de las canciones de Spotify pedidas: aprende su huella de tono al sonar entera y desde la siguiente vez la corrige como a tus MP3 (necesita «spotify»)",
-                DeFabrica = true,
+                DeFabrica = false, SoloEnLaLista = true,   // (28-11-2026, «La cadena vieja borrada»: de la cadena de XP; con ROCOLA_OS=1 ya no va)
                 Arranca = f => RocolaOsSpotifyEq.ArrancaEq(),
                 Vivo = (f, sb) => sb.Append("spotify_eq huellas=").Append(RocolaOsSpotifyEq.Tabla.Count.ToString(CultureInfo.InvariantCulture))
                     .Append(" nuevas=").Append(Interlocked.Read(ref RocolaOsSpotifyEq.Medidas).ToString(CultureInfo.InvariantCulture))
@@ -216,7 +216,7 @@ namespace Rocola
             {
                 Nombre = RocolaOsSpotifyEq.NombreBrillo,
                 Que = "el realce de agudos de las canciones de Spotify pedidas con su corte de agudos medido (Soloist: Vorbis 160), como a tus MP3 (necesita «spotify»)",
-                DeFabrica = true,
+                DeFabrica = false, SoloEnLaLista = true,   // (28-11-2026, «La cadena vieja borrada»: de la cadena de XP; con ROCOLA_OS=1 ya no va)
                 Arranca = f => RocolaOsSpotifyEq.ArrancaBrillo(),
                 ParaAlCerrar = razon => RocolaOsSpotifyEq.Para(),
             });

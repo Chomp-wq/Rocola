@@ -63,6 +63,15 @@ namespace Rocola
         private static readonly AutoResetEvent hay = new AutoResetEvent(false);
         private static volatile bool parar;
         internal static void Arranca() { Volatile.Write(ref encendida, 1); RocolaOs.Hilo(Nombre, Corre); }
+        // (28-11-2026) SOLO LEER la tabla, sin medir ni nivelar (la cadena nueva la usa de respaldo para la 1.a vez de Spotify): una vez, en el
+        // hilo que la pida (el de la medida nueva)
+        private static int leida;
+        internal static void CargaParaLeer()
+        {
+            if (Interlocked.Exchange(ref leida, 1) != 0 || Volatile.Read(ref encendida) != 0) return;
+            int n = Carga();
+            if (n > 0) Apunta("solo para leer: " + n.ToString(CultureInfo.InvariantCulture) + " canciones de Spotify medidas de antes en " + Archivo + " (la ganancia estimada de la 1.a vez)");
+        }
         internal static void Para() { parar = true; hay.Set(); }
         internal static void Encola(Resultado r) { trabajo.Enqueue(r); hay.Set(); }
         internal static void Apunta(string que) { RocolaOs.Apunta(Nombre, que); }
@@ -284,7 +293,10 @@ namespace Rocola
             {
                 Nombre = RocolaOsSpotifyNivela.Nombre,
                 Que = "el nivelado de las canciones de Spotify pedidas: aprende cada una al sonar entera y la primera vez la lleva suave a la sonoridad de la rocola en sus primeros 30 s (necesita «spotify»)",
-                DeFabrica = true,
+                // (28-11-2026, «La cadena vieja borrada», CADENA_NUEVA.md) es de la cadena de XP: con ROCOLA_OS=1 ya no va (la cadena nueva mide
+                // Spotify en vivo y no nivela a media cancion); solo con una lista de pruebas que la nombre. Su tabla se sigue LEYENDO (CargaParaLeer)
+                // para la ganancia fija estimada de Spotify la 1.a vez, hasta la fase 2.
+                DeFabrica = false, SoloEnLaLista = true,
                 Arranca = f => RocolaOsSpotifyNivela.Arranca(),
                 Vivo = (f, sb) => sb.Append("spotify_nivela medidas=").Append(RocolaOsSpotifyNivela.Tabla.Count.ToString(CultureInfo.InvariantCulture))
                     .Append(" nuevas=").Append(Interlocked.Read(ref RocolaOsSpotifyNivela.Medidas).ToString(CultureInfo.InvariantCulture))

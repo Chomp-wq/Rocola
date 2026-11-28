@@ -1,7 +1,9 @@
 // ROCOLA OS: LA SALIDA NUEVA DE SONIDO (cadena de audio nueva, aprobada por el dueno el 27-11-2026: CADENA_NUEVA.md §4 y las decisiones D10
 // -la salida nueva tambien para la cadena de hoy-, D11 -los videos por la rocola-, D12 -medir el convertidor- y D13 -botones de 1 dB-; lo
-// hecho, como y lo probado: CADENA_NUEVA_salida.md). La funcion «salida_nueva» de rocola_os.txt, APAGADA de fabrica: el dueno la enciende
-// desde Ctrl+F4 -> Sonido con la prueba de «¿Se oye bien?» de 15 s, que vuelve sola a lo de antes si nadie contesta (RocolaOs.Salida.cs).
+// hecho, como y lo probado: CADENA_NUEVA_salida.md). La funcion «salida_nueva»: desde el 28-11-2026 (el dueno: «Elimina la cadena de sonido
+// anterior [...]»; CADENA_NUEVA.md, «La cadena vieja borrada») SIEMPRE con ROCOLA_OS=1 y su clave se ignora (Siempre, RocolaOs.cs); ya no hay
+// «Encender» ni «¿Se oye bien?». Si no abre la tarjeta por hw:, ella misma se respalda (plughw, lo del lanzador o «default», con su motor y su
+// sinc: RocolaOs.SalidaNuevaTarjetas.cs); nunca vuelve al camino de XP.
 //
 // CON ELLA (todo lo demas, XP tal cual: sin ROCOLA_OS o con salida_nueva=0 ningun gancho cambia nada, bit a bit):
 //   - LA TARJETA SIEMPRE ABIERTA por hw: (sin plughw), elegida por su nombre (la USB primero en automatico), a 24 bits y 44 100 Hz fijos, con
@@ -46,8 +48,8 @@ namespace Rocola
             RocolaOs.Registra(new RocolaOsFuncion
             {
                 Nombre = NombreFuncion,
-                Que = "la salida nueva de sonido: la tarjeta por hw: y por su nombre, siempre abierta, a 24 bits y 44,1 kHz, con el volumen del dueno digital y los videos por la rocola",
-                DeFabrica = false,
+                Que = "la salida nueva de sonido, la unica: la tarjeta por hw: y por su nombre, siempre abierta, a 24 bits y 44,1 kHz, con el volumen del dueno digital y los videos por la rocola",
+                DeFabrica = true, Siempre = true,
                 Claves = new RocolaOsClave[]
                 {
                     RocolaOsClave.Entero(ClaveVolumen, 0, VolumenMinDb, VolumenMaxDb, true, "el volumen del dueno con la salida nueva, en dB (los botones de atras: 1 dB por toque)"),
@@ -86,7 +88,6 @@ namespace Rocola
             ultimoRenglon = Environment.TickCount64;
             RocolaOs.Apunta(NombreFuncion, "arranca (bufer " + BuferMs + " ms, periodo " + PeriodoMs + " ms; volumen del dueno " + VolumenDb + " dB" + (Mudo ? ", en silencio" : "") + ")");
             bool abrio = Arranca(2000);
-            if (Rendida) return;
             if (!abrio) RocolaOs.Apunta(NombreFuncion, "la tarjeta aun no abre (" + Motivo + "): las canciones esperan a que abra");
             SalidaAlsa.RocolaOsAbre = (fmt, bloque, bloques) => Abre("cancion", fmt, bloque, bloques);
             VolumenTeclas.Desvio = Teclas;

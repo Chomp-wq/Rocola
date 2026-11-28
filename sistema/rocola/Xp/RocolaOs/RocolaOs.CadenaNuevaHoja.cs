@@ -1,8 +1,8 @@
 // LA HOJITA «CADENA» DE LA VENTANA DE CTRL+F4 (la cadena de sonido nueva, CADENA_NUEVA.md; RocolaOs.CadenaNueva.cs): cual cadena suena y lo de
 // la nueva. Dos tarjetas como las de Ctrl+F3 y las hojas Pantalla, Sonido y Spotify:
-//   CUAL SUENA: «La de hoy» o «La nueva» (con el modo billar guardado la nueva es la B, si no la A): se guarda en rocola_os.txt (cadena_nueva=)
-//     y vale DESDE LA SIGUIENTE CANCION, sin reiniciar nada. Debajo, lo que suena ahora: que cadena, su ganancia y de donde salio, lo medido,
-//     los arreglos y como se abrio (coma flotante, sin huecos).
+//   CUAL SUENA: desde el 28-11-2026 la cadena nueva es la UNICA (CADENA_NUEVA.md, «La cadena vieja borrada»): la hoja ya no elige, dice cual
+//     va -la A, o la B con el modo billar de Ctrl+F3, desde la siguiente cancion-. Debajo, lo que suena ahora: que cadena, su ganancia y de
+//     donde salio, lo medido, los arreglos y como se abrio (coma flotante, sin huecos).
 //   LA NUEVA: el nivel (nivel_lufs, T) y el techo del pico real (techo_dbtp, C), de uno en uno; «Agudos del MP3» (agudos_mp3) y «Tono parejo»
 //     (tono_parejo), apagados de fabrica (decide la prueba ciega); como va la medida (cuantas medidas, la cola, el repaso de fondo) y la
 //     dispersion de la sonoridad de las de Spotify medidas (si es muy chica, Soloist ya las entrega normalizadas).
@@ -67,16 +67,17 @@ namespace Rocola
             string aviso = null;
             Action pinta = delegate
             {
-                bool va = RocolaOs.Encendida(RocolaOsCadenasNuevas.Medida) || RocolaOs.Activo;
                 bool nueva = RocolaOsCadenasNuevas.Suena;
                 char cad = LocalAutoAGuardar ? 'B' : 'A';
-                bHoy.Text = (nueva ? "" : "✓ ") + "La de hoy";
-                bNueva.Text = (nueva ? "✓ " : "") + "La nueva (" + (cad == 'B' ? "B, la del billar: el modo billar esta guardado" : "A, la normal") + ")";
-                bHoy.Relleno = !nueva ? Color.FromArgb(28, 62, 104) : Color.FromArgb(28, 34, 62);
-                bNueva.Relleno = nueva ? Color.FromArgb(30, 96, 70) : Color.FromArgb(28, 34, 62);
-                bHoy.Borde = !nueva ? cHoy : Color.FromArgb(60, 72, 118); bNueva.Borde = nueva ? cNueva : Color.FromArgb(60, 72, 118);
-                bHoy.Enabled = va && !RocolaOs.ConLista; bNueva.Enabled = va && !RocolaOs.ConLista;
-                lCual.Text = "Vale desde la siguiente cancion (la que suena acaba con la suya). La nueva: una sola ganancia fija por cancion (o por disco), "
+                // (28-11-2026) ya no se elige: la nueva es la unica; los dos renglones dicen cual va (la A o la B, por el modo billar de Ctrl+F3)
+                bHoy.Text = (nueva && cad == 'A' ? "✓ " : "") + "A, la normal";
+                bNueva.Text = (nueva && cad == 'B' ? "✓ " : "") + "B, la del billar (el modo billar de Ctrl+F3)";
+                bHoy.Relleno = nueva && cad == 'A' ? Color.FromArgb(30, 96, 70) : Color.FromArgb(28, 34, 62);
+                bNueva.Relleno = nueva && cad == 'B' ? Color.FromArgb(30, 96, 70) : Color.FromArgb(28, 34, 62);
+                bHoy.Borde = nueva && cad == 'A' ? cNueva : Color.FromArgb(60, 72, 118); bNueva.Borde = nueva && cad == 'B' ? cNueva : Color.FromArgb(60, 72, 118);
+                bHoy.Enabled = false; bNueva.Enabled = false;
+                lCual.Text = (nueva ? "Suena siempre la cadena nueva (la de antes ya no esta). " : "Con esta lista de ROCOLA_OS (pruebas) suena la de XP. ")
+                    + "El modo billar (Ctrl+F3) elige la B; vale desde la siguiente cancion. Una sola ganancia fija por cancion (o por disco), "
                     + "sin limitador ni nada que mueva el volumen; el MP3 en coma flotante y sin huecos." + (cad == 'B' && RocolaOsCadenaB.Arma == null ? " (Las piezas del billar aun no estan: la B va de paso.)" : "");
                 RocolaOsReceta r = RocolaOsRecetaSonando;
                 PlayItem np = nowPlaying;
@@ -104,11 +105,11 @@ namespace Rocola
                 lMed.Text = RocolaOsMedidaTabla.Cuantas.ToString(CultureInfo.InvariantCulture) + " medidas en rocola_medida_nueva.txt; esta sesion "
                     + Interlocked.Read(ref RocolaOsMedidaTrabajo.Hechas).ToString(CultureInfo.InvariantCulture) + " (y " + Interlocked.Read(ref RocolaOsMedidaTrabajo.EnVivo).ToString(CultureInfo.InvariantCulture) + " en vivo).\n"
                     + "En la cola: " + RocolaOsMedidaTrabajo.EnCola + ". El repaso de fondo: " + RocolaOsMedidaTrabajo.Pendientes + " por medir"
-                    + (RocolaOsMedidaTrabajo.Trabaja ? "." : " (solo trabaja con la nueva puesta).") + "\n"
+                    + (RocolaOsMedidaTrabajo.Trabaja ? "." : " (sin la cadena nueva no trabaja).") + "\n"
                     + "La ultima tardo " + RocolaOsMedidaTrabajo.UltimaMs.ToString("0", CultureInfo.InvariantCulture) + " ms. El descompresor: " + RocolaOsDescompresorFlotante.Motor + ".\n"
                     + "Spotify: " + (n >= 2 ? n + " medidas, " + media.ToString("0.0", CultureInfo.InvariantCulture) + " LUFS de media, dispersion " + disp.ToString("0.0", CultureInfo.InvariantCulture) + " LU"
                         + (disp < 1.0 ? " (muy chica: Soloist las entrega ya normalizadas)" : "") : n + " medidas (hacen falta 2 para la dispersion)") + ".";
-                lAviso.Text = aviso ?? (RocolaOs.ConLista ? "Con ROCOLA_OS de lista (pruebas) la eleccion la manda la lista." : "");
+                lAviso.Text = aviso ?? (RocolaOs.ConLista ? "Con ROCOLA_OS de lista (pruebas) la cadena la manda la lista." : "");
                 foreach (BotonPlano b in new BotonPlano[] { bHoy, bNueva, bNivMenos, bNivMas, bTecMenos, bTecMas, bAgudos, bTono }) b.Invalidate();
             };
             Action<string, string, string> pon = delegate (string clave, string valor, string dice)
@@ -117,8 +118,6 @@ namespace Rocola
                 RocolaOsCadenasNuevas.Apunta("Ctrl+F4: " + clave + "=" + valor);
                 pinta();
             };
-            bHoy.Click += delegate { pon(RocolaOsCadenasNuevas.Nombre, "0", "Guardado: la de hoy"); };
-            bNueva.Click += delegate { pon(RocolaOsCadenasNuevas.Nombre, "1", "Guardado: la nueva"); RocolaOsMedidaTrabajo.Despierta(); };
             bNivMenos.Click += delegate { int v = (int)RocolaOsCadenasNuevas.T - 1; if (v >= -30) pon(RocolaOsCadenasNuevas.ClaveNivel, v.ToString(CultureInfo.InvariantCulture), "Nivel " + v + " LUFS"); };
             bNivMas.Click += delegate { int v = (int)RocolaOsCadenasNuevas.T + 1; if (v <= -6) pon(RocolaOsCadenasNuevas.ClaveNivel, v.ToString(CultureInfo.InvariantCulture), "Nivel " + v + " LUFS"); };
             bTecMenos.Click += delegate { int v = (int)RocolaOsCadenasNuevas.C - 1; if (v >= -20) pon(RocolaOsCadenasNuevas.ClaveTecho, v.ToString(CultureInfo.InvariantCulture), "Techo " + v + " dBTP"); };

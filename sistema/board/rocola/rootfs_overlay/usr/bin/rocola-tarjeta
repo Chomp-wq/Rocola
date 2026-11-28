@@ -6,9 +6,10 @@
 # de rocola-xp elige igual (RocolaOs/RocolaOs.SalidaNuevaTarjetas.cs): lo guardado tambien por NOMBRE y, con ella, la USB primero.
 R=${ROCOLA_ASOUND:-/proc/asound}
 DATOS=${ROCOLA_DATOS:-/rocola/datos}
-# (27-11-2026, la salida nueva de rocola-xp: salida_nueva=1 en su rocola_os.txt) en la eleccion automatica, un aparato USB (el convertidor
-# del dueno) va primero; sin ella, todo como antes
-NUEVA=$(sed -n 's/^salida_nueva=//p' "${ROCOLA_XP_DATOS:-$DATOS/xp}/rocola_os.txt" 2>/dev/null | tail -1)
+# (27-11-2026, la salida nueva de rocola-xp) en la eleccion automatica, un aparato USB (el convertidor del dueno) va primero. Desde el
+# 28-11-2026 la salida nueva es la unica (CADENA_NUEVA.md, «La cadena vieja borrada»): SIEMPRE, salvo con Rocola OS apagado de emergencia
+# (rocola_os_apagado en los datos de rocola-xp: rocola-xp va sin ROCOLA_OS); salida_nueva= ya no se mira
+NUEVA=1; [ -f "${ROCOLA_XP_DATOS:-$DATOS/xp}/rocola_os_apagado" ] && NUEVA=0
 sale() { if [ "$1" = -c ]; then echo "$2"; else echo "plughw:$2,$3"; fi; exit 0; }
 # ELEGIDA A MANO (rocola-sonido usar N, 7-11-2026: la del amplificador puede ser otra, por ejemplo la del HDMI de la pantalla): manda si
 # esa tarjeta y esa salida siguen existiendo
