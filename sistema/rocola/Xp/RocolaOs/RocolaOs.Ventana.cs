@@ -118,7 +118,10 @@ namespace Rocola
                         BotonPlano b = new BotonPlano(); b.Font = fBot; b.Text = h.Nombre;
                         pes.Add(b);
                     }
-                    for (int i = 0; i < pes.Count; i++) pes[i].SetBounds(942 - (pes.Count - i) * 106 + 6, 8, 100, 30);
+                    // (28-11-2026) con siete pestanas (Cadena y Billar de la cadena de sonido nueva) la primera quedaba bajo el titulo: con mas de seis, mas
+                    // angostas para que todas quepan del 312 al 942 (con seis o menos, como siempre: de 100 cada 106)
+                    int pasoPes = pes.Count > 6 ? Math.Min(106, 630 / pes.Count) : 106;
+                    for (int i = 0; i < pes.Count; i++) pes[i].SetBounds(942 - (pes.Count - i) * pasoPes + 6, 8, pasoPes - 6, 30);
                     if (rocolaOsPagina < 0 || rocolaOsPagina >= paginas.Count) rocolaOsPagina = 0;
                     Action pintaPag = delegate
                     {

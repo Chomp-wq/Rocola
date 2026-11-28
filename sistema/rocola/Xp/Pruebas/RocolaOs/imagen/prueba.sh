@@ -41,11 +41,11 @@ abre() {
   ( sleep $((seg + 40)); kill -KILL $p 2>/dev/null ) & local v=$!
   wait $p; echo $? > "$o/salio"; kill $v 2>/dev/null; wait $v 2>/dev/null
 }
-# 1024x768: la ventana de Ctrl+F4 en (29,2), su cliente desde (32,31), la pagina desde (32,127). Las pestanas (y 54): Pantalla (500), Imagen (606),
-# Sonido (712), Spotify (818), Archivos (924). Las hojitas de Imagen (y 144): Dia y noche (128), Fiestas (281), Clima (419), Vidrio (557), Ver (755).
+# 1024x768: la ventana de Ctrl+F4 en (29,2), su cliente desde (32,31), la pagina desde (32,127). Las pestanas (y 54; con la pestana Cadena del 27-11-2026 se corrieron una a la izquierda): Imagen (500), Sonido (606),
+# Spotify (712), Cadena (818), Archivos (924); Pantalla, a la izquierda, ya no cabe junto al titulo. Las hojitas de Imagen (y 144): Dia y noche (128), Fiestas (281), Clima (419), Vidrio (557), Ver (755).
 # En Dia y noche: los interruptores en x 84, y 242 + 54 k (k=0 la funcion «cielo», 1 cielo_sol, 2 sol...); la barra de la ciudad en y 246, x 536 a 960.
 # En Ver: «Cambiar la hora» (84,220), «Cambiar el clima» (84,442), «Verlo» (276,527). En Fiestas: «Agregar un cumpleanos» (639,580), «Quitar la elegida» (640,536).
-IMAGEN="6:17+115,8:clic:606:54"
+IMAGEN="6:17+115,8:clic:500:54"
 SUB_DIA=128; SUB_FIE=281; SUB_CLI=419; SUB_VID=557; SUB_VER=755
 TODO=$'cielo=1\nfiestas=1\nclima=1\nvidrio=1\n'
 
@@ -185,7 +185,7 @@ fi
 if [[ " $partes " == *" sin "* ]]; then
   echo "== sin (sin ROCOLA_OS no hay hoja)"
   d=$(datos sin)
-  abre sin "$d" "6:17+115,8:clic:606:54,10:27" "9:sin-ctrlf4" 12 TERM
+  abre sin "$d" "6:17+115,8:clic:500:54,10:27" "9:sin-ctrlf4" 12 TERM
   si "sin ROCOLA_OS: no se abre ninguna hoja y no se escribe nada de la hoja" bash -c "! grep -q 'dialogo' '$W/sin/traza.txt' && ! grep -q 'Imagen' '$d/rocola_os.txt'"
 fi
 
