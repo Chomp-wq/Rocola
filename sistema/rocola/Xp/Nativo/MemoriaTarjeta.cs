@@ -31,7 +31,7 @@ namespace Rocola
         [DllImport("libc", SetLastError = true)] private static extern int open(string ruta, int banderas);
         [DllImport("libc")] private static extern int close(int fd);
         [DllImport("libc", SetLastError = true)] private static extern int ioctl(int fd, ulong peticion, void* datos);
-        // DRM_IOCTL_RADEON_GEM_INFO: gart_size, vram_size, vram_visible. Solo con el controlador radeon (el del A4): el mismo numero de
+        // DRM_IOCTL_RADEON_GEM_INFO: gart_size, vram_size, vram_visible. Solo con el controlador radeon (el del A4 y tambien el del A10-7870K: el kernel 6.12 maneja su Kaveri/CIK con radeon, no con amdgpu): el mismo numero de
         // llamada es otra cosa en otros controladores.
         private static long Radeon()
         {

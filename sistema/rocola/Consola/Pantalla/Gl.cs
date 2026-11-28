@@ -1,5 +1,5 @@
 // OPENGL ES 2 Y EGL DE ROCOLA OS (la pantalla, etapa 2). Solo las llamadas que usa la rocola, por P/Invoke a las de Mesa (libGLESv2 y
-// libEGL); en el A4, Mesa r600 por KMS. El dibujo por tarjeta de XP (Direct3D 9) se reescribe con esto.
+// libEGL); en el A4, Mesa r600 por KMS (en el A10-7870K, radeonsi). El dibujo por tarjeta de XP (Direct3D 9) se reescribe con esto.
 using System;
 using System.Runtime.InteropServices;
 
