@@ -67,6 +67,8 @@ corre() {
     # «la noche es la de XP» es del cielo, no del vidrio; con ellos puestos la «Raya» de la noche sale distinta tambien en la rama de antes)
     printf '%s\n' "$@" | grep -qx 'CIELO_SIN_VIDRIO=1' && { grep -q "^vidrio=" "$d/rocola_os.txt" 2>/dev/null || printf 'vidrio=0\n' >> "$d/rocola_os.txt"; }
     for k in cielo fiestas clima vidrio; do grep -q "^$k=" "$d/rocola_os.txt" 2>/dev/null || printf '%s=1\n' "$k" >> "$d/rocola_os.txt"; done
+    # (27-11-2026) las nebulosas de XP vienen APAGADAS con el cielo vivo (nebulosas=0 de fabrica): para comparar con la rama de antes se ponen (CIELO_SIN_NEBULOSAS=1: de fabrica)
+    printf '%s\n' "$@" | grep -qx 'CIELO_SIN_NEBULOSAS=1' || { grep -q "^nebulosas=" "$d/rocola_os.txt" 2>/dev/null || printf 'nebulosas=1\n' >> "$d/rocola_os.txt"; }
   fi
   printf 'pcm_type.reloj { lib "%s" }\npcm.reloj { type reloj }\n' "$AL/libasound_module_pcm_reloj.so" > "$o/alsa.conf"
   ( cd "$d" && exec env -u ROCOLA_OS -u ROCOLA_CIELO_FECHA -u ROCOLA_CLIMA -u ROCOLA_CIUDAD ROCOLA_DATOS="$d" ROCOLA_RUN="$o/run" ROCOLA_ALSA=reloj \
@@ -267,7 +269,7 @@ if [[ " $partes " == *" apagado "* ]]; then
   printf 'cielo=0\nfiestas=0\nclima=0\nvidrio=0\n' > "$W/mio-cero/datos/rocola_os.txt"
   corre mio-cero "$prog" 14 "=$W/mio-cero/datos" ROCOLA_OS=1 ROCOLA_CINTA="$W/mio-cero.cinta" ROCOLA_CINTA_CUADROS=10-11.5 ROCOLA_CIELO_FECHA="2026-11-18 13:00" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED
   mkdir -p "$W/mio-claves0"; copia "$DATOS0" "$W/mio-claves0/datos"
-  printf 'cielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\nciudad_bar=0\naurora_fiesta=0\nhorizonte_fiesta=0\nfugaz_fiesta=0\nfuegos=0\nescaparate_fiesta=0\nfechas_propias=0\nclima=0\nlluvia=0\ntormenta=0\nneblina=0\nclima_escaparate=0\nvidrio_ficha=0\nvidrio_franja=0\nvidrio_pastillas=0\nvidrio_lista=0\nvidrio_luz=0\nvidrio_buscador=0\n' > "$W/mio-claves0/datos/rocola_os.txt"
+  printf 'nebulosas=1\ncielo_sol=0\nsol=0\nluna_camino=0\nestrellas_anochecer=0\nhorizonte_hora=0\nnubes=0\nciudad_bar=0\naurora_fiesta=0\nhorizonte_fiesta=0\nfugaz_fiesta=0\nfuegos=0\nescaparate_fiesta=0\nfechas_propias=0\nclima=0\nlluvia=0\ntormenta=0\nneblina=0\nclima_escaparate=0\nvidrio_ficha=0\nvidrio_franja=0\nvidrio_pastillas=0\nvidrio_lista=0\nvidrio_luz=0\nvidrio_buscador=0\n' > "$W/mio-claves0/datos/rocola_os.txt"
   corre mio-claves0 "$prog" 14 "=$W/mio-claves0/datos" ROCOLA_OS=1 ROCOLA_CINTA="$W/mio-claves0.cinta" ROCOLA_CINTA_CUADROS=10-11.5 ROCOLA_CIELO_FECHA="2026-11-18 13:00" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED
   espera mio-cero mio-claves0
   cinta control-dia "$prog" ROCOLA_OS=1 ROCOLA_CIELO_FECHA="2026-11-18 13:00" ROCOLA_CIUDAD="$CIUDAD" ROCOLA_CLIMA_API=$SINRED; espera control-dia

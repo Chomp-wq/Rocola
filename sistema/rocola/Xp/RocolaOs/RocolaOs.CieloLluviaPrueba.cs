@@ -62,14 +62,19 @@ namespace Rocola
                         RocolaOsCieloFoto f = new RocolaOsCieloFoto(); f.SolAlt = alt; f.LunaAlt = lalt; f.Raya = alt < 12 ? 0xFF9A58u : 0xF0F8FFu;
                         float sol = RocolaOsCieloAstros.Paso(alt, -6.0, 10.0), luna = RocolaOsCieloAstros.Paso(lalt, -3.0, 8.0) * 0.8f * (1f - sol);
                         float lr, lg, lb, sr, sg, sb; RocolaOsCieloClimaVista.Colores(f, sol, luna, gris, out lr, out lg, out lb, out sr, out sg, out sb);
-                        double l = RocolaOsCieloDia.Luminancia(lr, lg, lb), s = RocolaOsCieloDia.Luminancia(sr, sg, sb), tope = 0.15 * sol + 0.075 * luna + 0.012;
+                        double l = RocolaOsCieloDia.Luminancia(lr, lg, lb), s = RocolaOsCieloDia.Luminancia(sr, sg, sb), tope = 0.15 * sol + 0.075 * luna + 0.04;
                         peor = Math.Max(peor, l - tope); if (s > l + 1e-6) sombraOk = false; cuantos++;
                     }
-            Si("la luz de las nubes no pasa de su tope (0,15 sol + 0,075 luna + 0,012) en " + cuantos + " casos (peor exceso " + peor.ToString("0.0000", ci) + ")", peor < 0.004);
+            Si("la luz de las nubes no pasa de su tope (0,15 sol + 0,075 luna + 0,04) en " + cuantos + " casos (peor exceso " + peor.ToString("0.0000", ci) + ")", peor < 0.004);
             Si("la sombra de una nube nunca es mas clara que su luz", sombraOk);
-            double lmx = 0;
-            for (float nivel = 0f; nivel <= 1f; nivel += 0.1f) for (int c = 0; c < 2; c++) { float r, gg, b; RocolaOsCieloLluvia.Color(c == 1, nivel, out r, out gg, out b); lmx = Math.Max(lmx, RocolaOsCieloDia.Luminancia(r, gg, b)); }
-            Si("las rayas de lluvia no pasan de 0,17 de luminancia (" + lmx.ToString("0.000", ci) + ")", lmx <= 0.17);
+            // las rayas se ven (lavanda clara de noche, pizarra de dia) y sobre el texto se atenuan: su alfa (0,5 como mucho) x (1 - 0,85) sobre un cielo de 0,15 no pasa de 0,17
+            double lmx = 0, mezcla = 0;
+            for (float nivel = 0f; nivel <= 1f; nivel += 0.1f) for (int c = 0; c < 2; c++)
+                {
+                    float r, gg, b; RocolaOsCieloLluvia.Color(c == 1, nivel, out r, out gg, out b); double l = RocolaOsCieloDia.Luminancia(r, gg, b);
+                    lmx = Math.Max(lmx, l); mezcla = Math.Max(mezcla, l * 0.5 * (1 - RocolaOsCieloLluvia.AtenuaTexto) + 0.15 * (1 - 0.5 * (1 - RocolaOsCieloLluvia.AtenuaTexto)));
+                }
+            Si("las rayas de lluvia: luminancia de la raya " + lmx.ToString("0.000", ci) + "; sobre el texto (atenuada) la mezcla con el cielo de 0,15 no pasa de 0,17 (" + mezcla.ToString("0.000", ci) + ")", lmx > 0.3 && mezcla <= 0.17);
 
             // ---- las nubes: cuantas, donde, cuanto tapan ----
             RocolaOsCieloClimaVista.Nubes = 0.22f; RocolaOsCieloClimaVista.AlfaNube = 0.8f; RocolaOsCieloClimaVista.Deriva = 0; RocolaOsCieloClimaVista.DirX = -1f; RocolaOsCieloClimaVista.Viento = 0;
@@ -126,7 +131,7 @@ namespace Rocola
                 prev = e;
             }
             Si("el relampago es UN pulso suave (sube hasta " + tpico.ToString("0.00", ci) + " s y solo baja despues; sin parpadeos), de 0 a 1 y se acaba a los " + RocolaOsCieloNubesRelampago.DuraS + " s", sube && baja && pico > 0.97 && RocolaOsCieloNubesRelampago.Envolvente(RocolaOsCieloNubesRelampago.DuraS) == 0f && RocolaOsCieloNubesRelampago.Envolvente(0) == 0f);
-            Si("la luz de un relampago suma como mucho +" + (255 * RocolaOsCieloNubesRelampago.Suma * 180 / 255f).ToString("0", ci) + " a un canal (color 180 x alfa 0,26)", 180 * RocolaOsCieloNubesRelampago.Suma < 50f);
+            Si("la luz de un relampago suma como mucho +" + (190 * RocolaOsCieloNubesRelampago.Suma).ToString("0", ci) + " a un canal (color 190 x alfa " + RocolaOsCieloNubesRelampago.Suma.ToString("0.00", ci) + ")", 190 * RocolaOsCieloNubesRelampago.Suma < 100f);
 
             // ---- la neblina ----
             Si("neblina: alfa 0 a 0,80 del horizonte, 0,55 en el 0,848 del alto y 0,7 en el horizonte", RocolaOsCieloNeblina.Alfa(0.8f * hz, hz, 1f) == 0f && Math.Abs(RocolaOsCieloNeblina.Alfa(hz * 0.848f / 0.868f, hz, 1f) - 0.55f) < 1e-3f && Math.Abs(RocolaOsCieloNeblina.Alfa(hz, hz, 1f) - 0.7f) < 1e-3f && RocolaOsCieloNeblina.Alfa(hz + 10f, hz, 1f) == 0f && RocolaOsCieloNeblina.Alfa(hz, hz, 0.5f) < 0.36f);
@@ -137,6 +142,54 @@ namespace Rocola
             Si("sin niebla no se arma nada", RocolaOsCieloNeblina.Arma(1024, hz, 0f, 0.0, 1f) == 0);
             bool vaiven = true; for (int c = 0; c < 30; c++) for (double t = 0; t < 600; t += 7.3) { float vv = RocolaOsCieloNeblina.Vaiven(c, t); if (vv < 0.6f - 1e-4f || vv > 1f + 1e-4f) vaiven = false; }
             Si("el vaiven de la niebla queda entre 0,6 y 1", vaiven);
+
+            // ---- (27-11-2026) el clima toca lo que ya hay: las luces, el texto, el viento, la luz de las nubes ----
+            RocolaOsClimaLuces.Limpia(); RocolaOsClimaLuces.Ahora = 1000;
+            float lr0, lg0, lb0;
+            Si("sin luces nada brilla (0) y sin zonas nada se protege (0)", RocolaOsClimaLuces.Brillo(850f, 168f, out lr0, out lg0, out lb0) == 0f && RocolaOsClimaLuces.Proteccion(500f, 560f) == 0f);
+            RocolaOsCieloEscena e4 = new RocolaOsCieloEscena(); e4.Ancho = 1024; e4.Alto = 768; e4.Horizonte = 663f; e4.Modo = 4; e4.Calma = 1f;
+            RocolaOsClimaLuces.ZonasDe(e4);
+            Si("escaparate: el texto bajo el cubo se protege (" + RocolaOsClimaLuces.Proteccion(500f, 560f).ToString("0.00", ci) + ") y el cielo de arriba a la derecha no", RocolaOsClimaLuces.Proteccion(500f, 560f) > 0.8f && RocolaOsClimaLuces.Proteccion(900f, 100f) == 0f);
+            RocolaOsCieloEscena ep = e4; ep.Modo = 1; ep.Pared = true; ep.Reposo = 0f; RocolaOsClimaLuces.ZonasDe(ep);
+            Si("pared: la barra de arriba se protege del todo y el centro (las portadas) no", RocolaOsClimaLuces.Proteccion(500f, 20f) > 0.99f && RocolaOsClimaLuces.Proteccion(500f, 300f) == 0f);
+            RocolaOsCieloEscena er = ep; er.Reposo = 1f; RocolaOsClimaLuces.ZonasDe(er);
+            Si("reposo con la letra: la columna de la letra se protege al 0,62 (" + RocolaOsClimaLuces.Proteccion(500f, 300f).ToString("0.00", ci) + ") y la barra de arriba ya no", Math.Abs(RocolaOsClimaLuces.Proteccion(500f, 300f) - 0.62f) < 0.01f && RocolaOsClimaLuces.Proteccion(500f, 20f) == 0f);
+            RocolaOsClimaLuces.ZonasDe(e4);
+            // las luces: la luna, y lo que brilla cerca
+            RocolaOsClimaLuces.AX[0] = 850f; RocolaOsClimaLuces.AY[0] = 168f; RocolaOsClimaLuces.AR[0] = 32f; RocolaOsClimaLuces.AA[0] = 1f; RocolaOsClimaLuces.ACr[0] = 222f; RocolaOsClimaLuces.ACg[0] = 228f; RocolaOsClimaLuces.ACb[0] = 255f;
+            float bM = RocolaOsClimaLuces.Brillo(850f, 168f, out lr0, out lg0, out lb0), bC = RocolaOsClimaLuces.Brillo(850f, 250f, out lr0, out lg0, out lb0), bL = RocolaOsClimaLuces.Brillo(100f, 600f, out lr0, out lg0, out lb0);
+            Si("la luz de la luna: brilla " + bM.ToString("0.00", ci) + " en ella, " + bC.ToString("0.00", ci) + " a 80 px y 0 lejos", bM > 0.95f && bC > 0.01f && bC < bM && bL == 0f);
+            float[] fgx = { 100f, 300f, 500f }, fgy = { 650f, 650f, 650f }, fgr = { 20f, 80f, 12f }, fgry = { 20f, 6f, 12f }; uint[] fgc = { 0xB0FFB347u, 0xB0FFB347u, 0x10FFB347u };
+            RocolaOsClimaLuces.PonFiesta(fgx, fgy, fgr, fgry, fgc, 3, 1000.0);
+            Si("las luces de las fiestas: solo las redondas y con luz (de 3 entra " + RocolaOsClimaLuces.FN + ": el resplandor ancho y la casi apagada no)", RocolaOsClimaLuces.FN == 1 && RocolaOsClimaLuces.FiestaFresca);
+            RocolaOsClimaLuces.Ahora = 5000;
+            Si("las luces de las fiestas caducan a los 0,4 s sin que FI2 las ponga", !RocolaOsClimaLuces.FiestaFresca);
+            RocolaOsClimaLuces.Ahora = 1000;
+            // la lluvia brilla donde hay luz detras y se atenua con el texto
+            double fase0 = 0; int t0 = RocolaOsCieloLluvia.Arma(1024, 663f, 768f, 1f, 0f, 0f, 0f, 1f, 0f, fase0);
+            float aMax0 = 0f; Tarjeta.Vtx[] ml = RocolaOsCieloLluvia.Malla; for (int i = 0; i < t0 * 3; i++) if (Math.Abs(ml[i].X - 850f) < 120f && Math.Abs(ml[i].Y - 168f) < 120f) aMax0 = Math.Max(aMax0, (ml[i].Color >> 24) / 255f);
+            RocolaOsClimaLuces.AA[0] = 0f; int t1 = RocolaOsCieloLluvia.Arma(1024, 663f, 768f, 1f, 0f, 0f, 0f, 1f, 0f, fase0);
+            float aMax1 = 0f; ml = RocolaOsCieloLluvia.Malla; for (int i = 0; i < t1 * 3; i++) if (Math.Abs(ml[i].X - 850f) < 120f && Math.Abs(ml[i].Y - 168f) < 120f) aMax1 = Math.Max(aMax1, (ml[i].Color >> 24) / 255f);
+            Si("la lluvia brilla junto a la luna (alfa max " + aMax0.ToString("0.00", ci) + " frente a " + aMax1.ToString("0.00", ci) + " sin la luz)", aMax0 > aMax1 + 0.1f);
+            RocolaOsClimaLuces.AA[0] = 0f; RocolaOsClimaLuces.ZonasDe(er);
+            int t2 = RocolaOsCieloLluvia.Arma(1024, 524f, 768f, 1f, 0f, 0f, 0f, 1f, 0f, fase0);
+            float aMax2 = 0f; ml = RocolaOsCieloLluvia.Malla; for (int i = 0; i < t2 * 3; i++) if (ml[i].X > 300f && ml[i].X < 900f && ml[i].Y > 150f && ml[i].Y < 440f) aMax2 = Math.Max(aMax2, (ml[i].Color >> 24) / 255f);
+            Si("en la columna de la letra del reposo la lluvia casi no se ve (alfa max " + aMax2.ToString("0.00", ci) + ")", aMax2 < 0.3f);
+            RocolaOsClimaLuces.Limpia();
+            // el viento de las fiestas
+            Si("el viento de las fiestas: 1 sin viento, 2,4 con 40 km/h o mas (" + RocolaOsCieloClimaVista.KDeViento(20f).ToString("0.00", ci) + " con 20)", RocolaOsCieloClimaVista.KDeViento(0f) == 1f && Math.Abs(RocolaOsCieloClimaVista.KDeViento(40f) - 2.4f) < 1e-5f && RocolaOsCieloClimaVista.KDeViento(90f) == RocolaOsCieloClimaVista.KDeViento(40f) && Math.Abs(RocolaOsCieloClimaVista.KDeViento(20f) - 1.7f) < 1e-5f);
+            // el borde brillante y la luz de una nube (con las nubes puestas de antes)
+            RocolaOsCieloClimaVista.Nubes = 1f; RocolaOsCieloClimaVista.AlfaNube = 0.8f; RocolaOsCieloClimaVista.Deriva = 0; RocolaOsCieloNubes.Coloca(1024, 667f, 1f);
+            int tb = RocolaOsCieloNubes.ArmaBorde(RocolaOsCieloNubes.Cx[1], RocolaOsCieloNubes.Cy[1], 30f, 0xE8EAFA, 1f);
+            uint bmx = 0; Tarjeta.Vtx[] mbd = RocolaOsCieloNubes.MallaBorde; for (int i = 0; i < tb * 3; i++) { uint al = mbd[i].Color >> 24; if (al > bmx) bmx = al; }
+            Si("el borde de las nubes frente a un astro: " + tb + " triangulos, alfa max " + (bmx / 255f).ToString("0.00", ci) + " (0,6 como mucho) y ninguno lejos de las nubes (" + RocolaOsCieloNubes.ArmaBorde(-900f, -900f, 30f, 0xE8EAFA, 1f) + ")", tb > 0 && bmx <= 153 && RocolaOsCieloNubes.ArmaBorde(-900f, -900f, 30f, 0xE8EAFA, 1f) == 0 && RocolaOsCieloNubes.ArmaBorde(RocolaOsCieloNubes.Cx[1], RocolaOsCieloNubes.Cy[1], 30f, 0xE8EAFA, 0f) == 0);
+            int tl = RocolaOsCieloNubes.ArmaLuz(1, 0xBEBEFA, 0.3f, 1f); uint lmxa = 0; Tarjeta.Vtx[] mlu = RocolaOsCieloNubes.MallaLuz; for (int i = 0; i < tl * 3; i++) { uint al = mlu[i].Color >> 24; if (al > lmxa) lmxa = al; }
+            Si("la luz de una nube (un relampago, un fuego) tiene su forma: " + tl + " triangulos, alfa max " + (lmxa / 255f).ToString("0.00", ci) + " (0,3 x 1,14 como mucho) y 0 sin alfa o sin nube", tl > 100 && lmxa <= 90 && RocolaOsCieloNubes.ArmaLuz(1, 0xBEBEFA, 0f, 0f) == 0 && RocolaOsCieloNubes.ArmaLuz(-1, 0xBEBEFA, 0.3f, 0f) == 0);
+            RocolaOsClimaLuces.PonFuego(0, 400f, 200f, 100f, 0xFFB347u, 0.8f, 1000.0);
+            Si("los fuegos: uno vivo se ve (" + RocolaOsClimaLuces.FuegoFresco(0) + ") y se acaba a los 0,4 s sin cuadro nuevo", RocolaOsClimaLuces.FuegoFresco(0) && !RocolaOsClimaLuces.FuegoFresco(1) && (RocolaOsClimaLuces.Ahora = 3000) > 0 && !RocolaOsClimaLuces.FuegoFresco(0));
+            RocolaOsClimaLuces.Limpia();
+            RocolaOsCieloClimaVista.Lluvia = 0f; float h0 = RocolaOsCieloClimaLuz.Humedad(1f); RocolaOsCieloClimaVista.Lluvia = 0.8f; float h1 = RocolaOsCieloClimaLuz.Humedad(1f), h2 = RocolaOsCieloClimaLuz.Humedad(0.35f); RocolaOsCieloClimaVista.Lluvia = 0f;
+            Si("la humedad del piso: 0 sin lluvia (" + h0.ToString("0.00", ci) + "), 1 con lluvia (" + h1.ToString("0.00", ci) + ") y menos con la calma (" + h2.ToString("0.00", ci) + ")", h0 == 0f && h1 > 0.95f && h2 < h1 * 0.8f);
 
             // ---- los textos de la pastilla y el mensaje ----
             Si("hora: 0:05 = 12:05 a. m.; 13:30 = 1:30 p. m.; 12:00 = 12:00 p. m.", RocolaOsCieloClimaTextos.Hora(new DateTime(2026, 11, 18, 0, 5, 0)) == "12:05 a. m." && RocolaOsCieloClimaTextos.Hora(new DateTime(2026, 11, 18, 13, 30, 0)) == "1:30 p. m." && RocolaOsCieloClimaTextos.Hora(new DateTime(2026, 11, 18, 12, 0, 0)) == "12:00 p. m.");

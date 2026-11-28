@@ -96,7 +96,7 @@ namespace Rocola
                     if (i > 0) ideas &= t[i].Funcion == t[0].Clave;
                 }
             }
-            Si("Tablas: " + filas + " interruptores, todas sus claves declaradas y de si o no (1 o 0)", declaradas && filas == 7 + 7 + 5 + 7);
+            Si("Tablas: " + filas + " interruptores, todas sus claves declaradas y de si o no (1 o 0)", declaradas && filas == 8 + 7 + 5 + 7);
             Si("Tablas: la primera de cada grupo es una funcion registrada (cielo, fiestas, clima, vidrio) y las demas dependen de ella", madres && ideas);
             Si("Tablas: ninguna clave repetida", !repetidas);
             Si("Tablas: la letra en el cielo (letra_cielo) es una funcion registrada de si o no", RocolaOs.Busca(Form1.ImagenLetra.Clave) != null && RocolaOs.ClaveDe(Form1.ImagenLetra.Clave) != null);

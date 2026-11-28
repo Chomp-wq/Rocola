@@ -61,6 +61,7 @@ namespace Rocola
                 float x = (i + 0.5f) * paso + (RocolaOsCieloFiestas.Rnd(i, 7) - 0.5f) * 6f * sB;
                 Item(fi, i, n, x, yb, s, sB, (float)tm, calma, noche * luz, lib, paso, e);
             }
+            RocolaOsClimaLuces.PonFiesta(gx, gy, gr, gry, gc, gn, e.Ms);   // (las luces que el clima rodea de halo y refleja en el piso mojado)
             RocolaOsCieloFiestas.ApuntaTris(false, m.Tris, gn);
             if (m.Tris > 0) st.DrawMesh(m.V, m.Tris);
             if (gn > 0)
@@ -168,7 +169,8 @@ namespace Rocola
         // una vela (veladora): su cuerpo, su llama que titila y su resplandor
         private void Vela(float x, float yb, float s, float t, float calma, float ph, float noche, bool morado)
         {
-            float fl = 0.82f + 0.18f * (float)Math.Sin(t * 9f + ph) * calma;
+            float vk = RocolaOsCieloClimaVista.VientoK;   // con viento la llama titila mas y mas rapido
+            float fl = Math.Max(0.45f, Math.Min(1.1f, 0.82f + 0.18f * vk * (float)Math.Sin(t * 9f * (1f + 0.35f * (vk - 1f)) + ph) * calma));
             m.Rect(x - 1.7f * s, yb - 6f * s, 3.4f * s, 6f * s, 0xFFFFF3DC);
             if (morado) m.Rect(x - 1.7f * s, yb - 1.8f * s, 3.4f * s, 1.8f * s, 0xFFC9A8E0);
             m.Elipse(x, yb - 8.6f * s, 1.5f * s, 2.6f * s * fl, 0xFFFFB347, 8, 0.7f);

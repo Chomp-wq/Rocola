@@ -162,3 +162,57 @@ o «Sin internet: el de hace 1 h.». Ver `FASE11_hoja-imagen.md`.
   salen coordenadas o el id (privacidad); sin `ROCOLA_METAR_API` no hay METAR; coordenadas malas (95) -> se ignoran y manda la ciudad. La parte `clima` de siempre sigue 16/16 (una espera
   ahora 4 decimales: `25.6866`) y `apagado`/`noche` 11/11 (todo apagado = XP, la noche igual a la de antes).
 - Nada probado con el aviationweather.gov ni el Open-Meteo de verdad desde la rocola (la API de verdad se miro a mano: `bbox` y `ids` dan los campos de arriba) ni en el A4.
+
+## 10. El clima toca lo que ya hay (27-11-2026): presentacion «Clima en la rocola» aprobada, y sin nebulosas
+
+**Peticion y decision del dueno.** El cielo NO cambia de aspecto (la maqueta que lo cambiaba fue rechazada); solo se mejora como el clima interactua con lo que ya existe.
+Presentacion aprobada sobre capturas reales de la rocola (13 escenas) y, el mismo dia: «vamos a quitar del cielo nocturno que no me gusta, las nebulosas». La aurora (lo que
+reacciona a la musica) NO se toca: solo se LEE (su color medio) para teñir la base de las nubes y el piso mojado.
+
+### Que se hizo, por punto
+| # | Idea | Donde (todo en `RocolaOs/`) |
+|---|---|---|
+| 1 | Nubes frente a la luna y el sol: la nube 0 pasa por la altura del astro (`LaneY`); la luna ya se repintaba con ellas delante (capa `ConLaLuna`); **borde brillante** (plateado con la luna, calido con el sol: banda sumada solo en el CONTORNO de la nube, mas fuerte cerca del astro: `ArmaBorde`); las estrellas tras una nube se apagan (ya estaba) y con nieve bajan un 28 %; de noche la **base de la nube toma el color de la aurora** de ese momento (a la luminancia de su sombra x 1,7); las nubes de noche ya no se pierden con luna nueva (tope de luz 0,04 en vez de 0,012) | `CieloNubes.cs` |
+| 2 | Lluvia visible: lavanda clara de noche y pizarra de dia, rayas mas largas (34 px las de cerca), **brilla donde hay luz detras** (luna, sol, estrella de XP, luces de las fiestas, aurora cerca del horizonte: `RocolaOsClimaLuces.Brillo`), **salpicaduras** sobre la raya (corona aplastada y dos gotas) y **piso mojado**: la malla del reflejo de la aurora (`DibujaReflejoAurora`) se dibuja otra vez, mas clara y con una onda que se mueve; brillo de piso del color de la aurora (de la raya de dia), una raya mojada bajo el horizonte, ondas que se abren y reflejos que tiemblan de las luces del horizonte | `CieloLluvia.cs`, `CieloClimaLuz.cs` (pintor CL6, orden 650) |
+| 3 | Tormenta: el relampago enciende la nube **con su forma** (`ArmaLuz`: sus 8 manchas sumadas, color 190/190/250, alfa 0,5; antes una mancha redonda) y da un instante de luz al piso mojado (`Destello`); sin destello de pantalla, uno cada 6 s como mucho (la regla de siempre); sobre texto, mas tenue | `CieloLluvia.cs`, `CieloNubes.cs` |
+| 4 | Neblina: la franja baja de antes y **halos** (GlowBatch) en el sol, la luna, la estrella y las luces de las fiestas con neblina, lluvia o nieve | `CieloClimaLuz.cs` |
+| 5 | Nieve: copos hexagonales suaves en **tres profundidades** (1,2 a 6,6 px, 42 a 112 px/s), **filo blanco con grumos** sobre la raya del horizonte y su resplandor, estrellas mas tenues | `CieloLluvia.cs`, `CieloClimaLuz.cs` |
+| 6 | Viento: `RocolaOsCieloClimaVista.VientoK` (1 sin viento, 2,4 con 40 km/h o mas) multiplica lo que se mece el papel picado y lo flotante (`Mueve`) y hace que las llamas de las veladoras titilen mas y mas rapido (`Vela`) | `CieloFiestaAmbiente.cs`, `CieloFiestaPinta.cs` (una linea cada una) |
+| 7 | Fiestas: los resplandores redondos de FI2 (veladoras, foquitos, farolitos) se exportan (`PonFiesta`) para el halo y el reflejo en el piso mojado; cada rafaga de FI4 exporta su luz (`PonFuego`) y **alumbra las nubes cercanas** (la forma de la nube sumada, por debajo si el fuego esta debajo); la nieve del clima y los copos de Navidad conviven | `CieloFiestaPinta.cs`, `CieloFiestaFuegos.cs` (una linea cada una) |
+| 8 | La pastilla del clima SIEMPRE a la vista en el escaparate: abajo a la izquierda (x 0,0225 del ancho, margen de 0,026 del alto), letra de 0,0225 del alto; ya no se apaga cuando sale la lista de lo mas pedido (`RocolaOsEscaparateAlfa(true)`); en el escaparate de XP no hay nada ahi (comprobado en capturas del escaparate con ficha y con el aviso girando) | `CieloNubesEscaparate.cs` |
+| 9 | Reposo con letra: las **zonas con texto** (`RocolaOsClimaLuces.ZonasDe`: la columna de la letra 215-975 x 96-480 al 0,62, la franja de abajo, la pared, el cubo y el mensaje del escaparate) atenuan un 94 % la lluvia, los copos, el relampago, las salpicaduras y el borde; el piso mojado va a 0,26 en el reposo, 0,5 en la pared y 0,3 de dia | `CieloClimaLuz.cs` |
+| 10 | **Sin nebulosas**: clave `nebulosas=` de la funcion `cielo` (**0 de fabrica**; hoja Imagen: «Nebulosas del cielo de XP»); con el cielo vivo las dos pasadas de la nebulosa de XP no se dibujan (la via lactea, las estrellas, la aurora y su reflejo, la luna, la estrella y las fugaces se quedan). Sin ROCOLA_OS o con el cielo apagado, XP tal cual; la clave entra en la firma del cielo (la imagen intermedia de Performance se repinta) | gancho **g320** |
+
+**El gancho de las nebulosas (g320, `Codigo/D3D9Star.cs`, `DibujaNieblas`, linea 3822):** `if (nebTex != IntPtr.Zero && !RocolaOsSinNebulosas())` (antes `if (nebTex != IntPtr.Zero)`);
+`RocolaOsSinNebulosas()` esta en `RocolaOs.CieloEnchufes.cs` (`RocolaOs.Activo && RocolaOsCielo.Va && RocolaOsCielo.SinNebulosas`; la bandera sale de la foto: `f.Nebulosas = !f.Cielo ||
+nebulosas=1`). Los dos caminos de XP (el directo y la imagen intermedia de Performance) pasan por `DibujaNieblas`. De dia tambien se va el velo que DN1 hacia con la nebulosa (la via
+lactea es otra textura y sigue con el suyo).
+
+**Reglas que siguen:** cada idea con su clave (el piso, las salpicaduras, el filo y los halos van con `lluvia=` y `neblina=`; el borde, la nube del astro y la luz de los fuegos con
+`nubes=`); nada de memoria nueva por cuadro (arreglos fijos: 4096 vertices el piso, 44 gotas, 48 columnas de filo, 28 ondas, 24 reflejos, 40 luces de fiesta); la calma al 35 %
+aquieta ondas, gotas y halos; todo apagado = XP.
+
+### Pruebas
+- `--prueba-cielo-clima`: **55/55** (15 nuevas: zonas de texto, luces, brillo de la lluvia junto a la luna 0,92 frente a 0,50, columna de la letra 0,21, borde, luz de nube,
+  fuegos, humedad, viento). El tope de luz de las nubes pasa a `0,15 sol + 0,075 luna + 0,04`; las rayas de lluvia ya no se limitan a 0,17 por si solas: se atenuan sobre el texto
+  (la mezcla atenuada sobre un cielo de 0,15 queda en 0,17).
+- `prueba-clima.sh ganchos orden apagado noche` contra la rama principal ya juntada con la cadena nueva (BASE = su compilacion): **todo igual**. El `mio-ideas0` y el de noche llevan
+  ahora `nebulosas=1` (lo que XP dibuja); comprobacion nueva: con `nebulosas=0` de fabrica la cinta de la noche SI cambia. Un solo gancho propio (g320; `ganchos.py` TODO BIEN).
+- `prueba-clima.sh escenas relampagos`: **93/93** (las escenas de pared, escaparate y reposo con cada clima, la regla 3 medida en cada captura y el tope de un relampago cada 6 s,
+  con las baterias ya ajustadas). `cielo/prueba.sh apagado noche` 11/11 y `--prueba-cielo` 72/72 (los `mio-claves0` y de noche llevan `nebulosas=1`; `CIELO_SIN_NEBULOSAS=1` las deja de fabrica);
+  `prueba-sol.sh` ajustada igual (su IDEAS0 lleva `nebulosas=1`); `--prueba-imagen` cuenta 8 filas en la hojita de dia y noche. **No pasan, y ya no pasaban sin mis cambios:** la
+  escena `imagen/prueba.sh` (19 MAL tambien con la compilacion de la rama principal: sus clics fijos caen en la pestana nueva «Cadena»), las salidas del sol contra la NOAA
+  (falta el modulo `astral` aqui) y el `apagado` de `prueba-sol.sh` (hasta el `mio-sin`, sin ROCOLA_OS, sale distinto aqui: corre la base y la mia a horas distintas).
+- Tiempo por cuadro (ROCOLA_CIELO_RELOJ; **JIT**, maquina compartida con carga de 9 a 12; no NativeAOT ni el A4): lluvia a las 17:40 (pared, ficha y escaparate), antes
+  (rama principal) p50 3,45 / 3,60 y p95 6,6 / 7,2 ms, despues 3,78 / 3,59 y p95 8,2 / 7,3; tormenta (pared, 22:00) antes p50 2,95 p95 5,66, despues p50 3,04 p95 6,49; apagado
+  1,8 ms en los dos: unas decimas de ms de mas en la mediana; los maximos son de la carga.
+- Capturas de las 13 escenas de la presentacion hechas con la rocola de verdad (1024x768, fuera de pantalla), en el scratchpad de la sesion (`clima-rocola/`, con
+  `_hoja-comparar.png` junto a la presentacion); no van al repositorio.
+- Contraste (contraste.py, texto blanco): bajo el mensaje del escaparate de 0,024 a 0,134 de luz (5,7:1 o mas) en las 11 escenas; reposo de noche con lluvia: franja y letra de 0,09
+  a 0,11 (7:1 o mas). **De dia** la raya del horizonte de XP ya pasa de 0,17 sin clima (reposo 0,359, pared 0,255) y el piso mojado le suma poco (0,413 y 0,264): preexistente.
+
+### Lo no comprobado
+- Nada en el A4 ni con el Open-Meteo de verdad; el tiempo por cuadro es JIT en una maquina cargada.
+- **Los fuegos alumbrando las nubes** solo se comprobaron con la cuenta pura (`ArmaLuz`, `PonFuego`): no se logro una captura con un fuego justo bajo una nube. El **relampago con su
+  forma** se vio en una captura con alfa 0,36 (ahora 0,5, sin capturar). La luna tapada con su borde plateado se vio en capturas.
+- La luna B (`luna_camino`) sigue sin nubes delante; la nube del astro (`LaneY`) va con el sol y con la luna de XP.

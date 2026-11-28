@@ -126,7 +126,7 @@ namespace Rocola
         // LA IMAGEN de la pastilla (transparente fuera de la capsula) para una pantalla de alto h; la prueba tambien la pide (--prueba-cielo-clima --pastilla=RUTA)
         internal static SKBitmap Dibuja(string t, RocolaOsClima c, bool dia, int h)
         {
-            float px = Math.Max(13f, h * 0.028f);
+            float px = Math.Max(12f, h * 0.0225f);
             using (Rocola.Nativo.Letra fn = Rocola.Nativo.Letra.EnPixeles(Letras.Resuelve("Trebuchet MS"), px, true))
             using (SKPaint pincel = new SKPaint { Color = new SKColor(255, 255, 255, 255) })
             {
@@ -207,11 +207,11 @@ namespace Rocola
         {
             RocolaOsCieloFoto f = RocolaOsCielo.Foto;
             if (f == null || alfa <= 0.004f || tex == IntPtr.Zero) return;
-            float a = p.RocolaOsEscaparateAlfa();
+            float a = p.RocolaOsEscaparateAlfa(true);
             if (a <= 0.004f) return;
             GpuStarfield st = p.RocolaOsEstrellas; if (st == null || !ReferenceEquals(st, de)) return;
             RocolaOsCieloEscena e = RocolaOsCielo.Escena;
-            float x = e.Ancho - e.Ancho * 0.05f - bw, y = e.Alto * 0.06f;
+            float x = e.Ancho * 0.0225f, y = e.Alto - e.Alto * 0.026f - bh;   // abajo a la izquierda, como en la presentacion (el escaparate no pone nada ahi)
             uint al = (uint)Math.Max(0, Math.Min(255, (int)(255f * alfa * a + 0.5f)));
             p.RocolaOsPastillaQuad(quad, x, y, x + bw, y + bh, u, v, (al << 24) | 0x00FFFFFFu);
             st.DrawQuad(tex, quad);
@@ -231,10 +231,12 @@ namespace Rocola
         // el escaparate del disco a la vista (con su ficha): la pastilla solo sale con el (no en la atraccion de siempre)
         internal bool RocolaOsEscaparateConFicha { get { return atrCuadro.Has && atrCuadro.Vitrina; } }
         // lo visible que esta el escaparate (como los textos de XP: la escena, los controles, la lista de lo mas pedido que lo quita)
-        internal float RocolaOsEscaparateAlfa()
+        internal float RocolaOsEscaparateAlfa() { return RocolaOsEscaparateAlfa(false); }
+        // siempre: la pastilla del clima no se apaga cuando sale la lista de lo mas pedido (UiAlfa): abajo a la izquierda no tapa nada
+        internal float RocolaOsEscaparateAlfa(bool siempre)
         {
             if (!atrCuadro.Has || !atrCuadro.Vitrina) return 0f;
-            return Math.Max(0f, Math.Min(1f, atrCuadro.VitrinaA)) * Math.Max(0f, Math.Min(1f, atrCuadro.UiAlfa)) * SceneAlpha() * ControlsOpacity;
+            return Math.Max(0f, Math.Min(1f, atrCuadro.VitrinaA)) * (siempre ? 1f : Math.Max(0f, Math.Min(1f, atrCuadro.UiAlfa))) * SceneAlpha() * ControlsOpacity;
         }
         internal void RocolaOsPastillaQuad(Tarjeta.Vtx[] q, float x0, float y0, float x1, float y1, float u, float v, uint argb) { SetTexQuadA(q, x0, y0, x1, y1, u, v, argb); }
     }

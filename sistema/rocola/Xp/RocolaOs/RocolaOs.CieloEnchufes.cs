@@ -303,6 +303,10 @@ namespace Rocola
             RocolaOsCielo.PintaCapa(this, RocolaOsCieloCapa.ConLaLuna);
             return true;
         }
+        // g320 (DibujaNieblas): con el cielo vivo y nebulosas=0 (de fabrica) las nebulosas de XP no se dibujan (la via lactea, las estrellas, la aurora y lo demas
+        // si); sin ROCOLA_OS o con el cielo apagado, false: las de XP
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool RocolaOsSinNebulosas() { return RocolaOs.Activo && RocolaOsCielo.Va && RocolaOsCielo.SinNebulosas; }
         // (para los grupos) lo de XP que suelen necesitar
         internal float RocolaOsHorizonteXp { get { return auCuadro.BaseY - AurLineaAlza; } }
         internal GpuStarfield RocolaOsEstrellas { get { return stars; } }
