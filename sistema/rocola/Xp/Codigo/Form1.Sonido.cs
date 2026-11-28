@@ -1451,7 +1451,7 @@ namespace Rocola
         private CadenaCancion ArmaCadena(Track t, IAudioSource source, bool iaMejorada, double saltadoSeg)
         {
             // La comparacion a ciegas se acaba antes de armar otra cancion: si no, se armaria con lo del tramo que suene (CompararCiegas.cs).
-            if (ciegoActivo) TerminaCiego("Se acaba la cancion: comparacion cortada. ");
+            if (ciegoActivo) TerminaCiego("Se acaba la cancion: comparacion cortada. "); { CadenaCancion rocolaOsNueva = RocolaOsCadenaNueva(t, source, iaMejorada, saltadoSeg); if (rocolaOsNueva != null) return rocolaOsNueva; }   // ROCOLA OS g460: (XP) if (ciegoActivo) TerminaCiego("Se acaba la cancion: comparacion cortada. "); — con la cadena de sonido nueva (cadena_nueva=1), la cadena de esta cancion la arma Rocola OS (la A; con el modo billar guardado, la B: RocolaOs/RocolaOs.CadenaNueva.cs); sin ella, o si falla al armarla, null y la de XP
             CadenaCancion c = new CadenaCancion(); t = RocolaOsCalidadCancion(t, source);   // ROCOLA OS g61: (XP) CadenaCancion c = new CadenaCancion(); — si el lector es la version de Spotify de una cancion tuya, la cadena se arma con una copia de tu cancion con la ruta de Spotify (sus medidas, ninguna de tu MP3); lo que se ve sigue siendo tu cancion (RocolaOs/RocolaOs.Calidad.cs; de XP, la misma t)
             c.Cancion = t; c.Lector = source; c.IaMejorada = iaMejorada;
             OlvidaSiEsOtroArchivo(t.Path, source);   // en esa ruta hay hoy otro archivo: lo aprendido del de antes no vale
@@ -1637,7 +1637,7 @@ namespace Rocola
             // rocola_incompatibles.txt. Los MP3 de verdad (y el MP3 dentro de un WAV) pasan igual que antes. Ver NoEsMp3.cs.
             { IAudioSource rocolaOsConvertida = RocolaOsConvertidaAbre(path); if (rocolaOsConvertida != null) return rocolaOsConvertida; } NoEsMp3.Rechaza(path);   // ROCOLA OS g110: (XP) NoEsMp3.Rechaza(path); — un «MP3» que es otro formato suena desde su copia en WAV hecha con ffmpeg (funcion «convierte», RocolaOs/RocolaOs.Convierte.cs): si aun no esta, se espera hasta 20 s y si tarda mas se devuelve el credito sin marcarla danada; sin ffmpeg, sin sitio o si no se pudo, null y lo de XP
             { IAudioSource rocolaOsSpotify = RocolaOsSpotifyAbre(path); if (rocolaOsSpotify != null) return rocolaOsSpotify; } string original = RutaOriginalDe(path);   // ROCOLA OS g13: (XP) string original = RutaOriginalDe(path); — con el modo Spotify (spotify=1), una ruta «spotify:track:» se abre con la fuente de Spotify, que lee el anillo de Soloist (RocolaOs/RocolaOs.SpotifyFuente.cs); apagado, null y lo de XP
-            FuenteMedida inicio = CapturaFuente(original);
+            FuenteMedida inicio = CapturaFuente(original); { IAudioSource rocolaOsFlotante = RocolaOsCadenaNuevaAbre(path, original, inicio); if (rocolaOsFlotante != null) return rocolaOsFlotante; }   // ROCOLA OS g462: (XP) FuenteMedida inicio = CapturaFuente(original); — con la cadena de sonido nueva, un MP3 se abre en coma flotante (libmpg123 ENC_FLOAT_32) y sin huecos con las tres marcas (RocolaOs/RocolaOs.CadenaNuevaMp3.cs), con saltar los silencios de XP por fuera; si no, null y lo de XP
             try { return SinSilencios(path, SinRelleno(path, SellaFuenteAudio(original, inicio, ComoEstereo(new FileAudioSource(path))))); }   // sin el hueco del codificador ni los silencios largos
             catch
             {
