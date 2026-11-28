@@ -311,6 +311,46 @@ bitacora ni rocola_os.txt» para el sonido y el Tab de mas de la pestana Billar,
 `salida-audio` (sus botones con la salida nueva siempre), `volumen` (amixer: pasa al volumen digital), `sustitucion` (la sombra en la cadena nueva)
 y `huecos` (R1 en el descompresor nuevo). Las de la rocola de XP de Rocola/ (`billar18`, `billarparejo`, `compara-cadena`...) no se tocan.
 
+### Los archivos de volumen y tono, uno por uno: ¿siguen sirviendo? (peticion del dueno del 28-11-2026)
+
+«revisa que todos los archivos de volumenes y eso sigan siendo compatibles, o si no lo son, piensa si sirven de algo o simplemente requieren
+alguna adaptacion». (a) = lo usa la nueva tal cual; (b) = sirve con una adaptacion; (c) = no sirve: a la papelera. Las tablas de XP las trae
+`Nativo/ImportaXp.cs` de la rocola de XP (solo leyendo su carpeta) y despues las escribe el repaso de XP de rocola-xp; la medida nueva tiene la suya
+(`rocola_medida_nueva.txt`, que manda siempre que exista para esa cancion y esa cadena).
+
+| archivo (que trae) | veredicto | como se usa / la adaptacion |
+|---|---|---|
+| `rocola_sonoridad.txt`: la integrada BS.1770 (LKFS) del decodificado de 16 bits, el pico de muestra, P99, P90, LRA | (b) | ESTIMACION INICIAL de una cancion que la medida nueva aun no mide (ya lo hace `RocolaOsEstimaVieja`: L = su LKFS, TP = su pico + 3 dB, fija toda la cancion). Es la sonoridad de la cancion SIN la cadena: para la A casi igual (los graves al centro apenas la mueven); para la B (mono, paso alto, curva) se queda corta o larga 1-3 dB: por eso el margen. Mejora propuesta (la toca el agente de la medida, P10 «mejor estimacion de lo no medido», no se cambia aqui): para la B, sumarle a esa LKFS lo que la curva del billar le hace a una cancion media (de la mediana de las que ya tienen las dos medidas, A y B). P99, P90 y LRA: (c) (eran del «al limite» y del modo billar viejo) |
+| `rocola_sonoridad.txt`: el mapa de silencios (algoritmo 3) | (a) | lo usa «Saltar los silencios largos» (`SinSilencios.MapaDe`) tal cual, para tus MP3 y para la nueva. Fase 2: la medida nueva saca el suyo y manda (punto 1 de abajo); el de XP queda de respaldo hasta que se mida |
+| `rocola_sonoridad.txt`: inicio y fin utiles (algoritmo 6) | (a) | la frontera continua de un disco en la sustitucion invisible (`RocolaOsCalidadFronteraContinua`). Fase 2: del mapa de silencios nuevo |
+| `rocola_sonoridad.txt`: el zumbido de 50/60 Hz (algoritmo 6) | (a) | el arreglo fijo del zumbido de la nueva (`ZumbidoDe` al medir y al armar). Fase 2: lo mide la medida nueva (`MedidorZumbido`) y el de XP queda de respaldo hasta que se mida |
+| `rocola_sonoridad.txt`: el pre-eco (algoritmo 7) | (c) | era de R2 (QuitaPreEco, de la cadena vieja); la sustitucion ya no lo mira desde el 20-11-2026 |
+| `rocola_volumen.txt` (`loudCache`): la estimacion K-RMS por tramos, y la duracion del repaso | (b) | la estimacion de lo no medido sin integrada (`RocolaOsEstimaVieja`: L = 2,32 + 20 log10 rms, +3 dBTP) y la regla de XP de los videos aun sin medir por ffmpeg (`VideoVolumeFor`). La duracion: las de verdad salen de `rocola_duracion.txt` (el escaneo rapido) |
+| `rocola_eq.txt` (`eqCache`): la huella de tono de 8 bandas, el corte de agudos medido (`EqCut`/`EqCutLo`) y los recortes | (a)/(b) | el CORTE lo usa la sustitucion invisible tal cual (`RocolaOsCalidadMira`: «agudos cortados bajo 16 kHz»); la HUELLA la usa `tono_parejo` (opcional de la A, apagado) y la estimacion de lo que el tono parejo le hace a la ganancia. Fase 2: el corte de la ficha de calidad de la medida nueva (agente de la medida, P2) y los 30 tercios de la medida nueva en vez de la huella (punto 4 de abajo); los recortes: (c) (eran de DeclipVale) |
+| `rocola_fuentes.txt`: el sello de cada medida de XP (que la medida sea de ese archivo) | (a) | mientras se lean las tablas de arriba, es lo que dice si siguen valiendo; se va con ellas |
+| `rocola_afondo.txt`: que canciones ya tuvieron el repaso a fondo de XP | (c) | se va con el boton «Repasar la biblioteca a fondo» (abajo) |
+| `rocola_ia_hechas.txt`, `rocola_ia_datos.*`, `IAS/*.bin` | (c) | fase 1: los modelos a la papelera, el material borrado (decision (4)) |
+| `rocola_billar_nivel.txt` (y `.antes-2026-11-18.txt`): el volumen parejo aprendido del billar | (c) | eran dB de mas o de menos frente al LIMITADOR de XP con la cadena vieja; la nueva da `min(T - L, C - TP)` con su medida: no hay equivalente. Fase 1: a la papelera |
+| `rocola_billar_bitacora.txt` (y `.1`) | (c) | la bitacora de la cadena vieja. Fase 1: a la papelera |
+| `rocola_spotify_niveles.txt` (spotify_nivela): LKFS, pico, P99 y P90 de las de Spotify que sonaron enteras | (b) | hoy la nueva usa la MEDIANA de esa tabla para la 1.a vez de Spotify mientras no tenga 5 suyas (`RocolaOsSpotifyEstimada`; la tabla se carga solo para leer desde la fase 1). Adaptacion propuesta (es de la estimacion: agente de la medida, por el nombre de la funcion `RocolaOsSpotifyEstimada`): si la tabla tiene ESA cancion por su id, usar su LKFS y su pico + 2 dB (mas preciso que la mediana) hasta que la medida nueva la mida en vivo. Fase 2: a la papelera cuando la medida nueva de Spotify tenga suficientes |
+| `rocola_spotify_eq.txt` (spotify_eq, spotify_brillo): la huella y el corte de las de Spotify | (c) | solo los usaban el EQ automatico y el realce de la cadena vieja (y una estimacion del tono parejo, apagado). Fase 1: a la papelera (la medida nueva de Spotify trae sus tercios) |
+| `rocola_spotify_pares.txt`: las parejas de la sustitucion invisible | (a) | tal cual (la sustitucion se queda) |
+| `rocola_huecos.txt`: la medida previa de R1 (`huecos_mide`) | (a) | tal cual (R1, el relleno de huecos, se queda: `agudos_mp3`) |
+| `rocola_videos_nivel.txt`: la sonoridad y el pico de cada video (ffmpeg) | (a) | tal cual (la salida nueva, D11) |
+| `rocola_medida_nueva.txt` | (a) | la de la nueva |
+| `afinado_local=`, `afinado_ponderacion=` (`rocola_config.txt`): la afinacion de un punto del billar viejo (8 bandas, dBA/dBC) | (b) | son las mismas 8 bandas y la misma ponderacion que la afinacion nueva de la B: ya se pueden pasar a mano con «Traer la de Ctrl+F3» de la hojita Billar. Adaptacion (fase 2, al quitar Ctrl+F3 viejo; la hojita es del agente del billar): si la B no tiene ningun punto, pasarla UNA vez como punto 1, sola, y quitar el boton. `afinado_usar=`: (c) (la B siempre usa la suya) |
+| `eq_dueno=`, `eq_dueno_billar=` | (a) | tal cual (las dos memorias del ecualizador del dueno; la nueva no les pone preganancia) |
+| `noche*=`, `saltar_silencios=`, `fundido=`, `local_auto=` | (a) | tal cual (`local_auto=` es ahora «la B») |
+| `normalizar=`, `nivel_objetivo=`, `nivel_fuerza=`, `video_vol=`, `video_automatico=` | (c)/(b) | del nivelado de XP: (c) para las canciones; `nivel_objetivo=`, `video_vol=` y `video_automatico=` aun dan la regla de los videos sin medir: (c) en la fase 2, cuando esos vayan con una ganancia fija conservadora |
+| `rocola_calidad.txt` (el informe de XP) | (c) | lo sustituye la ficha de calidad de la medida nueva |
+
+Ninguno es «incompatible» en el sentido de romper algo: los que se quedan se leen igual que hoy; los de (c) simplemente nadie los lee.
+
+**El boton «Repasar la biblioteca a fondo»** de Ctrl+F3 (`preScanTurbo`, Form1.Ajustes.cs: el boton `bTrain`, `pintaTrain`, su barra `pbTrain`/
+`lPct`, los textos de `hint` que hablan del repaso a fondo, el reset) SE QUITA con todo lo suyo en la fase 2 (es Codigo/: no cabe en un gancho de
+una linea sin dejar la pieza en la hoja), junto con `preScanTurbo`/`StartPreScan(turbo)`, `deepDone`/`rocola_afondo.txt` y `MarkDeepDone`: la
+medida nueva va siempre lo mas rapido posible de fondo (agente de la medida).
+
 ### Lo que la nueva necesita antes de borrar (se porta en la fase 2, sobre lo que junte el agente de la medida)
 
 La cadena nueva y lo que se queda leen hoy de las tablas de XP (por eso su repaso sigue en la fase 1):
