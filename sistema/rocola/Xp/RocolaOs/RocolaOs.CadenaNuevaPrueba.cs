@@ -9,6 +9,10 @@
 //   constante               ruido rosa (mono) con escalones de +-10 dB: la ganancia por bloque de 10 ms de la cadena nueva y del limitador de hoy
 //   disco MP3 MP3 WAV       dos pistas seguidas de un disco por dos cadenas con el disco continuo: frente al WAV de las dos juntas
 //   arreglos DIR            arma WAV con un canal mudo, uno invertido y continua, y los mide (detecta, segunda pasada, lo que sale)
+//   (28-11-2026, los arreglos de CADENA_NUEVA_A.md) eqdueno ARCHIVO... (a1: lo que sube el pico con curvas del dueno, de verdad, estimado ahora y
+//                           como antes) | eqvivo ARCHIVO... (a1: la curva sube a media cancion, con y sin el tope) | convierte (a5: la conversion de la
+//                           salida de hoy con una cadena nueva y con una de XP) | dsee DIR (a7: el corte medido y el DSEE con el corte fijo o el que
+//                           sigue a la musica) | noche (a8: la ganancia con la noche que publica el reloj)
 //   costo MP3               tiempo de procesador del hilo por segundo de musica: decodificar y la cadena nueva, frente a hoy (16 bits y las
 //                           etapas de XP que se arman sin la rocola: grave en mono, el local, el bajo psicoacustico, el EQ del dueno y el limitador)
 using System;
@@ -39,6 +43,11 @@ namespace Rocola
                     if (a.Length == 4 && a[0] == "disco") return Disco(a[1], a[2], a[3]);
                     if (a.Length == 2 && a[0] == "arreglos") return Arreglos(a[1]);
                     if (a.Length == 2 && a[0] == "costo") return Costo(a[1]);
+                    if (a.Length >= 2 && a[0] == "eqdueno") { for (int i = 1; i < a.Length; i++) EqDueno(a[i]); return 0; }
+                    if (a.Length >= 2 && a[0] == "eqvivo") { for (int i = 1; i < a.Length; i++) EqVivo(a[i]); return 0; }
+                    if (a.Length == 1 && a[0] == "convierte") return Convierte();
+                    if (a.Length == 2 && a[0] == "dsee") return Dsee(a[1]);
+                    if (a.Length == 1 && a[0] == "noche") return Noche();
                 }
                 catch (Exception ex) { Console.WriteLine("ERROR " + ex.GetType().Name + ": " + ex.Message + "\n" + ex.StackTrace); return 1; }
                 Console.Error.WriteLine("uso: rocola-xp --prueba-cadena-nueva decodifica MP3... | sinhuecos WAV MP3... | mide ARCHIVO... | medidor | ganancia ARCHIVO... | constante | disco MP3 MP3 WAV | arreglos DIR | costo MP3");
@@ -62,7 +71,7 @@ namespace Rocola
             private sealed class DeArreglo : ISampleProvider
             {
                 private readonly float[] d; private int p; private readonly WaveFormat f;
-                internal DeArreglo(float[] datos, int tasa) { d = datos; f = WaveFormat.CreateIeeeFloatWaveFormat(tasa, 2); }
+                internal DeArreglo(float[] datos, int tasa, WaveFormat formato = null) { d = datos; f = formato ?? WaveFormat.CreateIeeeFloatWaveFormat(tasa, 2); }
                 public WaveFormat WaveFormat { get { return f; } }
                 public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }
                 public int Read(float[] b, int o, int c) { int n = Math.Min(c, d.Length - p); if (n <= 0) return 0; Array.Copy(d, p, b, o, n); p += n; return n; }
@@ -388,6 +397,222 @@ namespace Rocola
                 return 0;
             }
             private static int Cuenta(ISampleProvider s) { float[] b = new float[8192]; int n, t = 0; while ((n = s.Read(b, 0, b.Length)) > 0) t += n; return t; }
+
+            // ================================================================ los arreglos del 28-11-2026 (CADENA_NUEVA_A.md «Arreglos»)
+            // ---------------- eqdueno (a1): cuanto se supone que sube el pico con la curva del dueno, frente a lo que sube de verdad
+            private static readonly string[] CurvasNombre = { "63+6", "31+4_63+4", "4k+3", "63+6_125+6", "2k4k8k+12", "todo+6", "16k+6" };
+            private static int[] CurvaDe(string n)
+            {
+                int[] e = new int[EcualizadorDueno.Bandas];
+                switch (n)
+                {
+                    case "63+6": e[1] = 12; break;
+                    case "31+4_63+4": e[0] = 8; e[1] = 8; break;
+                    case "4k+3": e[7] = 6; break;
+                    case "63+6_125+6": e[1] = 12; e[2] = 12; break;
+                    case "2k4k8k+12": e[6] = 24; e[7] = 24; e[8] = 24; break;
+                    case "todo+6": for (int b = 0; b < e.Length; b++) e[b] = 12; break;
+                    case "16k+6": e[9] = 12; break;
+                }
+                return e;
+            }
+            private static void EqDueno(string ruta)
+            {
+                RocolaOsMedidaNueva m = RocolaOsMideCancion(ruta, 'A', 0, null, null);
+                if (m == null) { Console.WriteLine("EQDUENO " + Path.GetFileName(ruta) + " fallo=si"); return; }
+                Console.WriteLine("EQDUENO " + Path.GetFileName(ruta) + " curva=ninguna lufs=" + N(m.Lufs, "0.00") + " tp=" + N(m.TpDb, "0.00") + " picos_eq=" + (m.PicosEq != null ? string.Join(";", Array.ConvertAll(m.PicosEq, v => N(v - m.TpDb, "0.0"))) : "-"));
+                foreach (string n in CurvasNombre)
+                {
+                    int[] eq = CurvaDe(n);
+                    IAudioSource s = RocolaOsAbreParaMedir(ruta);
+                    RocolaOsReceta r = new RocolaOsReceta { Cadena = 'A', Ruta = ruta, Tasa = s.WaveFormat.SampleRate, CanalMudo = m.CanalMudo, Invertido = m.Invertido, ContinuaL = m.ContinuaL, ContinuaR = m.ContinuaR };
+                    double dl, dtp, ot;
+                    RocolaOsDespuesCon(r, eq, m.Tercios, m.TpDb, m.PicosEq, out dl, out dtp, out ot);
+                    double gN = RocolaOsG(m.Lufs + dl, m.TpDb + dtp);
+                    double dtpHoy = -EcualizadorDueno.PreganDb(eq, r.Tasa);                       // lo de antes: lo maximo que sube la curva
+                    double gH = RocolaOsG(m.Lufs + dl, m.TpDb + dtpHoy);
+                    // lo que sale de verdad con la curva (a ganancia 0: la ganancia es lineal y no hay limitador)
+                    float[] y;
+                    try
+                    {
+                        ISampleProvider x = r.Anota(new RocolaOsPiezaEntrada(s, null, false));
+                        x = RocolaOsNucleo(r, x, 0);
+                        x = r.Anota(new RocolaOsEqDuenoPieza(x, null, false, eq));
+                        y = LeeTodo(x);
+                    }
+                    finally { s.Dispose(); }
+                    RocolaOsMedidaNueva o = MideArreglo(y, r.Tasa);
+                    // la sonoridad sin espectro (sin nada medido: el de un ruido rosa) frente a lo de antes (lo maximo de la curva)
+                    double dlSin = RocolaOsDeltaL(null, EcualizadorDueno.Respuesta(eq, r.Tasa, RocolaOsHzTercios()), r.Tasa);
+                    Console.WriteLine("EQDUENO " + Path.GetFileName(ruta) + " curva=" + n + " sube_real=" + N(o.TpDb - m.TpDb, "0.00") + " sube_nueva=" + N(dtp, "0.00") + " sube_hoy=" + N(dtpHoy, "0.00")
+                        + " g_nueva=" + N(gN, "0.00") + " g_hoy=" + N(gH, "0.00") + " sale_tp_nueva=" + N(o.TpDb + gN, "0.00") + " sale_tp_hoy=" + N(o.TpDb + gH, "0.00")
+                        + " sale_lufs_nueva=" + N(o.Lufs + gN, "0.00") + " sale_lufs_hoy=" + N(o.Lufs + gH, "0.00") + " dl_sin_espectro=" + N(dlSin, "0.00") + " dl_sin_espectro_hoy=" + N(dtpHoy, "0.00"));
+                }
+            }
+
+            // ---------------- eqvivo (a1): el dueno sube la curva a media cancion; con el tope, la cancion no pasa el techo
+            private sealed class Contador : ISampleProvider
+            {
+                private readonly ISampleProvider s; internal long Leidos;
+                internal Contador(ISampleProvider x) { s = x; }
+                public WaveFormat WaveFormat { get { return s.WaveFormat; } }
+                public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }
+                public int Read(float[] b, int o, int c) { int n = s.Read(b, o, c); if (n > 0) Leidos += n; return n; }
+            }
+            private static void EqVivo(string ruta)
+            {
+                RocolaOsMedidaNueva m = RocolaOsMideCancion(ruta, 'A', 0, null, null);
+                if (m == null) { Console.WriteLine("EQVIVO " + Path.GetFileName(ruta) + " fallo=si"); return; }
+                int[] plano = new int[EcualizadorDueno.Bandas], sube = CurvaDe("2k4k8k+12");
+                foreach (bool conTope in new[] { true, false })
+                {
+                    IAudioSource s = RocolaOsAbreParaMedir(ruta);
+                    RocolaOsReceta r = new RocolaOsReceta { Cadena = 'A', Ruta = ruta, Tasa = s.WaveFormat.SampleRate };
+                    double g = RocolaOsAnota(r, m.Lufs, m.TpDb, m.PicosEq, 0, 0);   // con el EQ plano al armarse
+                    long mitad = (long)(m.Segundos * r.Tasa);   // (muestras: la mitad de los cuadros por dos canales)
+                    float[] y;
+                    try
+                    {
+                        Contador k = new Contador(s);
+                        ISampleProvider x = r.Anota(new RocolaOsPiezaEntrada(k, null, false));
+                        x = RocolaOsNucleo(r, x, 0);
+                        RocolaOsEqDuenoPieza e = r.Anota(new RocolaOsEqDuenoPieza(x, null, false, plano));
+                        e.Pide = () => k.Leidos >= mitad ? sube : plano;
+                        RocolaOsGananciaPieza gp = r.Anota(new RocolaOsGananciaPieza(e, null, g));
+                        if (conTope) { e.TpAntesDb = r.TpAntesEqDb; e.Picos = r.PicosEq; e.OtrosDb = r.DtpOtrosDb; e.CDb = RocolaOsCadenasNuevas.C; e.Tope = gp; }
+                        y = LeeTodo(gp);
+                        Console.Write("EQVIVO " + Path.GetFileName(ruta) + " tope=" + (conTope ? 1 : 0) + " g=" + N(g, "0.00") + " efectiva_al_final=" + N(gp.EfectivaDb, "0.00") + " topes=" + e.Topes);
+                    }
+                    finally { s.Dispose(); }
+                    int fr = y.Length / 2, h = fr / 2;
+                    float[] a = new float[2 * h], b = new float[y.Length - 2 * h];
+                    Array.Copy(y, 0, a, 0, a.Length); Array.Copy(y, a.Length, b, 0, b.Length);
+                    RocolaOsMedidaNueva ma = MideArreglo(a, r.Tasa), mb = MideArreglo(b, r.Tasa);
+                    Console.WriteLine(" tp_primera_mitad=" + N(ma.TpDb, "0.00") + " tp_segunda_mitad=" + N(mb.TpDb, "0.00"));
+                }
+            }
+
+            // ---------------- convierte (a5): la conversion de frecuencia de la salida de hoy con una cadena nueva, sin el limitador de XP
+            private static int Convierte()
+            {
+                WaveFormat de = FormatoAudio.Flotante(44100, 2, 3), a = FormatoAudio.Flotante(48000, 2, 3);
+                double[] tabla = null;
+                for (int i = 0; i < 40 && (tabla = RemuestreoContinuo.CapturaTabla(de, a)) == null; i++) System.Threading.Thread.Sleep(50);
+                if (tabla == null) tabla = TablaComoXp(44100, 48000);   // (el calentador de fondo no la dio a tiempo: la misma cuenta que CreaFiltro de XP)
+                float[] x = Seno(44100, 1000, 0.95, 0.3, 3);   // pico 0,95: por encima del techo del limitador de XP (0,88)
+                foreach (bool nueva in new[] { false, true })
+                {
+                    CadenaCancion c = new CadenaCancion();
+                    c.Salida = new DeArreglo(x, 44100, de); c.Retardo = 0;
+                    if (nueva) rocolaOsArmadas.AddOrUpdate(c, new RocolaOsArmada { Receta = new RocolaOsReceta() });
+                    ConvierteSalida(c, a, tabla);
+                    float[] y = LeeTodo(c.Salida);
+                    float pk = 0; for (int i = 0; i < y.Length; i++) pk = Math.Max(pk, Math.Abs(y[i]));
+                    Console.WriteLine("CONVIERTE " + (nueva ? "nueva" : "xp") + " limitador=" + (c.LimiteSalida != null ? 1 : 0) + " retardo=" + c.Retardo + " tasa=" + c.Salida.WaveFormat.SampleRate
+                        + " pico_db=" + N(Db(pk), "0.00") + " entra_db=" + N(Db(0.95), "0.00") + " techo_xp_db=" + N(Db(TechoPicoReal), "0.00"));
+                }
+                return 0;
+            }
+
+            // la tabla del convertidor de XP (SinPausa.cs, CreaFiltro: 512 fases, 96 coeficientes por lado, Blackman-Harris de 4 terminos)
+            private static double[] TablaComoXp(int tasaIn, int tasaOut)
+            {
+                const int Fases = 512;
+                int mitad = (int)Math.Ceiling(96.0 * Math.Max(1.0, (double)tasaIn / tasaOut)), taps = mitad * 2;
+                double[] f = new double[(Fases + 1) * taps];
+                double corte = 0.47 * Math.Min(1.0, (double)tasaOut / tasaIn);
+                for (int fase = 0; fase <= Fases; fase++)
+                {
+                    double fr = (double)fase / Fases, suma = 0;
+                    for (int j = 0; j < taps; j++)
+                    {
+                        double dt = fr - (j - mitad + 1), u = dt / mitad, h = 0;
+                        if (Math.Abs(u) <= 1)
+                        {
+                            double q = 2 * corte * dt, sinc = Math.Abs(q) < 1e-12 ? 1 : Math.Sin(Math.PI * q) / (Math.PI * q);
+                            h = 2 * corte * sinc * (0.35875 + 0.48829 * Math.Cos(Math.PI * u) + 0.14128 * Math.Cos(2 * Math.PI * u) + 0.01168 * Math.Cos(3 * Math.PI * u));
+                        }
+                        f[fase * taps + j] = h; suma += h;
+                    }
+                    for (int j = 0; j < taps; j++) f[fase * taps + j] /= suma;
+                }
+                return f;
+            }
+
+            // ---------------- dsee (a7): el corte medido (fijo por cancion) frente al que sigue a la musica
+            private static int Dsee(string dir)
+            {
+                int tasa = 44100;
+                Directory.CreateDirectory(dir);
+                // 6 s de ruido con agudos hasta 16 kHz (el corte del codificador) y 6 s apagados (hasta 11 kHz): las partes apagadas no son el corte
+                float[] x = Rosa(tasa, 12, 21, false);
+                int n = x.Length / 2, mitad = n / 2;
+                x = PasoBajoFft(x, tasa, 16000, 0, mitad);
+                x = PasoBajoFft(x, tasa, 11000, mitad, n);
+                string p = Path.Combine(dir, "dsee.wav"); EscribeWav(p, x, tasa);
+                RocolaOsMedidaNueva m = RocolaOsMideCancion(p, 'A', 0, null, null);
+                Console.WriteLine("DSEE medida corte=" + N(m.CorteHz, "0"));
+                foreach (bool fijo in new[] { true, false })
+                {
+                    SpectralTap t = new SpectralTap(new DeArreglo(x, tasa));
+                    t.Active = true;
+                    if (fijo) RocolaOsDseeFija(t, m.CorteHz);
+                    float[] y = LeeTodo(t);
+                    // en la parte apagada: lo que hay de 11,5 a 15,5 kHz (en la entrada, nada) frente a lo de 4 a 8 kHz
+                    double e1 = BandaDb(y, tasa, mitad + tasa / 2, n - tasa / 2, 11500, 15500), e0 = BandaDb(y, tasa, mitad + tasa / 2, n - tasa / 2, 4000, 8000);
+                    double en = BandaDb(x, tasa, mitad + tasa / 2, n - tasa / 2, 11500, 15500);
+                    // y en la parte con agudos: lo que hay de 16,5 a 19,5 kHz (lo que recrea el DSEE)
+                    double r1 = BandaDb(y, tasa, tasa / 2, mitad - tasa / 2, 16500, 19500) - BandaDb(y, tasa, tasa / 2, mitad - tasa / 2, 4000, 8000);
+                    Console.WriteLine("DSEE " + (fijo ? "fijo" : "sigue") + " apagada_11k5_15k5_db=" + N(e1 - e0, "0.0") + " entrada_db=" + N(en - e0, "0.0") + " con_agudos_16k5_19k5_db=" + N(r1, "0.0"));
+                }
+                return 0;
+            }
+            // (para dsee) paso bajo de ladrillo por FFT de un tramo [a, b) de cuadros
+            private static float[] PasoBajoFft(float[] x, int tasa, double hz, int a, int b)
+            {
+                int n = b - a, M = 1; while (M < n) M <<= 1;
+                float[] y = (float[])x.Clone();
+                for (int ch = 0; ch < 2; ch++)
+                {
+                    double[] re = new double[M], im = new double[M];
+                    for (int i = 0; i < n; i++) re[i] = x[2 * (a + i) + ch];
+                    RocolaOsFft.Hace(re, im, false);
+                    for (int k = 0; k < M; k++) { double f = (k <= M / 2 ? k : M - k) * (double)tasa / M; if (f > hz) { re[k] = 0; im[k] = 0; } }
+                    RocolaOsFft.Hace(re, im, true);
+                    for (int i = 0; i < n; i++) y[2 * (a + i) + ch] = (float)re[i];
+                }
+                return y;
+            }
+            private static double BandaDb(float[] x, int tasa, int a, int b, double f0, double f1)
+            {
+                int N2 = 4096; double e = 0; int cuantas = 0;
+                double[] re = new double[N2], im = new double[N2];
+                for (int i0 = a; i0 + N2 <= b; i0 += N2)
+                {
+                    for (int i = 0; i < N2; i++) { double w = 0.5 - 0.5 * Math.Cos(2 * Math.PI * i / N2); re[i] = x[2 * (i0 + i)] * w; im[i] = 0; }
+                    RocolaOsFft.Hace(re, im, false);
+                    for (int k = 1; k < N2 / 2; k++) { double f = k * (double)tasa / N2; if (f >= f0 && f < f1) e += re[k] * re[k] + im[k] * im[k]; }
+                    cuantas++;
+                }
+                return 10 * Math.Log10(Math.Max(1e-30, e / Math.Max(1, cuantas)));
+            }
+
+            // ---------------- noche (a8): la pieza de la ganancia lee la noche que publica el reloj, sin llamar a FactorNoche
+            private static int Noche()
+            {
+                int tasa = 44100;
+                float[] x = Seno(tasa, 1000, 0.1, 0, 2);
+                foreach (float publicada in new[] { 1f, 0.5f })
+                {
+                    RocolaOsPublicaNoche(publicada);
+                    RocolaOsGananciaPieza g = new RocolaOsGananciaPieza(new DeArreglo(x, tasa), null, -6.0) { ConNoche = true };
+                    float[] y = LeeTodo(g);
+                    double ex = 0, ey = 0; for (int i = tasa; i < y.Length; i++) { ex += x[i] * (double)x[i]; ey += y[i] * (double)y[i]; }
+                    Console.WriteLine("NOCHE publicada=" + N(publicada, "0.00") + " sale_db=" + N(10 * Math.Log10(ey / ex), "0.00") + " espera_db=" + N(-6.0 + 20 * Math.Log10(publicada), "0.00"));
+                }
+                RocolaOsPublicaNoche(1f);
+                return 0;
+            }
         }
     }
 }

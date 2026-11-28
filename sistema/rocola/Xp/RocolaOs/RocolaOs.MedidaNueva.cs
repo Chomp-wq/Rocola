@@ -14,6 +14,9 @@
 //   y los ARREGLOS FIJOS, de lo que sale del decodificador (antes de la cadena): CanalMudo (un canal 30 dB o mas por debajo de la cancion entera),
 //   Invertido (la correlacion del grave, por debajo de 150 Hz, de -0,6 o menos con grave de verdad), ContinuaL/R (la media de cada canal) y
 //   ZumbidoHz (el que mide el repaso de XP, T6: se usa el de su tabla al medir, y se guarda con la medida).
+//   (28-11-2026) PicosEq: el pico de muestra de lo que deja pasar la sonda de cada banda del ecualizador del dueno (RocolaOsSondasEq), para
+//   estimar cuanto sube el pico real con su curva sin suponer lo maximo (RocolaOsPicosEq); CorteHz: el corte de agudos de la cancion (el
+//   percentil 90 del acantilado de cada FFT con musica), para el DSEE de agudos_mp3 con su corte fijo.
 // Si la cancion necesita un arreglo, la medida se repite con el arreglo puesto (segunda pasada): lo guardado es SIEMPRE lo que sale de la
 // cadena tal como va a sonar.
 using System;
@@ -42,6 +45,8 @@ namespace Rocola
         internal float ContinuaL, ContinuaR;
         internal int ZumbidoHz;
         internal long Unix;
+        internal float[] PicosEq;                          // (28-11-2026) el pico de muestra de cada sonda del EQ del dueno (10, dBFS; null: medida de antes)
+        internal float CorteHz;                            // (28-11-2026) el corte de agudos de la cancion (el DSEE de agudos_mp3); 0: sin medir
         internal bool Muda { get { return double.IsNegativeInfinity(Lufs) || Lufs < -69.0; } }
         internal bool ConArreglos { get { return CanalMudo >= 0 || Invertido || ContinuaL != 0f || ContinuaR != 0f || ZumbidoHz > 0; } }
 

@@ -386,6 +386,17 @@ namespace Rocola
             private readonly double[] st = new double[2 * EcualizadorDueno.Bandas * 4];
             private bool empezo, algo;
             private volatile RocolaOsEqDuenoPieza anterior;
+            // EL TOPE DE LA GANANCIA si el dueno mueve el EQ mientras suena (a1 del 28-11-2026): lo de la cancion con lo que se decidio su ganancia
+            // (RocolaOsReceta: el pico real antes del EQ, los picos de sus sondas o los tipicos, lo del tono y los agudos, el techo). Cuando lo
+            // pedido cambia se vuelve a estimar con lo mas de lo que va y lo pedido (la rampa del EQ es de 50 ms; el tope, de 20) y otra vez al
+            // asentarse; si pasaria el techo, la ganancia baja (Tope.TopeLin). Solo aritmetica, solo al cambiar.
+            internal RocolaOsGananciaPieza Tope;
+            internal double TpAntesDb = double.NaN, OtrosDb, CDb = -1.0;   // (CDb: el techo C de la cadena, dBTP)
+            internal float[] Picos, Tipicos;
+            internal Func<int[]> Pide;          // (las pruebas: lo que pide el dueno sin la rocola)
+            private int[] estimado;             // con que se estimo la ultima vez
+            private bool asentado = true;
+            internal long Topes;                // cuantas veces bajo la ganancia
             internal RocolaOsEqDuenoPieza(ISampleProvider s, Form1 o, bool memoriaBillar, int[] inicial)
             {
                 src = s; owner = o; billar = memoriaBillar; tasa = s.WaveFormat.SampleRate;
@@ -396,12 +407,15 @@ namespace Rocola
                     int m = inicial != null && b < inicial.Length && valida[b] ? EcualizadorDueno.Acota(inicial[b]) : 0;
                     obj[b] = m; act[b] = m * 0.5; if (m != 0) { corre[b] = true; algo = true; }
                 }
+                estimado = (int[])obj.Clone();
             }
             public WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             // lo que pide ahora el dueno (sus enteros de medio dB; con «Sin ecualizador», todo en 0)
             private void Mira()
             {
+                Func<int[]> pide = Pide;
+                if (pide != null) { int[] q = pide(); for (int b = 0; b < EcualizadorDueno.Bandas; b++) obj[b] = (q == null || b >= q.Length || !valida[b]) ? 0 : EcualizadorDueno.Acota(q[b]); return; }
                 Form1 o = owner;
                 if (o == null) return;
                 bool sin = o.EqDuenoSinPuesto;
@@ -414,6 +428,7 @@ namespace Rocola
                 int n = src.Read(buffer, offset, count);
                 if (n <= 0) return n;
                 Mira();
+                if (Tope != null) RevisaTope();
                 if (!algo) { for (int b = 0; b < EcualizadorDueno.Bandas; b++) if (obj[b] != 0) { algo = true; break; } }
                 if (!algo) return n;   // todo en 0 desde el principio: tal cual, bit a bit
                 int fin = offset + (n & ~1), i = offset;
@@ -462,6 +477,21 @@ namespace Rocola
             }
             // lo que hace ahora (para la hoja): el maximo que sube
             internal int[] Pedido { get { return (int[])obj.Clone(); } }
+            private void RevisaTope()
+            {
+                bool cambio = false, quieto = true;
+                for (int b = 0; b < EcualizadorDueno.Bandas; b++) { if (obj[b] != estimado[b]) cambio = true; if (act[b] != obj[b] * 0.5) quieto = false; }
+                if (!cambio && (asentado || !quieto)) return;
+                int[] m = new int[EcualizadorDueno.Bandas];
+                for (int b = 0; b < m.Length; b++) m[b] = quieto ? obj[b] : Math.Max(obj[b], (int)Math.Ceiling(act[b] * 2.0 - 1e-9));
+                Array.Copy(obj, estimado, obj.Length); asentado = quieto;
+                if (double.IsNaN(TpAntesDb)) return;
+                double sube = RocolaOsPicosEq.SubeDb(m, tasa, TpAntesDb, Picos, Tipicos);
+                double lim = CDb - (TpAntesDb + OtrosDb + sube);
+                RocolaOsGananciaPieza g = Tope;
+                if (lim < g.GananciaDb - 1e-6) { g.TopeLin = (float)Math.Pow(10.0, lim / 20.0); Interlocked.Increment(ref Topes); }
+                else g.TopeLin = float.PositiveInfinity;
+            }
         }
 
         // ------------------------------------------------------------------ la ganancia (y el factor del modo noche)
@@ -475,13 +505,22 @@ namespace Rocola
             private readonly float pasoMax;            // de un extremo al otro en 20 ms
             private volatile RocolaOsGananciaPieza anterior;
             private bool empezo;
+            internal readonly double GananciaDb;
+            // EL TOPE (a1 del 28-11-2026): si el dueno sube el ecualizador mientras suena y con la curva nueva el pico pasaria el techo, la pieza del
+            // EQ pone aqui lo mas que puede ir la ganancia (lineal); nunca la sube de la fija. Infinito: sin tope.
+            internal volatile float TopeLin = float.PositiveInfinity;
+            // la del modo noche (a8 del 28-11-2026): la lee del reloj de la pantalla (RocolaOsNocheAhora, que publica PublicaNoche), sin llamar a
+            // FactorNoche desde el hilo del sonido. Sin la rocola (las pruebas), 1 salvo que la prueba la pida.
+            internal bool ConNoche;
             internal RocolaOsGananciaPieza(ISampleProvider s, Form1 o, double db)
             {
-                src = s; owner = o;
+                src = s; owner = o; ConNoche = o != null; GananciaDb = db;
                 Ganancia = (float)Math.Pow(10.0, db / 20.0);
                 pasoMax = (float)(1.0 / (RampaSeg * Math.Max(1, s.WaveFormat.SampleRate)));
             }
-            internal float Noche { get { Form1 o = owner; if (o == null) return 1f; float f = o.FactorNoche(); return (f > 0f && f <= 4f) ? f : 1f; } }
+            internal float Noche { get { if (!ConNoche) return 1f; float f = RocolaOsNocheAhora; return (f > 0f && f <= 4f) ? f : 1f; } }
+            // la ganancia que lleva de verdad (dB): la fija o, si el EQ del dueno la topo, el tope
+            internal double EfectivaDb { get { float t = TopeLin; return t < Ganancia ? 20.0 * Math.Log10(Math.Max(1e-9, t)) : GananciaDb; } }
             public WaveFormat WaveFormat { get { return src.WaveFormat; } }
             public int Read(Span<float> destino) { return Puente.Lee(Read, destino); }   // NAudio 3 (Puente.cs)
             public int Read(float[] buffer, int offset, int count)
@@ -489,7 +528,7 @@ namespace Rocola
                 if (!empezo) { empezo = true; Hereda(); }
                 int n = src.Read(buffer, offset, count);
                 if (n <= 0) return n;
-                float meta = Ganancia * Noche;
+                float tope = TopeLin, meta = (tope < Ganancia ? tope : Ganancia) * Noche;
                 if (float.IsNaN(actual)) actual = meta;
                 int fin = offset + (n & ~1);
                 if (actual == meta) { for (int i = offset; i < fin; i++) buffer[i] *= meta; return n; }

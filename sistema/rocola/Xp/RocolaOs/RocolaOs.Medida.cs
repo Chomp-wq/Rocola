@@ -11,6 +11,12 @@
 //     256 cuadros cuyas muestras (con las vecinas que usa el filtro) no pueden dar mas que el pico real que ya se tiene (por la suma de los
 //     valores absolutos de cada fase) no se calcula: el resultado es el mismo.
 //   - PICO DE MUESTRA y ESPECTRO en tercios de octava (una FFT de Hann de 4096 cada 8192 cuadros, potencia de los dos canales).
+//   - LOS PICOS DE LAS BANDAS DEL ECUALIZADOR DEL DUENO (28-11-2026, para no bajar de mas a las dinamicas, CADENA_NUEVA_A.md «Arreglos»): por
+//     cada una de sus diez bandas, el pico de muestra (de los dos canales) de lo que deja pasar su SONDA (RocolaOsSondasEq: lo que esa banda le
+//     suma a la musica al subirla, por dB de subida), para estimar cuanto sube el pico real con la curva del dueno (RocolaOsPicosEq.SubeDb).
+//   - EL CORTE DE AGUDOS de la cancion (para el DSEE de agudos_mp3, fijo por cancion): en cada FFT con musica, el acantilado como lo busca el
+//     DSEE (DetectCliff de XP: de 300 en 300 Hz desde arriba, lo primero a -27 dB de la banda de 4-8 kHz); el de la cancion, el percentil 90
+//     (las partes apagadas no lo bajan); con menos de 20 FFT con musica, 0 (sin medir).
 // RocolaOsCrudo mide lo que sale del decodificador para los ARREGLOS: la continua de cada canal, la energia de cada uno y la correlacion del
 // grave (un paso bajo de Butterworth de 2.o orden a 150 Hz).
 using System;
@@ -44,6 +50,14 @@ namespace Rocola
         private readonly float[] fL = new float[FftN], fR = new float[FftN];
         private int fN; private long hastaFft;
         private readonly double[] re = new double[FftN], im = new double[FftN];
+        // las sondas del ecualizador del dueno (b0 b1 b2 a1 a2 por banda; la memoria x1 x2 y1 y2 por canal y banda) y su pico
+        private readonly double[] sonda = new double[EcualizadorDueno.Bandas * 5], sondaSt = new double[2 * EcualizadorDueno.Bandas * 4];
+        private readonly bool[] sondaVale = new bool[EcualizadorDueno.Bandas];
+        private readonly double[] sondaPico = new double[EcualizadorDueno.Bandas];
+        // el corte de agudos de cada FFT con musica
+        private readonly double[] pw = new double[FftN / 2 + 1];
+        private readonly List<float> cortes = new List<float>(1024);
+        internal const int CorteMinFft = 20;
         internal long Cuadros { get { return cuadros; } }
         internal int Tasa { get { return tasa; } }
 
@@ -56,6 +70,7 @@ namespace Rocola
             Fases();
             hL = new float[TpFase - 1 + TpTrozo]; hR = new float[TpFase - 1 + TpTrozo];
             Espectro(tasa);
+            for (int b = 0; b < EcualizadorDueno.Bandas; b++) { sondaVale[b] = EcualizadorDueno.Vale(b, tasa); if (sondaVale[b]) RocolaOsSondasEq.Coef(b, tasa, sonda, b * 5); }
         }
 
         private static readonly object cerrojo = new object();
@@ -129,6 +144,7 @@ namespace Rocola
         internal void Procesa(float[] x, int o, int n)
         {
             int fin = o + (n & ~1);
+            Sondas(x, o, fin);
             double B0 = b0, B1 = b1, B2 = b2, A1 = a1, A2 = a2, R1 = r1, R2 = r2;
             float pk = pico;
             for (int i = o; i < fin; i += 2)
@@ -151,6 +167,52 @@ namespace Rocola
                 if (++cuadros == finSub) CierraSub();
             }
             pico = pk;
+        }
+        // las sondas del EQ del dueno sobre este trozo: banda por banda (la memoria en locales), el pico de los dos canales
+        private void Sondas(float[] x, int o, int fin)
+        {
+            for (int b = 0; b < EcualizadorDueno.Bandas; b++)
+            {
+                if (!sondaVale[b]) continue;
+                int c = b * 5;
+                double c0 = sonda[c], c1 = sonda[c + 1], c2 = sonda[c + 2], d1 = sonda[c + 3], d2 = sonda[c + 4], pk = sondaPico[b];
+                for (int ch = 0; ch < 2; ch++)
+                {
+                    int e = (ch * EcualizadorDueno.Bandas + b) * 4;
+                    double x1 = sondaSt[e], x2 = sondaSt[e + 1], y1 = sondaSt[e + 2], y2 = sondaSt[e + 3];
+                    for (int i = o + ch; i < fin; i += 2)
+                    {
+                        double v = x[i];
+                        double y = c0 * v + c1 * x1 + c2 * x2 - d1 * y1 - d2 * y2;
+                        x2 = x1; x1 = v; y2 = y1; y1 = y;
+                        double a = y < 0 ? -y : y; if (a > pk) pk = a;
+                    }
+                    if (Math.Abs(y1) < 1e-25 && Math.Abs(y2) < 1e-25) { y1 = 0; y2 = 0; }
+                    sondaSt[e] = x1; sondaSt[e + 1] = x2; sondaSt[e + 2] = y1; sondaSt[e + 3] = y2;
+                }
+                sondaPico[b] = pk;
+            }
+        }
+        // EL ACANTILADO de una FFT (la potencia de los dos canales por bin), como DetectCliff del DSEE de XP; 0 si no hay musica que lo diga
+        internal static float Acantilado(double[] p, int tasa, int n)
+        {
+            double binHz = (double)tasa / n; int ny = n / 2;
+            Func<double, int> bin = hz => { int b = (int)(hz / binHz); return b < 1 ? 1 : (b > ny - 1 ? ny - 1 : b); };
+            int b4 = bin(4000), b8 = bin(8000), b1 = bin(100);
+            if (b8 <= b4 + 4) return 0f;
+            double refE = 0; for (int k = b4; k < b8; k++) refE += p[k]; refE /= (b8 - b4);
+            if (!(refE > 0)) return 0f;
+            double cuerpo = 0; for (int k = b1; k < b4; k++) cuerpo += p[k];
+            if (refE < cuerpo / (b4 - b1) * 3e-5) return 0f;   // de 4 a 8 kHz no hay musica: no dice nada
+            double top = Math.Min(20000.0, ny * binHz * 0.94);
+            for (double hz = top - 300.0; hz >= 9000.0; hz -= 300.0)
+            {
+                int a = bin(hz), b = bin(hz + 300.0); if (b <= a) b = a + 1;
+                double e = 0; for (int k = a; k < b; k++) e += p[k];
+                e /= (b - a);
+                if (e > refE * 0.002) return (float)(hz + 300.0);
+            }
+            return 9000f;
         }
         private void CierraSub()
         {
@@ -207,17 +269,22 @@ namespace Rocola
         private void Fft()
         {
             float[] w = hann; int[] bb = binBanda;
+            double et = 0;
             for (int ch = 0; ch < 2; ch++)
             {
                 float[] s = ch == 0 ? fL : fR;
-                for (int i = 0; i < FftN; i++) { re[i] = s[i] * w[i]; im[i] = 0; }
+                for (int i = 0; i < FftN; i++) { re[i] = s[i] * w[i]; im[i] = 0; et += s[i] * (double)s[i]; }
                 RocolaOsFft.Hace(re, im, false);
                 for (int k = 1; k <= FftN / 2; k++)
                 {
+                    double q = re[k] * re[k] + im[k] * im[k];
+                    pw[k] = ch == 0 ? q : pw[k] + q;
                     int b = bb[k];
-                    if (b >= 0) bandas[b] += re[k] * re[k] + im[k] * im[k];
+                    if (b >= 0) bandas[b] += q;
                 }
             }
+            // el corte de agudos de esta FFT, si hay musica (mas de -60 dBFS)
+            if (et > 2.0 * FftN * 1e-6) { float c = Acantilado(pw, tasa, FftN); if (c > 0f) cortes.Add(c); }
         }
 
         // LO MEDIDO (con lo que falte del ultimo trozo). 'm' se rellena: Lufs, TpDb, PicoDb, Lra, Tercios, Segundos.
@@ -240,6 +307,12 @@ namespace Rocola
                 m.Tercios = t;
             }
             else m.Tercios = null;
+            // los picos de las sondas del EQ del dueno (dBFS) y el corte de agudos (el percentil 90 de las FFT con musica)
+            float[] pe = new float[EcualizadorDueno.Bandas];
+            for (int b = 0; b < pe.Length; b++) pe[b] = sondaVale[b] ? (float)Math.Max(-200.0, Db((float)sondaPico[b])) : -200f;
+            m.PicosEq = pe;
+            if (cortes.Count >= CorteMinFft) { List<float> c = new List<float>(cortes); c.Sort(); m.CorteHz = c[(int)Math.Floor(0.9 * (c.Count - 1))]; }
+            else m.CorteHz = 0f;
         }
         internal static double Db(float lin) { return lin > 1e-10f ? 20.0 * Math.Log10(lin) : -200.0; }
         private double Bloque(int k)   // la potencia del bloque de 400 ms que acaba en el subbloque k (k >= 3)

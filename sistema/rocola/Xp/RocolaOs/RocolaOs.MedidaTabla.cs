@@ -5,7 +5,8 @@
 // cadena, con el SELLO del archivo como rocola_fuentes.txt (largo, creada, escrita: si el archivo cambia, lo medido ya no vale):
 //   ROCOLA-MEDIDA-NUEVA v1
 //   cadena TAB ruta TAB largo TAB creada TAB escrita TAB algoritmo TAB huellaB TAB segundos TAB lufs TAB dbtp TAB pico TAB lra TAB mudo TAB
-//   invertido TAB continuaL TAB continuaR TAB zumbido TAB tercios (30, en decimas de dB, con «;») TAB unix
+//   invertido TAB continuaL TAB continuaR TAB zumbido TAB tercios (30, en decimas de dB, con «;») TAB unix TAB picos del EQ del dueno (10, en
+//   decimas de dBFS, con «;») TAB corte de agudos (Hz). (Los dos ultimos desde el 28-11-2026: 21 campos; un renglon de 19 se lee sin ellos.)
 // Solo numeros y la ruta (o «spotify:track:ID»). Se anaden renglones; al leerla, si sobra mas de un tercio, se reescribe con el ultimo de cada
 // una (con EscribeSeguro de XP). Algoritmo 0 = solo los arreglos (medida en vivo que pidio un arreglo: la siguiente vez se mide con el puesto).
 //
@@ -37,6 +38,7 @@ namespace Rocola
         private static volatile bool cargada;
         internal static bool Cargada { get { return cargada; } }
         internal static int Cuantas { get { return tabla.Count; } }
+        internal static int Version;   // sube con cada medida nueva (lo tipico de la biblioteca se rehace)
         private static string Clave(string ruta, char cadena) { return cadena + "|" + ruta; }
         internal static string Ruta { get { return RocolaOs.Datos(Archivo); } }
 
@@ -64,6 +66,12 @@ namespace Rocola
             largo = creada = escrita = 0;
             try { FileInfo f = new FileInfo(ruta); if (!f.Exists) return false; largo = f.Length; creada = f.CreationTimeUtc.Ticks; escrita = f.LastWriteTimeUtc.Ticks; return true; }
             catch { return false; }
+        }
+        // todas las medidas buenas de esa cadena (lo tipico de la biblioteca: RocolaOsPicosEq.Tipico)
+        internal static IEnumerable<RocolaOsMedidaNueva> Todas(char cadena)
+        {
+            foreach (KeyValuePair<string, RocolaOsMedidaNueva> kv in tabla)
+                if (kv.Value.Cadena == cadena && kv.Value.Alg == RocolaOsMedidaNueva.Algoritmo && !kv.Value.Muda) yield return kv.Value;
         }
         internal static IEnumerable<RocolaOsMedidaNueva> DeSpotify(char cadena)
         {
@@ -96,6 +104,7 @@ namespace Rocola
                 }
             }
             catch (Exception ex) { RocolaOs.Falla(RocolaOsCadenasNuevas.Medida, "leer " + Archivo, ex); }
+            Interlocked.Increment(ref Version);
             cargada = true;
         }
         private static readonly object cerrojoEscribe = new object();
@@ -103,6 +112,7 @@ namespace Rocola
         {
             if (m == null || m.Ruta == null) return;
             tabla[Clave(m.Ruta, m.Cadena)] = m;
+            Interlocked.Increment(ref Version);
             StringBuilder sb = new StringBuilder();
             lock (cerrojoEscribe)
             {
@@ -129,7 +139,10 @@ namespace Rocola
               .Append(m.ZumbidoHz.ToString(CultureInfo.InvariantCulture)).Append('\t');
             if (m.Tercios == null) sb.Append('-');
             else for (int b = 0; b < m.Tercios.Length; b++) { if (b > 0) sb.Append(';'); sb.Append(((int)Math.Round(m.Tercios[b] * 10)).ToString(CultureInfo.InvariantCulture)); }
-            sb.Append('\t').Append(m.Unix.ToString(CultureInfo.InvariantCulture)).Append('\n');
+            sb.Append('\t').Append(m.Unix.ToString(CultureInfo.InvariantCulture)).Append('\t');
+            if (m.PicosEq == null) sb.Append('-');
+            else for (int b = 0; b < m.PicosEq.Length; b++) { if (b > 0) sb.Append(';'); sb.Append(((int)Math.Round(m.PicosEq[b] * 10)).ToString(CultureInfo.InvariantCulture)); }
+            sb.Append('\t').Append(((int)Math.Round(m.CorteHz)).ToString(CultureInfo.InvariantCulture)).Append('\n');
         }
         private static double D(string s) { if (s == "-inf") return double.NegativeInfinity; double v; return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out v) ? v : double.NaN; }
         private static long L(string s) { long v; return long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out v) ? v : 0; }
@@ -147,6 +160,11 @@ namespace Rocola
                 if (t.Length == RocolaOsMedidaNueva.Bandas) { m.Tercios = new float[t.Length]; for (int b = 0; b < t.Length; b++) m.Tercios[b] = L(t[b]) / 10f; }
             }
             m.Unix = L(c[18]);
+            if (c.Length >= 21)
+            {   // (28-11-2026) los picos de las sondas del EQ del dueno y el corte de agudos; un renglon de antes (19 campos) va sin ellos
+                if (c[19] != "-") { string[] t = c[19].Split(';'); if (t.Length == EcualizadorDueno.Bandas) { m.PicosEq = new float[t.Length]; for (int b = 0; b < t.Length; b++) m.PicosEq[b] = L(t[b]) / 10f; } }
+                m.CorteHz = Math.Max(0f, (float)L(c[20]));
+            }
             if (double.IsNaN(m.Lufs) || double.IsNaN(m.TpDb) || float.IsNaN(m.ContinuaL) || float.IsNaN(m.ContinuaR)) return null;
             if (m.CanalMudo < -1 || m.CanalMudo > 1) m.CanalMudo = -1;
             return m;
